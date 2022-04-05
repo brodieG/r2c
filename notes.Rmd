@@ -1,15 +1,28 @@
 # fapply
 
-# Nex Steps
+# Current
 
-Need to demonstrate that we can load at least on UNIX alike.
+We figured out the crashing is happening due to the stack canary getting blow
+through.  But we can't tell by what, as seemingly the value is still there.
 
-# todo
+# To Do / Questions
 
+* Todo: how to work around `Rf_RegisteredNativeSymbol` problem...  Probably will
+  need higher level function.
 * Check name isn't used already.
 * Figure out how to access an entry point?  We can base on what R does, but
   clearly this is going to be system dependent and challenging.  Another
   argument for using R CMD SHLIB and dynload.
+* `?SHLIB` states some binary distributions don't include `R CMD SHLIB`.
+* Figure out how to call the current version of R (e.g. `RD CMD SHLIB`).
+* See how far back this works in terms of R versions.
+* What happens when this stuff is serialized?
+* What does inline do?
+
+# Nex Steps
+
+Need to demonstrate that we can load at least on UNIX alike.  Loading using the
+same mechanism as R might be challenging.
 
 # Concept
 
@@ -112,6 +125,38 @@ least not faster, so the overhead is from firing up make, etc.
 Ideally we would be able to use `dyn.load`, but then we need `.Call` which
 obviously we're trying to avoid.  This is going to be really complicated, see
 "src/main/dodotcode.c".
+
+So we can use `R CMD SHLIB` + `dyn.load`, but we now need to figure out how
+`.Call` finds the symbol in that case.
+
+    > xx <- dyn.load('test-r.so')
+    > xx
+    DLL name: test-r
+    Filename: /Volumes/PERSONAL/repos/fapply/test-r.so
+    Dynamic lookup: TRUE
+    > .Call('test', runif(10), PACKAGE='test-r')
+    [1] 6.270841
+
+Looks like maybe we can use (cadged from `resolveNativeRoutine`):
+
+    DL_FUNC *fun;
+    char buf[MaxSymbolBytes];
+    R_RegisteredNativeSymbol *symbol;
+    R_RegisteredNativeSymbol symbol = {R_CALL_SYM, {NULL}, NULL};
+    *fun = R_FindSymbol(buf, dll.DLLname, symbol);
+
+**Bad News**: we need `Rf_RegisteredNativeSymbol` which is in Rdynpriv.h, which
+is not installed, etc.  Let's try just copying that over for now.
+
+Which is used in (where `*fun` above is loaded into `&ofun` below):
+
+    args = resolveNativeRoutine(args, &ofun, &symbol, buf, NULL, NULL, call, env);
+    retval = R_doDotCall(ofun, nargs, cargs, call);
+
+All of these seem to be in "R_Ext/Rdynload.h" so I think we're okay (though not
+strictly part of the API?).
+
+So, given we should be able to do something like 
 
 # vs Rcpp?
 
