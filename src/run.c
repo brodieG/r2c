@@ -75,9 +75,41 @@ SEXP FAPPLY_run(SEXP so, SEXP fun_name, SEXP x) {
   DL_FUNC fun = NULL;
   const char * fun_char = CHAR(STRING_ELT(fun_name, 0));
   const char * dll_char = CHAR(STRING_ELT(so, 0));
-  struct Rf_RegisteredNativeSymbol symbol = {0, {NULL}, NULL};
+  struct Rf_RegisteredNativeSymbol * symbol = NULL;
   Rprintf("finding symbol for '%s' '%s'", fun_char, dll_char);
-  fun = R_FindSymbol(fun_char, dll_char, &symbol);
+  fun = R_FindSymbol(fun_char, dll_char, symbol);
   Rprintf("Calling fun");
   return (*fun)(x);
 }
+/*
+ * This one passes naked C objects
+ */
+SEXP FAPPLY_run2(SEXP so, SEXP fun_name, SEXP x) {
+  if(TYPEOF(so) != STRSXP || XLENGTH(so) != 1)
+    error("Argument `so` should be a scalar string.");
+  if(TYPEOF(fun_name) != STRSXP || XLENGTH(fun_name) != 1)
+    error("Argument `fun_name` should be a scalar string.");
+  if(TYPEOF(x) != VECSXP)
+    error("Argument `x` should be a list.");
+
+  R_xlen_t xlen = XLENGTH(x);
+  if(xlen > INT_MAX)
+    error("Arguent `x` may not contain more than INT_MAX items.");
+  double **xvals = (double**) R_alloc((size_t)xlen, sizeof(double*));
+  R_xlen_t *xlens = (R_xlen_t*) R_alloc((size_t)xlen, sizeof(R_xlen_t));
+  for(R_xlen_t i = 0; i < xlen; ++i) {
+    SEXP elt = VECTOR_ELT(x, i);
+    if(TYPEOF(elt) != REALSXP)
+      error("Argument `x[%d]` must be a double.", i);
+    *(xvals + i) = REAL(elt);
+    *(xlens + i) = XLENGTH(elt);
+  }
+  const char * fun_char = CHAR(STRING_ELT(fun_name, 0));
+  const char * dll_char = CHAR(STRING_ELT(so, 0));
+  struct Rf_RegisteredNativeSymbol * symbol = NULL;
+  DL_FUNC fun = R_FindSymbol(fun_char, dll_char, symbol);
+  double res = 0;
+  (*fun)(xvals, xlens, (int) xlen, &res);
+  return ScalarReal(res);
+}
+

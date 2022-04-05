@@ -18,6 +18,13 @@ through.  But we can't tell by what, as seemingly the value is still there.
 * See how far back this works in terms of R versions.
 * What happens when this stuff is serialized?
 * What does inline do?
+* Is there an alternative to R_FindSymbol?  Can we get it to be made part of the
+  API.
+* Recycling warnings?
+* Can we use this in some way for e.g. really wide matrices where each column
+  takes the place of an argument?  Generating a pointer for each column then may
+  be less efficient.
+* Does altrep play into this in any way?
 
 # Nex Steps
 

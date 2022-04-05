@@ -23,5 +23,6 @@
 #include <Rversion.h>
 
 SEXP FAPPLY_run(SEXP so, SEXP fun, SEXP x);
+SEXP FAPPLY_run2(SEXP so, SEXP fun_name, SEXP x);
 
 #endif  /* FAPPLY_H */

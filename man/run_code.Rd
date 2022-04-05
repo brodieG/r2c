@@ -2,9 +2,12 @@
 % Please edit documentation in R/run.R
 \name{run_code}
 \alias{run_code}
+\alias{run_code2}
 \title{Experimental Code Runner}
 \usage{
-run_code(code, x)
+run_code(code, fun, x)
+
+run_code2(code, fun, x)
 }
 \description{
 Experimental Code Runner
