@@ -25,10 +25,17 @@ make_shlib <- function(x) {
 
   dir <- tempfile()
   dir.create(dir)
-  file <- file.path(dir, 'code.c')
-  writeLines(x, file)
+  file.base <- file.path(dir, sprintf('code-%s', rand_string(8)))
+  file.src <- paste0(file.base, ".c")
+  file.obj <- paste0(file.base, ".so")
+  writeLines(x, file.src)
   # what if we're running with RD or similar?
-  system2(R.home("bin/R"), c("CMD", "SHLIB", file))
-  # is this what's returned on windows?
-  file.path(dir, 'code.so')
+  system2(R.home("bin/R"), c("CMD", "SHLIB", file.src))
+  # is this what's returned on windows (we can specify, but should make sure if
+  # the extension matters)?
+  file.obj
 }
+
+
+rand_string <- function(len, pool=c(letters, 0:9))
+  paste0(sample(pool, len, replace=TRUE), collapse="")

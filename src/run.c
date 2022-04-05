@@ -18,35 +18,13 @@
 #include <R_ext/Rdynload.h>
 
 // Taken from Rdynpriv.h; we'll need to work around this
-
-typedef struct {
-    char       *name;
-    DL_FUNC     fun;
-    int         numArgs;
-
-    R_NativePrimitiveArgType *types;   
-} Rf_DotCSymbol;
-
-typedef Rf_DotCSymbol Rf_DotFortranSymbol;
-
-
-typedef struct {
-    char       *name;
-    DL_FUNC     fun;
-    int         numArgs;
-} Rf_DotCallSymbol;
-
-typedef Rf_DotCallSymbol Rf_DotExternalSymbol;
+// Dummy struct, per C99 all pointers to struct are the same size, and since
+// we're just going to pass a NULL pointer which R_FindSymbol checks for this
+// will work.  Of course not part of the APIS so this can't be how we do the
+// final implementation.
 
 struct Rf_RegisteredNativeSymbol {
-    NativeSymbolType type;
-    union {
-	Rf_DotCSymbol        *c;
-	Rf_DotCallSymbol     *call;
-	Rf_DotFortranSymbol  *fortran;
-	Rf_DotExternalSymbol *external;
-    } symbol;
-    DllInfo *dll;
+    int dummy;
 };
 
 /*
