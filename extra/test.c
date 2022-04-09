@@ -15,6 +15,9 @@ int main(int argc, char **argv) {
   for(int i = 0; i < y; ++i) {
     z += x;
   }
-  printf("Result %f\n", z);
+  {
+    int private = 3;
+  }
+  printf("Result %f %d\n", z, private);
   exit(0);
 }

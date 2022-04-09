@@ -29,9 +29,19 @@ run_code2 <- function(code, fun, x) {
   handle <- dyn.load(shlib)
   .Call(FAPPLY_run2, handle[['name']], fun, x)
 }
+#' @rdname run_code
+#' @export
 run_code3 <- function(code, fun, x, g) {
   shlib <- make_shlib(code)
   handle <- dyn.load(shlib)
   o <- order(g)
-  .Call(FAPPLY_run3, handle[['name']], fun, x[o], g[o])
+  .Call(FAPPLY_run3, handle[['name']], fun, list(x[[1]][o]), g[o])
+}
+#' @rdname run_code
+#' @export
+
+run_group <- function(shlib, fun, x, g) {
+  handle <- dyn.load(shlib)
+  o <- order(g)
+  .Call(FAPPLY_run3, handle[['name']], fun, list(x[[1]][o]), g[o])
 }

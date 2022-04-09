@@ -7,6 +7,16 @@ through.  But we can't tell by what, as seemingly the value is still there.
 
 # To Do / Questions
 
+* Make sure there are interrupts.  Can we use "R_ext/Intermacros.h".  It seems
+  yes generally, but they are not explicitly part of the API.
+* Think though corner case of R_NA, NaN, Inf, etc: are we preserving semantics.
+* Is it faster to compute complex expressions pairwise (i.e. full vector scan of
+  two vectors), or do each row in full once?
+* Look into using R_GetCCallable (see WRE) instead of what we're doing now.  It
+  seems though that to do so we'll need to generate a full package which will
+  further slow down the compilation.
+* Compare to: https://github.com/mrc-ide/odin.  Seems exactly what we're trying
+  to do.
 * Todo: how to work around `Rf_RegisteredNativeSymbol` problem...  Probably will
   need higher level function.
 * Check name isn't used already.
@@ -26,10 +36,34 @@ through.  But we can't tell by what, as seemingly the value is still there.
   be less efficient.
 * Does altrep play into this in any way?
 
-# Nex Steps
+# Odin
 
-Need to demonstrate that we can load at least on UNIX alike.  Loading using the
-same mechanism as R might be challenging.
+Fascinating implementation, but the key issue seems to be that it seems to be
+very much focused on the derivative syntax of DeSolve and thus abandons R
+semantics.
+
+Supports things such as (from array portion of vignette):
+
+    deriv(y[]) <- r[i] * y[i] * (1 - sum(ay[i, ]))
+
+But not:
+
+    deriv(y[]) <- r[i] * y[i] * (1 - sum(ay[i, ] + 3))
+
+I.e. it won't recursively construct the expressions.  But it can be done with:
+
+    tmp[,] <- ay[i,j] ^ 2
+    deriv(y[]) <- y[i] * (1 - sum(tmp))
+    ...
+    dim(tmp) <- c(n_spp, 10)   # probably can submit the 10 as user()?
+
+Additionally, the concept of arrays is really a stand in for multiple variables.
+In the above example `i %in% 1:4` so it's a four variable system and could be
+written as such, not really the concept of vectorized data intended to be
+aggregated.
+
+We can get "vectors" in the sense we're used to in there, but they need to go in
+as matrices (but that's okay, we can just do this with 1D matrices).
 
 # Concept
 
@@ -71,8 +105,49 @@ the length of the `probs` argument).
 Compute length of each vector.  Generate the full C expression with index or
 pointer offset access.
 
-Recycling a real problem; if we  have to do it we then need to compute modulo,
-but this is only going to happen if the functions return weird lengths.
+    x <- runif(5e6)
+    y <- runif(5e6)
+    z <- runif(5e6)
+    w <- runif(5e6)
+    >
+    > sys.time(fapply:::test1(x, y, z, w))
+       user  system elapsed 
+      0.025   0.000   0.025 
+    > sys.time(fapply:::test2(x, y, z, w))
+       user  system elapsed 
+      0.018   0.000   0.018 
+
+It is slightly faster to do x + y + z + w (test2) than do pairwise additions
+across the full vectors (test1).  Maybe because we only increment the loop
+variable once?
+
+With `MOD_ITERATE_2` and checking every 1e6:
+
+    > sys.time(fapply:::test3(x, y, z, w))
+     user  system elapsed 
+    0.036   0.000   0.038 
+
+Interestingly `MOD_ITERATE2` is no faster.
+
+`R_ITERATE_CHECK` is comparable to pairwise addition (test1):
+
+    > sys.time(fapply:::test1(x, y, z, w))
+       user  system elapsed 
+      0.026   0.000   0.028 
+    > sys.time(fapply:::test5(x, y, z, w))
+       user  system elapsed 
+      0.026   0.000   0.028 
+
+
+## Function Types
+
+* Aggregation functions (result length == 1)
+* Vectorized functions  (result length == 0 or longest vector)
+* Arbitrary functions   (result length is known (above is degen case of this))
+
+Maybe use iterator macros.  E.g. `MOD_ITERATE2_CHECK`.  These should work fine
+and are fairly efficient (i.e. reset counter to zero intead of reading with
+modulo).
 
 ## Interface
 
@@ -86,8 +161,27 @@ How does this work for a newly defined function at the R level?  Does it matter?
 
 ### C Level
 
-Target function should accept an array of double pointers the same length as it
-expects arguments.  All functions should be like that.
+Target function:
+
+* Array of double pointers the same length as it expects number of arguments.
+* Int with number of arguments.
+* Array of R_xlen_t with lengths of each of the arguments.
+* Array of R_xlen_t with offsets of each of the arguments.
+* Double array of right size for result.
+
+Should we have some structs pre-defined to hold the above?
+
+Can the function check it's doing the right thing in terms of argument count?
+Would it be better to have the arguments provided explicitly (in which case we
+really want structs?  Should the "Array of double pointers" already be at the
+expected offsets (maybe).  Do we want iterators like R provides to walk through
+all the arguments?
+
+Maybe we don't want the lengths of each of the arguments; instead, we want the
+length of the result, and the modulo to read all the other arguments not of that
+length?
+
+should accept an expects arguments.  All functions should be like that.
 
 Parameters such as `na.rm=TRUE` actually cause dispatch to a different
 function.  So when we register a function we need to declare this?  I guess it
@@ -129,6 +223,8 @@ least not faster, so the overhead is from firing up make, etc.
 
 ## Loading
 
+### Hack approach
+
 Ideally we would be able to use `dyn.load`, but then we need `.Call` which
 obviously we're trying to avoid.  This is going to be really complicated, see
 "src/main/dodotcode.c".
@@ -153,7 +249,7 @@ Looks like maybe we can use (cadged from `resolveNativeRoutine`):
     *fun = R_FindSymbol(buf, dll.DLLname, symbol);
 
 **Bad News**: we need `Rf_RegisteredNativeSymbol` which is in Rdynpriv.h, which
-is not installed, etc.  Let's try just copying that over for now.
+is not installed, etc.  We can just dummy it since it is only used optionally.
 
 Which is used in (where `*fun` above is loaded into `&ofun` below):
 
@@ -163,7 +259,13 @@ Which is used in (where `*fun` above is loaded into `&ofun` below):
 All of these seem to be in "R_Ext/Rdynload.h" so I think we're okay (though not
 strictly part of the API?).
 
-So, given we should be able to do something like 
+### `R_GetCCallable`
+
+An alternative we can use, but will likely require building a package like odin
+does.
+
+Is there a way to save the function and the compiled code other than via package?
+
 
 # vs Rcpp?
 

@@ -18,11 +18,19 @@
 #ifndef FAPPLY_H
 #define FAPPLY_H
 
+// System headers go above
 #include <R.h>
 #include <Rinternals.h>
 #include <Rversion.h>
 
 SEXP FAPPLY_run(SEXP so, SEXP fun, SEXP x);
 SEXP FAPPLY_run2(SEXP so, SEXP fun_name, SEXP x);
+SEXP FAPPLY_run3(SEXP so, SEXP fun_name, SEXP x, SEXP g);
+
+SEXP FAPPLY_test1(SEXP x, SEXP y, SEXP z, SEXP w);
+SEXP FAPPLY_test2(SEXP x, SEXP y, SEXP z, SEXP w);
+SEXP FAPPLY_test3(SEXP x, SEXP y, SEXP z, SEXP w);
+SEXP FAPPLY_test4(SEXP x, SEXP y, SEXP z, SEXP w);
+SEXP FAPPLY_test5(SEXP x, SEXP y, SEXP z, SEXP w);
 
 #endif  /* FAPPLY_H */

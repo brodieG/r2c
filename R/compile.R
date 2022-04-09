@@ -15,6 +15,7 @@
 
 #' Generate a Shared Library Object From C Code
 #'
+#' @export
 #' @param x character the C code to compile
 #' @return character file name of the SO; will be in a temporary directory, it is
 #'   the users responsibility to preserve and/or discard the file.
@@ -29,7 +30,6 @@ make_shlib <- function(x) {
   file.src <- paste0(file.base, ".c")
   file.obj <- paste0(file.base, ".so")
   writeLines(x, file.src)
-  # what if we're running with RD or similar?
   system2(R.home("bin/R"), c("CMD", "SHLIB", file.src))
   # is this what's returned on windows (we can specify, but should make sure if
   # the extension matters)?

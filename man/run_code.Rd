@@ -3,11 +3,17 @@
 \name{run_code}
 \alias{run_code}
 \alias{run_code2}
+\alias{run_code3}
+\alias{run_group}
 \title{Experimental Code Runner}
 \usage{
 run_code(code, fun, x)
 
 run_code2(code, fun, x)
+
+run_code3(code, fun, x, g)
+
+run_group(shlib, fun, x, g)
 }
 \description{
 Experimental Code Runner
