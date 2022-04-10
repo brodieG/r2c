@@ -7,6 +7,12 @@ through.  But we can't tell by what, as seemingly the value is still there.
 
 # To Do / Questions
 
+* Add capability to specify functions in non-standard ways (e.g. `base::sum`, or
+  `(get("sum", as.environment("package:base"))`)?  Maybe not, that seems like
+  potential trouble.  Certainly document also things like `f <- sum; f(x)`.
+* Evaluation of non-compilable expressions in an env child of an env with
+  appropriate symbols protected?  Such would be the symbols in the data, but
+  what about the functions that are used?  That seems excessive.
 * Make sure there are interrupts.  Can we use "R_ext/Intermacros.h".  It seems
   yes generally, but they are not explicitly part of the API.
 * Think though corner case of R_NA, NaN, Inf, etc: are we preserving semantics.
@@ -15,14 +21,7 @@ through.  But we can't tell by what, as seemingly the value is still there.
 * Look into using R_GetCCallable (see WRE) instead of what we're doing now.  It
   seems though that to do so we'll need to generate a full package which will
   further slow down the compilation.
-* Compare to: https://github.com/mrc-ide/odin.  Seems exactly what we're trying
-  to do.
-* Todo: how to work around `Rf_RegisteredNativeSymbol` problem...  Probably will
-  need higher level function.
 * Check name isn't used already.
-* Figure out how to access an entry point?  We can base on what R does, but
-  clearly this is going to be system dependent and challenging.  Another
-  argument for using R CMD SHLIB and dynload.
 * `?SHLIB` states some binary distributions don't include `R CMD SHLIB`.
 * Figure out how to call the current version of R (e.g. `RD CMD SHLIB`).
 * See how far back this works in terms of R versions.
@@ -35,6 +34,8 @@ through.  But we can't tell by what, as seemingly the value is still there.
   takes the place of an argument?  Generating a pointer for each column then may
   be less efficient.
 * Does altrep play into this in any way?
+* Lags and similar (i.e. `x[i] = x[i] * x[i - 1]`).
+* Re-use repeated expressions.
 
 # Odin
 
@@ -121,13 +122,13 @@ It is slightly faster to do x + y + z + w (test2) than do pairwise additions
 across the full vectors (test1).  Maybe because we only increment the loop
 variable once?
 
-With `MOD_ITERATE_2` and checking every 1e6:
+With `MOD_ITERATE_CHECK2` and checking every 1e6:
 
     > sys.time(fapply:::test3(x, y, z, w))
      user  system elapsed 
     0.036   0.000   0.038 
 
-Interestingly `MOD_ITERATE2` is no faster.
+Interestingly `MOD_ITERATE2` is no faster, so the check is basically free.
 
 `R_ITERATE_CHECK` is comparable to pairwise addition (test1):
 
@@ -148,6 +149,231 @@ Interestingly `MOD_ITERATE2` is no faster.
 Maybe use iterator macros.  E.g. `MOD_ITERATE2_CHECK`.  These should work fine
 and are fairly efficient (i.e. reset counter to zero intead of reading with
 modulo).
+
+When construction the expression, when do we need to recursively evaluate
+sub-expressions?  E.g. in:
+
+    x + y + z
+
+Which is really:
+
+   `+`(`+`(x, y), z)
+
+How do we know we can just turn it into:
+
+    for(i = 0; i < len; ++i) x[i] + y[i] + z[i];
+
+Vs
+
+    x + y + mean(z)
+    x + y + sort(z)
+
+It's really that there is no mixing moving of the vectors.  Associativity /
+commutativity shouldn't matter as that's handled by C / parentheses.
+
+If we have a complex expression with a lot of these then it potentially gets
+tricky b/c we start requiring intermediate storage for computing the whole
+expression.
+
+So we need to distinguish between "vectorizable" functions that operate one
+element at a time, and those that aren't that operate on more than one element
+at a time (either by moving them, etc).  The latter have to be evaluated
+separately.  So the "parser" will need to identify where such functions are and
+then evaluate/reduce them to a form that can then be used in a vectorized
+context.
+
+Because of this we might just favor the iterative resolving of the expression.
+This will be easier.  We could just have logic to try to make the biggest
+vectorized expression.  This would avoid a lot of extraneous code.
+
+So right now:
+
+    x + y + z
+
+Becomes
+
+    double * res;
+    for(i = 0; i < n; ++i) res[i] = x[i] + y[i];
+    for(i = 0; i < n; ++i) res[i] = res[i] + z[i];
+
+And:
+
+    x + y + mean(z)
+
+    double * res;
+    for(i = 0; i < n; ++i) res[i] = x[i] + y[i];
+
+    double tmp = 0;
+    for(i = 0; i < n; ++i) tmp += z[i];
+    tmp /= n;
+
+    for(i = 0; i < n; ++i) res[i] += tmp;
+
+So we'll need as many temporary scalars / vectors as there are arguments to
+functions.  Maybe we don't allow anything but binary?  Hmm, so with:
+
+    pmax(-x, log(y), mean(z), w - u)
+
+In all cases we'll know the size each argument.  In the expression above we know
+how many parameters there are so we can construct the correct code at
+"compilation" time.  What about:
+
+    pmax(pmin(y, z, w), pmin(w, q, f), mean(z + y))
+
+Generated code:
+
+    double * tmp0 = R_alloc();
+    for(i = 0; i < n; ++i) {
+      tmp[i] = z[i] + y[i];
+    }
+    double tmp1 = mean(z + y);
+
+    for(i = 0; i < n; ++i) {
+      tmp0 = pmin(y[i], z[i], w[i]);
+      tmp2 = pmin(w[i], q[i], f[i]);
+      res[i] = pmax(tmp2, tmp3, tmp1);
+    }
+
+And (numbers show depth):
+
+    pmax(pmin(y, z, mean(w)), pmin(w, q, f), mean(z + y))
+         pmin(y, z, mean(w)), pmin(w, q, f), mean(z + y)
+                    mean(w)                  mean(z + y)
+                                                  z + y
+
+
+Generated code.  Coords are (depth, param)
+
+    // coords (0,0),(1,0)(2,2)
+    double stmp0;
+    stmp0 = mean(w);
+
+    // coords (0,0),(1,0)
+    double * vtmp0 = R_alloc();
+    for(i = 0; i < n; ++i) vtmp0[i] = pmin(y[i], z[i], stmp0);
+
+    // coords (0,0),(2,0)
+    // * stmp0 no longer needed
+    double * vtmp1 = R_alloc();
+    for(i = 0; i < n; ++i) vtmp0[i] = pmin(w[i], q[i], f[i]);
+
+    // coords (0,0),(2,2),(3,0)
+    double * vtmp2 = R_alloc();
+    for(i = 0; i < n; ++i) vtmp2[i] = z[i] + w[i];
+
+    // coords (0,0),(2,2),(2,0)
+    stmp0 = mean(vtmp2);
+
+    // coords (0,0)
+    // * vtmp2 no longer needed, so re-use
+    double * vtmp3 = R_alloc();
+    for(i = 0; i < n; +++i) vtmp2[i] = pmax(vtmp0[i], stmp, vtmp1[i]);
+
+We need to track how many variables we've generated and when each one is freed,
+without garbage collection.  So for each variable we need to track the depth at
+which they are used.
+
+Ideally we'll know for each group exactly how many variables we'll need and of
+which size.  So we want to allocate the minimal amount w/ re-use that we need.
+Number of variables should be at worst `sum(pmax(length(args) - 1)` or some
+such.
+
+One problem is that computing ex-ante how big each of our intermediate
+allocations is going to be could be costly.  For `pmax`, we have the group based
+params that are known sizes, but there could be external params of unknown
+sizes.  So we could reduce the size expectation to be something like
+`max(c(G, a, b, c, ...))`.
+
+Provided options:
+
+* Length of group
+* Constant length (mean/sum/prod->1; Max returns -Inf)
+* Length of one specific argument (quantile)
+* Recycled max of multiple arguments (different from plain max because if one of
+  the arguments is known to be zero, then the lot is zero).
+
+Not provided options:
+
+* Function of length of single argument.
+* Function of lengths of various arguments.
+
+This means we only care about the maximum group size as we'll always want to
+allocate to that group size at a minimum.
+
+So we navigate the entire parse tree, and for each function we retrieve the type
+from above.  This will require:
+
+* Reducing the function to its numeric arguments.
+* Looking up the type of function.
+* Computing the maximum return size as a function of form `max(c(G, k))` where
+  `k` is a constant presumably derived from external variables, or possibly 0.
+
+For a single function:
+
+* Confirm it is a known function by getting it and comparing it to our list.
+* `match.call`.
+* Identify all non-group parameters.
+* Evaluate all non-group parameters and bind them to local symbols.
+* Check that all the C parameters are double (either a group param, or double).
+* Depending on function type
+    * (if needed) Compute lengths of all non-group C parameters, and record max
+      of them or zero in `K`.
+    * Record shorthand size, e.g. `K`, `g`, or `max0(g, K)`, where `max0`
+      returns 0 if any of `g`, `k`, are zero, and `K` is a scalar constant.
+    * We thus need a structure that contains a constant, whether the constant is
+      set (we need to distinguish zero), and whether the group size matters.
+
+Across the full expression, given `g` is equal to max group size:
+
+0. Initialize vector of temporary items.  This is an array of R_xlen_t sizes
+   sorted by size and an array of integers denoting whether the corresponding
+   entries are free or busy.
+1. Confirm function is valid.
+    * Either resolves against list.
+    * Or does not contain any references against symbols in the grouped data.
+2. Based on function type:
+    * Invalid: STOP.
+    * Valid no symbols: eval and return length as constant (SIDE EFFECTS?).
+    * Valid referencing symbols: continue to 3.
+3. Count function parameters that are of unknown length.
+4. For each unknown parameter, recurse to 1.
+5. Once all parameters are of known length, compute expression length.
+6. Scan through free entries to see if any are big enough.
+    * For entries with group size, use the biggest group size.
+    * An entry is free if its depth is greater than one below the current level.
+    * If yes, mark as busy with the current depth.
+    * If no, find the spot to add a new entry and mark with current depth.
+    * Process of adding an entry should preserve sorting of list.
+5. Return expression length computed in 5.
+
+Now that we have the expression length, compute the result vector size.  It
+should be either a constant per group, or `g`.
+
+The top level return should give us the result size, and our list should give us
+the set of intermediate vectors we'll need.
+
+
+
+
+    double * tmp0 = R_alloc();
+    for(i = 0; i < n; ++i) {
+      tmp[i] = z[i] + y[i];
+    }
+    double tmp1 = mean(z + y);
+
+    for(i = 0; i < n; ++i) {
+      tmp0 = pmin(y[i], z[i], w[i]);
+      tmp2 = pmin(w[i], q[i], f[i]);
+      res[i] = pmax(tmp2, tmp3, tmp1);
+    }
+
+
+
+We could do it with a loop in code, or we could just repeat
+the code as many times as there are arguments.
+
+
+
 
 ## Interface
 
