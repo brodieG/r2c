@@ -99,7 +99,7 @@ fap_fun <- function(name, fun, defn, ctrl.params=character(), type) {
         !anyNA(type[[2L]])
       )
   ) )
-  list(name=name, defn=defn, ctrl=ctrl.params, type=type)
+  list(name=name, fun=fun, defn=defn, ctrl=ctrl.params, type=type)
 }
 VALID_FUNS <- list(
   fap_fun(
@@ -107,7 +107,7 @@ VALID_FUNS <- list(
     "na.rm", list("constant", 1L)
   ),
   fap_fun(
-    "mean", fun=base::sum, defn=base::mean.default,
+    "mean", fun=base::mean, defn=base::mean.default,
     "na.rm", list("constant", 1L)
   ),
   fap_fun(
@@ -153,18 +153,26 @@ names(VALID_FUNS) <- vapply(VALID_FUNS, "[[", "", "name")
 #' @param temp structure that tracks the required size
 
 prepare <- function(call, data, g, env, depth, temp) {
+  force(env)
   writeLines(sprintf("Depth %d: %s", depth, deparse1(call)))
   fun <- call[[1L]]
-  if(!is.name(fun))
+  if(!is.name(fun) && !is.character(fun))
     stop(
       "Only calls in form `symbol(<parameters>)` are supported (i.e. not ",
       deparse1(fun), ")."
     )
-
+  # Remove parentheses.  These are not needed in an already parsed expression as
+  # the precedence is dictated by the call tree.
   func <- as.character(fun)
-  if(!func %in% names(VALID_FUNS))
-    stop("`", as.character(call[[1L]]), "` is not a supported function.")
-
+  check_fun(func, env)
+  if(func == "(") {
+    if(length(call) != 2L)
+      stop("Internal Error: call to `(` with wrong parameter count.")  # nocov
+    call <- call[[2L]]
+    fun <- call[[1L]]
+    func <- as.character(fun)
+    check_fun(func, env)
+  }
   args <- if(!is.null(defn <- VALID_FUNS[[c(func, "defn")]])) {
     match_call(definition=defn, call=call, envir=env, name=func)
   } else {
@@ -307,4 +315,26 @@ alloc_temp <- function(temp, depth, size, call) {
   temp
 }
 init_temp <- function() list(alloc=numeric(), depth=integer())
+
+## Check function validity
+check_fun <- function(x, env) {
+  if(!x %in% names(VALID_FUNS))
+    stop("`", as.character(call[[1L]]), "` is not a supported function.")
+  if(
+    !identical(
+      try(got.fun <- get(x, envir=env, mode="function"), silent=TRUE),
+      VALID_FUNS[[c(x, "fun")]]
+  ) ) {
+    tar.fun <- VALID_FUNS[[c(x, "fun")]]
+    env.fun <-
+      if(is.null(environment(tar.fun))) getNamespace("base")
+      else environment(tar.fun)
+    stop(
+      "Symbol `", x, "` does not resolve to the expected function from ",
+      capture.output(print(env.fun)),
+      " (resolves to one from ",
+      capture.output(print(environment(got.fun))), ")"
+    )
+  }
+}
 
