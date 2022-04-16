@@ -140,11 +140,11 @@ names(VALID_FUNS) <- vapply(VALID_FUNS, "[[", "", "name")
 #' Retrieve appropriate entry points based on configuration parameters, and
 #' compute required temporary storage sizes.
 #'
-#' @return a list containing the accrued temporary storage requirements, as well
-#'   as a recursive list of entry point names along with the parameters to call
-#'   them with and the expected result size.
-#' the entry point name, the parameters to call it
-#'   with (mixture of eval and uneval)
+#' @return a list containing (update):
+#'   * Accrued temporary storage requirements
+#'   * Size of the current call being assessed
+#'   * A recursive list of entry point names along with the parameters to call
+#'     them with and the expected result size.
 #' @param call an unevaluated R call
 #' @param data character the names of the data columns
 #' @param g max group size
@@ -239,11 +239,20 @@ prepare <- function(call, data, g, env, depth, temp) {
       )
     sizes.tmp <- args.sizes[,ftype[[2L]], drop=FALSE]
     temp <- alloc_temp(temp, depth, size=max_size(sizes.tmp, g), call)
-    size <- c(known_size(sizes.tmp[1L,]), max(sizes.tmp[2L,]))
+    size <- c(
+      known_size(sizes.tmp[1L,]), # knowable sizes
+      max(sizes.tmp[2L,])         # any group size in the lot?
+    )
   } else stop("Internal Error: unknown function type.")
 
   # Return temp allocation plus current size
-  list(temp=temp, size=size)
+  list(
+    temp=temp,
+    # size[1]: maximum known size (i.e excluding groups)
+    # size[2]: whether groups should be consider and thus final size could be
+    #   greater than size[1]
+    size=size
+  )
 }
 ## Compute Max Possible Size
 ##
@@ -251,7 +260,7 @@ prepare <- function(call, data, g, env, depth, temp) {
 
 known_size <- function(x) {
   tmp <- x[!is.na(x)]
-  if(!length(tmp)) NA_real
+  if(!length(tmp)) NA_real_
   else if(any(tmp == 0)) 0
   else max(tmp)
 }
@@ -263,7 +272,7 @@ max_size <- function(x, g) {
     stop("Internal error, malformed size data.")
 
   size <- x[1L,]
-  size[is.na(size)] <- g
+  size[!!x[2L,]] <- g
   if(any(size == 0)) 0 else max(size)
 }
 
