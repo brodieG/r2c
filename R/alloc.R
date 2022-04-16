@@ -154,7 +154,6 @@ names(VALID_FUNS) <- vapply(VALID_FUNS, "[[", "", "name")
 
 prepare <- function(call, data, g, env, depth, temp) {
   force(env)
-  writeLines(sprintf("Depth %d: %s", depth, deparse1(call)))
   fun <- call[[1L]]
   if(!is.name(fun) && !is.character(fun))
     stop(
@@ -173,6 +172,8 @@ prepare <- function(call, data, g, env, depth, temp) {
     func <- as.character(fun)
     check_fun(func, env)
   }
+  writeLines(sprintf("Depth %d: %s", depth, deparse1(call)))
+
   args <- if(!is.null(defn <- VALID_FUNS[[c(func, "defn")]])) {
     match_call(definition=defn, call=call, envir=env, name=func)
   } else {
@@ -211,7 +212,7 @@ prepare <- function(call, data, g, env, depth, temp) {
       # Means no constant minimum size, derive size from group
       c(NA_real_, 1)
     } else if(!is.symbol(args[[ii]]) && is.language(args[[ii]])) {
-      # Recurse
+      # Recurse for expressions
       prep.sub <- prepare(
         call=args[[ii]], data=data, g=g, env=env, depth=depth + 1L, temp=temp
       )
@@ -252,6 +253,12 @@ prepare <- function(call, data, g, env, depth, temp) {
       max(sizes.tmp[2L,])         # any group size in the lot?
     )
   } else stop("Internal Error: unknown function type.")
+  # Free any unused allocations.  Initially we kept depth + 1 but by this point
+  # in actual code execution the value should have been released since we're
+  # about to return to depth - 1.
+  to.free <- temp[['depth']] > depth & is.finite(temp[['depth']])
+  writeLines(paste0("    freeing slots ", deparse1(which(to.free))))
+  temp[['depth']][to.free] <- Inf
 
   # Return temp allocation plus current size
   list(
@@ -293,7 +300,6 @@ alloc_temp <- function(temp, depth, size, call) {
   writeLines(sprintf("  d: %d s: %d c: %s", depth, size, deparse1(call)))
   if(depth == .Machine$integer.max)
     stop("Expression max depth exceeded for alloc.") # exceedingly unlikely
-  temp[['depth']][temp[['depth']] > depth + 1L] <- Inf
   free <- !is.finite(temp[['depth']])
   fit <- which(free & temp[['alloc']] >= size)
   temp <- if(!length(fit)) {
