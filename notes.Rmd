@@ -1,12 +1,20 @@
 # fapply
 
-# Current
+# Next steps
 
-We figured out the crashing is happening due to the stack canary getting blow
-through.  But we can't tell by what, as seemingly the value is still there.
+* Test prepare with an expression:
+  * Constructor for function meta data
+  * Add more functions
 
 # To Do / Questions
 
+* Complex expressions with curly braces, etc.
+* Unary arithmetic funs.
+* Add post-processing of function result (e.g. to attach names, etc, as in
+  `quantile`).
+* Support for functions with defaults that need to be evaluated?  No.  This
+  substantially increases complexity because we have to do so in the function
+  evaluation environment and need access to all the other arguments.
 * Add capability to specify functions in non-standard ways (e.g. `base::sum`, or
   `(get("sum", as.environment("package:base"))`)?  Maybe not, that seems like
   potential trouble.  Certainly document also things like `f <- sum; f(x)`.
@@ -387,6 +395,8 @@ How does this work for a newly defined function at the R level?  Does it matter?
 
 ### C Level
 
+#### Basic
+
 Target function:
 
 * Array of double pointers the same length as it expects number of arguments.
@@ -412,6 +422,43 @@ should accept an expects arguments.  All functions should be like that.
 Parameters such as `na.rm=TRUE` actually cause dispatch to a different
 function.  So when we register a function we need to declare this?  I guess it
 should be optional and we use it to recreate `mean`, etc.
+
+#### Allow SEXP
+
+What about functions that accept non-double parameters?  In particular, we'll
+have expressions that reference external/evaluated things, which might not be
+double.  If we want to allow these to be fed to our functions, our functions
+need to be able to accept SEXPs.  This substantially complicates the interface;
+are there cases where we would want to do this?
+
+An almost example is `quantile`, where the `probs` param is likely fetched from
+elsewhere.  Or `filter`.  Essentially anything where the configure param
+resolves to an arbitrary number of possibilities and thus can't be reduced to
+different entry points.  `findInterval` might be a better example.
+
+Seems like we have two choices:
+
+* Allow additional SEXP arguments (and identification of what these are).
+* Add ALTREP so that all arguments can be SEXP.
+
+The latter seems cleaner.  What happens with the result vector at that point?
+Probably can't be ALTREP as we'll need to modify it.
+
+How much overhead does ALTREP add?  There is a good example from Gabe about
+implementing window functions.
+
+So is this worth doing?  What is the advantage of doing so.  More familiarity
+for the implementer of new functions?  Maybe for now we just pass through as a
+`moreArgs` list.  So we end up with `double **` for the data arguments, along
+with offset and length, which could include some vectors that are not-data, and
+a list of extra arguments.  Does this obviate the need for a configure function?
+Probably, it then happens in C.  The sad thing about this is we have to redo all
+the configure business for each call.  Hmm.
+
+Related, could this eventually be made to use the actual R functions?  The
+summary functions are all in "src/main/summary.c" and those are simple, but the
+problem is they are all static and dispatched to by `do_summary`.  And calling
+the latter will be very challenging from outside.
 
 # Compilation
 

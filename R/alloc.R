@@ -32,7 +32,7 @@ match_call <- function(definition, call, envir, name) {
 
   frms.req <- names(frm)[frm.req]
   frms.req <- frms.req[frms.req != "..."]
-  if(!all(frms.req.have <- mcall.nm %in% frms.req))
+  if(!all(frms.req.have <- frms.req %in% mcall.nm))
     stop(
       "Missing required formals ",
       toString(sprintf("`%s`", frms.req[!frms.req.have])),
@@ -251,7 +251,7 @@ prepare <- function(call, data, g, env, depth, temp) {
 known_size <- function(x) {
   tmp <- x[!is.na(x)]
   if(!length(tmp)) NA_real
-  else if(any(tmp) == 0) 0
+  else if(any(tmp == 0)) 0
   else max(tmp)
 }
 max_size <- function(x, g) {
@@ -263,7 +263,7 @@ max_size <- function(x, g) {
 
   size <- x[1L,]
   size[is.na(size)] <- g
-  if(any(size) == 0) 0 else max(size)
+  if(any(size == 0)) 0 else max(size)
 }
 
 
