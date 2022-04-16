@@ -153,6 +153,7 @@ names(VALID_FUNS) <- vapply(VALID_FUNS, "[[", "", "name")
 #' @param temp structure that tracks the required size
 
 prepare <- function(call, data, g, env, depth, temp) {
+  writeLines(sprintf("Depth %d: %s", depth, deparse1(call)))
   fun <- call[[1L]]
   if(!is.name(fun))
     stop(
@@ -227,7 +228,7 @@ prepare <- function(call, data, g, env, depth, temp) {
   if(ftype[[1L]] == "constant") {
     # Always constant size, e.g. 1 for `sum`
     size <- c(ftype[[2L]], 0)
-    temp <- alloc_temp(temp, depth, size=size[1])
+    temp <- alloc_temp(temp, depth, size=size[1], call)
   } else if(ftype[[1L]] %in% c("arglen", "vecrec")) {
     # Length of a specific argument, like `probs` for `quantile`
     if(!all(ftype[[2L]] %in% colnames(args.sizes)))
@@ -237,7 +238,7 @@ prepare <- function(call, data, g, env, depth, temp) {
         " missing but required for sizing."
       )
     sizes.tmp <- args.sizes[,ftype[[2L]], drop=FALSE]
-    temp <- alloc_temp(temp, depth, size=max_size(sizes.tmp, g))
+    temp <- alloc_temp(temp, depth, size=max_size(sizes.tmp, g), call)
     size <- c(known_size(sizes.tmp[1L,]), max(sizes.tmp[2L,]))
   } else stop("Internal Error: unknown function type.")
 
@@ -256,7 +257,7 @@ known_size <- function(x) {
 }
 max_size <- function(x, g) {
   if(
-    !is.numeric(x) || !is.matrix(x) || ncol(x) != 2 ||
+    !is.numeric(x) || !is.matrix(x) || nrow(x) != 2 ||
     any(is.na(x[1L,] & !x[2L,]))
   )
     stop("Internal error, malformed size data.")
@@ -271,18 +272,27 @@ max_size <- function(x, g) {
 #'
 #' List of all allocated temporary vector sizes, and which of those are free.
 
-alloc_temp <- function(temp, depth, size) {
+alloc_temp <- function(temp, depth, size, call) {
+  writeLines(sprintf("  d: %d s: %d c: %s", depth, size, deparse1(call)))
   if(depth == .Machine$integer.max)
     stop("Expression max depth exceeded for alloc.") # exceedingly unlikely
-  temp[['alloc']][temp[['depth']] > depth + 1L] <- NA_real_
-  fit <- which(is.na(temp[['alloc']]))
+  temp[['depth']][temp[['depth']] > depth + 1L] <- Inf
+  free <- !is.finite(temp[['depth']])
+  fit <- which(free & temp[['alloc']] >= size)
   temp <- if(!length(fit)) {
+    # New allocation, then sort by size
     temp[['alloc']] <- c(temp[['alloc']], size)
     temp[['depth']] <- c(temp[['depth']], depth)
     o <- order(temp[['alloc']], decreasing=TRUE)
+    writeLines(paste0("    alloc new: ", size))
     list(alloc=temp[['alloc']][o], depth=temp[['depth']][o])
   } else {
-    temp[['depth']][max(fit)] <- depth
+    # Allocate to smallest available that will fit
+    slot <- max(fit)
+    writeLines(
+      sprintf("    re-use slot: %d (size %d)", slot, temp[['alloc']][slot])
+    )
+    temp[['depth']][slot] <- depth
     temp
   }
   temp
