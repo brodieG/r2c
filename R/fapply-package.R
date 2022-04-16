@@ -17,6 +17,7 @@
 #'
 #' @docType package
 #' @name fapply
+#' @import vetr
 #' @useDynLib fapply, .registration=TRUE, .fixes="FAPPLY_"
 
 NULL

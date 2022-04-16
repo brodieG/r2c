@@ -13,6 +13,7 @@ BugReports: https://github.com/brodieG/fapply/issues
 VignetteBuilder: knitr
 Suggests:
 Imports:
+  vetr
 RoxygenNote: 7.1.1
 Roxygen: list(markdown = TRUE)
 Encoding: UTF-8
