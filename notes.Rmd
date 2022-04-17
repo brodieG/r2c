@@ -8,6 +8,8 @@
 
 # To Do / Questions
 
+* Special case where all groups are same size and there is an external vector of
+  that size?
 * Complex expressions with curly braces, etc.
 * Unary arithmetic funs.
 * Add post-processing of function result (e.g. to attach names, etc, as in
@@ -360,29 +362,6 @@ should be either a constant per group, or `g`.
 The top level return should give us the result size, and our list should give us
 the set of intermediate vectors we'll need.
 
-
-
-
-    double * tmp0 = R_alloc();
-    for(i = 0; i < n; ++i) {
-      tmp[i] = z[i] + y[i];
-    }
-    double tmp1 = mean(z + y);
-
-    for(i = 0; i < n; ++i) {
-      tmp0 = pmin(y[i], z[i], w[i]);
-      tmp2 = pmin(w[i], q[i], f[i]);
-      res[i] = pmax(tmp2, tmp3, tmp1);
-    }
-
-
-
-We could do it with a loop in code, or we could just repeat
-the code as many times as there are arguments.
-
-
-
-
 ## Interface
 
 ### R Level
@@ -459,6 +438,52 @@ Related, could this eventually be made to use the actual R functions?  The
 summary functions are all in "src/main/summary.c" and those are simple, but the
 problem is they are all static and dispatched to by `do_summary`.  And calling
 the latter will be very challenging from outside.
+
+# Pre-Processing
+
+Once we have the expression parsed, do we want to link in pre-compiled entry
+points, or do we just want to generate the whole thing in one piece of generated
+code?  Probably start with one piece of generated code.
+
+    sum(((x - mean(x)) * (y - mean(y, na.rm=TRUE))) + z)
+
+What does this become?  Each sub-expression needs to be generated in linearized
+code.  There will be a vector of allocated vectors for temporary use.  So we
+need a list where each element is a step, and each step should include:
+
+> We probably want a version for variable argumens (e.g. `pmin`, and one for
+> fixed argument count).
+
+* That data structure, which is an array of double pointers with:
+  * Group data at the beginning.
+  * Non-group double data next.
+  * Temporary arrays.
+  * Result array.
+* An integer count of parameters into the data structure.
+* An array of offsets into the data structure.
+* An array of offsets into each vector in the data structure.
+* An array of lengths of each vector in the data structure.
+* A `VECSCXP` of all the control parameters.
+
+So in C our earlier expression will look like (this does not include `ctrl`):
+
+Variable arg count:
+
+    static void %s(
+      double ** data, int narg, int * datai,
+      R_xlen_t * off, R_xlen_t * len, SEXP ctrl
+    ) {
+
+Fixed arg count:
+
+    static void %s(
+      double ** data, R_xlen_t * off, R_xlen_t * len, SEXP ctrl
+    ) {
+
+Maybe an option without control?  So two switches:
+
+* `vararg`
+* include `ctrl`
 
 # Compilation
 
@@ -537,7 +562,8 @@ strictly part of the API?).
 An alternative we can use, but will likely require building a package like odin
 does.
 
-Is there a way to save the function and the compiled code other than via package?
+Is there a way to save the function and the compiled code other than via
+package?  Maybe?
 
 
 # vs Rcpp?

@@ -290,8 +290,6 @@ max_size <- function(x, g) {
   size[!!x[2L,]] <- g
   if(any(size == 0)) 0 else max(size)
 }
-
-
 #' Track Required Allocations for Intermediate vectors
 #'
 #' List of all allocated temporary vector sizes, and which of those are free.
