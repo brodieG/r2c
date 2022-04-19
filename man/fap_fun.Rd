@@ -4,7 +4,7 @@
 \alias{fap_fun}
 \title{Initializer for Function Registration Entries}
 \usage{
-fap_fun(name, fun, defn, ctrl.params = character(), type)
+fap_fun(name, fun, defn, ctrl.params = character(), type, code.gen)
 }
 \arguments{
 \item{name}{character(1L) symbol that will reference the function}
@@ -31,6 +31,16 @@ the result size (e.g. \code{probs} for \code{\link{quantile}}.
 size under assumption of recycling to longest, or zero if any argument is
 zero length.
 }}
+
+\item{code.gen}{a function that generates the C code corresponding to an R
+function, which accepts three parameters (see details for the expected
+function semantics):
+\itemize{
+\item Name of the R function.
+\item A numeric vector of argument sizes of non-control parameters,
+where arguments of group size are given NA size.
+\item A list of the evaluated control parameters.
+}}
 }
 \value{
 a list containing the above information after validating it.
@@ -38,3 +48,18 @@ a list containing the above information after validating it.
 \description{
 Initializer for Function Registration Entries
 }
+\section{Code Generation}{
+
+
+Code generation is handled by the function provided in \code{code.gen}.  The
+function should return a list with three character vectors, each
+representing:
+\itemize{
+\item Definition of the C function.
+\item Name of the C function.
+\item Call to use to invoke the function.
+}
+
+Function parameters are specifically defined.
+}
+

@@ -4,7 +4,7 @@
 \alias{prepare}
 \title{Prepare Calls for Evaluation}
 \usage{
-prepare(call, data, g, env, depth, temp)
+prepare(call, data, g, env, depth, alloc.dat, code)
 }
 \arguments{
 \item{call}{an unevaluated R call}
@@ -17,14 +17,17 @@ prepare(call, data, g, env, depth, temp)
 
 \item{depth}{how deep into the expression we've recursed}
 
-\item{temp}{structure that tracks the required size}
+\item{alloc.dat}{structure that tracks the required size}
+
+\item{code}{a list of}
 }
 \value{
-a list containing the accrued temporary storage requirements, as well
-as a recursive list of entry point names along with the parameters to call
-them with and the expected result size.
-the entry point name, the parameters to call it
-with (mixture of eval and uneval)
+a list containing (update):
+\itemize{
+\item Accrued temporary storage requirements.
+\item Size of the current call being assessed.
+\item A linear list of generated code and associated calls.
+}
 }
 \description{
 Retrieve appropriate entry points based on configuration parameters, and

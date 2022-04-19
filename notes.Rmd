@@ -2,12 +2,15 @@
 
 # Next steps
 
-* Test prepare with an expression:
-  * Constructor for function meta data
-  * Add more functions
+* Deal with matched expressions and correct interpretatio of sizes (e.g. `mean()`
+  gets only `na.rm` in `ctrl`, but the matched thing also has `trim`, so we both
+  need to exclude controls, make sure that `trim` is accounted for in some way,
+  etc.).
 
 # To Do / Questions
 
+* Ensure all entry point names are unique and that there are no collisions.
+  Maybe this can be done on registration?
 * Special case where all groups are same size and there is an external vector of
   that size?
 * Complex expressions with curly braces, etc.
@@ -484,6 +487,20 @@ Maybe an option without control?  So two switches:
 
 * `vararg`
 * include `ctrl`
+
+Additionally, if we allow different signatures then they need different names.
+To the extent we re-use a single function multiple times, we want to detect
+this.
+
+Each code gen call should return:
+
+* Function definition.
+* Function name.
+* Function call (since we can have different # of arguments).
+
+We can check that if multiple instances of a function name show up, the
+definitions are the same, and then unique them out.
+
 
 # Compilation
 

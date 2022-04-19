@@ -13,6 +13,11 @@
 ##
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
+#' @include code-arith.R
+#' @include code-summary.R
+
+NULL
+
 ## `match.call` but with default arguments
 ##
 ## Also, result is just the arguments, not the original call.
@@ -45,6 +50,18 @@ match_call <- function(definition, call, envir, name) {
 
 #' Initializer for Function Registration Entries
 #'
+#' @section Code Generation:
+#'
+#' Code generation is handled by the function provided in `code.gen`.  The
+#' function should return a list with three character vectors, each
+#' representing:
+#'
+#' * Definition of the C function.
+#' * Name of the C function.
+#' * Call to use to invoke the function.
+#'
+#' Function parameters are specifically defined.
+#'
 #' @param name character(1L) symbol that will reference the function
 #' @param fun the function we're trying to emulate
 #' @param defn NULL if fun is a closure, otherwise a function template to use
@@ -56,6 +73,7 @@ match_call <- function(definition, call, envir, name) {
 #' @param type list(2L) containing the type of function in "constant", "arglen",
 #'   or "vecrec" at position one, and additional meta data at position two
 #'   described next:
+#'
 #'   * constant: a positive non-NA integer indicating the constant result size
 #'     (e.g. 1L for `mean`)
 #'   * arglen: character(1L) the name of the argument to use the length of as
@@ -63,9 +81,22 @@ match_call <- function(definition, call, envir, name) {
 #'   * vecrec: character(n) the names of the arguments to use to compute result
 #'     size under assumption of recycling to longest, or zero if any argument is
 #'     zero length.
+#'
+#' @param code.gen a function that generates the C code corresponding to an R
+#'   function, which accepts three parameters (see details for the expected
+#'   function semantics):
+#'
+#'   * Name of the R function.
+#'   * A numeric vector of argument sizes of non-control parameters,
+#'     where arguments of group size are given NA size.
+#'   * A list of the evaluated control parameters.
+#'
 #' @return a list containing the above information after validating it.
 
-fap_fun <- function(name, fun, defn, ctrl.params=character(), type) {
+fap_fun <- function(
+  name, fun, defn, ctrl.params=character(), type,
+  code.gen
+) {
   vetr(
     name=CHR.1,
     fun=is.function(.),
@@ -73,7 +104,8 @@ fap_fun <- function(name, fun, defn, ctrl.params=character(), type) {
     ctrl.params=
       character() && !anyNA(.) && all(. %in% names(formals(defn))) &&
       !"..." %in% .,
-    type=list(NULL, NULL)
+    type=list(NULL, NULL),
+    code.gen=is.function(.)
   )
   # Bug in vetr prevents this being done directly above
   stopifnot(
@@ -99,38 +131,41 @@ fap_fun <- function(name, fun, defn, ctrl.params=character(), type) {
         !anyNA(type[[2L]])
       )
   ) )
-  list(name=name, fun=fun, defn=defn, ctrl=ctrl.params, type=type)
+  list(
+    name=name, fun=fun, defn=defn, ctrl=ctrl.params, type=type,
+    code.gen=code.gen
+  )
 }
 VALID_FUNS <- list(
   fap_fun(
     "sum", base::sum, function(..., na.rm=FALSE) NULL,
-    "na.rm", list("constant", 1L)
+    "na.rm", list("constant", 1L), code.gen=code_gen_summary
   ),
   fap_fun(
     "mean", fun=base::mean, defn=base::mean.default,
-    "na.rm", list("constant", 1L)
+    c("trim", "na.rm"), list("constant", 1L), code.gen=code_gen_summary
   ),
   fap_fun(
     "+", base::`+`, defn=function(e1, e2) NULL,
-    type=list("vecrec", c("e1", "e2"))
+    type=list("vecrec", c("e1", "e2")), code.gen=code_gen_arith
   ),
   fap_fun(
     "-", base::`-`, defn=function(e1, e2) NULL,
-    type=list("vecrec", c("e1", "e2"))
+    type=list("vecrec", c("e1", "e2")), code.gen=code_gen_arith
   ),
   fap_fun(
     "*", base::`*`, defn=function(e1, e2) NULL,
-    type=list("vecrec", c("e1", "e2"))
+    type=list("vecrec", c("e1", "e2")), code.gen=code_gen_arith
   ),
   fap_fun(
     "/", base::`/`, defn=function(e1, e2) NULL,
-    type=list("vecrec", c("e1", "e2"))
+    type=list("vecrec", c("e1", "e2")), code.gen=code_gen_arith
   ),
   # this is not "really" a fun, but we shoehorn it into our model here, we could
   # also add code to skip it
   fap_fun(
     "(", base::`(`, defn=function(x) NULL,
-    type=list("arglen", c("x"))
+    type=list("arglen", c("x")), code.gen=function(...) NULL
   )
 )
 names(VALID_FUNS) <- vapply(VALID_FUNS, "[[", "", "name")
@@ -141,18 +176,18 @@ names(VALID_FUNS) <- vapply(VALID_FUNS, "[[", "", "name")
 #' compute required temporary storage sizes.
 #'
 #' @return a list containing (update):
-#'   * Accrued temporary storage requirements
-#'   * Size of the current call being assessed
-#'   * A recursive list of entry point names along with the parameters to call
-#'     them with and the expected result size.
+#'   * Accrued temporary storage requirements.
+#'   * Size of the current call being assessed.
+#'   * A linear list of generated code and associated calls.
 #' @param call an unevaluated R call
 #' @param data character the names of the data columns
 #' @param g max group size
 #' @param env calling frame to evaluate expression in
 #' @param depth how deep into the expression we've recursed
-#' @param temp structure that tracks the required size
+#' @param alloc.dat structure that tracks the required size
+#' @param code a list of 
 
-prepare <- function(call, data, g, env, depth, temp) {
+prepare <- function(call, data, g, env, depth, alloc.dat, code) {
   force(env)
   fun <- call[[1L]]
   if(!is.name(fun) && !is.character(fun))
@@ -214,9 +249,11 @@ prepare <- function(call, data, g, env, depth, temp) {
     } else if(!is.symbol(args[[ii]]) && is.language(args[[ii]])) {
       # Recurse for expressions
       prep.sub <- prepare(
-        call=args[[ii]], data=data, g=g, env=env, depth=depth + 1L, temp=temp
+        call=args[[ii]], data=data, g=g, env=env, depth=depth + 1L,
+        alloc.dat=alloc.dat, code=code
       )
-      temp <- prep.sub[['temp']]
+      alloc.dat <- prep.sub[['alloc.dat']]
+      code <- prep.sub[['code']]
       prep.sub[['size']]
     } else if (is.symbol(args[[ii]])) {
       # Should either be a data symbol or should have been evaluated
@@ -237,7 +274,7 @@ prepare <- function(call, data, g, env, depth, temp) {
   if(ftype[[1L]] == "constant") {
     # Always constant size, e.g. 1 for `sum`
     size <- c(ftype[[2L]], 0)
-    temp <- alloc_temp(temp, depth, size=size[1], call)
+    alloc.dat <- alloc_temp(alloc.dat, depth, size=size[1], call)
   } else if(ftype[[1L]] %in% c("arglen", "vecrec")) {
     # Length of a specific argument, like `probs` for `quantile`
     if(!all(ftype[[2L]] %in% colnames(args.sizes)))
@@ -247,7 +284,7 @@ prepare <- function(call, data, g, env, depth, temp) {
         " missing but required for sizing."
       )
     sizes.tmp <- args.sizes[,ftype[[2L]], drop=FALSE]
-    temp <- alloc_temp(temp, depth, size=max_size(sizes.tmp, g), call)
+    alloc.dat <- alloc_temp(alloc.dat, depth, size=max_size(sizes.tmp, g), call)
     size <- c(
       known_size(sizes.tmp[1L,]), # knowable sizes
       max(sizes.tmp[2L,])         # any group size in the lot?
@@ -256,17 +293,27 @@ prepare <- function(call, data, g, env, depth, temp) {
   # Free any unused allocations.  Initially we kept depth + 1 but by this point
   # in actual code execution the value should have been released since we're
   # about to return to depth - 1.
-  to.free <- temp[['depth']] > depth & is.finite(temp[['depth']])
+  to.free <- alloc.dat[['depth']] > depth & is.finite(alloc.dat[['depth']])
   writeLines(paste0("    freeing slots ", deparse1(which(to.free))))
-  temp[['depth']][to.free] <- Inf
+  alloc.dat[['depth']][to.free] <- Inf
 
-  # Return temp allocation plus current size
+  # Compute the call data
+  args.sizes.act <- args.sizes[1L,]
+  args.sizes.act[!!args.sizes[2L,]] <- NA_real_
+  args.sizes.act[args.sizes[1L,] == 0L] <- 0   # not sure about this one
+
+  code <- c(
+    code, list(
+      VALID_FUNS[[c(func, "code.gen")]](func, args.sizes.act, args.ctrl.eval)
+  ) )
+  # Return alloc.dat allocation plus current size
   list(
-    temp=temp,
+    alloc.dat=alloc.dat,
     # size[1]: maximum known size (i.e excluding groups)
     # size[2]: whether groups should be consider and thus final size could be
     #   greater than size[1]
-    size=size
+    size=size,
+    code=code
   )
 }
 ## Compute Max Possible Size
@@ -294,29 +341,29 @@ max_size <- function(x, g) {
 #'
 #' List of all allocated temporary vector sizes, and which of those are free.
 
-alloc_temp <- function(temp, depth, size, call) {
+alloc_temp <- function(alloc.dat, depth, size, call) {
   writeLines(sprintf("  d: %d s: %d c: %s", depth, size, deparse1(call)))
   if(depth == .Machine$integer.max)
     stop("Expression max depth exceeded for alloc.") # exceedingly unlikely
-  free <- !is.finite(temp[['depth']])
-  fit <- which(free & temp[['alloc']] >= size)
-  temp <- if(!length(fit)) {
+  free <- !is.finite(alloc.dat[['depth']])
+  fit <- which(free & alloc.dat[['alloc']] >= size)
+  alloc.dat <- if(!length(fit)) {
     # New allocation, then sort by size
-    temp[['alloc']] <- c(temp[['alloc']], size)
-    temp[['depth']] <- c(temp[['depth']], depth)
-    o <- order(temp[['alloc']], decreasing=TRUE)
+    alloc.dat[['alloc']] <- c(alloc.dat[['alloc']], size)
+    alloc.dat[['depth']] <- c(alloc.dat[['depth']], depth)
+    o <- order(alloc.dat[['alloc']], decreasing=TRUE)
     writeLines(paste0("    alloc new: ", size))
-    list(alloc=temp[['alloc']][o], depth=temp[['depth']][o])
+    list(alloc=alloc.dat[['alloc']][o], depth=alloc.dat[['depth']][o])
   } else {
     # Allocate to smallest available that will fit
     slot <- max(fit)
     writeLines(
-      sprintf("    re-use slot: %d (size %d)", slot, temp[['alloc']][slot])
+      sprintf("    re-use slot: %d (size %d)", slot, alloc.dat[['alloc']][slot])
     )
-    temp[['depth']][slot] <- depth
-    temp
+    alloc.dat[['depth']][slot] <- depth
+    alloc.dat
   }
-  temp
+  alloc.dat
 }
 init_temp <- function() list(alloc=numeric(), depth=integer())
 

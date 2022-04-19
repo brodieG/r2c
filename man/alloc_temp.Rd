@@ -4,7 +4,7 @@
 \alias{alloc_temp}
 \title{Track Required Allocations for Intermediate vectors}
 \usage{
-alloc_temp(temp, depth, size)
+alloc_temp(alloc.dat, depth, size, call)
 }
 \description{
 List of all allocated temporary vector sizes, and which of those are free.

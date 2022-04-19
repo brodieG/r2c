@@ -93,17 +93,27 @@ code_gen_arith <- function(op, sizes, ctrl) {
     numeric(2L) && all(is.na(.) | . >= 0),
     list() && !length(.)
   )
-  if(all(is.na(sizes))) {
-    sprintf(arith_n_n, OP.NAMES[op], ARGS.BASE, "", "", op)
+  defn <- if(all(is.na(sizes))) {
+    name <- paste0(OP.NAMES[op], "_n_n")
+    sprintf(arith_n_n, name, ARGS.BASE, "", "", op)
   } else if(isTRUE(sizes[1L] == 1) && isTRUE(sizes[2L] == 1)) {
-    sprintf(arith_1_1, OP.NAMES[op], ARGS.BASE, "", "", op)
+    name <- paste0(OP.NAMES[op], "_1_1")
+    sprintf(arith_1_1, name, ARGS.BASE, "", "", op)
   } else if(isTRUE(sizes[1L] == 1L)) {
-    sprintf(arith_1_n, OP.NAMES[op], ARGS.BASE, "", "", op)
+    name <- paste0(OP.NAMES[op], "_1_n")
+    sprintf(arith_1_n, name, ARGS.BASE, "", "", op)
   } else if(isTRUE(sizes[2L] == 1L)) {
-    sprintf(arith_n_1, OP.NAMES[op], ARGS.BASE, "", "", op)
+    name <- paste0(OP.NAMES[op], "_n_1")
+    sprintf(arith_n_1, name, ARGS.BASE, "", "", op)
   } else {
-    sprintf(arith_n_m, OP.NAMES[op], ARGS.BASE, "", "", op)
+    name <- paste0(OP.NAMES[op], "_n_m")
+    sprintf(arith_n_m, name, ARGS.BASE, "", "", op)
   }
+  list(
+    defn=defn,
+    name=name,
+    call=sprintf("%s(%s%s%s);", name, CALL.BASE, "", "")
+  )
 }
 
 

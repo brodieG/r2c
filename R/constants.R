@@ -17,3 +17,7 @@ ARGS.BASE <- "double ** data, R_xlen_t * off, R_xlen_t * len"
 ARGS.VAR <- "int narg, int * datai"
 ARGS.CTRL <- "SEXP ctrl"
 
+CALL.BASE <- "data, *off++, *len++"
+CALL.VAR <- "*narg++, *datai++"
+CALL.CTRL <- "VECTOR_ELT(ctrl, v++)"
+
