@@ -21,6 +21,7 @@ Collate:
     'code-summary.R'
     'code-arith.R'
     'alloc.R'
+    'code.R'
     'compile.R'
     'constants.R'
     'fapply-package.R'

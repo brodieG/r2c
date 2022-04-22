@@ -19,11 +19,15 @@
 
 f_mean_base <- '
 static void %%s(%%s%%s%%s) {
-  double * res = data[1][off[1]];
+  double * res = data[datai[1]][off[1]];
   *res = 0;
   R_xlen_t len_n = len[0];
-  double * dat = data[0][off[0]];
+  double * dat = data[datai[0]][off[0]];
+
   for(R_xlen_t i = 0; i < len_n; ++i) %s*res += dat[i];
+
+  len[datai[1]] = 1;
+  off[datai[1]] = 0;
 }
 '
 f_mean_1_narm <- sprintf(f_mean_base, 'if(!isnan(dat[i])) ')
@@ -33,11 +37,15 @@ f_sum_n_base <- '
 static void %%s(%%s%%s%%s) {
   double * res = data[narg][off[narg]];
   *res = 0;
+
   for(int arg = 0; arg < narg; ++arg) {
     R_xlen_t len_n = len[narg];
     double * dat = data[arg][off[arg]];
     for(R_xlen_t i = 0; i < len_n; ++i) %s*res += dat[i];
   }
+
+  len[datai[narg]] = 1;
+  off[datai[narg]] = 0;
 }
 '
 f_sum_n_narm <- sprintf(f_sum_n_base, 'if(!isnan(dat[i])) ')
@@ -46,11 +54,15 @@ f_sum_n_naok <- sprintf(f_sum_n_base, '')
 ## Special case when only one data parameter
 f_sum_1_base <- '
 static void %%s(%%s%%s%%s) {
-  double * res = data[1][off[1]];
+  double * res = data[datai[1]][off[1]];
   *res = 0;
   R_xlen_t len_n = len[0];
-  double * dat = data[0][off[0]];
+  double * dat = data[datai[0]][off[0]];
+
   for(R_xlen_t i = 0; i < len_n; ++i) %s*res += dat[i];
+
+  len[datai[1]] = 1;
+  off[datai[1]] = 0;
 }
 '
 f_sum_1_narm <- sprintf(f_sum_1_base, 'if(!isnan(dat[i])) ')

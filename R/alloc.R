@@ -65,14 +65,14 @@ match_call <- function(definition, call, envir, name) {
 #' @param name character(1L) symbol that will reference the function
 #' @param fun the function we're trying to emulate
 #' @param defn NULL if fun is a closure, otherwise a function template to use
-#'   for [`match.call`]'s `definition` paramter.
+#'   for [`match.call`]'s `definition` parameter.
 #' @param ctrl.params character names of all the formal parameters that are
 #'   to be evaluated once up front and not for each group in the data.  If any
-#'   data columns are matched to these parameters, the entire data column will
-#'   be used for them.
+#'   data columns are referenced by these parameters, the entire data column
+#'   will be used for them, not the group varying subsets of them.
 #' @param type list(2L) containing the type of function in "constant", "arglen",
 #'   or "vecrec" at position one, and additional meta data at position two
-#'   described next:
+#'   that can be depending on the value in position one:
 #'
 #'   * constant: a positive non-NA integer indicating the constant result size
 #'     (e.g. 1L for `mean`)
@@ -170,25 +170,60 @@ VALID_FUNS <- list(
 )
 names(VALID_FUNS) <- vapply(VALID_FUNS, "[[", "", "name")
 
+is.num_naked <- function(x) vapply(x, is.vector, TRUE, "numeric")
+
+not_num_naked_err <- function(name, val) {
+  sprintf(
+    "(type: %s %s%s)",
+    typeof(val),
+    if(length(class(val))) "class: " else "",
+    if(length(class(val))) toString(class(arg.bad.val)) else ""
+) }
+
 #' Prepare Calls for Evaluation
 #'
 #' Retrieve appropriate entry points based on configuration parameters, and
 #' compute required temporary storage sizes.
 #'
+#' @param call an unevaluated R call
+#' @param data character the names of the data columns
+#' @param gmax max group size
+#' @param env calling frame to evaluate expression in
+#' @param depth how deep into the expression we've recursed
+#' @param alloc.dat structure that tracks the required size
+#' @param code a list of generated code data, one for each sub-call.
+#' @param datai a list of integer vectors that represent indices into
+#'   `alloc.dat`, one for each sub-call.
+#' @param ctrl a list of lists, each sub-list a set of R objects to pass on as
+#'   the control parameters, one for each sub-call.
 #' @return a list containing (update):
 #'   * Accrued temporary storage requirements.
 #'   * Size of the current call being assessed.
 #'   * A linear list of generated code and associated calls.
-#' @param call an unevaluated R call
-#' @param data character the names of the data columns
-#' @param g max group size
-#' @param env calling frame to evaluate expression in
-#' @param depth how deep into the expression we've recursed
-#' @param alloc.dat structure that tracks the required size
-#' @param code a list of 
 
-prepare <- function(call, data, g, env, depth, alloc.dat, code) {
+preprocess <- function(call, data, gmax, env) {
+  if(!all(nzchar(names(data)))) stop("All data must be named.")
+
+  depth <- 0
   force(env)
+
+  # Add group data.
+  data.naked <- data[is.num_naked(data)]
+  alloc <- append_dat(
+    init_dat(), new=data.naked, sizes=rep(gmax, length(data.naked)),
+    depth=0L, type="grp"
+  )
+  # Put in a dummy for the result, to be alloc'ed once we know group sizes.
+  alloc <- append_dat(alloc, new=list(numeric()), sizes=0L, depth=0L, type="res")
+
+  # All the data generated goes into x
+  x <- list(alloc=alloc, code=list(), argi=list(), ctrl=list(), size=0, id=0)
+  pp_internal(call=call, data=data, gmax=gmax, env=env, depth=0L, x=x)
+}
+
+pp_internal <- function(call, data, gmax, env, depth, x) {
+  # - Validate -----------------------------------------------------------------
+
   fun <- call[[1L]]
   if(!is.name(fun) && !is.character(fun))
     stop(
@@ -209,63 +244,104 @@ prepare <- function(call, data, g, env, depth, alloc.dat, code) {
   }
   writeLines(sprintf("Depth %d: %s", depth, deparse1(call)))
 
+  # - Classify/Eval Params -----------------------------------------------------
+
   args <- if(!is.null(defn <- VALID_FUNS[[c(func, "defn")]])) {
     match_call(definition=defn, call=call, envir=env, name=func)
   } else {
     as.list(callm[-1L])
   }
-  # Identify arguments that must be evaluated, which are the control parameters
-  # as well as any naked symbols (i.e. not expressions) in the parameter list
-  # that reference objects not in the data.
-  args.ctrl <- names(args) %in% VALID_FUNS[[c(func, "ctrl")]]
-  args.other <- !names(args) %in% VALID_FUNS[[c(func, "ctrl")]]
-  if(!all(nzchar(names(data)))) stop("All data must be named.")
+  args.i <- seq_along(args)
+
   args.sym <- vapply(args, is.symbol, TRUE)
+  args.sym.c <- rep(NA_character_, length(args.sym))
+  args.sym.c[args.sym] <- as.character(args[args.sym])
+
+  # Control parameters
+  args.ctrl <- names(args) %in% VALID_FUNS[[c(func, "ctrl")]]
+
+  # Group varying parameters (not control, naked numeric)
   args.sym.dat <- logical(length(args))
-  args.sym.dat[
-    seq_along(args.sym)[args.sym][as.character(args[args.sym]) %in% names(data)]
-  ] <- TRUE
-  args.ctrl.eval <- lapply(args[args.ctrl], eval, envir=data, enclos=env)
-  args.not.dat <- args.sym & !args.ctrl & !args.sym.dat
-  args.not.dat.eval <- lapply(args[args.not.dat], eval, envir=data, enclos=env)
+  args.sym.dat[args.sym] <-
+    !args.ctrl[args.sym] & args.sym.c[args.sym] %in% names(data)
+  dat.valid <- is.num_naked(data)
+  args.sym.dat.bad <- args.sym.c[args.sym.dat] %in% names(data)[!dat.valid]
+  if(any(args.sym.dat.bad)) {
+    args.sym.bad.c <- args.sym.c[args.sym.dat.bad[1L]]
+    stop(
+      "Classed or non-double data used for data parameter in `",
+      deparse1(call), "` ", not_num_naked_err(data[[args.sym.bad.c]]), "."
+  ) }
 
-  # Compute size of non-evaluated arguments. We do not need to worry
-  # about the evaluated ones as those are in the R heap.
-  args.comp <- !args.not.dat & !args.ctrl
-  args.comp.w <- which(args.comp)
+  # External symbols, not-control or "data" (must be naked numeric)
+  args.ext <- args.sym & !args.ctrl & !args.sym.dat
 
-  # max size possible, needs to hold R_xlen_t, assume numeric does this.  First
-  # row of the matrix designates the minimum length of the result, second
-  # whether the group size affects the size of the result.
-  args.sizes <- matrix(numeric(length(args) * 2), nrow=2)
+  # Eval those that need to be evaluated
+  args.eval <- args
+  args.eval[args.ctrl] <- lapply(args[args.ctrl], eval, envir=data, enclos=env)
+  args.eval[args.ext] <- lapply(args[args.ext], eval, envir=data, enclos=env)
+  args.evaled <- args.ctrl | args.ext
+
+  # Validate external args after eval
+  args.ext.good <- is.num_naked(args.eval[args.ext])
+  if(!all(args.ext.good)) {
+    arg.bad.1 <- which(!args.ext.good)[1L]
+    arg.bad.val <- args.eval[arg.ba.d1]
+    stop(
+      "External Parameter `", args.sym.c[arg.bad.1], "` for `", deparse1(call), 
+      "` is not unclassed double ", not_num_naked_err(args.sym.c), "."
+  ) }
+
+  # - Process Params -----------------------------------------------------------
+
+  # Compute sizes, and register required allocations / parameters.  Unclassified
+  # parameters need to be processed recursively.  The later should all be
+  # expressions as otherwise would be one of the other three categories.
+  args.types <- rep("process", length(args))
+  args.types[args.sym.dat] <- "data"
+  args.types[args.ctrl] <- "control"
+  args.types[args.ext] <- "external"
+
+  # Record sizes
+  # * Row 1: minimum length of the result
+  # * Row 2: whether the group size affects the size of the result.
+  args.sizes <- matrix(numeric(length(args) * 2), nrow=2L) # must hold R_xlen_t
   colnames(args.sizes) <- names(args)
-  args.comp.sizes <- matrix(numeric(sum(args.comp) * 2), 2)
-  for(i in seq_along(args.comp.w)) {
-    ii <- args.comp.w[i]
-    # Symbol bound to group data, known size, no need to allocate
-    args.comp.sizes[,i] <- if(ii %in% which(args.sym.dat)) {
-      # Means no constant minimum size, derive size from group
-      c(NA_real_, 1)
-    } else if(!is.symbol(args[[ii]]) && is.language(args[[ii]])) {
-      # Recurse for expressions
-      prep.sub <- prepare(
-        call=args[[ii]], data=data, g=g, env=env, depth=depth + 1L,
-        alloc.dat=alloc.dat, code=code
+
+  # To track what data structure in alloc.dat each arg matches, only for
+  # non-data args.
+  args.ids <- integer(length(args))
+
+  for(i in seq_along(args)) {
+    if(args.types[i] == "process") {
+
+      # Unevaluated expression that we need to compute
+      if(is.symbol(args[[i]]) || !is.language(args[[i]]))
+        stop("Internal error in parameter classification.")
+
+      x <- pp_internal(
+        call=args[[i]], data=data, gmax=gmax, env=env, depth=depth + 1L, x=x
       )
-      alloc.dat <- prep.sub[['alloc.dat']]
-      code <- prep.sub[['code']]
-      prep.sub[['size']]
-    } else if (is.symbol(args[[ii]])) {
-      # Should either be a data symbol or should have been evaluated
-      stop("Internal Error: Unexpected un-evaluated token.")
-    } else {
-      c(length(args[[ii]]), 0)
-    }
+      args.ids[i] <- x[['id']]
+      args.sizes[,i] <- x[['size']]
+    } else if (args.types[i] == "data") {
+      # Symbol bound to group data, known size, arleady in data structure
+      # (leading part of it, hence we can use `match` for their position)
+      args.ids[i] <- match(args.sym.c[i], names(data)[dat.valid])
+      args.sizes[,i] <- c(NA_real_, 1)  # NA means group size
+    } else if (args.types[i] == "external") {
+      # No need to allocate external, but we do want to track them
+      x[['alloc']] <- append_dat(
+        x[['alloc']], args.eval[i], length(args.eval[i]), depth, "ext"
+      )
+      args.ids[i] <- alloc.dat[['i']]
+      args.sizes[,i] <- c(length(args.eval[i]), 1)
+    } else if (args.types[i] == "control") {
+      # Control params unregistered, but their size could affect result
+      args.sizes[,i] <- c(length(args.eval[i]), 1)
+    } else stop("Internal Error, unexpected arg type ", args.types[i])
   }
-  # Record the lengths of all the different types of argument
-  args.sizes[,args.comp.w] <- args.comp.sizes
-  args.sizes[,args.ctrl] <- rbind(as.numeric(lengths(args.ctrl.eval)), 0)
-  args.sizes[,args.not.dat] <- rbind(as.numeric(lengths(args.not.dat.eval)), 0)
+  # - Compute Result Size ------------------------------------------------------
 
   # Based on the function type and recorded lengths, compute the result length.
   # We distinguish size used for allocation (maximum possible size), vs size in
@@ -274,7 +350,7 @@ prepare <- function(call, data, g, env, depth, alloc.dat, code) {
   if(ftype[[1L]] == "constant") {
     # Always constant size, e.g. 1 for `sum`
     size <- c(ftype[[2L]], 0)
-    alloc.dat <- alloc_temp(alloc.dat, depth, size=size[1], call)
+    x[['alloc']] <- alloc_dat(x[['alloc']], depth, size=size[1], call)
   } else if(ftype[[1L]] %in% c("arglen", "vecrec")) {
     # Length of a specific argument, like `probs` for `quantile`
     if(!all(ftype[[2L]] %in% colnames(args.sizes)))
@@ -283,38 +359,48 @@ prepare <- function(call, data, g, env, depth, alloc.dat, code) {
         deparse1(ftype[[2L]][!ftype[[2L]]%in% colnames(args.sizes)]),
         " missing but required for sizing."
       )
-    sizes.tmp <- args.sizes[,ftype[[2L]], drop=FALSE]
-    alloc.dat <- alloc_temp(alloc.dat, depth, size=max_size(sizes.tmp, g), call)
+    sizes.tmp <- args.sizes[, ftype[[2L]], drop=FALSE]
+    if(depth > 0L) {  # depth == 0 is the result vector, alloc'ed later
+      x[['alloc']] <- alloc_dat(
+        x[['alloc']], depth, size=max_size(sizes.tmp, gmax), call
+    ) }
     size <- c(
       known_size(sizes.tmp[1L,]), # knowable sizes
       max(sizes.tmp[2L,])         # any group size in the lot?
     )
   } else stop("Internal Error: unknown function type.")
-  # Free any unused allocations.  Initially we kept depth + 1 but by this point
-  # in actual code execution the value should have been released since we're
-  # about to return to depth - 1.
-  to.free <- alloc.dat[['depth']] > depth & is.finite(alloc.dat[['depth']])
-  writeLines(paste0("    freeing slots ", deparse1(which(to.free))))
-  alloc.dat[['depth']][to.free] <- Inf
+  res.id <- x[['alloc']][['i']]
+
+  # - Generate Code ------------------------------------------------------------
+
+  # At this point we need a vector with the id in the data structure of every
+  # data parameter and the result.
+
+  x[['argi']] <- c(x[['argi']], list(args.ids[!args.ctrl], res.id))
 
   # Compute the call data
   args.sizes.act <- args.sizes[1L,]
   args.sizes.act[!!args.sizes[2L,]] <- NA_real_
   args.sizes.act[args.sizes[1L,] == 0L] <- 0   # not sure about this one
 
-  code <- c(
-    code, list(
-      VALID_FUNS[[c(func, "code.gen")]](func, args.sizes.act, args.ctrl.eval)
-  ) )
-  # Return alloc.dat allocation plus current size
-  list(
-    alloc.dat=alloc.dat,
-    # size[1]: maximum known size (i.e excluding groups)
-    # size[2]: whether groups should be consider and thus final size could be
-    #   greater than size[1]
-    size=size,
-    code=code
-  )
+  x[['code']] <- c(
+    x[['code']], list(
+      VALID_FUNS[[c(func, "code.gen")]](
+        func, args.sizes.act, args.eval[args.ctrl]
+  ) ) )
+
+  # - Finalize -----------------------------------------------------------------
+
+  # Free any unused allocations.  Initially we kept depth + 1 but by this point
+  # in actual code execution the value should have been released since we're
+  # about to return to depth - 1.
+  to.free <-
+    x[[c('alloc', 'depth')]] > depth & is.finite(x[[c('alloc', 'depth')]]) &
+    x[[c('alloc', 'type')]] == 'tmp'
+  writeLines(paste0("    freeing slots ", deparse1(which(to.free))))
+  x[[c('alloc', 'depth')]][to.free] <- Inf
+
+  x
 }
 ## Compute Max Possible Size
 ##
@@ -326,7 +412,7 @@ known_size <- function(x) {
   else if(any(tmp == 0)) 0
   else max(tmp)
 }
-max_size <- function(x, g) {
+max_size <- function(x, gmax) {
   if(
     !is.numeric(x) || !is.matrix(x) || nrow(x) != 2 ||
     any(is.na(x[1L,] & !x[2L,]))
@@ -334,38 +420,76 @@ max_size <- function(x, g) {
     stop("Internal error, malformed size data.")
 
   size <- x[1L,]
-  size[!!x[2L,]] <- g
+  size[!!x[2L,]] <- gmax
   if(any(size == 0)) 0 else max(size)
 }
-#' Track Required Allocations for Intermediate vectors
-#'
-#' List of all allocated temporary vector sizes, and which of those are free.
+## Track Required Allocations for Intermediate vectors
+##
+## List of all allocated temporary vector sizes, and which of those are free,
+## along with identifiers, and a scalar noting which of the slots the most
+## request request was assigned to.
+##
+## * dat: the actual data, for "tmp" type (i.e. generated by alloc_dat) this
+##   will be written to so should not be accessible via R, or at least hidden.
+##   Doesn't have to be done this way but it simplifies things.
+## * ids: an integer identifier for each item in `dat`.
+## * alloc: the "true" size of the vector.
+## * type: one of "tmp" (allocated), "grp" (from the data we're generating
+##   groups from, "ext" (any other data vector), or "res" (the result)
+## * depth: the depth at which allocation occurred, only relevant for
+##   `type == "tmp"`
+## * i: scalar integer the first index of the appended items.
 
-alloc_temp <- function(alloc.dat, depth, size, call) {
+alloc_dat <- function(dat, depth, size, call) {
   writeLines(sprintf("  d: %d s: %d c: %s", depth, size, deparse1(call)))
   if(depth == .Machine$integer.max)
     stop("Expression max depth exceeded for alloc.") # exceedingly unlikely
-  free <- !is.finite(alloc.dat[['depth']])
-  fit <- which(free & alloc.dat[['alloc']] >= size)
-  alloc.dat <- if(!length(fit)) {
+  free <- !is.finite(dat[['depth']])
+  fit <- free & dat[['type']] == "tmp" & dat[['alloc']] >= size
+  if(!any(fit)) {
     # New allocation, then sort by size
-    alloc.dat[['alloc']] <- c(alloc.dat[['alloc']], size)
-    alloc.dat[['depth']] <- c(alloc.dat[['depth']], depth)
-    o <- order(alloc.dat[['alloc']], decreasing=TRUE)
+    dat[['alloc']] <- c(dat[['alloc']], size)
+    dat[['depth']] <- c(dat[['depth']], depth)
+    id <- if(length(dat[['ids']])) max(dat[['ids']]) + 1L else 1L
+    dat[['ids']] <- c(dat[['ids']], id)
+    dat[['type']] <- c(dat[['type']], 'tmp')
+    dat[['dat']] <- c(dat[['dat']], list(numeric(size)))
     writeLines(paste0("    alloc new: ", size))
-    list(alloc=alloc.dat[['alloc']][o], depth=alloc.dat[['depth']][o])
+    dat[['i']] <- id
   } else {
     # Allocate to smallest available that will fit
-    slot <- max(fit)
+    target <- which.min(dat[['alloc']][fit])
+    slot <- seq_along(dat[['alloc']])[fit][target]
     writeLines(
-      sprintf("    re-use slot: %d (size %d)", slot, alloc.dat[['alloc']][slot])
+      sprintf("    re-use slot: %d (size %d)", slot, dat[['alloc']][slot])
     )
-    alloc.dat[['depth']][slot] <- depth
-    alloc.dat
+    dat[['depth']][slot] <- depth
+    dat[['i']] <- dat[['ids']][slot]
   }
-  alloc.dat
+  dat
 }
-init_temp <- function() list(alloc=numeric(), depth=integer())
+init_dat <- function() list(
+  dat=list(), alloc=numeric(), depth=integer(), id=integer(), type=character(),
+  id=0L
+)
+# Data need to contain:
+#
+# * List of the actual data, NULLs (or numerics); we could do the latter but a
+#   bit dangerous.
+# *
+
+append_dat <- function(dat, new, sizes, depth, type) {
+  if(!all(is.num_naked(new))) stop("Internal Error: bad data column.")
+  if(!type %in% c("res", "grp", "ext")) stop("Internal Error: bad type.")
+  id.max <- length(dat[['dat']])
+  dat[['dat']] <- c(dat, new)
+  dat[['id']] <- c(dat[['id']], seq_along(new) + id.max)
+  dat[['alloc']] <- c(dat[['alloc']], sizes)
+  dat[['depth']] <- c(dat[['depth']], rep(depth, length(new)))
+  dat[['type']] <- c(dat[['type']], rep(type, length(new)))
+  dat[['i']] <- id.max
+  dat
+}
 
 ## Check function validity
 check_fun <- function(x, env) {

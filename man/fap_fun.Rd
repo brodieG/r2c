@@ -12,16 +12,16 @@ fap_fun(name, fun, defn, ctrl.params = character(), type, code.gen)
 \item{fun}{the function we're trying to emulate}
 
 \item{defn}{NULL if fun is a closure, otherwise a function template to use
-for \code{\link{match.call}}'s \code{definition} paramter.}
+for \code{\link{match.call}}'s \code{definition} parameter.}
 
 \item{ctrl.params}{character names of all the formal parameters that are
 to be evaluated once up front and not for each group in the data.  If any
-data columns are matched to these parameters, the entire data column will
-be used for them.}
+data columns are referenced by these parameters, the entire data column
+will be used for them, not the group varying subsets of them.}
 
 \item{type}{list(2L) containing the type of function in "constant", "arglen",
 or "vecrec" at position one, and additional meta data at position two
-described next:
+that can be depending on the value in position one:
 \itemize{
 \item constant: a positive non-NA integer indicating the constant result size
 (e.g. 1L for \code{mean})
