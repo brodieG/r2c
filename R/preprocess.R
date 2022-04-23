@@ -220,9 +220,7 @@ preprocess <- function(call, data, gmax, env) {
   x <- pp_internal(call=call, data=data, gmax=gmax, env=env, depth=0L, x=x)
 
   # Deduplicate the code and generate the final C file (need headers).
-  headers <- paste(
-    "#include", unique(unlist(lapply(x[['code']], "[[", "headers")))
-  )
+  headers <- unique(unlist(lapply(x[['code']], "[[", "headers")))
   codes <- vapply(x[['code']], "[[", "", "defn")
   names <- vapply(x[['code']], "[[", "", "name")
   codes.m <- match(codes, unique(codes))
@@ -234,12 +232,13 @@ preprocess <- function(call, data, gmax, env) {
   args <- args.u[order(match(args.u, c(ARGS.ALL)))]
 
   code.txt <- c(
-    headers,
+    # Headers, system headers first (are these going to go in right order?)
+    paste("#include", c(headers, "<R.h>", "<Rinternals.h>")),
     # Function Definitions
     unique(codes),
     # Calls
     "",
-    sprintf("void run(%s) {", toString(args)),
+    sprintf("void run(%s) {", toString(c(ARG.DATA, sprintf(args, "** ")))),
     paste0("  ", vapply(x[['code']], "[[", "", "call")),
     "}"
   )
