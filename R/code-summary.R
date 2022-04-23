@@ -18,7 +18,7 @@
 ## Maybe we should also have a low error sum.
 
 f_mean_base <- '
-static void %%s(%%s%%s%%s) {
+static void %%s(%%s) {
   double * res = data[datai[1]][off[1]];
   *res = 0;
   R_xlen_t len_n = len[0];
@@ -34,7 +34,7 @@ f_mean_1_narm <- sprintf(f_mean_base, 'if(!isnan(dat[i])) ')
 f_mean_1_naok <- sprintf(f_mean_base, '')
 
 f_sum_n_base <- '
-static void %%s(%%s%%s%%s) {
+static void %%s(%%s) {
   double * res = data[narg][off[narg]];
   *res = 0;
 
@@ -53,7 +53,7 @@ f_sum_n_naok <- sprintf(f_sum_n_base, '')
 
 ## Special case when only one data parameter
 f_sum_1_base <- '
-static void %%s(%%s%%s%%s) {
+static void %%s(%%s) {
   double * res = data[datai[1]][off[1]];
   *res = 0;
   R_xlen_t len_n = len[0];
@@ -80,7 +80,6 @@ f_summary <- list(
 )
 
 code_gen_summary <- function(op, sizes, ctrl) {
-  # needs "include <math.h>" for isnan
   if('trim' %in% ctrl[['trim']] && !isTRUE(ctrl[['trim']] == 0))
     stop("`trim` may only take on its default 0 value")
   sizes <- sizes[!names(sizes) %in% names(ctrl)]
@@ -89,15 +88,14 @@ code_gen_summary <- function(op, sizes, ctrl) {
   na.rm <- if(isTRUE(ctrl[['na.rm']][1L] == TRUE)) "narm" else "naok"
   n <- if(length(sizes) == 1L) "1" else "n"
   name <- paste(op, n, na.rm, sep="_")
+  args <- c(ARGS.BASE, if(n == "n") ARGS.VAR)
+  call <- c(CALL.BASE, if(n == "n") CALL.VAR)
   list(
-    defn=sprintf(
-      f_summary[[name]], name,
-      ARGS.BASE, if(n == "n") ARGS.VAR else "", ""
-    ),
+    defn=sprintf(f_summary[[name]], name, toString(args)),
     name=name,
-    call=sprintf(
-      "%s(%s%s%s);", name, CALL.BASE, if(n == "n") ARGS.VAR else "", ""
-    )
+    call=sprintf("%s(%s);", name, toString(call)),
+    args=args,
+    headers="<math.h>"
   )
 }
 

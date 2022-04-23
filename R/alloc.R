@@ -203,7 +203,6 @@ not_num_naked_err <- function(name, val) {
 
 preprocess <- function(call, data, gmax, env) {
   if(!all(nzchar(names(data)))) stop("All data must be named.")
-
   depth <- 0
   force(env)
 
@@ -218,7 +217,34 @@ preprocess <- function(call, data, gmax, env) {
 
   # All the data generated goes into x
   x <- list(alloc=alloc, code=list(), argi=list(), ctrl=list(), size=0, id=0)
-  pp_internal(call=call, data=data, gmax=gmax, env=env, depth=0L, x=x)
+  x <- pp_internal(call=call, data=data, gmax=gmax, env=env, depth=0L, x=x)
+
+  # Deduplicate the code and generate the final C file (need headers).
+  headers <- paste(
+    "#include", unique(unlist(lapply(x[['code']], "[[", "headers")))
+  )
+  codes <- vapply(x[['code']], "[[", "", "defn")
+  names <- vapply(x[['code']], "[[", "", "name")
+  codes.m <- match(codes, unique(codes))
+  names.m <- match(names, unique(names))
+  if(!identical(codes.m, names.m))
+    stop("Internal error: functions redefind with changing definitions.")
+
+  args.u <- unique(unlist(lapply(x[['code']], "[[", "args")))
+  args <- args.u[order(match(args.u, c(ARGS.ALL)))]
+
+  code.txt <- c(
+    headers,
+    # Function Definitions
+    unique(codes),
+    # Calls
+    "",
+    sprintf("void run(%s) {", toString(args)),
+    paste0("  ", vapply(x[['code']], "[[", "", "call")),
+    "}"
+  )
+  x[['code-text']] <- code.txt
+  x
 }
 
 pp_internal <- function(call, data, gmax, env, depth, x) {
@@ -288,10 +314,9 @@ pp_internal <- function(call, data, gmax, env, depth, x) {
     arg.bad.1 <- which(!args.ext.good)[1L]
     arg.bad.val <- args.eval[arg.ba.d1]
     stop(
-      "External Parameter `", args.sym.c[arg.bad.1], "` for `", deparse1(call), 
+      "External Parameter `", args.sym.c[arg.bad.1], "` for `", deparse1(call),
       "` is not unclassed double ", not_num_naked_err(args.sym.c), "."
   ) }
-
   # - Process Params -----------------------------------------------------------
 
   # Compute sizes, and register required allocations / parameters.  Unclassified
@@ -334,7 +359,7 @@ pp_internal <- function(call, data, gmax, env, depth, x) {
       x[['alloc']] <- append_dat(
         x[['alloc']], args.eval[i], length(args.eval[i]), depth, "ext"
       )
-      args.ids[i] <- alloc.dat[['i']]
+      args.ids[i] <- x[['alloc']][['i']]
       args.sizes[,i] <- c(length(args.eval[i]), 1)
     } else if (args.types[i] == "control") {
       # Control params unregistered, but their size could affect result
@@ -383,11 +408,10 @@ pp_internal <- function(call, data, gmax, env, depth, x) {
   args.sizes.act[!!args.sizes[2L,]] <- NA_real_
   args.sizes.act[args.sizes[1L,] == 0L] <- 0   # not sure about this one
 
-  x[['code']] <- c(
-    x[['code']], list(
-      VALID_FUNS[[c(func, "code.gen")]](
-        func, args.sizes.act, args.eval[args.ctrl]
-  ) ) )
+  code <-
+    VALID_FUNS[[c(func, "code.gen")]](func, args.sizes.act, args.eval[args.ctrl])
+  code_valid(code, call)
+  x[['code']] <- c(x[['code']], list(code))
 
   # - Finalize -----------------------------------------------------------------
 
@@ -482,7 +506,7 @@ append_dat <- function(dat, new, sizes, depth, type) {
   if(!all(is.num_naked(new))) stop("Internal Error: bad data column.")
   if(!type %in% c("res", "grp", "ext")) stop("Internal Error: bad type.")
   id.max <- length(dat[['dat']])
-  dat[['dat']] <- c(dat, new)
+  dat[['dat']] <- c(dat[['dat']], new)
   dat[['id']] <- c(dat[['id']], seq_along(new) + id.max)
   dat[['alloc']] <- c(dat[['alloc']], sizes)
   dat[['depth']] <- c(dat[['depth']], rep(depth, length(new)))

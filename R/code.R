@@ -52,4 +52,17 @@
 #' we can re-use one of the temporary data structures or not.
 
 code_gen <- function(dat) {
+
+}
+
+code_valid <- function(code, call) {
+  isTRUE(check <- vet(CHR.1, code$defn)) &&
+    isTRUE(check <- vet(CHR.1, code$name)) &&
+    isTRUE(check <- vet(CHR.1, code$call)) &&
+    isTRUE(check <- vet(CHR, code$args)) &&
+    isTRUE(check <- vet(CHR, code$headers))
+  if(!isTRUE(check))
+    stop("Generated code format invalid for `", deparse1(call), "`:\n", check)
+
+  TRUE
 }

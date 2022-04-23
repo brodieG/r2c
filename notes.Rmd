@@ -9,6 +9,10 @@
 
 # To Do / Questions
 
+* Ensure that all pointer parameters are allocated one extra element at end so
+  that we can use the fun(++pointer) pattern without worrying about the last
+  call overflowing (I think this might be allowed by the standard anyway,
+  check).
 * Ensure all entry point names are unique and that there are no collisions.
   Maybe this can be done on registration?
 * Special case where all groups are same size and there is an external vector of
@@ -364,6 +368,38 @@ should be either a constant per group, or `g`.
 
 The top level return should give us the result size, and our list should give us
 the set of intermediate vectors we'll need.
+
+## Parameter Types
+
+There are:
+
+* Numeric standard vectors from data
+* Numeric standard vectors external
+* Non-numeric data (do we even allow this?  How do offset work)
+* Non-numeric externals
+
+For non-numeric data, an example would be if someone wants to run e.g. a nested
+tapply on each group (this is silly, should just group on the interaction, but
+whatever).
+
+Some of these will be "control" parameters, which loosely speaking are those
+that are used in the code generation phase, and aren't necessarily (but can be)
+passed on to the compiled code.
+
+Key question right now is what gets into the `alloc.dat` structure.  Presumably
+it is anything that could possibly feed a C parameter that it intends to compute
+on, and more specifically, one that could be fed by the result of a previous
+calculation.  Our key restriction is that the functions must all return doubles
+no matter what.
+
+Or maybe it is any parameter that in theory could be fed by group data.  Which
+in theory is any numeric parameter that is not explicitly made to be a control
+parameter?  Yes, this seems to be the most manageable approach.  This also
+implies that all non-control parameters must be numeric.
+
+Do we allow non-numeric, non-control parameters?  Is there any use for them
+other than grouping?  Maybe something designating a type of calculation to be
+done?  But when do we ever want those to be the same length as the vector?
 
 ## Interface
 

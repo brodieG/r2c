@@ -13,11 +13,14 @@
 ##
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
-ARGS.BASE <- "double ** data, int * datai, R_xlen_t * off, R_xlen_t * len"
+ARGS.BASE <- c(
+  'double ** data', 'int * datai', 'R_xlen_t * off', 'R_xlen_t * len'
+)
 ARGS.VAR <- "int narg"
 ARGS.CTRL <- "SEXP ctrl"
+ARGS.ALL <- c(ARGS.BASE, ARGS.VAR, ARGS.CTRL)
 
-CALL.BASE <- "data, *datai++, *off++, *len++"
+CALL.BASE <- c("data", "*datai++", "*off++", "*len++")
 CALL.VAR <- "*narg++"
 CALL.CTRL <- "VECTOR_ELT(ctrl, v++)"
 
