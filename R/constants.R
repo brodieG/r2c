@@ -13,11 +13,14 @@
 ##
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
-ARGS.BASE <- c(
-  'double ** data', 'int * datai', 'R_xlen_t * off', 'R_xlen_t * len'
-)
-ARGS.VAR <- "int narg"
+ARG.DATA <- 'double ** data'
+# Used both to generate the call to individual functions, but also to the
+# overall code runner, and each needs a different level of dereferencing, hence
+# the %s (and we need to match the former to the latter).
+ARGS.BASE <- c('int %sdatai', 'R_xlen_t %soff', 'R_xlen_t %slen')
+ARGS.VAR <- "int %snarg"
 ARGS.CTRL <- "SEXP ctrl"
+# This is ued only for matching order
 ARGS.ALL <- c(ARGS.BASE, ARGS.VAR, ARGS.CTRL)
 
 CALL.BASE <- c("data", "*datai++", "*off++", "*len++")

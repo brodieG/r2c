@@ -36,6 +36,5 @@ make_shlib <- function(x) {
   file.obj
 }
 
-
 rand_string <- function(len, pool=c(letters, 0:9))
   paste0(sample(pool, len, replace=TRUE), collapse="")

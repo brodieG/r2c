@@ -19,10 +19,10 @@
 
 f_mean_base <- '
 static void %%s(%%s) {
-  double * res = data[datai[1]][off[1]];
+  double * res = data[datai[1]] + off[1];
   *res = 0;
   R_xlen_t len_n = len[0];
-  double * dat = data[datai[0]][off[0]];
+  double * dat = data[datai[0]] + off[0];
 
   for(R_xlen_t i = 0; i < len_n; ++i) %s*res += dat[i];
 
@@ -35,12 +35,12 @@ f_mean_1_naok <- sprintf(f_mean_base, '')
 
 f_sum_n_base <- '
 static void %%s(%%s) {
-  double * res = data[narg][off[narg]];
+  double * res = data[narg] + off[narg];
   *res = 0;
 
   for(int arg = 0; arg < narg; ++arg) {
     R_xlen_t len_n = len[narg];
-    double * dat = data[arg][off[arg]];
+    double * dat = data[arg] + off[arg];
     for(R_xlen_t i = 0; i < len_n; ++i) %s*res += dat[i];
   }
 
@@ -54,10 +54,10 @@ f_sum_n_naok <- sprintf(f_sum_n_base, '')
 ## Special case when only one data parameter
 f_sum_1_base <- '
 static void %%s(%%s) {
-  double * res = data[datai[1]][off[1]];
+  double * res = data[datai[1]] + off[1];
   *res = 0;
   R_xlen_t len_n = len[0];
-  double * dat = data[datai[0]][off[0]];
+  double * dat = data[datai[0]] + off[0];
 
   for(R_xlen_t i = 0; i < len_n; ++i) %s*res += dat[i];
 
@@ -89,9 +89,10 @@ code_gen_summary <- function(op, sizes, ctrl) {
   n <- if(length(sizes) == 1L) "1" else "n"
   name <- paste(op, n, na.rm, sep="_")
   args <- c(ARGS.BASE, if(n == "n") ARGS.VAR)
+  args.s <- sprintf(args, "* ")
   call <- c(CALL.BASE, if(n == "n") CALL.VAR)
   list(
-    defn=sprintf(f_summary[[name]], name, toString(args)),
+    defn=sprintf(f_summary[[name]], name, toString(c(ARG.DATA, args.s))),
     name=name,
     call=sprintf("%s(%s);", name, toString(call)),
     args=args,

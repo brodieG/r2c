@@ -9,6 +9,11 @@
 
 # To Do / Questions
 
+* Make sure headers go in in correct order; it may not work if we structure
+  workflow around C functions?  Maybe okay if each group of functions does the
+  right thing?  Do we need to include the headers before each group of
+  functions?  Do we need to keep translation units independent (but the lose the
+  benefit of static funs)?
 * Ensure that all pointer parameters are allocated one extra element at end so
   that we can use the fun(++pointer) pattern without worrying about the last
   call overflowing (I think this might be allowed by the standard anyway,
