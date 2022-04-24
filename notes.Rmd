@@ -9,6 +9,10 @@
 
 # To Do / Questions
 
+* Can we compute non-varying variables before compilation for sizing purposes?
+  E.g. `1:10` is of knowable size at compilation assuming we don't mess with
+  `:`.  Could allow this for non-control parameters.  Definitely non-trivial
+  though.
 * Make sure headers go in in correct order; it may not work if we structure
   workflow around C functions?  Maybe okay if each group of functions does the
   right thing?  Do we need to include the headers before each group of
@@ -122,6 +126,116 @@ as matrices (but that's okay, we can just do this with 1D matrices).
 Each known function should have some method of ex-ante determining the length of
 the outputs as a function of the lengths of the inputs (e.g. `quantile` would be
 the length of the `probs` argument).
+
+## Ex Ante Size Computation
+
+We need some view of the size pre-compilation, but by virtue of allowing
+references to external objects we can't resolve them fully.  So we have options:
+
+* Group size
+* Constant size (knowable at compile time)
+    * Scalar (e.g. result of `mean(x)`)
+    * Other constant (e.g. result of `range`)
+* External, could be anything (zero, scalar, group size, whatever)
+
+At compilation time we may be able to emit better code if we know if the inputs
+are scalar / group size, vs if we don't we'll need a per-group conditional to
+decided.  So the code generation needs to be able to run with the partial
+information.
+
+So we need a pre-processing pass that does all the size computations, but not
+the actual allocations, and then a second pass once the input sizes are known.
+
+How do we handle something like:
+
+    pmax(scalar, external, group, constant)
+
+For "vecrec" probably need to resolve to the worst in order:
+
+    scalar > constant > group > external > external_or_group
+
+But we must always keep track of whether group is involved.
+
+One big issue is we don't know until the evaluation stage what columns are going
+to be group vs external because we haven't seen the data.frame.  So we can
+compile highly efficient code if we know the situation, but less so otherwise.
+
+Similarly, if we want to pick code based on the value of control parameters, we
+need to evaluate them at compile time.  This severely cramps our style.  The
+control param evaluation at compile time is probably okay.
+
+To resolve the knowing the data columns, we have two choices:
+
+* Force all data columns to be the same size (what about non-data params like
+  `probs`)?
+* Make the code capable of handling different lengths inputs.
+
+For the latter, we could have the code react to each group, but it would be much
+better if it could before running pick the correct one.  Probably not possible
+without recompilation.
+
+Some costs of not being able to do the full optimization:
+
+    > n <- 1e7
+    > x <- runif(n)
+    > g <- sample(n)
+    > sys.time(res <- run_group(shlib, "fun4", list(x), g, 0L))
+       user  system elapsed 
+      1.077   0.005   1.087 
+    > sys.time(res <- run_group(shlib, "fun4", list(x), g, 1L))
+       user  system elapsed 
+      1.076   0.004   1.085 
+
+These above are with `na.rm` as an explicit if/else, where group size is 1..
+
+    > sys.time(res <- run_group0(shlib, "fun3", list(x), g))
+       user  system elapsed 
+      1.030   0.004   1.040 
+
+Here instead we assume `na.rm = FALSE` so no extra if/else.  For reference this
+is what the above looks like with group size = 10:
+
+    > sys.time(res <- run_group0(shlib, "fun3", list(x), g))
+       user  system elapsed 
+      0.778   0.004   0.788 
+
+And finally back to group size = 1 we now add a `asInteger(VECTOR_ELT(x, 0))` to
+retrieve the `na.rm` flag:
+
+    > sys.time(res <- run_group1(shlib, "fun5", list(x), g, 0L))
+       user  system elapsed 
+      1.147   0.002   1.149 
+
+So a 10% penalty, which suggests some value in allowing for a single flag to be
+passed down.  But maybe this becomes a future feature.
+
+For arithmetic, there is seems to be very little value in having the simplified
+logic option (in fact, it looks slower, `fun7` is the one that goes straight to
+the equal length loop.  So no huge cost.  At least when there is no contention
+with any other processes.  Given that sorting is such a big part of the cost,
+it's going to be hard to beat that.
+
+    > sys.time(res1 <- run_group2(shlib, "fun6", list(x, y), g))
+       user  system elapsed 
+      1.058   0.007   1.071 
+    > sys.time(res2 <- run_group2(shlib, "fun7", list(x, y), g))
+       user  system elapsed 
+      1.069   0.008   1.084 
+    > sys.time({
+    +   o <- order(g)
+    +   xo <- x[o]
+    +   yo <- y[o]
+    + })
+       user  system elapsed 
+      0.783   0.005   0.794 
+    > sys.time(res3 <- xo + yo)
+       user  system elapsed 
+      0.022   0.000   0.022 
+    > all.equal(res1, res2)
+    [1] TRUE
+    > all.equal(res1, res3)
+    [1] TRUE
+    > 
 
 ## Simple arithmetic
 

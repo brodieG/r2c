@@ -27,3 +27,8 @@ CALL.BASE <- c("data", "*datai++", "*off++", "*len++")
 CALL.VAR <- "*narg++"
 CALL.CTRL <- "VECTOR_ELT(ctrl, v++)"
 
+# external is unknown at compile time, external or group is also unknown, but we
+# need to keep track of the possibility that it could be either external or
+# group for final size computation during allocation stage.
+SIZE.TYPES <- c("scalar", "constant", "group", "external", "external_or_group")
+

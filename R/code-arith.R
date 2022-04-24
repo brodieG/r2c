@@ -106,7 +106,7 @@ code_gen_arith <- function(op, sizes, ctrl) {
   )
   args <- ARGS.BASE
   args.s <- toString(c(ARG.DATA, sprintf(args, "* ")))
-  defn <- if(all(is.na(sizes))) {
+  defn <- if(all(is.na(sizes)) || isTRUE(sizes[1L] == sizes[2L])) {
     name <- paste0(OP.NAMES[op], "_n_n")
     sprintf(arith_n_n, name, args.s, op)
   } else if(isTRUE(sizes[1L] == 1) && isTRUE(sizes[2L] == 1)) {

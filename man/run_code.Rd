@@ -5,15 +5,21 @@
 \alias{run_code2}
 \alias{run_code3}
 \alias{run_group}
+\alias{run_group1}
+\alias{run_group2}
 \title{Experimental Code Runner}
 \usage{
 run_code(code, fun, x)
 
 run_code2(code, fun, x)
 
-run_code3(code, fun, x, g)
+run_code3(code, fun, x, g, flag = 0L)
 
-run_group(shlib, fun, x, g)
+run_group(shlib, fun, x, g, flag)
+
+run_group1(shlib, fun, x, g, flag)
+
+run_group2(shlib, fun, x, g)
 }
 \description{
 Experimental Code Runner

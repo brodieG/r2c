@@ -31,17 +31,35 @@ run_code2 <- function(code, fun, x) {
 }
 #' @rdname run_code
 #' @export
-run_code3 <- function(code, fun, x, g) {
+run_code3 <- function(code, fun, x, g, flag=0L) {
   shlib <- make_shlib(code)
   handle <- dyn.load(shlib)
   o <- order(g)
-  .Call(FAPPLY_run3, handle[['name']], fun, list(x[[1]][o]), g[o])
+  .Call(FAPPLY_run3, handle[['name']], fun, list(x[[1]][o]), g[o], flag)
 }
 #' @rdname run_code
 #' @export
 
-run_group <- function(shlib, fun, x, g) {
+run_group <- function(shlib, fun, x, g, flag) {
   handle <- dyn.load(shlib)
   o <- order(g)
-  .Call(FAPPLY_run3, handle[['name']], fun, list(x[[1]][o]), g[o])
+  .Call(FAPPLY_run3, handle[['name']], fun, list(x[[1]][o]), g[o], flag)
 }
+#' @rdname run_code
+#' @export
+
+run_group1 <- function(shlib, fun, x, g, flag) {
+  handle <- dyn.load(shlib)
+  o <- order(g)
+  .Call(FAPPLY_run3a, handle[['name']], fun, list(x[[1]][o]), g[o], list(flag))
+}
+#' @rdname run_code
+#' @export
+
+run_group2 <- function(shlib, fun, x, g) {
+  handle <- dyn.load(shlib)
+  o <- order(g)
+  .Call(FAPPLY_run3b, handle[['name']], fun, list(x[[1]][o], x[[2]][o]), g[o])
+}
+
+

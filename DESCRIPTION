@@ -18,8 +18,9 @@ RoxygenNote: 7.1.1
 Roxygen: list(markdown = TRUE)
 Encoding: UTF-8
 Collate: 
-    'code-arith.R'
     'code-summary.R'
+    'code-arith.R'
+    'alloc.R'
     'code.R'
     'compile.R'
     'constants.R'
@@ -28,3 +29,4 @@ Collate:
     'preprocess.R'
     'run.R'
     'test.R'
+    'util.R'

@@ -23,7 +23,9 @@ static const
 R_CallMethodDef callMethods[] = {
   {"run", (DL_FUNC) &FAPPLY_run, 3},
   {"run2", (DL_FUNC) &FAPPLY_run2, 3},
-  {"run3", (DL_FUNC) &FAPPLY_run3, 4},
+  {"run3", (DL_FUNC) &FAPPLY_run3, 5},
+  {"run3a", (DL_FUNC) &FAPPLY_run3a, 5},
+  {"run3b", (DL_FUNC) &FAPPLY_run3b, 4},
   {"test1", (DL_FUNC) &FAPPLY_test1, 4},
   {"test2", (DL_FUNC) &FAPPLY_test2, 4},
   {"test3", (DL_FUNC) &FAPPLY_test3, 4},

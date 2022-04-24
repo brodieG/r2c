@@ -95,7 +95,7 @@ SEXP FAPPLY_run2(SEXP so, SEXP fun_name, SEXP x) {
 /*
  * Initial experiment with groups
  */
-SEXP FAPPLY_run3(SEXP so, SEXP fun_name, SEXP x, SEXP g) {
+SEXP FAPPLY_run3(SEXP so, SEXP fun_name, SEXP x, SEXP g, SEXP flag) {
   if(TYPEOF(so) != STRSXP || XLENGTH(so) != 1)
     error("Argument `so` should be a scalar string.");
   if(TYPEOF(fun_name) != STRSXP || XLENGTH(fun_name) != 1)
@@ -167,9 +167,183 @@ SEXP FAPPLY_run3(SEXP so, SEXP fun_name, SEXP x, SEXP g) {
   double * res = REAL(res_sxp);
 
   for(R_xlen_t ggi = 0; ggi < gn; ++ggi) {
-    (*fun)(xvals, *(gsize + ggi), *(goff + ggi), (int) xlen, res + ggi);
+    (*fun)(
+      xvals, *(gsize + ggi), *(goff + ggi), (int) xlen, res + ggi,
+      asInteger(flag)
+    );
   }
   UNPROTECT(1);
   return res_sxp;
 }
+/*
+ * Initial experiment with groups
+ */
+SEXP FAPPLY_run3a(SEXP so, SEXP fun_name, SEXP x, SEXP g, SEXP flag) {
+  if(TYPEOF(so) != STRSXP || XLENGTH(so) != 1)
+    error("Argument `so` should be a scalar string.");
+  if(TYPEOF(fun_name) != STRSXP || XLENGTH(fun_name) != 1)
+    error("Argument `fun_name` should be a scalar string.");
+  if(TYPEOF(x) != VECSXP)
+    error("Argument `x` should be a list.");
+  if(TYPEOF(g) != INTSXP)
+    error("Argument `g` should be an integer vector.");
+
+  R_xlen_t xlen = XLENGTH(x);
+
+  // Generate Naked Data structure
+  if(xlen > INT_MAX)
+    error("Arguent `x` may not contain more than INT_MAX items.");
+  double **xvals = (double**) R_alloc((size_t)xlen, sizeof(double*));
+  R_xlen_t *xlens = (R_xlen_t*) R_alloc((size_t)xlen, sizeof(R_xlen_t));
+  for(R_xlen_t i = 0; i < xlen; ++i) {
+    SEXP elt = VECTOR_ELT(x, i);
+    if(TYPEOF(elt) != REALSXP)
+      error(
+        "Argument `x[%d]` must be a double is (%s).", i, type2char(TYPEOF(elt))
+      );
+    *(xvals + i) = REAL(elt);
+    *(xlens + i) = XLENGTH(elt);
+    if(i > 0 && *(xlens + i) != *(xlens + i -1))
+      error("Argument `x` must contain equal length vectors.");  // for now
+  }
+  // compute group sizes (g should be ordered), two passes, first # of groups
+  // then their sizes.  Could do one pass but then we need to alloc the whole
+  // vector.
+  int *g_int = INTEGER(g);
+  R_xlen_t glen = XLENGTH(g);
+  R_xlen_t gn = 1;  // At least one group, possibly zero sized
+
+  // assumes all vectors are same length
+  if(*xlens != glen) error("Argument `x` and `g` must be of equal length");
+  if (glen > 1) {
+    for(R_xlen_t gi = 1; gi < glen; ++gi)
+      if(*(g_int + gi) != *(g_int + gi - 1)) ++gn;
+  }
+  R_xlen_t *gsize = (R_xlen_t*) R_alloc(gn, sizeof(R_xlen_t));
+  R_xlen_t *goff = (R_xlen_t*) R_alloc(gn, sizeof(R_xlen_t));
+  R_xlen_t *gsize_track = gsize;
+  *goff = 0;
+  R_xlen_t *goff_track = goff;
+  if(glen == 1) *gsize = *xlens; // assumes all vectors are same length
+  else if (glen > 1) {
+    R_xlen_t gsize_i = 0;
+    R_xlen_t gi;
+    for(gi = 1; gi < glen; ++gi) {
+      ++gsize_i;
+      if(*(g_int + gi) != *(g_int + gi - 1)) {
+        *(gsize_track++) = gsize_i;
+        goff_track++;
+        *goff_track = *(goff_track - 1) + gsize_i;
+        gsize_i = 0;
+      }
+    }
+    // One extra item in the trailing group we will not have counted
+    *gsize_track = gsize_i + 1;
+    goff_track++;
+    *goff_track = *(goff_track - 1) + *gsize_track;
+  }
+  // Run for each group
+
+  const char * fun_char = CHAR(STRING_ELT(fun_name, 0));
+  const char * dll_char = CHAR(STRING_ELT(so, 0));
+  struct Rf_RegisteredNativeSymbol * symbol = NULL;
+  DL_FUNC fun = R_FindSymbol(fun_char, dll_char, symbol);
+  SEXP res_sxp = PROTECT(allocVector(REALSXP, gn));
+  double * res = REAL(res_sxp);
+
+  for(R_xlen_t ggi = 0; ggi < gn; ++ggi) {
+    (*fun)(
+      xvals, *(gsize + ggi), *(goff + ggi), (int) xlen, res + ggi,
+      flag
+    );
+  }
+  UNPROTECT(1);
+  return res_sxp;
+}
+/*
+ * Test bed for arithmetic operators
+ */
+SEXP FAPPLY_run3b(SEXP so, SEXP fun_name, SEXP x, SEXP g) {
+  if(TYPEOF(so) != STRSXP || XLENGTH(so) != 1)
+    error("Argument `so` should be a scalar string.");
+  if(TYPEOF(fun_name) != STRSXP || XLENGTH(fun_name) != 1)
+    error("Argument `fun_name` should be a scalar string.");
+  if(TYPEOF(x) != VECSXP)
+    error("Argument `x` should be a list.");
+  if(TYPEOF(g) != INTSXP)
+    error("Argument `g` should be an integer vector.");
+
+  R_xlen_t xlen = XLENGTH(x);
+
+  // Generate Naked Data structure
+  if(xlen > INT_MAX)
+    error("Arguent `x` may not contain more than INT_MAX items.");
+  double **xvals = (double**) R_alloc((size_t)xlen, sizeof(double*));
+  R_xlen_t *xlens = (R_xlen_t*) R_alloc((size_t)xlen, sizeof(R_xlen_t));
+  for(R_xlen_t i = 0; i < xlen; ++i) {
+    SEXP elt = VECTOR_ELT(x, i);
+    if(TYPEOF(elt) != REALSXP)
+      error(
+        "Argument `x[%d]` must be a double is (%s).", i, type2char(TYPEOF(elt))
+      );
+    *(xvals + i) = REAL(elt);
+    *(xlens + i) = XLENGTH(elt);
+    if(i > 0 && *(xlens + i) != *(xlens + i -1))
+      error("Argument `x` must contain equal length vectors.");  // for now
+  }
+  // compute group sizes (g should be ordered), two passes, first # of groups
+  // then their sizes.  Could do one pass but then we need to alloc the whole
+  // vector.
+  int *g_int = INTEGER(g);
+  R_xlen_t glen = XLENGTH(g);
+  R_xlen_t gn = 1;  // At least one group, possibly zero sized
+
+  // assumes all vectors are same length
+  if(*xlens != glen) error("Argument `x` and `g` must be of equal length");
+  if (glen > 1) {
+    for(R_xlen_t gi = 1; gi < glen; ++gi)
+      if(*(g_int + gi) != *(g_int + gi - 1)) ++gn;
+  }
+  R_xlen_t *gsize = (R_xlen_t*) R_alloc(gn, sizeof(R_xlen_t));
+  R_xlen_t *goff = (R_xlen_t*) R_alloc(gn, sizeof(R_xlen_t));
+  R_xlen_t *gsize_track = gsize;
+  *goff = 0;
+  R_xlen_t *goff_track = goff;
+  if(glen == 1) *gsize = *xlens; // assumes all vectors are same length
+  else if (glen > 1) {
+    R_xlen_t gsize_i = 0;
+    R_xlen_t gi;
+    for(gi = 1; gi < glen; ++gi) {
+      ++gsize_i;
+      // Group changed, record prior group size (recall we start one lagged)
+      if(*(g_int + gi) != *(g_int + gi - 1)) {
+        *(gsize_track++) = gsize_i;
+        goff_track++;
+        *goff_track = *(goff_track - 1) + gsize_i;
+        gsize_i = 0;
+      }
+    }
+    // One extra item in the trailing group we will not have counted
+    *gsize_track = gsize_i + 1;
+    goff_track++;
+    *goff_track = *(goff_track - 1) + *gsize_track;
+  }
+  // Run for each group
+
+  const char * fun_char = CHAR(STRING_ELT(fun_name, 0));
+  const char * dll_char = CHAR(STRING_ELT(so, 0));
+  struct Rf_RegisteredNativeSymbol * symbol = NULL;
+  DL_FUNC fun = R_FindSymbol(fun_char, dll_char, symbol);
+  SEXP res_sxp = PROTECT(allocVector(REALSXP, glen));
+  double * res = REAL(res_sxp);
+  // Rprintf("results size %d\n", (int) XLENGTH(res_sxp));
+
+  for(R_xlen_t ggi = 0; ggi < gn; ++ggi) {
+    R_xlen_t size = *(gsize + ggi);
+    (*fun)(xvals, size, size, *(goff + ggi), (int) xlen, res);
+  }
+  UNPROTECT(1);
+  return res_sxp;
+}
+
 
