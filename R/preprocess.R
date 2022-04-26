@@ -206,15 +206,9 @@ preprocess <- function(call, data, gmax) {
   depth <- 0
   force(env)
 
-  # Add group data.
-  data.naked <- data[is.num_naked(data)]
-  alloc <- append_dat(
-    init_dat(), new=data.naked, sizes=rep(gmax, length(data.naked)),
-    depth=0L, type="grp"
-  )
   # All the data generated goes into x
   x <- list(
-    call=list(), args=list(), code=list(), size=0, id=0,
+    call=list(), args=list(), code=list(), depth=integer(),
     size=matrix(numeric(), nrow=2L)
   )
   x <- pp_internal(call=call, data=data, depth=0L, x=x)
@@ -229,7 +223,7 @@ preprocess <- function(call, data, gmax) {
     stop("Internal error: functions redefind with changing definitions.")
 
   args.u <- unique(unlist(lapply(x[['code']], "[[", "args")))
-  args <- args.u[order(match(args.u, c(ARGS.ALL)))]
+  args <- args.u[order(match(args.u, c(ARGS.NM.ALL)))]
 
   code.txt <- c(
     # Headers, system headers first (are these going to go in right order?)
@@ -238,7 +232,7 @@ preprocess <- function(call, data, gmax) {
     unique(codes),
     # Calls
     "",
-    sprintf("void run(%s) {", toString(c(ARG.DATA, sprintf(args, "** ")))),
+    sprintf("void run(%s) {", toString(R.ARGS.ALL[args]))
     paste0("  ", vapply(x[['code']], "[[", "", "call")),
     "}"
   )
@@ -381,6 +375,7 @@ pp_internal <- function(call, data, gmax, env, depth, x) {
 
   # - Finalize / Return --------------------------------------------------------
 
+  x[['depth']] <- c(x[['depth']], depth)
   x
 }
 ## Compute Max Possible Size

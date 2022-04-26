@@ -13,20 +13,39 @@
 ##
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
-ARG.DATA <- 'double ** data'
-# Used both to generate the call to individual functions, but also to the
-# overall code runner, and each needs a different level of dereferencing, hence
-# the %s (and we need to match the former to the latter).
-ARGS.BASE <- c('int %sdatai', 'R_xlen_t %soff', 'R_xlen_t %slen')
-ARGS.VAR <- "int %snarg"
-ARGS.CTRL <- "SEXP ctrl"
-# This is ued only for matching order
-ARGS.ALL <- c(ARGS.BASE, ARGS.VAR, ARGS.CTRL)
+ARGS.NM.DT <- c('data')
+ARGS.NM.BASE.2 <- c('datai', 'off', 'len')
+ARGS.NM.BASE <- c(ARGS.NM.DT, ARGS.NM.BASE.2)
+ARGS.NM.VAR <- c('narg')
+ARGS.NM.CTRL <- 'ctrl'
+ARGS.NM.ALL <- c(ARGS.NM.DT, ARGS.NM.BASE, ARGS.NM.VAR, ARGS.NM.CTRL)
 
-CALL.BASE <- c("data", "*datai++", "*off++", "*len++")
+## F for function, R for overall runner
+F.ARGS.DT <- R.ARGS.DT <- paste('double **', ARGSS.NM.DT)
+
+F.ARGS.BASE <- c(F.ARGS.DT, paste('double *', ARGSS.NM.BASE))
+R.ARGS.BASE <- c(R.ARGS.DT, paste('double **', ARGSS.NM.BASE))
+
+F.ARGS.VAR <- paste('double *', ARGSS.NM.VAR)
+R.ARGS.VAR <- paste('double **', ARGSS.NM.VAR)
+
+F.ARGS.CTRL <- R.ARGS.CTRL <- 'SEXP ctrl'
+
+F.ARGS.ALL <- c(F.ARGS.BASE, F.ARGS.VAR, F.ARGS.CTRL)
+R.ARGS.ALL <- c(R.ARGS.BASE, R.ARGS.VAR, R.ARGS.CTRL)
+
+CALL.BASE <- c(ARGS.NM.DT, paste0("*", ARGS.NM.BASE, "++"))
 CALL.VAR <- "*narg++"
 CALL.CTRL <- "VECTOR_ELT(ctrl, v++)"
 
+## Sanity checks
+stopifnot(
+  identical(gsub("double|[ +*]", F.ARGS.ALL), ARGS.NM.ALL),
+  identical(gsub("double|[ +*]", R.ARGS.ALL), ARGS.NM.ALL),
+  identical(
+    gsub("double|[ +*]", c(CALL.BASE, CALL.VAR)),
+    ARGS.NM.ALL[-length(ARGS.NM.ALL)]
+) )
 # external is unknown at compile time, external or group is also unknown, but we
 # need to keep track of the possibility that it could be either external or
 # group for final size computation during allocation stage.

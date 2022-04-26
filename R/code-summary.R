@@ -88,13 +88,13 @@ code_gen_summary <- function(op, sizes, ctrl) {
   na.rm <- if(isTRUE(ctrl[['na.rm']][1L] == TRUE)) "narm" else "naok"
   n <- if(length(sizes) == 1L) "1" else "n"
   name <- paste(op, n, na.rm, sep="_")
-  args <- c(ARGS.BASE, if(n == "n") ARGS.VAR)
-  args.s <- sprintf(args, "* ")
-  call <- c(CALL.BASE, if(n == "n") CALL.VAR)
+  args <- c(ARGS.BASE, if(n == "n") ARGS.VAR, ARGS.CTRL)
+  call.args <- c(CALL.BASE, if(n == "n") CALL.VAR, CALL.CTRL)
+  def.args <- F.ARGS.ALL[match(args, ARGS.ALL)]
   list(
-    defn=sprintf(f_summary[[name]], name, toString(c(ARG.DATA, args.s))),
+    defn=sprintf(f_summary[[name]], name, toString(def.args)),
     name=name,
-    call=sprintf("%s(%s);", name, toString(call)),
+    call=sprintf("%s(%s);", name, toString(call.args)),
     args=args,
     headers="<math.h>"
   )

@@ -211,7 +211,7 @@ passed down.  But maybe this becomes a future feature.
 
 For arithmetic, there is seems to be very little value in having the simplified
 logic option (in fact, it looks slower, `fun7` is the one that goes straight to
-the equal length loop.  So no huge cost.  At least when there is no contention
+the equal length loop).  So no huge cost.  At least when there is no contention
 with any other processes.  Given that sorting is such a big part of the cost,
 it's going to be hard to beat that.
 
@@ -236,6 +236,31 @@ it's going to be hard to beat that.
     > all.equal(res1, res3)
     [1] TRUE
     > 
+
+## Allocation
+
+Once we get to the run stage, we'll have for each sub-call, the type size of the
+result, and the inputs, and the type of function.  This means we can resolve the
+size requirements to a specific number for external things, and for external or
+group we now know the "external" part of it as well.  Since we'll know the max
+group size, we can run through?
+
+To do this properly we need to know which column each thing refers to, but we
+should be able to do it linearly.
+
+So start going column-wise through our size matrix.  First item should be
+standalone (i.e. not a call with arguments).  Add it to the allocation (unless
+it's data, in which case it is already there), evaluating first if needed, and
+recording the position in the data as well as the size (possibly NA if group).
+Keep accumulating this info in a stack until we get to a call, which will then
+reduce it down to a single value, and proceed accordingly.
+
+For each item, we need to know what it is:
+
+* Control (evaluate, store, and record index)
+* Symbol external (evaluate, store, record size and index)
+* Symbol data (record index)
+* Expression (recurse, record size and index)
 
 ## Simple arithmetic
 
