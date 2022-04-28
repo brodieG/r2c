@@ -9,6 +9,11 @@
 
 # To Do / Questions
 
+* To allow assignments we can just use a series of nested environments such that
+  each sub-call will then seek the symbol through the nested environments.
+  We'll need to bind the data symbols to e.g. environments so they may be
+  uniquely identified and we can confirm they've been found.
+* Test a single symbol to make sure logic doesn't choke on that.
 * Can we compute non-varying variables before compilation for sizing purposes?
   E.g. `1:10` is of knowable size at compilation assuming we don't mess with
   `:`.  Could allow this for non-control parameters.  Definitely non-trivial

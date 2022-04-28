@@ -18,32 +18,32 @@ ARGS.NM.BASE.2 <- c('datai', 'off', 'len')
 ARGS.NM.BASE <- c(ARGS.NM.DT, ARGS.NM.BASE.2)
 ARGS.NM.VAR <- c('narg')
 ARGS.NM.CTRL <- 'ctrl'
-ARGS.NM.ALL <- c(ARGS.NM.DT, ARGS.NM.BASE, ARGS.NM.VAR, ARGS.NM.CTRL)
+ARGS.NM.ALL <- c(ARGS.NM.BASE, ARGS.NM.VAR, ARGS.NM.CTRL)
 
 ## F for function, R for overall runner
-F.ARGS.DT <- R.ARGS.DT <- paste('double **', ARGSS.NM.DT)
+F.ARGS.DT <- R.ARGS.DT <- paste('double **', ARGS.NM.DT)
 
-F.ARGS.BASE <- c(F.ARGS.DT, paste('double *', ARGSS.NM.BASE))
-R.ARGS.BASE <- c(R.ARGS.DT, paste('double **', ARGSS.NM.BASE))
+F.ARGS.BASE <- c(F.ARGS.DT, paste('double *', ARGS.NM.BASE.2))
+R.ARGS.BASE <- c(R.ARGS.DT, paste('double **', ARGS.NM.BASE.2))
 
-F.ARGS.VAR <- paste('double *', ARGSS.NM.VAR)
-R.ARGS.VAR <- paste('double **', ARGSS.NM.VAR)
+F.ARGS.VAR <- paste('double *', ARGS.NM.VAR)
+R.ARGS.VAR <- paste('double **', ARGS.NM.VAR)
 
 F.ARGS.CTRL <- R.ARGS.CTRL <- 'SEXP ctrl'
 
 F.ARGS.ALL <- c(F.ARGS.BASE, F.ARGS.VAR, F.ARGS.CTRL)
 R.ARGS.ALL <- c(R.ARGS.BASE, R.ARGS.VAR, R.ARGS.CTRL)
 
-CALL.BASE <- c(ARGS.NM.DT, paste0("*", ARGS.NM.BASE, "++"))
+CALL.BASE <- c(ARGS.NM.DT, paste0("*", ARGS.NM.BASE.2, "++"))
 CALL.VAR <- "*narg++"
 CALL.CTRL <- "VECTOR_ELT(ctrl, v++)"
 
 ## Sanity checks
 stopifnot(
-  identical(gsub("double|[ +*]", F.ARGS.ALL), ARGS.NM.ALL),
-  identical(gsub("double|[ +*]", R.ARGS.ALL), ARGS.NM.ALL),
+  identical(gsub("SEXP|double|[ +*]", "", F.ARGS.ALL), ARGS.NM.ALL),
+  identical(gsub("SEXP|double|[ +*]", "", R.ARGS.ALL), ARGS.NM.ALL),
   identical(
-    gsub("double|[ +*]", c(CALL.BASE, CALL.VAR)),
+    gsub("double|[ +*]", "", c(CALL.BASE, CALL.VAR)),
     ARGS.NM.ALL[-length(ARGS.NM.ALL)]
 ) )
 # external is unknown at compile time, external or group is also unknown, but we

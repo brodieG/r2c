@@ -57,15 +57,15 @@ static void %s(%s) {
   }
 }
 '
-code_gen_arith <- function(op, sizes, ctrl) {
+code_gen_arith <- function(fun, args, args.types) {
   vetr(
     CHR.1 && . %in% names(OP.NAMES),
     numeric(2L) && all(is.na(.) | . >= 0),
     list() && !length(.)
   )
   args <- ARGS.NM.BASE
-  name <- paste0(OP.NAMES[op], "_n_m")
-  defn <- sprintf(arith_n_m, name, toString(F.ARGS.BASE), op)
+  name <- paste0(OP.NAMES[fun], "_n_m")
+  defn <- sprintf(arith_n_m, name, toString(F.ARGS.BASE), fun)
   list(
     defn=defn,
     name=name,

@@ -17,22 +17,25 @@
 ##
 ## Maybe we should also have a low error sum.
 
-f_mean_base <- '
+f_summary_base <- '
 static void %%s(%%s) {
   double * res = data[datai[1]] + off[1];
   *res = 0;
   R_xlen_t len_n = len[0];
   double * dat = data[datai[0]] + off[0];
+  int narm = asInteger(VECTOR_ELT(ctrl, 0));
 
-  for(R_xlen_t i = 0; i < len_n; ++i) %s*res += dat[i];
-
-  len[datai[1]] = 1;
-  off[datai[1]] = 0;
+  %s%s
 }
 '
-f_mean_1_narm <- sprintf(f_mean_base, 'if(!isnan(dat[i])) ')
-f_mean_1_naok <- sprintf(f_mean_base, '')
-
+loop_base <- '
+  if(!narm)
+    for(R_xlen_t i = 0; i < len_n; ++i) *res += dat[i];
+  else
+    for(R_xlen_t i = 0; i < len_n; ++i) if(!is.nan(dat[i])) *res += dat[i];
+'
+f_mean <- sprintf(f_summary_base, loop_base, "\n  *res /= len_n")
+f_sum_1 <- sprintf(f_summary_base, loop_base, "")
 f_sum_n_base <- '
 static void %%s(%%s) {
   double * res = data[narg] + off[narg];
@@ -41,56 +44,26 @@ static void %%s(%%s) {
   for(int arg = 0; arg < narg; ++arg) {
     R_xlen_t len_n = len[narg];
     double * dat = data[arg] + off[arg];
-    for(R_xlen_t i = 0; i < len_n; ++i) %s*res += dat[i];
+    %s
   }
-
-  len[datai[narg]] = 1;
-  off[datai[narg]] = 0;
 }
 '
-f_sum_n_narm <- sprintf(f_sum_n_base, 'if(!isnan(dat[i])) ')
-f_sum_n_naok <- sprintf(f_sum_n_base, '')
-
-## Special case when only one data parameter
-f_sum_1_base <- '
-static void %%s(%%s) {
-  double * res = data[datai[1]] + off[1];
-  *res = 0;
-  R_xlen_t len_n = len[0];
-  double * dat = data[datai[0]] + off[0];
-
-  for(R_xlen_t i = 0; i < len_n; ++i) %s*res += dat[i];
-
-  len[datai[1]] = 1;
-  off[datai[1]] = 0;
-}
-'
-f_sum_1_narm <- sprintf(f_sum_1_base, 'if(!isnan(dat[i])) ')
-f_sum_1_naok <- sprintf(f_sum_1_base, '')
+f_sum_n <- sprintf(f_sum_n_base, loop_base);
 
 ## Structure all strings into a list for ease of selection
 
 f_summary <- list(
-  sum_n_narm=f_sum_n_narm,
-  sum_1_narm=f_sum_1_narm,
-  sum_n_naok=f_sum_n_naok,
-  sum_1_naok=f_sum_1_naok,
-  mean_1_narm=f_mean_1_narm,
-  mean_1_naok=f_mean_1_naok
+  sum=f_sum_1,
+  sum_n=f_sum_n,
+  mean=f_mean
 )
-
-code_gen_summary <- function(op, sizes, ctrl) {
-  if('trim' %in% ctrl[['trim']] && !isTRUE(ctrl[['trim']] == 0))
-    stop("`trim` may only take on its default 0 value")
-  sizes <- sizes[!names(sizes) %in% names(ctrl)]
-  ctrl[['trim']] <- NULL
-
-  na.rm <- if(isTRUE(ctrl[['na.rm']][1L] == TRUE)) "narm" else "naok"
-  n <- if(length(sizes) == 1L) "1" else "n"
-  name <- paste(op, n, na.rm, sep="_")
-  args <- c(ARGS.BASE, if(n == "n") ARGS.VAR, ARGS.CTRL)
-  call.args <- c(CALL.BASE, if(n == "n") CALL.VAR, CALL.CTRL)
+code_gen_summary <- function(fun, args, args.types) {
+  multi <- sum(args.types != "control")
+  name <- paste(op, if(multi) "n", sep="_")
+  args <- c(ARGS.BASE, if(multi) ARGS.VAR, ARGS.CTRL)
+  call.args <- c(CALL.BASE, if(multi) CALL.VAR, CALL.CTRL)
   def.args <- F.ARGS.ALL[match(args, ARGS.ALL)]
+
   list(
     defn=sprintf(f_summary[[name]], name, toString(def.args)),
     name=name,
@@ -98,5 +71,18 @@ code_gen_summary <- function(op, sizes, ctrl) {
     args=args,
     headers="<math.h>"
   )
+}
+## @param x a list of the matched parameters for the call `call`
+## @call the unmatched (sub)call as provided by the user
+
+ctrl_val_summary <- function(x, call) {
+  if(!identical(x[['trim']], 0))
+    stop(
+      "Only the default value for `trim` is allowed in ", 
+      "`", deparse1(call), "`."
+    )
+  if(!x[['na.rm']] %in% c(TRUE, FALSE))
+    stop("`na.rm` must be TRUE or FALSE in ", "`", deparse1(call), "`.")
+  TRUE
 }
 
