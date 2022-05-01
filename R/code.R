@@ -54,7 +54,9 @@
 code_gen <- function(dat) {
 
 }
-
+code_blank <- function() list(
+  defn="", name="", call="", args=character(), headers=character()
+)
 code_valid <- function(code, call) {
   isTRUE(check <- vet(CHR.1, code$defn)) &&
     isTRUE(check <- vet(CHR.1, code$name)) &&

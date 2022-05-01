@@ -57,12 +57,13 @@ f_summary <- list(
   sum_n=f_sum_n,
   mean=f_mean
 )
-code_gen_summary <- function(fun, args, args.types) {
-  multi <- sum(args.types != "control")
-  name <- paste(op, if(multi) "n", sep="_")
-  args <- c(ARGS.BASE, if(multi) ARGS.VAR, ARGS.CTRL)
+code_gen_summary <- function(fun, args.reg, args.ctrl) {
+  vetr(CHR.1 && . %in% names(f_summary), list(), list())
+  multi <- length(args.reg) > 1L
+  name <- paste0(fun, if(multi) "_n")
+  args <- c(F.ARGS.BASE, if(multi) F.ARGS.VAR, F.ARGS.CTRL)
   call.args <- c(CALL.BASE, if(multi) CALL.VAR, CALL.CTRL)
-  def.args <- F.ARGS.ALL[match(args, ARGS.ALL)]
+  def.args <- F.ARGS.ALL[match(args, ARGS.NM.ALL)]
 
   list(
     defn=sprintf(f_summary[[name]], name, toString(def.args)),

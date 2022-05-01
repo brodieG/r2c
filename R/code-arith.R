@@ -21,7 +21,7 @@ OP.NAMES <- c(
 ## too much (at least single core without any contention).
 
 arith_n_m <- '
-static void %s(%s) {
+static void %1$s(%2$s) {
   double * res = data[datai[2]] + off[2];
   double * e1;
   double * e2;
@@ -46,23 +46,19 @@ static void %s(%s) {
 
   R_xlen_t i, j;
   if(len1 == len2) {
-    for(i = 0; i < len1; ++i) res2[i] = e1[i] %s e2[i];
+    for(i = 0; i < len1; ++i) res2[i] = e1[i] %3$s e2[i];
   } else if (len2 == 1) {
-    for(i = 0; i < len1; ++i) res2[i] = e1[i] %s *e2;
+    for(i = 0; i < len1; ++i) res2[i] = e1[i] %3$s *e2;
   } else {
     for(i = 0, j = 0; i < len1; ++i, ++j) {
       if(j > len2) j = 0;
-      res2[i] = e1[i] %s e2[j];
+      res2[i] = e1[i] %3$s e2[j];
     }
   }
 }
 '
-code_gen_arith <- function(fun, args, args.types) {
-  vetr(
-    CHR.1 && . %in% names(OP.NAMES),
-    numeric(2L) && all(is.na(.) | . >= 0),
-    list() && !length(.)
-  )
+code_gen_arith <- function(fun, args.reg, args.ctrl) {
+  vetr(CHR.1 && . %in% names(OP.NAMES), list(), list() && !length(.))
   args <- ARGS.NM.BASE
   name <- paste0(OP.NAMES[fun], "_n_m")
   defn <- sprintf(arith_n_m, name, toString(F.ARGS.BASE), fun)

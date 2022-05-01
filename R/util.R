@@ -13,9 +13,11 @@
 ##
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
+## Used to be an S3 method, but that makes reloading package a problem.
+
 #' @export
 
-print.code_text <- function(x, ...) {
+print_code_text <- function(x, ...) {
   y <- unlist(strsplit(x, "\n"))
   writeLines(paste0(format(seq_along(y)), "| ", y))
   invisible(x)

@@ -207,7 +207,10 @@ preprocess <- function(call) {
   x <- list(
     call=list(), depth=integer(), args=list(), args.type=list(), code=list()
   )
-  x <- pp_internal(call=call, data=data, depth=0L, x=x)
+  # We use this for match.call, but very questionable given the env might be
+  # different when we actually run the code
+  env <- new.env(parent=parent.frame())
+  x <- pp_internal(call=call, depth=0L, x=x, env=env)
 
   # Deduplicate the code and generate the final C file (need headers).
   headers <- unique(unlist(lapply(x[['code']], "[[", "headers")))
@@ -221,6 +224,7 @@ preprocess <- function(call) {
   args.u <- unique(unlist(lapply(x[['code']], "[[", "args")))
   args <- args.u[order(match(args.u, c(ARGS.NM.ALL)))]
 
+  code.calls <- vapply(x[['code']], "[[", "", "call")
   code.txt <- c(
     # Headers, system headers first (are these going to go in right order?)
     paste("#include", c(headers, "<R.h>", "<Rinternals.h>")),
@@ -229,16 +233,16 @@ preprocess <- function(call) {
     # Calls
     "",
     sprintf("void run(%s) {", toString(R.ARGS.ALL[args])),
-    paste0("  ", vapply(x[['code']], "[[", "", "call")),
+    paste0("  ", code.calls[nzchar(code.calls)]),
     "}"
   )
   x[['code-text']] <- structure(code.txt, class="code_text")
   x
 }
 
-pp_internal <- function(call, depth, x, argn="") {
+pp_internal <- function(call, depth, x, argn="", env) {
   writeLines(sprintf("Depth %d: %s", depth, deparse1(call)))
-  if(is.call(call) && identical(as.character(call[[1L]]), ")")) {
+  if(is.call(call) && identical(as.character(call[[1L]]), "(")) {
     # Remove any parentheses calls
     if(length(call) != 2L)
       stop("Internal Error: call to `(` with wrong parameter count.")  # nocov
@@ -268,21 +272,23 @@ pp_internal <- function(call, depth, x, argn="") {
       if(args.ctrl[i]) {
         x <- record_call_dat(
           x, call=call, depth=depth, argn=names(args)[i],
-          type="control", code=character()
+          type="control", code=code_blank()
         )
       } else {
         x <- pp_internal(
-          call=args[[i]], data=data, depth=depth + 1L, x=x, argn=names(args)[i]
+          call=args[[i]], depth=depth + 1L, x=x, argn=names(args)[i], env=env
     ) } }
     type <- "call"
     # Generate Code
-    code <- VALID_FUNS[[c(func, "code.gen")]](func, args, args.types)
+    code <- VALID_FUNS[[c(func, "code.gen")]](
+      func, args[!args.ctrl], args[args.ctrl]
+    )
     code_valid(code, call)
   } else {
     # - Symbol or Constant -----------------------------------------------------
     type <- "leaf"
     args <- list()
-    code <- character()
+    code <- code_blank()
   }
   record_call_dat(x, call=call, depth=depth, argn=argn, type=type, code=code)
 }
