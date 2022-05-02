@@ -232,8 +232,8 @@ preprocess <- function(call) {
     unique(codes),
     # Calls
     "",
-    sprintf("void run(%s) {", toString(R.ARGS.ALL[args])),
-    paste0("  ", code.calls[nzchar(code.calls)]),
+    sprintf("void run(%s) {", toString(R.ARGS.ALL[match(args, ARGS.NM.ALL)])),
+    paste0("  ", c("int v=0;", code.calls[nzchar(code.calls)])),
     "}"
   )
   x[['code-text']] <- structure(code.txt, class="code_text")

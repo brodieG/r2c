@@ -32,9 +32,9 @@ loop_base <- '
   if(!narm)
     for(R_xlen_t i = 0; i < len_n; ++i) *res += dat[i];
   else
-    for(R_xlen_t i = 0; i < len_n; ++i) if(!is.nan(dat[i])) *res += dat[i];
+    for(R_xlen_t i = 0; i < len_n; ++i) if(!isnan(dat[i])) *res += dat[i];
 '
-f_mean <- sprintf(f_summary_base, loop_base, "\n  *res /= len_n")
+f_mean <- sprintf(f_summary_base, loop_base, "\n  *res /= len_n;")
 f_sum_1 <- sprintf(f_summary_base, loop_base, "")
 f_sum_n_base <- '
 static void %%s(%%s) {
@@ -61,7 +61,7 @@ code_gen_summary <- function(fun, args.reg, args.ctrl) {
   vetr(CHR.1 && . %in% names(f_summary), list(), list())
   multi <- length(args.reg) > 1L
   name <- paste0(fun, if(multi) "_n")
-  args <- c(F.ARGS.BASE, if(multi) F.ARGS.VAR, F.ARGS.CTRL)
+  args <- c(ARGS.NM.BASE, if(multi) ARGS.NM.VAR, ARGS.NM.CTRL)
   call.args <- c(CALL.BASE, if(multi) CALL.VAR, CALL.CTRL)
   def.args <- F.ARGS.ALL[match(args, ARGS.NM.ALL)]
 

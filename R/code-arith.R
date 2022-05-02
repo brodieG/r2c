@@ -46,13 +46,13 @@ static void %1$s(%2$s) {
 
   R_xlen_t i, j;
   if(len1 == len2) {
-    for(i = 0; i < len1; ++i) res2[i] = e1[i] %3$s e2[i];
+    for(i = 0; i < len1; ++i) res[i] = e1[i] %3$s e2[i];
   } else if (len2 == 1) {
-    for(i = 0; i < len1; ++i) res2[i] = e1[i] %3$s *e2;
+    for(i = 0; i < len1; ++i) res[i] = e1[i] %3$s *e2;
   } else {
     for(i = 0, j = 0; i < len1; ++i, ++j) {
       if(j > len2) j = 0;
-      res2[i] = e1[i] %3$s e2[j];
+      res[i] = e1[i] %3$s e2[j];
     }
   }
 }
