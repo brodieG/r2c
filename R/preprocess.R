@@ -46,9 +46,11 @@ match_call <- function(definition, call, envir, name) {
     )
   # Add defaults, collapse dot, don't worry about order (should be okay)
   mcall.nm.missing <- names(frm)[!names(frm) %in% c(mcall.nm, "...")]
+  mcall.dots <- mcall[['...']]
+  if(length(mcall.dots)) names(mcall.dots) <- rep('...', length(mcall.dots))
   c(
     as.list(mcall[seq_along(mcall) != 1L & names(mcall) != "..."]),
-    mcall[['...']],
+    mcall.dots,
     frm[mcall.nm.missing]
   )
 }
@@ -241,6 +243,9 @@ preprocess <- function(call) {
 }
 
 pp_internal <- function(call, depth, x, argn="", env) {
+  if(depth == .Machine$integer.max)
+    stop("Expression max depth exceeded.") # exceedingly unlikely
+
   writeLines(sprintf("Depth %d: %s", depth, deparse1(call)))
   if(is.call(call) && identical(as.character(call[[1L]]), "(")) {
     # Remove any parentheses calls
@@ -271,7 +276,7 @@ pp_internal <- function(call, depth, x, argn="", env) {
     for(i in seq_along(args)) {
       if(args.ctrl[i]) {
         x <- record_call_dat(
-          x, call=call, depth=depth, argn=names(args)[i],
+          x, call=args[[i]], depth=depth + 1L, argn=names(args)[i],
           type="control", code=code_blank()
         )
       } else {

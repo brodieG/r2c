@@ -53,15 +53,15 @@ alloc <- function(x, data, gmax, par.env=parent.frame()) {
   # * The list of evaluated control parameters.
 
   stack <- init_stack()
-  stack_ctrl <- list()
-  call_dat <- list()
+  stack.ctrl <- list()
+  call.dat <- list()
 
   for(i in seq_along(x[['call']])) {
     type <- x[['type']][[i]]
     call <- x[['call']][[i]]
     depth <- x[['depth']][[i]]
     argn <- x[['argn']][[i]]
-    name <- as.character(call[[1L]])
+    name <- if(is.symbol(call)) as.character(call) else as.character(call[[1L]])
 
     if(type == "call") {
       # Based on previously accrued stack and function type, compute call result
@@ -75,14 +75,17 @@ alloc <- function(x, data, gmax, par.env=parent.frame()) {
         group <- 0
       } else if(ftype[[1L]] %in% c("arglen", "vecrec")) {
         # Length of a specific argument, like `probs` for `quantile`
-        if(!all(ftype[[2L]] %in% colnames(args.sizes)))
+        if(!all(ftype[[2L]] %in% colnames(stack)))
           stop(
             "Parameter(s) ",
-            deparse1(ftype[[2L]][!ftype[[2L]]%in% colnames(args.sizes)]),
+            deparse1(ftype[[2L]][!ftype[[2L]]%in% colnames(stack)]),
             " missing but required for sizing."
           )
+        # Get parameter data (depth + 1L should be params to current call)
         sizes.tmp <- stack[
-          c('size', 'group'), colnames(stack) %in% ftype[[2L]], drop=FALSE
+          c('size', 'group'),
+          colnames(stack) %in% ftype[[2L]] & stack['depth',] == depth + 1L,
+          drop=FALSE
         ]
         if(depth > 0L) {  # depth == 0 is the result vector, alloc'ed later
           alloc <- alloc_dat(alloc, depth, size=max_size(sizes.tmp, gmax), call)
@@ -95,13 +98,13 @@ alloc <- function(x, data, gmax, par.env=parent.frame()) {
         group <- max(sizes.tmp[2L,])         # any group size in the lot?
       } else stop("Internal Error: unknown function type.")
 
-      call_dat <- append_call_dat(
-        call_dat, ids=c(stack['id',], id), ctrl=stack_ctrl
+      call.dat <- append_call_dat(
+        call.dat, call=call, ids=c(stack['id',], id), ctrl=stack.ctrl
       )
       stack <- append_stack(
-        init_stack(), id=id, depth=depth, size=size, group=group
+        init_stack(), id=id, depth=depth, size=size, group=group, argn=argn
       )
-      stack_ctrl <- list()
+      stack.ctrl <- list()
     } else if (type == "control" || !name %in% names(data.naked)) {
       # Need to eval parameter
       arg.e <- eval(call, envir=data, enclos=env)
@@ -116,7 +119,7 @@ alloc <- function(x, data, gmax, par.env=parent.frame()) {
       if(type == "control") {
         ctrl <- list(arg.e)
         names(ctrl) <- argn
-        stack_ctrl <- c(stack.ctrl, ctrl)
+        stack.ctrl <- c(stack.ctrl, ctrl)
         id <- 0L
       } else {
         alloc <- append_dat(
@@ -124,13 +127,16 @@ alloc <- function(x, data, gmax, par.env=parent.frame()) {
         )
         id <- alloc[['i']]
       }
-      stack <- append_stack(stack, id=id, depth=depth, size=size, group=0)
+      stack <-
+        append_stack(stack, id=id, depth=depth, size=size, group=0, argn=argn)
     } else if (id <- match(name, names(data.naked), nomatch=0)) {
       # Record size (note `id` computed in conditional)
-      stack <- append_stack(stack, id=id, depth=depth, size=NA_real_, group=1)
+      stack <- append_stack(
+        stack, id=id, depth=depth, size=NA_real_, group=1, argn=argn
+      )
     } else stop("Internal Error: unexpected token.")
   }
-  list(alloc=alloc, call_dat=call_dat)
+  list(alloc=alloc, call.dat=call.dat)
 }
 
 ## Compute Max Possible Size
@@ -197,6 +203,11 @@ alloc_dat <- function(dat, depth, size, call) {
     dat[['depth']][slot] <- depth
     dat[['i']] <- dat[['ids']][slot]
   }
+  # Free the data we no longer need for the next go-around.  This is not a
+  # "free" in the malloc sense, just an indication that next time this function
+  # is called it can re-use the slot.
+
+  dat[['depth']][dat[['depth']] < depth & dat[['type']] == 'tmp'] <- Inf
   dat
 }
 init_dat <- function() list(
@@ -221,6 +232,7 @@ append_dat <- function(dat, new, sizes, depth, type) {
   dat[['i']] <- id.max
   dat
 }
+## Stack used to track parameters ahead of reduction when processing call.
 init_stack <- function() {
   matrix(
     numeric(), nrow=4L,
@@ -238,10 +250,9 @@ append_stack <- function(stack, id, depth, size, group, argn) {
   colnames(stack)[ncol(stack)] <- argn
   stack
 }
-append_call_dat <- function(call_dat, call, ids, ctrl) {
-  c(call_dat, list(list(call=call, ids=ids, ctrl=ctrl)))
+append_call_dat <- function(call.dat, call, ids, ctrl) {
+  c(call.dat, list(list(call=call, ids=ids, ctrl=ctrl)))
 }
-
 ## Check function validity
 check_fun <- function(x, env) {
   if(!x %in% names(VALID_FUNS))
