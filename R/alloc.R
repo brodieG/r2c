@@ -61,7 +61,9 @@ alloc <- function(x, data, gmax, par.env=parent.frame()) {
     call <- x[['call']][[i]]
     depth <- x[['depth']][[i]]
     argn <- x[['argn']][[i]]
-    name <- if(is.symbol(call)) as.character(call) else as.character(call[[1L]])
+    name <-
+      if(length(call) < 2L) as.character(call)
+      else as.character(call[[1L]])
 
     if(type == "call") {
       # Based on previously accrued stack and function type, compute call result
@@ -88,7 +90,9 @@ alloc <- function(x, data, gmax, par.env=parent.frame()) {
           drop=FALSE
         ]
         if(depth > 0L) {  # depth == 0 is the result vector, alloc'ed later
-          alloc <- alloc_dat(alloc, depth, size=max_size(sizes.tmp, gmax), call)
+          alloc <- alloc_dat(
+            alloc, depth, size=vec_rec_max_size(sizes.tmp, gmax), call
+          )
           id <- alloc[['i']]
         } else {
           size <- NA_real_
@@ -101,15 +105,17 @@ alloc <- function(x, data, gmax, par.env=parent.frame()) {
       call.dat <- append_call_dat(
         call.dat, call=call, ids=c(stack['id',], id), ctrl=stack.ctrl
       )
+      # Reduce stack and record result size
       stack <- append_stack(
-        init_stack(), id=id, depth=depth, size=size, group=group, argn=argn
+        stack[,stack['depth',] <= depth, drop=FALSE],
+        id=id, depth=depth, size=size, group=group, argn=argn
       )
       stack.ctrl <- list()
     } else if (type == "control" || !name %in% names(data.naked)) {
       # Need to eval parameter
       arg.e <- eval(call, envir=data, enclos=env)
       # Validate external args after eval
-      if(type == "leaf" && !is.num_naked(arg.e))
+      if(type == "leaf" && !is.num_naked(list(arg.e)))
         stop(
           "External Parameter `", name, "` for `", deparse1(call),
           "` is not unclassed double ", not_num_naked_err(name), "."
@@ -127,8 +133,9 @@ alloc <- function(x, data, gmax, par.env=parent.frame()) {
         )
         id <- alloc[['i']]
       }
-      stack <-
-        append_stack(stack, id=id, depth=depth, size=size, group=0, argn=argn)
+      stack <- append_stack(
+        stack, id=id, depth=depth, size=size, group=0, argn=argn
+      )
     } else if (id <- match(name, names(data.naked), nomatch=0)) {
       # Record size (note `id` computed in conditional)
       stack <- append_stack(
