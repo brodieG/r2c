@@ -19,6 +19,10 @@ NULL
 
 #' Allocate Required Storage
 #'
+#' Group data goes first, then result, then any other temporary or external
+#' data.  For each call, we record indices into the storage list for each
+#' argument and the result of evaluating the call.
+#'
 #' @param x the result of preprocessing an expression
 
 alloc <- function(x, data, gmax, par.env=parent.frame()) {
@@ -29,6 +33,8 @@ alloc <- function(x, data, gmax, par.env=parent.frame()) {
   # Add group data.
   if(!all(nzchar(names(data)))) stop("All data must be named.")
   data.naked <- data[is.num_naked(data)]
+  data.used <- logical(data.naked)
+  names(data.used) <- names(data.naked)
   alloc <- append_dat(
     init_dat(), new=data.naked, sizes=rep(gmax, length(data.naked)),
     depth=0L, type="grp"
@@ -95,20 +101,26 @@ alloc <- function(x, data, gmax, par.env=parent.frame()) {
           )
           id <- alloc[['i']]
         } else {
-          size <- NA_real_
           id <- res.id
         }
-        size <- known_size(sizes.tmp[1L,])   # knowable sizes
-        group <- max(sizes.tmp[2L,])         # any group size in the lot?
+        size <- vec_rec_known_size(sizes.tmp[1L,])  # knowable sizes
+        group <- max(sizes.tmp[2L,])                # any group size in the lot?
       } else stop("Internal Error: unknown function type.")
 
+      if(depth > 0L) {
+        id <- alloc[['i']]
+      } else {
+        id <- res.id
+      }
+      # Reduce call data, including parameter and result ids, and reduce stack
       call.dat <- append_call_dat(
-        call.dat, call=call, ids=c(stack['id',], id), ctrl=stack.ctrl
+       call.dat, call=call,
+        ids=c(stack['id', stack['depth',] > depth], result=id),
+        ctrl=stack.ctrl
       )
-      # Reduce stack and record result size
       stack <- append_stack(
-        stack[,stack['depth',] <= depth, drop=FALSE],
-        id=id, depth=depth, size=size, group=group, argn=argn
+        stack[,stack['depth',] <= depth, drop=FALSE], id=id, depth=depth,
+        size=size, group=group, argn=argn
       )
       stack.ctrl <- list()
     } else if (type == "control" || !name %in% names(data.naked)) {
@@ -141,21 +153,43 @@ alloc <- function(x, data, gmax, par.env=parent.frame()) {
       stack <- append_stack(
         stack, id=id, depth=depth, size=NA_real_, group=1, argn=argn
       )
+      data.used[id] <- TRUE
     } else stop("Internal Error: unexpected token.")
   }
-  list(alloc=alloc, call.dat=call.dat)
+  # Remove unused data, and re-index to account for that
+  ids.all <- seq_len(alloc[['dat']])
+  ids.keep <- ids.all[alloc[['type']] != grp | ids.all %in% which(data.used)]
+  call.dat <- lapply(
+    call.dat, function(x) {
+      x[['ids']] <- match(x[['ids']], ids.keep)
+      x
+  } )
+  alloc.fin <- lapply(alloc[c('dat', 'alloc', 'depth', 'type')], "[", ids.keep)
+  alloc.fin[['i']] <- alloc[['i']]
+  list(
+    alloc=alloc.fin, call.dat=call.dat, stack=stack, interface=x[['interface']]
+  )
 }
 
 ## Compute Max Possible Size
 ##
 ## This is affected by maximum group size as well as any non-group parameters.
+## This allows us to keep track of what the most significant size resulting from
+## prior calls is in the presence of some calls affected by group sizes.  That
+## way, if e.g. at some point we have a small group, but the limiting size is
+## from the non-group data, that info isn't lost.
+##
+## IMPORTANT: the result of this alone _must_ be combined with preserving
+## whether the data was group data or not.
 
-known_size <- function(x) {
-  tmp <- x[!is.na(x)]
+vec_rec_known_size <- function(x) {
+  tmp <- x[!is.na(x)]             # non-group sizes
   if(!length(tmp)) NA_real_
   else if(any(tmp == 0)) 0
   else max(tmp)
 }
+# only difference with above is we use the max group size for alloc
+
 vec_rec_max_size <- function(x, gmax) {
   if(
     !is.numeric(x) || !is.matrix(x) || nrow(x) != 2 ||
@@ -164,7 +198,8 @@ vec_rec_max_size <- function(x, gmax) {
     stop("Internal error, malformed size data.")
 
   size <- x[1L,]
-  size[!!x[2L,]] <- gmax
+  group <- which(as.logical(x[2L,]))
+  size[is.na(size)] <- gmax
   if(any(size == 0)) 0 else max(size)
 }
 ## Track Required Allocations for Intermediate vectors
@@ -214,12 +249,12 @@ alloc_dat <- function(dat, depth, size, call) {
   # "free" in the malloc sense, just an indication that next time this function
   # is called it can re-use the slot.
 
-  dat[['depth']][dat[['depth']] < depth & dat[['type']] == 'tmp'] <- Inf
+  dat[['depth']][dat[['depth']] > depth & dat[['type']] == 'tmp'] <- Inf
   dat
 }
 init_dat <- function() list(
-  dat=list(), alloc=numeric(), depth=integer(), id=integer(), type=character(),
-  id=0L
+  dat=list(), alloc=numeric(), depth=integer(), ids=integer(), type=character(),
+  i=0L
 )
 # Data need to contain:
 #
@@ -229,14 +264,15 @@ init_dat <- function() list(
 
 append_dat <- function(dat, new, sizes, depth, type) {
   if(!all(is.num_naked(new))) stop("Internal Error: bad data column.")
+  if(!length(new)) stop("Internal Error: at least one column must be added.")
   if(!type %in% c("res", "grp", "ext")) stop("Internal Error: bad type.")
   id.max <- length(dat[['dat']])
   dat[['dat']] <- c(dat[['dat']], new)
-  dat[['id']] <- c(dat[['id']], seq_along(new) + id.max)
+  dat[['ids']] <- c(dat[['ids']], seq_along(new) + id.max)
   dat[['alloc']] <- c(dat[['alloc']], sizes)
   dat[['depth']] <- c(dat[['depth']], rep(depth, length(new)))
   dat[['type']] <- c(dat[['type']], rep(type, length(new)))
-  dat[['i']] <- id.max
+  dat[['i']] <- id.max + 1L
   dat
 }
 ## Stack used to track parameters ahead of reduction when processing call.

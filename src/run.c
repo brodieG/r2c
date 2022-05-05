@@ -345,5 +345,130 @@ SEXP FAPPLY_run3b(SEXP so, SEXP fun_name, SEXP x, SEXP g) {
   UNPROTECT(1);
   return res_sxp;
 }
+/*
+ * Compute Group Data
+ *
+ * @param g sorted group indices
+ */
+
+SEXP FAPPLY_group_sizes(SEXP g) {
+  if(TYPEOF(g) != INTSXP)
+    error("Argument `g` should be an integer vector.");
+
+  int prt = 0;
+  int *g_int = INTEGER(g);
+  R_xlen_t glen = XLENGTH(g);
+  R_xlen_t gn = 1;  // At least one group, possibly zero sized
+
+  if (glen > 1) {
+    for(R_xlen_t gi = 1; gi < glen; ++gi)
+      if(*(g_int + gi) != *(g_int + gi - 1)) ++gn;
+  }
+  SEXP gsize_sxp = PROTECT(allocVector(REALSXP, gn)); ++prt;
+  SEXP goff_sxp = PROTECT(allocVector(REALSXP, gn)); ++prt;
+
+  double *gsize = REAL(gsize_sxp);
+  double *goff = REAL(goff_sxp);
+  double gmax = 0;
+  *goff = 0;
+  if(glen == 1) *gsize = (double) glen;
+  else if (glen > 1) {
+    R_xlen_t gsize_i = 0;
+    R_xlen_t gi;
+    for(gi = 1; gi < glen; ++gi) {
+      ++gsize_i;
+      // Group changed, record prior group size (recall we start one lagged)
+      if(*(g_int + gi) != *(g_int + gi - 1)) {
+        *(gsize++) = gsize_i;
+        if(gsize_i > gmax) gmax = gsize_i;
+        goff++;
+        *goff = *(goff - 1) + gsize_i;
+        gsize_i = 0;
+      }
+    }
+    // One extra item in the trailing group we will not have counted
+    *gsize = gsize_i + 1;
+    if(*gsize > gmax) gmax = *gsize;
+    goff++;
+    *goff = *(goff - 1) + *gsize;
+  }
+
+  SEXP res = PROTECT(allocVector(VECSXP, 2)); ++prt;
+  SEXP gmax_sxp = PROTECT(ScalarReal(gmax)); ++prt;
+  SET_VECTOR_ELT(res, 0, gsize_sxp);
+  SET_VECTOR_ELT(res, 1, goff_sxp);
+  SET_VECTOR_ELT(res, 2, gmax_sxp);
+  UNPROTECT(prt);
+  return res;
+}
 
 
+void FAPPLY_run_internal(
+  SEXP so, SEXP interface, SEXP dat, SEXP dat_cols, SEXP ids,
+  SEXP ctrl, SEXP grp_lens, SEXP grp_offs
+) {
+  if(TYPEOF(so) != STRSXP || XLENGTH(so) != 1)
+    error("Argument `so` should be a scalar string.");
+  if(TYPEOF(dat_cols) != INTSXP || XLENGTH(dat_cols) != 1)
+    error("Argument `dat_cols` should be a scalar integer.");
+  if(TYPEOF(interface) != INTSXP || XLENGTH(interface) != 1)
+    error("Argument `interface` should be a scalar integer.");
+  if(TYPEOF(grp_lens) != REALSXP)
+    error("Argument `grp_lens` should be a real vector.");
+  if(TYPEOF(grp_offs) != REALSXP || XLENGTH(grp_lens) != XLENGTH(grp_offs))
+    error("Argument `grp_offs` should REALSXP and same length as `grp_lens`.");
+  if(TYPEOF(dat) != VECSXP)
+    error("Argument `data` should be a list.");
+  if(TYPEOF(ids) != VECSXP)
+    error("Argument `ids` should be a list.");
+  if(TYPEOF(ctrl) != VECSXP)
+    error("Argument `ctrl` should be a list.");
+
+  const char * fun_char = CHAR(STRING_ELT(fun_name, 0));
+  const char * dll_char = CHAR(STRING_ELT(so, 0));
+  struct Rf_RegisteredNativeSymbol * symbol = NULL;
+  DL_FUNC fun = R_FindSymbol(fun_char, dll_char, symbol);
+  int dat_c = asInteger(dat_cols);
+  R_xlen_t g_c = XLENGTH(grp_lens);
+  int * g_lens = INTEGER(grp_lens);
+  int * g_offs = INTEGER(grp_offs);
+  int inti = asInteger(interface);
+
+  // Data columns are first, followed by result, and then external cols.
+  // This check incompleted if there are external cols.
+  if(dat_c < 0 || dat_c > XLENGTH(dat) - 1)
+    error("Internal Error: bad data col count.");
+
+  // Retructure data to be seakable without overhead of VECTOR_ELT
+  // R_alloc not guaranteed to align to pointers, blergh. FIXME.
+  double ** data = R_alloc(XLENGTH(dat), sizeof(*double));
+  R_xlen_t * lens = R_alloc(XLENGTH(dat), sizeof(R_xlen_t));
+
+  for(R_xlen_t i = 0; i < XLENGTH(dat); ++i) {
+    SEXP elt = VECTOR_ELT(dat, i);
+    if(TYPEOF(elt) != REALSXP)
+        error("Internal Error: non-real data at %jd\n", (intmax_t) i);
+    *(data + i) = REAL(elt);
+    *(lens + i) = XLENGTH(elt);
+  }
+  // There are four possible interfaces (this is to avoid unused argument
+  // compiler warnings; now wondering if there is a better way to do that).
+
+  // Loop through the groups.
+  for(R_xlen_t ggi = 0; ggi < gn; ++ggi) {
+    // Update group length
+    for(int j = 0; j < dat_c) lens[j] = g_lens[j];
+
+    switch(inti) {  // Hopefully compiler unrolls this out of the loop
+      case 1: (*fun)(data, datai, lens); break;
+      case 2: (*fun)(data, datai, lens, narg); break;
+      case 3: (*fun)(data, datai, lens, ctrl); break;
+      case 4: (*fun)(data, datai, lens, narg, ctrl); break;
+      default: error("Internal Error: invalid interface specified.");
+    }
+    // Increment the data pointers by group offset; the last increment will be
+    // one past end of data, but it will not be dereferenced
+    for(int j = 0; j < dat_c) data[j] += g_offs[j];
+  }
+  // Result should have been updated by reference;
+}

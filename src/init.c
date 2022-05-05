@@ -21,6 +21,7 @@
 
 static const
 R_CallMethodDef callMethods[] = {
+  {"group_sizes", (DL_FUNC) &FAPPLY_group_sizes, 1},
   {"run", (DL_FUNC) &FAPPLY_run, 3},
   {"run2", (DL_FUNC) &FAPPLY_run2, 3},
   {"run3", (DL_FUNC) &FAPPLY_run3, 5},

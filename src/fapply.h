@@ -35,4 +35,6 @@ SEXP FAPPLY_test3(SEXP x, SEXP y, SEXP z, SEXP w);
 SEXP FAPPLY_test4(SEXP x, SEXP y, SEXP z, SEXP w);
 SEXP FAPPLY_test5(SEXP x, SEXP y, SEXP z, SEXP w);
 
+SEXP FAPPLY_group_sizes(SEXP g);
+
 #endif  /* FAPPLY_H */

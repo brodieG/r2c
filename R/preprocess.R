@@ -239,6 +239,7 @@ preprocess <- function(call) {
     "}"
   )
   x[['code-text']] <- structure(code.txt, class="code_text")
+  x[['interface']] <- interface_type(args)
   x
 }
 
@@ -310,4 +311,22 @@ record_call_dat <- function(x, call, depth, argn, type, code) {
   x[['type']] <- c(x[['type']], type)
   x
 }
+# These are the possible interfaces
+# 1. data, datai, off, len
+# 2. data, datai, off, len, narg
+# 3. data, datai, off, len, ctrl
+# 4. data, datai, off, len, narg, ctrl
 
+interface_type <- function(x) {
+  ids <- toString(match(x, ARGS.NM.ALL))
+  valid <- c(
+    toString(1:4),
+    toString(1:5),
+    toString(1:6),
+    toString(c(1:4, 6))
+  )
+  if(!ids %in% valid)
+    stop("Internal Error: invalid generated paramters")
+
+  match(ids, valid)
+}

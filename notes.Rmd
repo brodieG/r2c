@@ -9,6 +9,21 @@
 
 # To Do / Questions
 
+* Make sure pointer arrays are aligned.  Use `malloc`?  If so internal code
+  cannot use `error`, and we can't guarantee that?  Can we register a finalizer
+  somehow (probably will need to).
+* Look into GraalVM, Renjin?
+* Check assumption that double will hold `R_xlen_t`?  Or that length is no
+  longer that the allowable size?  A bit tricky; no way to know what double size
+  is.  This is because we return the group size to R; otherwise it would just be
+  an R_xlen_t vector.  We need this to get the group max for the allocation.
+  It's possible R guarantees this will be no bigger than e.g. 2^53 or some such.
+* Be sure to test situations where we have external data larger and smaller than
+  group sizes.
+* Do we need to handle the issue of `envir` for `match.call` at allocation time
+  instead of at compile time?  Seems like the way this goes wrong is if the
+  expression being looked at itself contains dots, e.g. literally `sum(...)`
+  where the `...` need to be fetched.
 * To allow assignments we can just use a series of nested environments such that
   each sub-call will then seek the symbol through the nested environments.
   We'll need to bind the data symbols to e.g. environments so they may be
@@ -68,7 +83,25 @@
 * Lags and similar (i.e. `x[i] = x[i] * x[i - 1]`).
 * Re-use repeated expressions.
 
-# Odin
+# Done / Answered
+
+* Make sure that no non-numeric data exists other than the stuff going into
+  control.
+
+Yes, we only append the numeric data.
+
+# Other Implementations
+
+## Graal
+
+Main question here is how limiting the R-C boundary is.  Is it the case that
+code such as `data.table` is not any faster?  Does that even run?  How many of
+the packages actually work?  What stuff does not work?  Seems like there should
+be a bit of stuff that doesn't per TK.
+
+## Renjin
+
+## Odin
 
 Fascinating implementation, but the key issue seems to be that it seems to be
 very much focused on the derivative syntax of DeSolve and thus abandons R
