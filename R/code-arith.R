@@ -33,11 +33,11 @@ static void %1$s(%2$s) {
 
   // Ensure longest arg is first
   if(len1 >= len2) {
-    e1 = data[datai[0]] + off[0];
-    e2 = data[datai[1]] + off[1];
+    e1 = data[datai[0]];
+    e2 = data[datai[1]];
   } else {
-    e1 = data[datai[1]] + off[1];
-    e2 = data[datai[0]] + off[0];
+    e1 = data[datai[1]];
+    e2 = data[datai[0]];
     len12 = len2;
     len2 = len1;
     len1 = len12;

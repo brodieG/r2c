@@ -13,13 +13,13 @@
 ##
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
-ARGS.NM.BASE <- c('data', 'datai', 'off', 'len')
+ARGS.NM.BASE <- c('data', 'datai', 'len')
 ARGS.NM.VAR <- 'narg'
 ARGS.NM.CTRL <- 'ctrl'
 ARGS.NM.ALL <- c(ARGS.NM.BASE, ARGS.NM.VAR, ARGS.NM.CTRL)
 
-ARGS.TYPE.F <- c('double **', 'int *', 'R_xlen_t *', 'R_xlen_t *')
-ARGS.TYPE.R <- c('double **', 'int **', 'R_xlen_t **', 'R_xlen_t **')
+ARGS.TYPE.F <- c('double **', 'int *', 'R_xlen_t *')
+ARGS.TYPE.R <- c('double **', 'int **', 'R_xlen_t **')
 
 ## F for function, R for overall runner
 F.ARGS.BASE <- paste(ARGS.TYPE.F, ARGS.NM.BASE)
@@ -46,8 +46,4 @@ stopifnot(
     gsub(pat, "", c(CALL.BASE, CALL.VAR)),
     ARGS.NM.ALL[-length(ARGS.NM.ALL)]
 ) )
-# external is unknown at compile time, external or group is also unknown, but we
-# need to keep track of the possibility that it could be either external or
-# group for final size computation during allocation stage.
-SIZE.TYPES <- c("scalar", "constant", "group", "external", "external_or_group")
 

@@ -404,8 +404,14 @@ SEXP FAPPLY_group_sizes(SEXP g) {
 
 
 void FAPPLY_run_internal(
-  SEXP so, SEXP interface, SEXP dat, SEXP dat_cols, SEXP ids,
-  SEXP ctrl, SEXP grp_lens, SEXP grp_offs
+  SEXP so,
+  SEXP interface,
+  SEXP dat,
+  SEXP dat_cols,
+  SEXP ids,
+  SEXP ctrl,
+  SEXP grp_lens,
+  SEXP res_lens
 ) {
   if(TYPEOF(so) != STRSXP || XLENGTH(so) != 1)
     error("Argument `so` should be a scalar string.");
@@ -415,8 +421,8 @@ void FAPPLY_run_internal(
     error("Argument `interface` should be a scalar integer.");
   if(TYPEOF(grp_lens) != REALSXP)
     error("Argument `grp_lens` should be a real vector.");
-  if(TYPEOF(grp_offs) != REALSXP || XLENGTH(grp_lens) != XLENGTH(grp_offs))
-    error("Argument `grp_offs` should REALSXP and same length as `grp_lens`.");
+  if(TYPEOF(res_lens) != REALSXP || XLENGTH(grp_lens) != XLENGTH(res_lens))
+    error("Argument `res_lens` should REALSXP and same length as `grp_lens`.");
   if(TYPEOF(dat) != VECSXP)
     error("Argument `data` should be a list.");
   if(TYPEOF(ids) != VECSXP)
@@ -430,8 +436,8 @@ void FAPPLY_run_internal(
   DL_FUNC fun = R_FindSymbol(fun_char, dll_char, symbol);
   int dat_c = asInteger(dat_cols);
   R_xlen_t g_c = XLENGTH(grp_lens);
-  int * g_lens = INTEGER(grp_lens);
-  int * g_offs = INTEGER(grp_offs);
+  double * g_lens = REAL(grp_lens);
+  double * r_lens = REAL(grp_lens);
   int inti = asInteger(interface);
 
   // Data columns are first, followed by result, and then external cols.
@@ -451,14 +457,17 @@ void FAPPLY_run_internal(
     *(data + i) = REAL(elt);
     *(lens + i) = XLENGTH(elt);
   }
-  // There are four possible interfaces (this is to avoid unused argument
-  // compiler warnings; now wondering if there is a better way to do that).
+  // Compute.  Resuls is in `data[dat_c]` and is updated by reference
+  for(R_xlen_t i = 0; i < g_c; ++i) {
+    R_xlen_t g_len = (R_xlen_t) g_lens[i];
+    R_xlen_t r_len = (R_xlen_t) r_lens[i];
 
-  // Loop through the groups.
-  for(R_xlen_t ggi = 0; ggi < gn; ++ggi) {
-    // Update group length
-    for(int j = 0; j < dat_c) lens[j] = g_lens[j];
+    // Update group length and result length
+    for(int j = 0; j < dat_c) lens[j] = g_len;
+    data[dat_c] = r_len;
 
+    // There are four possible interfaces (this is to avoid unused argument
+    // compiler warnings; now wondering if there is a better way to do that).
     switch(inti) {  // Hopefully compiler unrolls this out of the loop
       case 1: (*fun)(data, datai, lens); break;
       case 2: (*fun)(data, datai, lens, narg); break;
@@ -466,9 +475,9 @@ void FAPPLY_run_internal(
       case 4: (*fun)(data, datai, lens, narg, ctrl); break;
       default: error("Internal Error: invalid interface specified.");
     }
-    // Increment the data pointers by group offset; the last increment will be
-    // one past end of data, but it will not be dereferenced
-    for(int j = 0; j < dat_c) data[j] += g_offs[j];
+    // Increment the data pointers by group size; the last increment will be
+    // one past end of data, but it will not be dereferenced so okay
+    for(int j = 0; j < dat_c) data[j] += g_lens[j];
+    data[dat_c] += r_len;
   }
-  // Result should have been updated by reference;
 }

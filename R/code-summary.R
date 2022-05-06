@@ -19,7 +19,7 @@
 
 f_summary_base <- '
 static void %%s(%%s) {
-  double * res = data[datai[1]] + off[1];
+  double * res = data[datai[1]];
   *res = 0;
   R_xlen_t len_n = len[0];
   double * dat = data[datai[0]] + off[0];
@@ -38,7 +38,7 @@ f_mean <- sprintf(f_summary_base, loop_base, "\n  *res /= len_n;")
 f_sum_1 <- sprintf(f_summary_base, loop_base, "")
 f_sum_n_base <- '
 static void %%s(%%s) {
-  double * res = data[narg] + off[narg];
+  double * res = data[narg];
   *res = 0;
 
   for(int arg = 0; arg < narg; ++arg) {

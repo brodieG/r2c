@@ -111,7 +111,12 @@ run <- function(data, groups, shlib) {
   handle <- dyn.load(shlib)
   .Call(
     FAPPLY_run_internal, handle[['name']],
-    alloc[['interface']], dat, dat_cols, ids.dat, control
+    alloc[['interface']],
+    dat,
+    dat_cols,
+    ids.dat,
+    control,
+    group.res.sizes
   )
 }
 
