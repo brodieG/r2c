@@ -25,11 +25,12 @@ static void %%s(%%s) {
   int di1 = datai[0];
   int di2 = datai[1];
   double * res = data[di2];
-  Rprintf("  got res\\n");
+  Rprintf("  got res %%%%x\\n", res);
   *res = 0;
   R_xlen_t len_n = lens[di1];
   Rprintf("  get dat\\n");
   double * dat = data[di1];
+  Rprintf("  got dat %%%%x\\n", dat);
   Rprintf("  ctrl\\n");
   int narm = asInteger(VECTOR_ELT(ctrl, 0));
   Rprintf("  loop\\n");
@@ -39,11 +40,17 @@ static void %%s(%%s) {
 '
 loop_base <- '
   if(!narm)
-    for(R_xlen_t i = 0; i < len_n; ++i) *res += dat[i];
+    for(R_xlen_t i = 0; i < len_n; ++i) {
+      Rprintf("    add: %%f\\n", dat[i]);
+      *res += dat[i];
+    }
   else
     for(R_xlen_t i = 0; i < len_n; ++i) if(!isnan(dat[i])) *res += dat[i];
 '
-f_mean <- sprintf(f_summary_base, loop_base, "\n  *res /= len_n;")
+f_mean <- sprintf(
+  f_summary_base,
+  loop_base, "\n  *res /= len_n;\n  Rprintf(\" res: %%f %%d\\n\", *res, len_n);"
+)
 f_sum_1 <- sprintf(f_summary_base, loop_base, "")
 f_sum_n_base <- '
 static void %%s(%%s) {

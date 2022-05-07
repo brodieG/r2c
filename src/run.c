@@ -436,7 +436,7 @@ SEXP FAPPLY_run_internal(
   int dat_count = asInteger(dat_cols);
   R_xlen_t g_count = XLENGTH(grp_lens);
   double * g_lens = REAL(grp_lens);
-  double * r_lens = REAL(grp_lens);
+  double * r_lens = REAL(res_lens);
   int intrf = asInteger(interface);
 
   // Data columns are first, followed by result, and then external cols.
@@ -459,6 +459,7 @@ SEXP FAPPLY_run_internal(
     *(data + i) = REAL(elt);
     *(lens + i) = XLENGTH(elt);
   }
+  Rprintf("Result SEXP %x\n", VECTOR_ELT(dat, dat_count));
   // Indices into data, should be as many as there are calls in the code
   int ** datai = (int **) R_alloc(XLENGTH(ids), sizeof(int*));
   int * narg = (int *) R_alloc(XLENGTH(ids), sizeof(int));
@@ -473,10 +474,11 @@ SEXP FAPPLY_run_internal(
     *(narg + i) = (int) XLENGTH(elt);
   }
   // Compute.  Resuls is in `data[dat_count]` and is updated by reference
-  Rprintf("go\n");
+  Rprintf("go, result %x\n", data[dat_count]);
   for(R_xlen_t i = 0; i < g_count; ++i) {
     R_xlen_t g_len = (R_xlen_t) g_lens[i];  // rows in group
     R_xlen_t r_len = (R_xlen_t) r_lens[i];  // final output size
+    Rprintf("  res len %d\n", r_len);
 
     // Update group length and result length
     for(int j = 0; j < dat_count; ++j) lens[j] = g_len;
@@ -484,7 +486,7 @@ SEXP FAPPLY_run_internal(
 
     // There are four possible interfaces (this is to avoid unused argument
     // compiler warnings; now wondering if there is a better way to do that).
-    Rprintf("interface %d\n", intrf);
+    Rprintf("interface %d res address %x\n", intrf, data[1]);
     switch(intrf) {  // Hopefully compiler unrolls this out of the loop
       case 1: (*fun)(data, lens, datai); break;
       case 2: (*fun)(data, lens, datai, narg); break;
