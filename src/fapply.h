@@ -36,5 +36,9 @@ SEXP FAPPLY_test4(SEXP x, SEXP y, SEXP z, SEXP w);
 SEXP FAPPLY_test5(SEXP x, SEXP y, SEXP z, SEXP w);
 
 SEXP FAPPLY_group_sizes(SEXP g);
+SEXP FAPPLY_run_internal(
+  SEXP so, SEXP interface, SEXP dat, SEXP dat_cols,
+  SEXP ids, SEXP ctrl, SEXP grp_lens, SEXP res_lens
+);
 
 #endif  /* FAPPLY_H */

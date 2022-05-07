@@ -22,7 +22,7 @@ OP.NAMES <- c(
 
 arith_n_m <- '
 static void %1$s(%2$s) {
-  double * res = data[datai[2]] + off[2];
+  double * res = data[datai[2]];
   double * e1;
   double * e2;
   R_xlen_t len1 = len[0];

@@ -373,7 +373,7 @@ SEXP FAPPLY_group_sizes(SEXP g) {
   *goff = 0;
   if(glen == 1) *gsize = (double) glen;
   else if (glen > 1) {
-    R_xlen_t gsize_i = 0;
+    double gsize_i = 0;
     R_xlen_t gi;
     for(gi = 1; gi < glen; ++gi) {
       ++gsize_i;
@@ -389,23 +389,21 @@ SEXP FAPPLY_group_sizes(SEXP g) {
     // One extra item in the trailing group we will not have counted
     *gsize = gsize_i + 1;
     if(*gsize > gmax) gmax = *gsize;
-    goff++;
-    *goff = *(goff - 1) + *gsize;
   }
-
-  SEXP res = PROTECT(allocVector(VECSXP, 2)); ++prt;
+  SEXP res = PROTECT(allocVector(VECSXP, 3)); ++prt;
   SEXP gmax_sxp = PROTECT(ScalarReal(gmax)); ++prt;
   SET_VECTOR_ELT(res, 0, gsize_sxp);
   SET_VECTOR_ELT(res, 1, goff_sxp);
   SET_VECTOR_ELT(res, 2, gmax_sxp);
+  PrintValue(res);
   UNPROTECT(prt);
   return res;
 }
 
 
-void FAPPLY_run_internal(
+SEXP FAPPLY_run_internal(
   SEXP so,
-  SEXP interface,
+  SEXP interface,  // what type of call interface into the runner
   SEXP dat,
   SEXP dat_cols,
   SEXP ids,
@@ -413,6 +411,7 @@ void FAPPLY_run_internal(
   SEXP grp_lens,
   SEXP res_lens
 ) {
+  Rprintf("start\n");
   if(TYPEOF(so) != STRSXP || XLENGTH(so) != 1)
     error("Argument `so` should be a scalar string.");
   if(TYPEOF(dat_cols) != INTSXP || XLENGTH(dat_cols) != 1)
@@ -430,45 +429,63 @@ void FAPPLY_run_internal(
   if(TYPEOF(ctrl) != VECSXP)
     error("Argument `ctrl` should be a list.");
 
-  const char * fun_char = CHAR(STRING_ELT(fun_name, 0));
+  const char * fun_char = "run";
   const char * dll_char = CHAR(STRING_ELT(so, 0));
   struct Rf_RegisteredNativeSymbol * symbol = NULL;
   DL_FUNC fun = R_FindSymbol(fun_char, dll_char, symbol);
-  int dat_c = asInteger(dat_cols);
-  R_xlen_t g_c = XLENGTH(grp_lens);
+  int dat_count = asInteger(dat_cols);
+  R_xlen_t g_count = XLENGTH(grp_lens);
   double * g_lens = REAL(grp_lens);
   double * r_lens = REAL(grp_lens);
-  int inti = asInteger(interface);
+  int intrf = asInteger(interface);
 
   // Data columns are first, followed by result, and then external cols.
   // This check incompleted if there are external cols.
-  if(dat_c < 0 || dat_c > XLENGTH(dat) - 1)
+  if(dat_count < 0 || dat_count > XLENGTH(dat) - 1)
     error("Internal Error: bad data col count.");
 
+  Rprintf("restructure\n");
   // Retructure data to be seakable without overhead of VECTOR_ELT
   // R_alloc not guaranteed to align to pointers, blergh. FIXME.
-  double ** data = R_alloc(XLENGTH(dat), sizeof(*double));
-  R_xlen_t * lens = R_alloc(XLENGTH(dat), sizeof(R_xlen_t));
-
+  double ** data = (double **) R_alloc(XLENGTH(dat), sizeof(double*));
+  R_xlen_t * lens = (R_xlen_t *) R_alloc(XLENGTH(dat), sizeof(R_xlen_t));
   for(R_xlen_t i = 0; i < XLENGTH(dat); ++i) {
     SEXP elt = VECTOR_ELT(dat, i);
     if(TYPEOF(elt) != REALSXP)
-        error("Internal Error: non-real data at %jd\n", (intmax_t) i);
+      error(
+        "Internal Error: non-real data at %jd (%s).\n",
+        (intmax_t) i, type2char(TYPEOF(elt))
+      );
     *(data + i) = REAL(elt);
     *(lens + i) = XLENGTH(elt);
   }
-  // Compute.  Resuls is in `data[dat_c]` and is updated by reference
-  for(R_xlen_t i = 0; i < g_c; ++i) {
-    R_xlen_t g_len = (R_xlen_t) g_lens[i];
-    R_xlen_t r_len = (R_xlen_t) r_lens[i];
+  // Indices into data, should be as many as there are calls in the code
+  int ** datai = (int **) R_alloc(XLENGTH(ids), sizeof(int*));
+  int * narg = (int *) R_alloc(XLENGTH(ids), sizeof(int));
+  for(R_xlen_t i = 0; i < XLENGTH(ids); ++i) {
+    SEXP elt = VECTOR_ELT(ids, i);
+    if(TYPEOF(elt) != INTSXP)
+      error(
+        "Internal Error: non-integer data at %jd (%s).\n", 
+        (intmax_t) i, type2char(TYPEOF(elt))
+      );
+    *(datai + i) = INTEGER(elt);
+    *(narg + i) = (int) XLENGTH(elt);
+  }
+  // Compute.  Resuls is in `data[dat_count]` and is updated by reference
+  Rprintf("go\n");
+  for(R_xlen_t i = 0; i < g_count; ++i) {
+    R_xlen_t g_len = (R_xlen_t) g_lens[i];  // rows in group
+    R_xlen_t r_len = (R_xlen_t) r_lens[i];  // final output size
 
     // Update group length and result length
-    for(int j = 0; j < dat_c) lens[j] = g_len;
-    data[dat_c] = r_len;
+    for(int j = 0; j < dat_count; ++j) lens[j] = g_len;
+    lens[dat_count] = r_len;
 
     // There are four possible interfaces (this is to avoid unused argument
     // compiler warnings; now wondering if there is a better way to do that).
-    switch(inti) {  // Hopefully compiler unrolls this out of the loop
+    Rprintf("interface %d\n", intrf);
+    switch(intrf) {  // Hopefully compiler unrolls this out of the loop
       case 1: (*fun)(data, datai, lens); break;
       case 2: (*fun)(data, datai, lens, narg); break;
       case 3: (*fun)(data, datai, lens, ctrl); break;
@@ -477,7 +494,8 @@ void FAPPLY_run_internal(
     }
     // Increment the data pointers by group size; the last increment will be
     // one past end of data, but it will not be dereferenced so okay
-    for(int j = 0; j < dat_c) data[j] += g_lens[j];
-    data[dat_c] += r_len;
+    for(int j = 0; j < dat_count; ++j) *(data + j) += g_len;
+    *(data + dat_count) += r_len;
   }
+  return R_NilValue;
 }

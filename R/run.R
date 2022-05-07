@@ -65,13 +65,15 @@ run_group2 <- function(shlib, fun, x, g) {
 
 group_sizes <- function(go) .Call(FAPPLY_group_sizes, go)
 
-run <- function(data, groups, shlib) {
+#' @export
+
+fapply <- function(data, groups, preproc, shlib) {
   # FIXME: add validation for shlib
   vetr(data.frame(), INT && length(.) == nrow(data))
   o <- order(groups)
   do <- data[o,]
   # return group lenghts, offsets, and max group size
-  group.dat <- group_dat(g[o])
+  group.dat <- group_sizes(g[o])
   alloc <- alloc(x=preproc, data=do, gmax=group.dat[[3L]])
   stack <- alloc[['stack']]
 
@@ -79,43 +81,42 @@ run <- function(data, groups, shlib) {
   if(ncol(stack) != 1L)
     stop("Internal Error: unexpected stack state at exit.")
 
+  group.sizes <- group.dat[[1L]]
   if(!stack['group', 1L]) { # constant group size
     group.res.sizes <- rep(stack['size', 1L], length(group.dat[[1L]]))
   } else if (is.na(stack['size', 1L])) {
-    group.res.sizes <- group.dat[[1L]]
+    group.res.sizes <- group.sizes
   } else if (is.na(stack['size', 1L])) {
-    group.res.sizes <- group.dat[[1L]]
+    group.res.sizes <- group.sizes
     group.res.sizes[stack['group', 1L] < stack['size', 1L]] <- stack['size', 1L]
   } else { # zero size
     stop("figure out what to do with zero size")
   }
   # Allocate result vector, this will be modified by reference
-  if(length(alloc[['alloc']][['dat']][alloc[['alloc']][['i']]]))
+  if(length(alloc[['alloc']][['dat']][[alloc[['alloc']][['i']]]]))
     stop("Internal Error: result should be zero length when uninitialized.")
-  alloc[['alloc']][['dat']][alloc[['alloc']][['i']]] <-
+  alloc[['alloc']][['dat']][[alloc[['alloc']][['i']]]] <-
     numeric(sum(group.res.sizes))
 
   # Extract control parameters, and run sanity checks (not fool proof)
   dat <- alloc[['alloc']][['dat']]
   control <- lapply(alloc[['call.dat']], "[[", "ctrl")
   ids <- lapply(alloc[['call.dat']], "[[", "ids")
-  ctrl.names.1 <- lapply(ids, function(x) names(x[x == 0]))
-  ctrl.names.2 <- lapply(control, names)
-  if(!identical(ctrl.names.1, ctrl.names.2))
-    stop("Internal Error: control parameter mismatch detected.")
-  ids.dat <- lapply(ids, function(x) x[x != 0])
-  if(!all(unlist(ids.dat) %in% seq_along(dat)))
+  if(!all(unlist(ids) %in% seq_along(dat)))
     stop("Internal Error: Invalid data indices.")
+  ids <- lapply(ids, "-", 1L) # 0-index for C
 
   dat_cols <- sum(dat[['type']] == "grp")
   handle <- dyn.load(shlib)
   .Call(
-    FAPPLY_run_internal, handle[['name']],
+    FAPPLY_run_internal,
+    handle[['name']],
     alloc[['interface']],
     dat,
     dat_cols,
-    ids.dat,
+    ids,
     control,
+    group.sizes,
     group.res.sizes
   )
 }

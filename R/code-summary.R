@@ -19,11 +19,16 @@
 
 f_summary_base <- '
 static void %%s(%%s) {
+  Rprintf("  start\\n");
+  Rprintf("  res off %%%%d\\n", datai[1]);
   double * res = data[datai[1]];
   *res = 0;
   R_xlen_t len_n = len[0];
-  double * dat = data[datai[0]] + off[0];
+  Rprintf("  get dat\\n");
+  double * dat = data[datai[0]];
+  Rprintf("  ctrl\\n");
   int narm = asInteger(VECTOR_ELT(ctrl, 0));
+  Rprintf("  loop\\n");
 
   %s%s
 }
@@ -43,7 +48,7 @@ static void %%s(%%s) {
 
   for(int arg = 0; arg < narg; ++arg) {
     R_xlen_t len_n = len[narg];
-    double * dat = data[arg] + off[arg];
+    double * dat = data[arg];
     %s
   }
 }

@@ -235,7 +235,17 @@ preprocess <- function(call) {
     # Calls
     "",
     sprintf("void run(%s) {", toString(R.ARGS.ALL[match(args, ARGS.NM.ALL)])),
-    paste0("  ", c("int v=0;", code.calls[nzchar(code.calls)])),
+    paste0(
+      "  ",
+      c(
+        "int v=0;",
+        c(
+          paste0(
+            "Rprintf(\"call %d\\n\", ", seq_len(sum(nzchar(code.calls))),");"
+          ),
+          code.calls[nzchar(code.calls)]
+        )[order(rep(seq_len(sum(nzchar(code.calls))), 2))]
+    ) ),
     "}"
   )
   x[['code-text']] <- structure(code.txt, class="code_text")
@@ -312,18 +322,18 @@ record_call_dat <- function(x, call, depth, argn, type, code) {
   x
 }
 # These are the possible interfaces
-# 1. data, datai, off, len
-# 2. data, datai, off, len, narg
-# 3. data, datai, off, len, ctrl
-# 4. data, datai, off, len, narg, ctrl
+# 1. data, datai, len
+# 2. data, datai, len, narg
+# 3. data, datai, len, ctrl
+# 4. data, datai, len, narg, ctrl
 
 interface_type <- function(x) {
   ids <- toString(match(x, ARGS.NM.ALL))
   valid <- c(
-    toString(1:4),
-    toString(1:5),
-    toString(1:6),
-    toString(c(1:4, 6))
+    toString(match(ARGS.NM.BASE, ARGS.NM.ALL)),
+    toString(match(c(ARGS.NM.BASE, ARGS.NM.VAR), ARGS.NM.ALL)),
+    toString(match(c(ARGS.NM.BASE, ARGS.NM.CTRL), ARGS.NM.ALL)),
+    toString(seq_along(ARGS.NM.ALL))
   )
   if(!ids %in% valid)
     stop("Internal Error: invalid generated paramters")

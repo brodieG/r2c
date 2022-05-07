@@ -33,7 +33,7 @@ alloc <- function(x, data, gmax, par.env=parent.frame()) {
   # Add group data.
   if(!all(nzchar(names(data)))) stop("All data must be named.")
   data.naked <- data[is.num_naked(data)]
-  data.used <- logical(data.naked)
+  data.used <- logical(length(data.naked))
   names(data.used) <- names(data.naked)
   alloc <- append_dat(
     init_dat(), new=data.naked, sizes=rep(gmax, length(data.naked)),
@@ -43,7 +43,6 @@ alloc <- function(x, data, gmax, par.env=parent.frame()) {
   alloc <- append_dat(
     alloc, new=list(numeric()), sizes=0L, depth=0L, type="res"
   )
-  res.id <- alloc[['i']]
   # - Process ------------------------------------------------------------------
   #
   # Objective is to compute how much temporary storage we need to track all the
@@ -95,23 +94,15 @@ alloc <- function(x, data, gmax, par.env=parent.frame()) {
           colnames(stack) %in% ftype[[2L]] & stack['depth',] == depth + 1L,
           drop=FALSE
         ]
-        if(depth > 0L) {  # depth == 0 is the result vector, alloc'ed later
-          alloc <- alloc_dat(
-            alloc, depth, size=vec_rec_max_size(sizes.tmp, gmax), call
-          )
-          id <- alloc[['i']]
-        } else {
-          id <- res.id
-        }
+        alloc <- alloc_dat(
+          alloc, depth, size=vec_rec_max_size(sizes.tmp, gmax), call
+        )
         size <- vec_rec_known_size(sizes.tmp[1L,])  # knowable sizes
         group <- max(sizes.tmp[2L,])                # any group size in the lot?
       } else stop("Internal Error: unknown function type.")
 
-      if(depth > 0L) {
-        id <- alloc[['i']]
-      } else {
-        id <- res.id
-      }
+      id <- alloc[['i']]
+
       # Reduce call data, including parameter and result ids, and reduce stack
       call.dat <- append_call_dat(
        call.dat, call=call,
@@ -157,15 +148,19 @@ alloc <- function(x, data, gmax, par.env=parent.frame()) {
     } else stop("Internal Error: unexpected token.")
   }
   # Remove unused data, and re-index to account for that
-  ids.all <- seq_len(alloc[['dat']])
-  ids.keep <- ids.all[alloc[['type']] != grp | ids.all %in% which(data.used)]
+  ids.all <- seq_along(alloc[['dat']])
+  ids.keep <- ids.all[
+    alloc[['type']] %in% c("res", "ext", "tmp") | ids.all %in% which(data.used)
+  ]
   call.dat <- lapply(
     call.dat, function(x) {
-      x[['ids']] <- match(x[['ids']], ids.keep)
+      x[['ids']] <- match(x[['ids']][x[['ids']] %in% ids.keep], ids.keep)
       x
   } )
+  stack['id',] <- match(stack['id',], ids.keep)
+
   alloc.fin <- lapply(alloc[c('dat', 'alloc', 'depth', 'type')], "[", ids.keep)
-  alloc.fin[['i']] <- alloc[['i']]
+  alloc.fin[['i']] <- match(alloc[['i']], ids.keep)
   list(
     alloc=alloc.fin, call.dat=call.dat, stack=stack, interface=x[['interface']]
   )
@@ -223,27 +218,33 @@ alloc_dat <- function(dat, depth, size, call) {
   writeLines(sprintf("  d: %d s: %d c: %s", depth, size, deparse1(call)))
   if(depth == .Machine$integer.max)
     stop("Expression max depth exceeded for alloc.") # exceedingly unlikely
-  free <- !is.finite(dat[['depth']])
-  fit <- free & dat[['type']] == "tmp" & dat[['alloc']] >= size
-  if(!any(fit)) {
-    # New allocation, then sort by size
-    dat[['alloc']] <- c(dat[['alloc']], size)
-    dat[['depth']] <- c(dat[['depth']], depth)
-    id <- if(length(dat[['ids']])) max(dat[['ids']]) + 1L else 1L
-    dat[['ids']] <- c(dat[['ids']], id)
-    dat[['type']] <- c(dat[['type']], 'tmp')
-    dat[['dat']] <- c(dat[['dat']], list(numeric(size)))
-    writeLines(paste0("    alloc new: ", size))
-    dat[['i']] <- id
+
+  if(depth > 0) {
+    free <- !is.finite(dat[['depth']])
+    fit <- free & dat[['type']] == "tmp" & dat[['alloc']] >= size
+    if(!any(fit)) {
+      # New allocation, then sort by size
+      dat[['alloc']] <- c(dat[['alloc']], size)
+      dat[['depth']] <- c(dat[['depth']], depth)
+      id <- if(length(dat[['ids']])) max(dat[['ids']]) + 1L else 1L
+      dat[['ids']] <- c(dat[['ids']], id)
+      dat[['type']] <- c(dat[['type']], 'tmp')
+      dat[['dat']] <- c(dat[['dat']], list(numeric(size)))
+      writeLines(paste0("    alloc new: ", size))
+      dat[['i']] <- id
+    } else {
+      # Allocate to smallest available that will fit
+      target <- which.min(dat[['alloc']][fit])
+      slot <- seq_along(dat[['alloc']])[fit][target]
+      writeLines(
+        sprintf("    re-use slot: %d (size %d)", slot, dat[['alloc']][slot])
+      )
+      dat[['depth']][slot] <- depth
+      dat[['i']] <- dat[['ids']][slot]
+    }
   } else {
-    # Allocate to smallest available that will fit
-    target <- which.min(dat[['alloc']][fit])
-    slot <- seq_along(dat[['alloc']])[fit][target]
-    writeLines(
-      sprintf("    re-use slot: %d (size %d)", slot, dat[['alloc']][slot])
-    )
-    dat[['depth']][slot] <- depth
-    dat[['i']] <- dat[['ids']][slot]
+      # Result
+      dat[['i']] <- which(dat[['type']] == "res")
   }
   # Free the data we no longer need for the next go-around.  This is not a
   # "free" in the malloc sense, just an indication that next time this function
