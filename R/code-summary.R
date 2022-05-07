@@ -20,12 +20,16 @@
 f_summary_base <- '
 static void %%s(%%s) {
   Rprintf("  start\\n");
-  Rprintf("  res off %%%%d\\n", datai[1]);
-  double * res = data[datai[1]];
+  Rprintf("  res offsets %%%%d \\n", datai[0]);
+  Rprintf("  res offsets %%%%d \\n", datai[1]);
+  int di1 = datai[0];
+  int di2 = datai[1];
+  double * res = data[di2];
+  Rprintf("  got res\\n");
   *res = 0;
-  R_xlen_t len_n = len[0];
+  R_xlen_t len_n = lens[di1];
   Rprintf("  get dat\\n");
-  double * dat = data[datai[0]];
+  double * dat = data[di1];
   Rprintf("  ctrl\\n");
   int narm = asInteger(VECTOR_ELT(ctrl, 0));
   Rprintf("  loop\\n");

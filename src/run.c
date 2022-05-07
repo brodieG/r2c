@@ -486,10 +486,10 @@ SEXP FAPPLY_run_internal(
     // compiler warnings; now wondering if there is a better way to do that).
     Rprintf("interface %d\n", intrf);
     switch(intrf) {  // Hopefully compiler unrolls this out of the loop
-      case 1: (*fun)(data, datai, lens); break;
-      case 2: (*fun)(data, datai, lens, narg); break;
-      case 3: (*fun)(data, datai, lens, ctrl); break;
-      case 4: (*fun)(data, datai, lens, narg, ctrl); break;
+      case 1: (*fun)(data, lens, datai); break;
+      case 2: (*fun)(data, lens, datai, narg); break;
+      case 3: (*fun)(data, lens, datai, ctrl); break;
+      case 4: (*fun)(data, lens, datai, narg, ctrl); break;
       default: error("Internal Error: invalid interface specified.");
     }
     // Increment the data pointers by group size; the last increment will be

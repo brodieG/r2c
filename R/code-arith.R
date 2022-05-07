@@ -22,22 +22,26 @@ OP.NAMES <- c(
 
 arith_n_m <- '
 static void %1$s(%2$s) {
-  double * res = data[datai[2]];
+  int di1 = datai[0];
+  int di2 = datai[2];
+  int di3 = datai[3];
+  double * res = data[di2];
+
   double * e1;
   double * e2;
-  R_xlen_t len1 = len[0];
-  R_xlen_t len2 = len[1];
+  R_xlen_t len1 = lens[di1];
+  R_xlen_t len2 = lens[di2];
   R_xlen_t len12 = 0;
 
   if(len1 == 0 || len2 == 0) return; // empty recycle is zero
 
   // Ensure longest arg is first
   if(len1 >= len2) {
-    e1 = data[datai[0]];
-    e2 = data[datai[1]];
+    e1 = data[di1];
+    e2 = data[di2];
   } else {
-    e1 = data[datai[1]];
-    e2 = data[datai[0]];
+    e1 = data[di2];
+    e2 = data[di1];
     len12 = len2;
     len2 = len1;
     len1 = len12;

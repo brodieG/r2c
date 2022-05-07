@@ -13,13 +13,13 @@
 ##
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
-ARGS.NM.BASE <- c('data', 'datai', 'len')
+ARGS.NM.BASE <- c('data', 'lens', 'datai')
 ARGS.NM.VAR <- 'narg'
 ARGS.NM.CTRL <- 'ctrl'
 ARGS.NM.ALL <- c(ARGS.NM.BASE, ARGS.NM.VAR, ARGS.NM.CTRL)
 
-ARGS.TYPE.F <- c('double **', 'int *', 'R_xlen_t *')
-ARGS.TYPE.R <- c('double **', 'int **', 'R_xlen_t **')
+ARGS.TYPE.F <- c('double **', 'R_xlen_t *', 'int *')
+ARGS.TYPE.R <- c('double **', 'R_xlen_t *', 'int **')
 
 ## F for function, R for overall runner
 F.ARGS.BASE <- paste(ARGS.TYPE.F, ARGS.NM.BASE)
@@ -33,7 +33,7 @@ F.ARGS.CTRL <- R.ARGS.CTRL <- 'SEXP ctrl'
 F.ARGS.ALL <- c(F.ARGS.BASE, F.ARGS.VAR, F.ARGS.CTRL)
 R.ARGS.ALL <- c(R.ARGS.BASE, R.ARGS.VAR, R.ARGS.CTRL)
 
-CALL.BASE <- c(ARGS.NM.BASE[1L], paste0("*", ARGS.NM.BASE[-1L], "++"))
+CALL.BASE <- c(ARGS.NM.BASE[1L:2L], paste0("*", ARGS.NM.BASE[3L], "++"))
 CALL.VAR <- "*narg++"
 CALL.CTRL <- "VECTOR_ELT(ctrl, v++)"
 

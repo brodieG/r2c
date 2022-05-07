@@ -61,8 +61,6 @@ run_group2 <- function(shlib, fun, x, g) {
   o <- order(g)
   .Call(FAPPLY_run3b, handle[['name']], fun, list(x[[1]][o], x[[2]][o]), g[o])
 }
-
-
 group_sizes <- function(go) .Call(FAPPLY_group_sizes, go)
 
 #' @export
@@ -106,7 +104,7 @@ fapply <- function(data, groups, preproc, shlib) {
     stop("Internal Error: Invalid data indices.")
   ids <- lapply(ids, "-", 1L) # 0-index for C
 
-  dat_cols <- sum(dat[['type']] == "grp")
+  dat_cols <- sum(alloc[['alloc']][['type']] == "grp")
   handle <- dyn.load(shlib)
   .Call(
     FAPPLY_run_internal,
@@ -119,5 +117,7 @@ fapply <- function(data, groups, preproc, shlib) {
     group.sizes,
     group.res.sizes
   )
+  # Result vector is modified by reference
+  dat[[which(alloc[['alloc']][['type']] == "res")]]
 }
 
