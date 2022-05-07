@@ -23,9 +23,9 @@ OP.NAMES <- c(
 arith_n_m <- '
 static void %1$s(%2$s) {
   int di1 = datai[0];
-  int di2 = datai[2];
-  int di3 = datai[3];
-  double * res = data[di2];
+  int di2 = datai[1];
+  int di3 = datai[2];
+  double * res = data[di3];
 
   double * e1;
   double * e2;

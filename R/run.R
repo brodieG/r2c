@@ -84,7 +84,7 @@ fapply <- function(data, groups, preproc, shlib) {
     group.res.sizes <- rep(stack['size', 1L], length(group.dat[[1L]]))
   } else if (is.na(stack['size', 1L])) {
     group.res.sizes <- group.sizes
-  } else if (is.na(stack['size', 1L])) {
+  } else if (stack['size', 1L]) {
     group.res.sizes <- group.sizes
     group.res.sizes[stack['group', 1L] < stack['size', 1L]] <- stack['size', 1L]
   } else { # zero size
