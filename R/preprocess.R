@@ -237,15 +237,8 @@ preprocess <- function(call) {
     sprintf("void run(%s) {", toString(R.ARGS.ALL[match(args, ARGS.NM.ALL)])),
     paste0(
       "  ",
-      c(
-        "int v=0;",
-        c(
-          paste0(
-            "Rprintf(\"call %d\\n\", ", seq_len(sum(nzchar(code.calls))),");"
-          ),
-          code.calls[nzchar(code.calls)]
-        )[order(rep(seq_len(sum(nzchar(code.calls))), 2))]
-    ) ),
+      c("int v=0;", code.calls[nzchar(code.calls)])
+    ),
     "}"
   )
   x[['code-text']] <- structure(code.txt, class="code_text")

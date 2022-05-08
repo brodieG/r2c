@@ -215,7 +215,7 @@ vec_rec_max_size <- function(x, gmax) {
 ## * i: scalar integer the first index of the appended items.
 
 alloc_dat <- function(dat, depth, size, call) {
-  writeLines(sprintf("  d: %d s: %d c: %s", depth, size, deparse1(call)))
+  # writeLines(sprintf("  d: %d s: %d c: %s", depth, size, deparse1(call)))
   if(depth == .Machine$integer.max)
     stop("Expression max depth exceeded for alloc.") # exceedingly unlikely
 
@@ -230,15 +230,15 @@ alloc_dat <- function(dat, depth, size, call) {
       dat[['ids']] <- c(dat[['ids']], id)
       dat[['type']] <- c(dat[['type']], 'tmp')
       dat[['dat']] <- c(dat[['dat']], list(numeric(size)))
-      writeLines(paste0("    alloc new: ", size))
+      # writeLines(paste0("    alloc new: ", size))
       dat[['i']] <- id
     } else {
       # Allocate to smallest available that will fit
       target <- which.min(dat[['alloc']][fit])
       slot <- seq_along(dat[['alloc']])[fit][target]
-      writeLines(
-        sprintf("    re-use slot: %d (size %d)", slot, dat[['alloc']][slot])
-      )
+      # writeLines(
+      #   sprintf("    re-use slot: %d (size %d)", slot, dat[['alloc']][slot])
+      # )
       dat[['depth']][slot] <- depth
       dat[['i']] <- dat[['ids']][slot]
     }

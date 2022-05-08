@@ -7,8 +7,22 @@
   need to exclude controls, make sure that `trim` is accounted for in some way,
   etc.).
 
+For each call we need to know the input lengths and the output lengths.  So in
+addition to ids, we need to record the lengths.
+
+At each loop iteration, we need to recompute what the length of each id is going
+to be.  We'll have for each id whether it is affected by group size, what the
+size is otherwise, and what the group size is.  So we generate a variable
+function?  For each group, it is fed the group size, and the stack/ids, and it
+figures it out?
+
+    res_size <- function(g, ids) {
+
+    }
+
 # To Do / Questions
 
+* Issue recycling warnings?
 * Make sure pointer arrays are aligned.  Use `malloc`?  If so internal code
   cannot use `error`, and we can't guarantee that?  Can we register a finalizer
   somehow (probably will need to).

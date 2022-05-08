@@ -24,8 +24,8 @@ arith_n_m <- '
 static void %1$s(%2$s) {
   int di1 = datai[0];
   int di2 = datai[1];
-  int di3 = datai[2];
-  double * res = data[di3];
+  int dires = datai[2];
+  double * res = data[dires];
 
   double * e1;
   double * e2;
@@ -33,7 +33,10 @@ static void %1$s(%2$s) {
   R_xlen_t len2 = lens[di2];
   R_xlen_t len12 = 0;
 
-  if(len1 == 0 || len2 == 0) return; // empty recycle is zero
+  if(len1 == 0 || len2 == 0) { // empty recycle is zero
+    lens[dires] = 0;
+    return;
+  }
 
   // Ensure longest arg is first
   if(len1 >= len2) {
@@ -59,6 +62,7 @@ static void %1$s(%2$s) {
       res[i] = e1[i] %3$s e2[j];
     }
   }
+  lens[dires] = len1;
 }
 '
 code_gen_arith <- function(fun, args.reg, args.ctrl) {

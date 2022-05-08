@@ -56,9 +56,7 @@ SEXP FAPPLY_run(SEXP so, SEXP fun_name, SEXP x) {
   const char * fun_char = CHAR(STRING_ELT(fun_name, 0));
   const char * dll_char = CHAR(STRING_ELT(so, 0));
   struct Rf_RegisteredNativeSymbol * symbol = NULL;
-  Rprintf("finding symbol for '%s' '%s'", fun_char, dll_char);
   fun = R_FindSymbol(fun_char, dll_char, symbol);
-  Rprintf("Calling fun");
   return (*fun)(x);
 }
 /*
@@ -336,7 +334,6 @@ SEXP FAPPLY_run3b(SEXP so, SEXP fun_name, SEXP x, SEXP g) {
   DL_FUNC fun = R_FindSymbol(fun_char, dll_char, symbol);
   SEXP res_sxp = PROTECT(allocVector(REALSXP, glen));
   double * res = REAL(res_sxp);
-  // Rprintf("results size %d\n", (int) XLENGTH(res_sxp));
 
   for(R_xlen_t ggi = 0; ggi < gn; ++ggi) {
     R_xlen_t size = *(gsize + ggi);
@@ -395,11 +392,9 @@ SEXP FAPPLY_group_sizes(SEXP g) {
   SET_VECTOR_ELT(res, 0, gsize_sxp);
   SET_VECTOR_ELT(res, 1, goff_sxp);
   SET_VECTOR_ELT(res, 2, gmax_sxp);
-  PrintValue(res);
   UNPROTECT(prt);
   return res;
 }
-
 
 SEXP FAPPLY_run_internal(
   SEXP so,
@@ -411,7 +406,6 @@ SEXP FAPPLY_run_internal(
   SEXP grp_lens,
   SEXP res_lens
 ) {
-  Rprintf("start\n");
   if(TYPEOF(so) != STRSXP || XLENGTH(so) != 1)
     error("Argument `so` should be a scalar string.");
   if(TYPEOF(dat_cols) != INTSXP || XLENGTH(dat_cols) != 1)
@@ -444,7 +438,6 @@ SEXP FAPPLY_run_internal(
   if(dat_count < 0 || dat_count > XLENGTH(dat) - 1)
     error("Internal Error: bad data col count.");
 
-  Rprintf("restructure\n");
   // Retructure data to be seakable without overhead of VECTOR_ELT
   // R_alloc not guaranteed to align to pointers, blergh. FIXME.
   double ** data = (double **) R_alloc(XLENGTH(dat), sizeof(double*));
@@ -459,34 +452,31 @@ SEXP FAPPLY_run_internal(
     *(data + i) = REAL(elt);
     *(lens + i) = XLENGTH(elt);
   }
-  Rprintf("Result SEXP %x\n", VECTOR_ELT(dat, dat_count));
   // Indices into data, should be as many as there are calls in the code
   int ** datai = (int **) R_alloc(XLENGTH(ids), sizeof(int*));
   int * narg = (int *) R_alloc(XLENGTH(ids), sizeof(int));
-  for(R_xlen_t i = 0; i < XLENGTH(ids); ++i) {
+  R_xlen_t call_count = XLENGTH(ids);
+  for(R_xlen_t i = 0; i < call_count; ++i) {
     SEXP elt = VECTOR_ELT(ids, i);
     if(TYPEOF(elt) != INTSXP)
       error(
-        "Internal Error: non-integer data at %jd (%s).\n", 
+        "Internal Error: non-integer data at %jd (%s).\n",
         (intmax_t) i, type2char(TYPEOF(elt))
       );
     *(datai + i) = INTEGER(elt);
     *(narg + i) = (int) XLENGTH(elt);
   }
   // Compute.  Resuls is in `data[dat_count]` and is updated by reference
-  Rprintf("go, result %x\n", data[dat_count]);
   for(R_xlen_t i = 0; i < g_count; ++i) {
     R_xlen_t g_len = (R_xlen_t) g_lens[i];  // rows in group
     R_xlen_t r_len = (R_xlen_t) r_lens[i];  // final output size
-    Rprintf("  res len %d\n", r_len);
 
-    // Update group length and result length
+    // Update group length and result length; note: `lens` should be updated by
+    // the C functions to reflect the size of the intermediate results
     for(int j = 0; j < dat_count; ++j) lens[j] = g_len;
-    lens[dat_count] = r_len;
 
     // There are four possible interfaces (this is to avoid unused argument
     // compiler warnings; now wondering if there is a better way to do that).
-    Rprintf("interface %d res address %x\n", intrf, data[1]);
     switch(intrf) {  // Hopefully compiler unrolls this out of the loop
       case 1: (*fun)(data, lens, datai); break;
       case 2: (*fun)(data, lens, datai, narg); break;
@@ -497,6 +487,11 @@ SEXP FAPPLY_run_internal(
     // Increment the data pointers by group size; the last increment will be
     // one past end of data, but it will not be dereferenced so okay
     for(int j = 0; j < dat_count; ++j) *(data + j) += g_len;
+    if(lens[dat_count] != r_len)
+      error(
+        "Group result size does not match expected (%ju vs expected %ju).",
+        lens[dat_count], r_len
+      );
     *(data + dat_count) += r_len;
   }
   return R_NilValue;
