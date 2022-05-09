@@ -25,6 +25,7 @@ static void %1$s(%2$s) {
   int di1 = datai[0];
   int di2 = datai[1];
   int dires = datai[2];
+
   double * res = data[dires];
 
   double * e1;
@@ -50,7 +51,6 @@ static void %1$s(%2$s) {
     len1 = len12;
   }
   // Mod iterate by region?
-
   R_xlen_t i, j;
   if(len1 == len2) {
     for(i = 0; i < len1; ++i) res[i] = e1[i] %3$s e2[i];

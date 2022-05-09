@@ -22,6 +22,9 @@ figures it out?
 
 # To Do / Questions
 
+* Can we get more memory efficient by e.g. using `+=` to avoid having to have
+  memory allocated for both LHS and RHS for the arithmetic operators?  Might
+  complicate things substantially.
 * Issue recycling warnings?
 * Make sure pointer arrays are aligned.  Use `malloc`?  If so internal code
   cannot use `error`, and we can't guarantee that?  Can we register a finalizer

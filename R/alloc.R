@@ -194,7 +194,7 @@ vec_rec_max_size <- function(x, gmax) {
 
   size <- x[1L,]
   group <- which(as.logical(x[2L,]))
-  size[is.na(size)] <- gmax
+  size[is.na(size) | group] <- gmax
   if(any(size == 0)) 0 else max(size)
 }
 ## Track Required Allocations for Intermediate vectors
