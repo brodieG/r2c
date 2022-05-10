@@ -2,48 +2,14 @@
 % Please edit documentation in R/code.R
 \name{code_gen}
 \alias{code_gen}
-\title{Translate Pre-process Data Into Code}
+\title{Code Generation Functions}
 \usage{
 code_gen(dat)
 }
 \description{
-Needs to:
-\enumerate{
-\item Deduplicate and write definitions.
-\item Generate the ** of data pointer indices.
-\item Generate the ** of data pointer offsets.
-\item Generate the ** of data pointer lengths.
-}
-}
-\details{
-Number 2 just needs to be done once.  Numbers 3 and 4 need to be updated for
-each group.  Realistically, for number 3 and 4 there will be one set that is
-updating with the groups, where the length is the group size and the offset
-is the cumsum of the prior groups, and another where these numbers are
-constant.  So in between calling groups.  But the complexity is that since we
-update the data structure line by line, each time we advance what is in each
-group might change.
-
-We need to clearly segregate in the data the immutable data and the mutable
-data?  Or just those entries that might or might not require offsets to save
-the offset calc?
-
-If we require each function update the length offset of the written result,
-then we don't have to maintain this ourselves.  This simplifies things quite
-a bit.
-
-For each call, we need the indices of its inputs, and that of it's output.
 \itemize{
-\item Output: get from \code{alloc_dat} call
+\item Must accept one of four possible signatures.
+\item Must set result by reference.
+\item Must set result size by reference.
 }
-
-Between each group, update the offset and len vectors for the data.
-
-To conclude thought process, we do need to keep appending all the numeric
-data to one big vector, including both group data, temp data, and argument
-data, indicating the type of each.  Then, for each call we can generate an
-index into this large vector.
-
-The vector is never re-ordered, we only do the reordering to assess whether
-we can re-use one of the temporary data structures or not.
 }

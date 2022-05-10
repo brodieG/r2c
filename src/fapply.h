@@ -24,18 +24,6 @@
 #include <Rversion.h>
 #include <stdint.h>
 
-SEXP FAPPLY_run(SEXP so, SEXP fun, SEXP x);
-SEXP FAPPLY_run2(SEXP so, SEXP fun_name, SEXP x);
-SEXP FAPPLY_run3(SEXP so, SEXP fun_name, SEXP x, SEXP g, SEXP flag);
-SEXP FAPPLY_run3a(SEXP so, SEXP fun_name, SEXP x, SEXP g, SEXP flag);
-SEXP FAPPLY_run3b(SEXP so, SEXP fun_name, SEXP x, SEXP g);
-
-SEXP FAPPLY_test1(SEXP x, SEXP y, SEXP z, SEXP w);
-SEXP FAPPLY_test2(SEXP x, SEXP y, SEXP z, SEXP w);
-SEXP FAPPLY_test3(SEXP x, SEXP y, SEXP z, SEXP w);
-SEXP FAPPLY_test4(SEXP x, SEXP y, SEXP z, SEXP w);
-SEXP FAPPLY_test5(SEXP x, SEXP y, SEXP z, SEXP w);
-
 SEXP FAPPLY_group_sizes(SEXP g);
 SEXP FAPPLY_run_internal(
   SEXP so, SEXP interface, SEXP dat, SEXP dat_cols,

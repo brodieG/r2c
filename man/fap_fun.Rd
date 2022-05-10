@@ -9,9 +9,10 @@ fap_fun(
   fun,
   defn,
   ctrl.params = character(),
+  flag.params = character(),
   type,
   code.gen,
-  ctrl.validate = function(x) TRUE
+  ctrl.validate = function(...) 0L
 )
 }
 \arguments{
@@ -25,7 +26,14 @@ for \code{\link{match.call}}'s \code{definition} parameter.}
 \item{ctrl.params}{character names of all the formal parameters that are
 to be evaluated once up front and not for each group in the data.  If any
 data columns are referenced by these parameters, the entire data column
-will be used for them, not the group varying subsets of them.}
+will be used for them, not the group varying subsets of them.  Any
+parameters here are exclusive of those listed in \code{flag.params}.}
+
+\item{flag.params}{character names as for \code{ctrl.params}, except this is
+specifically for parameters that evaluated to TRUE or FALSE, so that they
+may be conveyed to the function without the need to use \code{VECTOR_ELT}, etc.,
+to access the specific control parameter.  Any parameters here are
+exclusive of those listed in \code{ctrl.params}.}
 
 \item{type}{list(2L) containing the type of function in "constant", "arglen",
 or "vecrec" at position one, and additional meta data at position two
@@ -49,6 +57,9 @@ function semantics):
 where arguments of group size are given NA size.
 \item A list of the evaluated control parameters.
 }}
+
+\item{ctrl.validate}{a function to validate both control and flag parameters,
+should \code{stop}, or return the flag parameters encoded into an integer.}
 }
 \value{
 a list containing the above information after validating it.
