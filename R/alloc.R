@@ -58,7 +58,7 @@ alloc <- function(x, data, gmax, par.env=parent.frame()) {
   # * The list of evaluated control parameters.
 
   stack <- init_stack()
-  stack.ctrl <- list()
+  stack.ctrl <- stack.flag <- list()
   call.dat <- list()
 
   for(i in seq_along(x[['call']])) {
@@ -104,17 +104,22 @@ alloc <- function(x, data, gmax, par.env=parent.frame()) {
       id <- alloc[['i']]
 
       # Reduce call data, including parameter and result ids, and reduce stack
+      flag <- VALID_FUNS[[c(name, "ctrl.validate")]](
+        stack.ctrl, stack.flag, call
+      )
       call.dat <- append_call_dat(
-       call.dat, call=call,
+        call.dat, call=call,
         ids=c(stack['id', stack['depth',] > depth], result=id),
-        ctrl=stack.ctrl
+        ctrl=stack.ctrl, flag=flag
       )
       stack <- append_stack(
         stack[,stack['depth',] <= depth, drop=FALSE], id=id, depth=depth,
         size=size, group=group, argn=argn
       )
-      stack.ctrl <- list()
-    } else if (type == "control" || !name %in% names(data.naked)) {
+      stack.ctrl <- stack.flag <- list()
+    } else if (
+      type %in% c("control", "flag") || !name %in% names(data.naked)
+    ) {
       # Need to eval parameter
       arg.e <- eval(call, envir=data, enclos=env)
       # Validate external args after eval
@@ -129,6 +134,11 @@ alloc <- function(x, data, gmax, par.env=parent.frame()) {
         ctrl <- list(arg.e)
         names(ctrl) <- argn
         stack.ctrl <- c(stack.ctrl, ctrl)
+        id <- 0L
+      } else if (type == "flag") {
+        flag <- list(arg.e)
+        names(flag) <- argn
+        stack.flag <- c(stack.flag, flag)
         id <- 0L
       } else {
         alloc <- append_dat(
@@ -294,8 +304,8 @@ append_stack <- function(stack, id, depth, size, group, argn) {
   colnames(stack)[ncol(stack)] <- argn
   stack
 }
-append_call_dat <- function(call.dat, call, ids, ctrl) {
-  c(call.dat, list(list(call=call, ids=ids, ctrl=ctrl)))
+append_call_dat <- function(call.dat, call, ids, ctrl, flag) {
+  c(call.dat, list(list(call=call, ids=ids, ctrl=ctrl, flag=flag)))
 }
 ## Check function validity
 check_fun <- function(x, env) {

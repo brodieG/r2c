@@ -32,7 +32,7 @@ R_CallMethodDef callMethods[] = {
   {"test3", (DL_FUNC) &FAPPLY_test3, 4},
   {"test4", (DL_FUNC) &FAPPLY_test4, 4},
   {"test5", (DL_FUNC) &FAPPLY_test5, 4},
-  {"run_internal", (DL_FUNC) &FAPPLY_run_internal, 8},
+  {"run_internal", (DL_FUNC) &FAPPLY_run_internal, 9},
 
   {NULL, NULL, 0}
 };

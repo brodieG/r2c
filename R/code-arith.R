@@ -65,8 +65,14 @@ static void %1$s(%2$s) {
   lens[dires] = len1;
 }
 '
-code_gen_arith <- function(fun, args.reg, args.ctrl) {
-  vetr(CHR.1 && . %in% names(OP.NAMES), list(), list() && !length(.))
+code_gen_arith <- function(fun, args.reg, args.ctrl, args.flags) {
+  vetr(, list(), list() && !length(.))
+  vetr(
+    CHR.1 && . %in% names(OP.NAMES),
+    args.reg=list(),
+    args.ctrl=list() && length(.) == 0L,
+    args.flags=list() && length(.) == 0L
+  )
   args <- ARGS.NM.BASE
   name <- paste0(OP.NAMES[fun], "_n_m")
   defn <- sprintf(arith_n_m, name, toString(F.ARGS.BASE), fun)

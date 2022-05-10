@@ -76,7 +76,13 @@ match_call <- function(definition, call, envir, name) {
 #' @param ctrl.params character names of all the formal parameters that are
 #'   to be evaluated once up front and not for each group in the data.  If any
 #'   data columns are referenced by these parameters, the entire data column
-#'   will be used for them, not the group varying subsets of them.
+#'   will be used for them, not the group varying subsets of them.  Any
+#'   parameters here are exclusive of those listed in `flag.params`.
+#' @param flag.params character names as for `ctrl.params`, except this is
+#'   specifically for parameters that evaluated to TRUE or FALSE, so that they
+#'   may be conveyed to the function without the need to use `VECTOR_ELT`, etc.,
+#'   to access the specific control parameter.  Any parameters here are
+#'   exclusive of those listed in `ctrl.params`.
 #' @param type list(2L) containing the type of function in "constant", "arglen",
 #'   or "vecrec" at position one, and additional meta data at position two
 #'   that can be depending on the value in position one:
@@ -98,11 +104,14 @@ match_call <- function(definition, call, envir, name) {
 #'     where arguments of group size are given NA size.
 #'   * A list of the evaluated control parameters.
 #'
+#' @param ctrl.validate a function to validate both control and flag parameters,
+#'   should `stop`, or return the flag parameters encoded into an integer.
+#'
 #' @return a list containing the above information after validating it.
 
 fap_fun <- function(
-  name, fun, defn, ctrl.params=character(), type,
-  code.gen, ctrl.validate=function(x) TRUE
+  name, fun, defn, ctrl.params=character(), flag.params=character(),
+  type, code.gen, ctrl.validate=function(...) 0L
 ) {
   vetr(
     name=CHR.1,
@@ -111,10 +120,15 @@ fap_fun <- function(
     ctrl.params=
       character() && !anyNA(.) && all(. %in% names(formals(defn))) &&
       !"..." %in% .,
+    flag.params=
+      character() && !anyNA(.) && all(. %in% names(formals(defn))) &&
+      !"..." %in% . && length(.) < 32L,
     type=list(NULL, NULL),
     code.gen=is.function(.),
     ctrl.validate=is.function(.)
   )
+  if(length(intersect(ctrl.params, flag.params)))
+    stop("Control and Flag parameters may not overlap.")
   # Bug in vetr prevents this being done directly above
   stopifnot(
     is.character(type[[1L]]) && length(type[[1L]]) == 1L && !is.na(type[[1L]]),
@@ -140,20 +154,23 @@ fap_fun <- function(
       )
   ) )
   list(
-    name=name, fun=fun, defn=defn, ctrl=ctrl.params, type=type,
-    code.gen=code.gen
+    name=name, fun=fun, defn=defn, ctrl=ctrl.params, flag=flag.params,
+    type=type, code.gen=code.gen, ctrl.validate=ctrl.validate
   )
 }
 VALID_FUNS <- list(
   fap_fun(
     "sum", base::sum, function(..., na.rm=FALSE) NULL,
-    "na.rm", list("constant", 1L),
+    flag.params="na.rm",
+    type=list("constant", 1L),
     code.gen=code_gen_summary,
     ctrl.validate=ctrl_val_summary
   ),
   fap_fun(
     "mean", fun=base::mean, defn=base::mean.default,
-    c("trim", "na.rm"), list("constant", 1L),
+    flag.params="na.rm",
+    ctrl.params="trim",
+    type=list("constant", 1L),
     code.gen=code_gen_summary,
     ctrl.validate=ctrl_val_summary
   ),
@@ -275,13 +292,15 @@ pp_internal <- function(call, depth, x, argn="", env) {
     } else {
       as.list(callm[-1L])
     }
-    args.ctrl <- names(args) %in% VALID_FUNS[[c(func, "ctrl")]]
+    args.types <- rep("other", length(args))
+    args.types[names(args) %in% VALID_FUNS[[c(func, "ctrl")]]] <- "control"
+    args.types[names(args) %in% VALID_FUNS[[c(func, "flag")]]] <- "flag"
 
     for(i in seq_along(args)) {
-      if(args.ctrl[i]) {
+      if(args.types[i] %in% c('control', 'flag')) {
         x <- record_call_dat(
           x, call=args[[i]], depth=depth + 1L, argn=names(args)[i],
-          type="control", code=code_blank()
+          type=args.types[i], code=code_blank()
         )
       } else {
         x <- pp_internal(
@@ -290,7 +309,10 @@ pp_internal <- function(call, depth, x, argn="", env) {
     type <- "call"
     # Generate Code
     code <- VALID_FUNS[[c(func, "code.gen")]](
-      func, args[!args.ctrl], args[args.ctrl]
+      func,
+      args[args.types == "other"],
+      args[args.types == "control"],
+      args[args.types == "flag"]
     )
     code_valid(code, call)
   } else {
@@ -314,19 +336,31 @@ record_call_dat <- function(x, call, depth, argn, type, code) {
   x[['type']] <- c(x[['type']], type)
   x
 }
-# These are the possible interfaces
+# These are the possible interfaces (this got out of hand), need better solution
 # 1. data, datai, len
 # 2. data, datai, len, narg
-# 3. data, datai, len, ctrl
-# 4. data, datai, len, narg, ctrl
+# 3. data, datai, len, flag
+# 4. data, datai, len, ctrl
+# 5. data, datai, len, flag, ctrl
+# 6. data, datai, len, narg, flag
+# 7. data, datai, len, narg, ctrl
+# 8. data, datai, len, narg, flag, ctrl
 
 interface_type <- function(x) {
   ids <- toString(match(x, ARGS.NM.ALL))
-  valid <- c(
-    toString(match(ARGS.NM.BASE, ARGS.NM.ALL)),
-    toString(match(c(ARGS.NM.BASE, ARGS.NM.VAR), ARGS.NM.ALL)),
-    toString(match(c(ARGS.NM.BASE, ARGS.NM.CTRL), ARGS.NM.ALL)),
-    toString(seq_along(ARGS.NM.ALL))
+  valid <- vapply(
+    list(
+      match(ARGS.NM.BASE, ARGS.NM.ALL),
+      match(c(ARGS.NM.BASE, ARGS.NM.VAR), ARGS.NM.ALL),
+      match(c(ARGS.NM.BASE, ARGS.NM.FLAG), ARGS.NM.ALL),
+      match(c(ARGS.NM.BASE, ARGS.NM.CTRL), ARGS.NM.ALL),
+      match(c(ARGS.NM.BASE, ARGS.NM.FLAG, ARGS.NM.CTRL), ARGS.NM.ALL),
+      match(c(ARGS.NM.BASE, ARGS.NM.VAR, ARGS.NM.FLAG), ARGS.NM.ALL),
+      match(c(ARGS.NM.BASE, ARGS.NM.VAR, ARGS.NM.CTRL), ARGS.NM.ALL),
+      seq_along(ARGS.NM.ALL)
+    ),
+    toString,
+    ""
   )
   if(!ids %in% valid)
     stop("Internal Error: invalid generated paramters")

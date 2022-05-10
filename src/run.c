@@ -402,6 +402,7 @@ SEXP FAPPLY_run_internal(
   SEXP dat,
   SEXP dat_cols,
   SEXP ids,
+  SEXP flag,
   SEXP ctrl,
   SEXP grp_lens,
   SEXP res_lens
@@ -422,6 +423,12 @@ SEXP FAPPLY_run_internal(
     error("Argument `ids` should be a list.");
   if(TYPEOF(ctrl) != VECSXP)
     error("Argument `ctrl` should be a list.");
+  if(TYPEOF(flag) != INTSXP)
+    error("Argument `flag` should be an integer vector.");
+  if(XLENGTH(ids) != XLENGTH(ctrl))
+    error("Argument `ids` and `ctrl` should be the same length.");
+  if(XLENGTH(flag) != XLENGTH(ctrl))
+    error("Argument `flag` and `ctrl` should be the same length.");
 
   const char * fun_char = "run";
   const char * dll_char = CHAR(STRING_ELT(so, 0));
@@ -466,6 +473,9 @@ SEXP FAPPLY_run_internal(
     *(datai + i) = INTEGER(elt);
     *(narg + i) = (int) XLENGTH(elt);
   }
+  // Integer flags representing TRUE/FALSE control parameters
+  int * flag_int = INTEGER(flag);
+
   // Compute.  Resuls is in `data[dat_count]` and is updated by reference
   for(R_xlen_t i = 0; i < g_count; ++i) {
     R_xlen_t g_len = (R_xlen_t) g_lens[i];  // rows in group
@@ -475,13 +485,16 @@ SEXP FAPPLY_run_internal(
     // the C functions to reflect the size of the intermediate results
     for(int j = 0; j < dat_count; ++j) lens[j] = g_len;
 
-    // There are four possible interfaces (this is to avoid unused argument
-    // compiler warnings; now wondering if there is a better way to do that).
-    switch(intrf) {  // Hopefully compiler unrolls this out of the loop
+    // This got out of hand, was trying to avoid compiler warnings
+    switch(intrf) {
       case 1: (*fun)(data, lens, datai); break;
       case 2: (*fun)(data, lens, datai, narg); break;
-      case 3: (*fun)(data, lens, datai, ctrl); break;
-      case 4: (*fun)(data, lens, datai, narg, ctrl); break;
+      case 3: (*fun)(data, lens, datai, flag_int); break;
+      case 4: (*fun)(data, lens, datai, ctrl); break;
+      case 5: (*fun)(data, lens, datai, flag_int, ctrl); break;
+      case 6: (*fun)(data, lens, datai, narg, flag_int); break;
+      case 7: (*fun)(data, lens, datai, narg, ctrl); break;
+      case 8: (*fun)(data, lens, datai, narg, flag_int, ctrl); break;
       default: error("Internal Error: invalid interface specified.");
     }
     // Increment the data pointers by group size; the last increment will be

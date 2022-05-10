@@ -2,26 +2,15 @@
 
 # Next steps
 
-* Deal with matched expressions and correct interpretatio of sizes (e.g. `mean()`
-  gets only `na.rm` in `ctrl`, but the matched thing also has `trim`, so we both
-  need to exclude controls, make sure that `trim` is accounted for in some way,
-  etc.).
-
-For each call we need to know the input lengths and the output lengths.  So in
-addition to ids, we need to record the lengths.
-
-At each loop iteration, we need to recompute what the length of each id is going
-to be.  We'll have for each id whether it is affected by group size, what the
-size is otherwise, and what the group size is.  So we generate a variable
-function?  For each group, it is fed the group size, and the stack/ids, and it
-figures it out?
-
-    res_size <- function(g, ids) {
-
-    }
+Need to deal with unused params.
 
 # To Do / Questions
 
+* Is it possible for e.g. someone doing something like `sum(a, trim=1:3)` to
+  mismatch to the parameter name, or do dots handle it properly (thinking of
+  validation function).
+* Make sure to have a function that uses the `ctrl` functionality to check that
+  it works properly (once we switch to `flag` for most functions).
 * Can we get more memory efficient by e.g. using `+=` to avoid having to have
   memory allocated for both LHS and RHS for the arithmetic operators?  Might
   complicate things substantially.

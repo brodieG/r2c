@@ -16,7 +16,8 @@
 ARGS.NM.BASE <- c('data', 'lens', 'datai')
 ARGS.NM.VAR <- 'narg'
 ARGS.NM.CTRL <- 'ctrl'
-ARGS.NM.ALL <- c(ARGS.NM.BASE, ARGS.NM.VAR, ARGS.NM.CTRL)
+ARGS.NM.FLAG <- 'flag'
+ARGS.NM.ALL <- c(ARGS.NM.BASE, ARGS.NM.VAR, ARGS.NM.FLAG, ARGS.NM.CTRL)
 
 ARGS.TYPE.F <- c('double **', 'R_xlen_t *', 'int *')
 ARGS.TYPE.R <- c('double **', 'R_xlen_t *', 'int **')
@@ -28,14 +29,18 @@ R.ARGS.BASE <- paste(ARGS.TYPE.R, ARGS.NM.BASE)
 F.ARGS.VAR <- paste('int', ARGS.NM.VAR)
 R.ARGS.VAR <- paste('int *', ARGS.NM.VAR)
 
+F.ARGS.FLAG <- paste('int', ARGS.NM.FLAG)
+R.ARGS.FLAG <- paste('int *', ARGS.NM.FLAG)
+
 F.ARGS.CTRL <- R.ARGS.CTRL <- 'SEXP ctrl'
 
-F.ARGS.ALL <- c(F.ARGS.BASE, F.ARGS.VAR, F.ARGS.CTRL)
-R.ARGS.ALL <- c(R.ARGS.BASE, R.ARGS.VAR, R.ARGS.CTRL)
+F.ARGS.ALL <- c(F.ARGS.BASE, F.ARGS.VAR, F.ARGS.FLAG, F.ARGS.CTRL)
+R.ARGS.ALL <- c(R.ARGS.BASE, R.ARGS.VAR, R.ARGS.FLAG, R.ARGS.CTRL)
 
 CALL.BASE <- c(ARGS.NM.BASE[1L:2L], paste0("*", ARGS.NM.BASE[3L], "++"))
 CALL.VAR <- "*narg++"
 CALL.CTRL <- "VECTOR_ELT(ctrl, v++)"
+CALL.FLAG <- "*flag++";
 
 ## Sanity checks
 pat <- "\\bSEXP\\b|\\bdouble\\b|\\bint\\b|\\bR_xlen_t\\b|[ +*]"
@@ -43,7 +48,7 @@ stopifnot(
   identical(gsub(pat, "", F.ARGS.ALL), ARGS.NM.ALL),
   identical(gsub(pat, "", R.ARGS.ALL), ARGS.NM.ALL),
   identical(
-    gsub(pat, "", c(CALL.BASE, CALL.VAR)),
+    gsub(pat, "", c(CALL.BASE, CALL.VAR, CALL.FLAG)),
     ARGS.NM.ALL[-length(ARGS.NM.ALL)]
 ) )
 

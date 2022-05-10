@@ -25,7 +25,7 @@ static void %%s(%%s) {
   *res = 0;
   R_xlen_t len_n = lens[di1];
   double * dat = data[di1];
-  int narm = asInteger(VECTOR_ELT(ctrl, 0));
+  int narm = flag;  // only one possible flag parameter
   %s%s
   lens[di2] = 1;
 }
@@ -45,6 +45,7 @@ f_sum_n_base <- '
 static void %%s(%%s) {
   double * res = data[datai[narg]];
   *res = 0;
+  int narm = flag;  // only one possible flag parameter
 
   for(int arg = 0; arg < narg; ++arg) {
     int din = datai[arg]
@@ -64,12 +65,15 @@ f_summary <- list(
   sum_n=f_sum_n,
   mean=f_mean
 )
-code_gen_summary <- function(fun, args.reg, args.ctrl) {
-  vetr(CHR.1 && . %in% names(f_summary), list(), list())
+code_gen_summary <- function(fun, args.reg, args.ctrl, args.flag) {
+  vetr(
+    CHR.1 && . %in% names(f_summary), 
+    args.reg=list(), args.ctrl=list() && length(.) == 0L, args.flag=list()
+  )
   multi <- length(args.reg) > 1L
   name <- paste0(fun, if(multi) "_n")
-  args <- c(ARGS.NM.BASE, if(multi) ARGS.NM.VAR, ARGS.NM.CTRL)
-  call.args <- c(CALL.BASE, if(multi) CALL.VAR, CALL.CTRL)
+  args <- c(ARGS.NM.BASE, if(multi) ARGS.NM.VAR, ARGS.NM.FLAG)
+  call.args <- c(CALL.BASE, if(multi) CALL.VAR, CALL.FLAG)
   def.args <- F.ARGS.ALL[match(args, ARGS.NM.ALL)]
 
   list(
@@ -83,14 +87,16 @@ code_gen_summary <- function(fun, args.reg, args.ctrl) {
 ## @param x a list of the matched parameters for the call `call`
 ## @call the unmatched (sub)call as provided by the user
 
-ctrl_val_summary <- function(x, call) {
-  if(!identical(x[['trim']], 0))
+ctrl_val_summary <- function(ctrl, flag, call) {
+  # for mean.default
+  if(!is.null(ctrl[['trim']]) && !identical(ctrl[['trim']], 0))
     stop(
-      "Only the default value for `trim` is allowed in ", 
+      "Only the default value for `trim` is allowed in ",
       "`", deparse1(call), "`."
     )
-  if(!x[['na.rm']] %in% c(TRUE, FALSE))
+  if(!flag[['na.rm']] %in% c(TRUE, FALSE))
     stop("`na.rm` must be TRUE or FALSE in ", "`", deparse1(call), "`.")
-  TRUE
+
+  if(flag[['na.rm']]) 1L else 0L # avoid bizarre cases of TRUE != 1L
 }
 
