@@ -17,13 +17,19 @@ group_sizes <- function(go) .Call(FAPPLY_group_sizes, go)
 
 #' @export
 
-fapply <- function(data, groups, preproc, shlib) {
+fapply <- function(data, groups, preproc, shlib, sort=TRUE) {
   # FIXME: add validation for shlib
-  vetr(data.frame(), INT && length(.) == nrow(data))
-  o <- order(groups)
-  do <- data[o,]
+  vetr(data.frame(), INT && length(.) == nrow(data), sort=LGL.1)
+  if(sort) {
+    o <- order(groups)
+    go <- groups[o]
+    do <- data[o,,drop=FALSE]
+  } else {
+    go <- groups
+    do <- data
+  }
   # return group lenghts, offsets, and max group size
-  group.dat <- group_sizes(g[o])
+  group.dat <- group_sizes(go)
   alloc <- alloc(x=preproc, data=do, gmax=group.dat[[3L]])
   stack <- alloc[['stack']]
 

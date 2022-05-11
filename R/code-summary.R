@@ -13,6 +13,10 @@
 ##
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
+#' @include code-mean.R
+
+NULL
+
 ## We'll be changing this to be less like sum?
 ##
 ## Maybe we should also have a low error sum.
@@ -21,29 +25,35 @@ f_summary_base <- '
 static void %%s(%%s) {
   int di1 = datai[0];
   int di2 = datai[1];
-  double * res = data[di2];
-  *res = 0;
+  long double tmp = 0;
+
   R_xlen_t len_n = lens[di1];
+  %s;
   double * dat = data[di1];
   int narm = flag;  // only one possible flag parameter
   %s%s
+
+  *data[di2] = (double) tmp;
   lens[di2] = 1;
 }
 '
 loop_base <- '
   if(!narm)
-    for(R_xlen_t i = 0; i < len_n; ++i) *res += dat[i];
+    for(R_xlen_t i = 0; i < len_n; ++i) tmp += dat[i];
   else
-    for(R_xlen_t i = 0; i < len_n; ++i) if(!isnan(dat[i])) *res += dat[i];
+    for(R_xlen_t i = 0; i < len_n; ++i)
+      if(!isnan(dat[i])) tmp += dat[i];%s
 '
-f_mean <- sprintf(
+f_mean0 <- sprintf(
   f_summary_base,
-  loop_base, "\n  *res /= len_n;\n"
+  "R_xlen_t na_n = 0;",
+  sprintf(loop_base,  " else ++na_n;"),
+  "\n  tmp /= (len_n - na_n);\n"
 )
-f_sum_1 <- sprintf(f_summary_base, loop_base, "")
+f_sum_1 <- sprintf(f_summary_base, "", sprintf(loop_base, ""), "")
 f_sum_n_base <- '
 static void %%s(%%s) {
-  double * res = data[datai[narg]];
+  long double tmp = 0;
   *res = 0;
   int narm = flag;  // only one possible flag parameter
 
@@ -53,22 +63,26 @@ static void %%s(%%s) {
     double * dat = data[din];
     %s
   }
-  lens[narg] = 1;
+  *data[datai[narg]] = (double) tmp;
+  lens[datai[narg]] = 1;
 }
 '
-f_sum_n <- sprintf(f_sum_n_base, loop_base);
+f_sum_n <- sprintf(f_sum_n_base, sprintf(loop_base, ""));
 
 ## Structure all strings into a list for ease of selection
 
 f_summary <- list(
   sum=f_sum_1,
   sum_n=f_sum_n,
-  mean=f_mean
+  mean0=f_mean0,   # single pass implementation, no infinity check
+  mean=f_mean      # R implementation
 )
 code_gen_summary <- function(fun, args.reg, args.ctrl, args.flag) {
   vetr(
-    CHR.1 && . %in% names(f_summary), 
-    args.reg=list(), args.ctrl=list() && length(.) == 0L, args.flag=list()
+    CHR.1 && . %in% names(f_summary),
+    args.reg=list(),
+    args.ctrl=list(),
+    args.flag=list()
   )
   multi <- length(args.reg) > 1L
   name <- paste0(fun, if(multi) "_n")
@@ -99,4 +113,15 @@ ctrl_val_summary <- function(ctrl, flag, call) {
 
   if(flag[['na.rm']]) 1L else 0L # avoid bizarre cases of TRUE != 1L
 }
+#' Single Pass Mean Calculation
+#'
+#' [`base::mean`] does a two pass calculation that additional handles cases
+#' where `sum(x)` overflows doubles but `sum(x/n)` does not.  This version is a
+#' single pass one that does not protect against the overflow case.
+#'
+#' @inheritParams base::mean
+#' @export
+#' @return scalar numeric
+
+mean0 <- function(x, na.rm=TRUE) sum(x, na.rm=TRUE) / length(x)
 

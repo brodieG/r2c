@@ -313,7 +313,7 @@ check_fun <- function(x, env) {
     stop("`", as.character(call[[1L]]), "` is not a supported function.")
   if(
     !identical(
-      try(got.fun <- get(x, envir=env, mode="function"), silent=TRUE),
+      got.fun <- try(get(x, envir=env, mode="function"), silent=TRUE),
       VALID_FUNS[[c(x, "fun")]]
   ) ) {
     tar.fun <- VALID_FUNS[[c(x, "fun")]]
@@ -323,8 +323,10 @@ check_fun <- function(x, env) {
     stop(
       "Symbol `", x, "` does not resolve to the expected function from ",
       capture.output(print(env.fun)),
-      " (resolves to one from ",
-      capture.output(print(environment(got.fun))), ")"
+      if(is.function(got.fun))
+      paste0(
+        " (resolves to one from ", capture.output(print(environment(got.fun))), ")"
+      )
     )
   }
 }

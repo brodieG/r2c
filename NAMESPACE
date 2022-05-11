@@ -2,6 +2,7 @@
 
 export(fapply)
 export(make_shlib)
+export(mean0)
 export(print_code_text)
 import(vetr)
 useDynLib(fapply, .registration=TRUE, .fixes="FAPPLY_")

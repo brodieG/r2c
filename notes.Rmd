@@ -6,6 +6,7 @@ Need to deal with unused params.
 
 # To Do / Questions
 
+* Only sort the columns that are used.
 * Is it possible for e.g. someone doing something like `sum(a, trim=1:3)` to
   mismatch to the parameter name, or do dots handle it properly (thinking of
   validation function).
@@ -66,7 +67,9 @@ Need to deal with unused params.
   appropriate symbols protected?  Such would be the symbols in the data, but
   what about the functions that are used?  That seems excessive.
 * Make sure there are interrupts.  Can we use "R_ext/Intermacros.h".  It seems
-  yes generally, but they are not explicitly part of the API.
+  yes generally, but they are not explicitly part of the API, and then there is
+  the question of whether it makes sense to do so, or if we should just be doing
+  this at the group level?
 * Think though corner case of R_NA, NaN, Inf, etc: are we preserving semantics.
 * Is it faster to compute complex expressions pairwise (i.e. full vector scan of
   two vectors), or do each row in full once?
