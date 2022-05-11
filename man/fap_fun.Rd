@@ -12,7 +12,8 @@ fap_fun(
   flag.params = character(),
   type,
   code.gen,
-  ctrl.validate = function(...) 0L
+  ctrl.validate = function(...) 0L,
+  transform = identity
 )
 }
 \arguments{

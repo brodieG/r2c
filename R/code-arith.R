@@ -53,20 +53,19 @@ static void %1$s(%2$s) {
   // Mod iterate by region?
   R_xlen_t i, j;
   if(len1 == len2) {
-    for(i = 0; i < len1; ++i) res[i] = e1[i] %3$s e2[i];
+    for(i = 0; i < len1; ++i) res[i] = %3$s(e1[i] %4$s e2[i]);
   } else if (len2 == 1) {
-    for(i = 0; i < len1; ++i) res[i] = e1[i] %3$s *e2;
+    for(i = 0; i < len1; ++i) res[i] = %3$s(e1[i] %4$s *e2);
   } else {
     for(i = 0, j = 0; i < len1; ++i, ++j) {
       if(j > len2) j = 0;
-      res[i] = e1[i] %3$s e2[j];
+      res[i] = %3$s(e1[i] %4$s e2[j]);
     }
   }
   lens[dires] = len1;
 }
 '
 code_gen_arith <- function(fun, args.reg, args.ctrl, args.flags) {
-  vetr(, list(), list() && !length(.))
   vetr(
     CHR.1 && . %in% names(OP.NAMES),
     args.reg=list(),
@@ -74,9 +73,9 @@ code_gen_arith <- function(fun, args.reg, args.ctrl, args.flags) {
     args.flags=list() && length(.) == 0L
   )
   args <- ARGS.NM.BASE
-  name <- paste0(OP.NAMES[fun], "_n_m")
-  defn <- sprintf(arith_n_m, name, toString(F.ARGS.BASE), fun)
-  list(
+  name <- OP.NAMES[fun]
+  defn <- sprintf(arith_n_m, name, toString(F.ARGS.BASE), "", fun)
+  code_res(
     defn=defn,
     name=name,
     call=sprintf("%s(%s);", name, toString(CALL.BASE)),

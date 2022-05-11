@@ -125,25 +125,30 @@ pp_internal <- function(call, depth, x, argn="", env) {
   if(depth == .Machine$integer.max)
     stop("Expression max depth exceeded.") # exceedingly unlikely
 
-  writeLines(sprintf("Depth %d: %s", depth, deparse1(call)))
-  if(is.call(call) && identical(as.character(call[[1L]]), "(")) {
-    # Remove any parentheses calls
+  # - Prep ---------------------------------------------------------------------
+
+  # Remove any parentheses calls
+  while(is.call(call) && identical(as.character(call[[1L]]), "(")) {
     if(length(call) != 2L)
       stop("Internal Error: call to `(` with wrong parameter count.")  # nocov
     call <- call[[2L]]
   }
+  # Transform call (e.g. x^2 becomes x * x); ideally the transformation function
+  # would have the matched call, but since the only use we have for it is a
+  # primitive that doesn't match arguments we don't worry about that right now.
+  call.transform <- call
+  while(
+    is.call(call) && !identical(call, call.transform)
+  ) {
+    func <- call_valid(call)
+    call.transform <- VALID_FUNS[[func, "transform"]](call)
+  }
+  call <- call.transform
+
   if(is.call(call)) {
     # - Recursion on Params ----------------------------------------------------
-    fun <- call[[1L]]
-    if(!is.name(fun) && !is.character(fun))
-      stop(
-        "Only calls in form `symbol(<parameters>)` are supported (i.e. not ",
-        deparse1(fun), ")."
-      )
-    func <- as.character(fun)
-    if(!func %in% names(VALID_FUNS))
-      stop("`", func, "` is not a supported function.")
 
+    func <- call_valid(call)
     # Classify Params
     args <- if(!is.null(defn <- VALID_FUNS[[c(func, "defn")]])) {
       match_call(definition=defn, call=call, envir=env, name=func)

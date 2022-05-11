@@ -13,6 +13,32 @@
 ##
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
-
 code_gen_pow <-  function(fun, args.reg, args.ctrl, args.flags) {
+  vetr(
+    . == "^",
+    args.reg=list(NULL, NULL),
+    args.ctrl=list() && length(.) == 0L,
+    args.flags=list() && length(.) == 0L
+  )
+}
+
+pow_transform <- function(call) {
+  if(
+    !is.call(call) || !identical(as.character(call[[1L]]), "^") ||
+    length(call) != 3
+  )
+    stop("Bad exponent call to transform: ", deparse1(call))
+
+  exp <- call[[3L]]
+  if(is.integer(exp)) exp <- as.numeric(exp)
+  if(identical(exp, 2)) {
+    call <- call("*", call[[2L]], call[[2L]])
+  } else if(identical(exp, 3)) {
+    val <- call[[2L]]
+    call <- call("*", call("*", val, val), val)
+  } else if(identical(exp, 4)) {
+    val <- call[[2L]]
+    call <- call("*", call("*", val, val), call("*", val, val))
+  }
+  call
 }

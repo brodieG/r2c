@@ -2,7 +2,9 @@
 
 # Next steps
 
-Need to deal with unused params.
+* Implement Pow.
+* Implement an option to translate a call to a different form (specifically for
+  `pow` up to e.g power 3 or 4.
 
 # To Do / Questions
 
@@ -91,6 +93,12 @@ Need to deal with unused params.
 * Does altrep play into this in any way?
 * Lags and similar (i.e. `x[i] = x[i] * x[i - 1]`).
 * Re-use repeated expressions.
+
+# Benchmarks
+
+* 1e7 with group size 10, 1000.
+* Pre-sorted
+* sum(x), sum(x + y)
 
 # Done / Answered
 

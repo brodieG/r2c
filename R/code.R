@@ -15,6 +15,7 @@
 
 #' @include code-summary.R
 #' @include code-arith.R
+#' @include code-pow.R
 
 NULL
 
@@ -74,7 +75,7 @@ NULL
 
 fap_fun <- function(
   name, fun, defn, ctrl.params=character(), flag.params=character(),
-  type, code.gen, ctrl.validate=function(...) 0L
+  type, code.gen, ctrl.validate=function(...) 0L, transform=identity
 ) {
   vetr(
     name=CHR.1,
@@ -88,7 +89,8 @@ fap_fun <- function(
       !"..." %in% . && length(.) < 32L,
     type=list(NULL, NULL),
     code.gen=is.function(.),
-    ctrl.validate=is.function(.)
+    ctrl.validate=is.function(.),
+    transform=is.function(.)
   )
   if(length(intersect(ctrl.params, flag.params)))
     stop("Control and Flag parameters may not overlap.")
@@ -118,9 +120,11 @@ fap_fun <- function(
   ) )
   list(
     name=name, fun=fun, defn=defn, ctrl=ctrl.params, flag=flag.params,
-    type=type, code.gen=code.gen, ctrl.validate=ctrl.validate
+    type=type, code.gen=code.gen, ctrl.validate=ctrl.validate,
+    transform=transform
   )
 }
+# Make sure "(" is not added to this list.
 VALID_FUNS <- list(
   fap_fun(
     "sum", base::sum, function(..., na.rm=FALSE) NULL,
@@ -160,11 +164,14 @@ VALID_FUNS <- list(
     "/", base::`/`, defn=function(e1, e2) NULL,
     type=list("vecrec", c("e1", "e2")), code.gen=code_gen_arith
   ),
-  # this is not "really" a fun, but we shoehorn it into our model here, we could
-  # also add code to skip it
   fap_fun(
-    "(", base::`(`, defn=function(x) NULL,
-    type=list("arglen", c("x")), code.gen=function(...) NULL
+    "%%", base::`%%`, defn=function(e1, e2) NULL,
+    type=list("vecrec", c("e1", "e2")), code.gen=code_gen_arith
+  ),
+  fap_fun(
+    "^", base::`^`, defn=function(e1, e2) NULL,
+    type=list("vecrec", c("e1", "e2")), code.gen=code_gen_pow,
+    transform=pow_transform
   )
 )
 names(VALID_FUNS) <- vapply(VALID_FUNS, "[[", "", "name")
@@ -192,3 +199,19 @@ code_valid <- function(code, call) {
 
   TRUE
 }
+call_valid <- function(call) {
+  if(!is.name(fun) && !is.character(fun))
+    stop(
+      "only calls in form `symbol(<parameters>)` are supported (i.e. not ",
+      deparse1(call), ")."
+    )
+  func <- as.character(fun)
+  if(!func %in% names(valid_funs))
+    stop("`", func, "` is not a supported function.")
+}
+
+
+# To make sure we use the same structure everywhere.
+
+code_res <- function(defn, name, call, args, headers=character())
+  list(defn=defn, name=name, call=call, args=args, headers=headers)

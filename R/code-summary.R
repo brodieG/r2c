@@ -90,7 +90,7 @@ code_gen_summary <- function(fun, args.reg, args.ctrl, args.flag) {
   call.args <- c(CALL.BASE, if(multi) CALL.VAR, CALL.FLAG)
   def.args <- F.ARGS.ALL[match(args, ARGS.NM.ALL)]
 
-  list(
+  code_res(
     defn=sprintf(f_summary[[name]], name, toString(def.args)),
     name=name,
     call=sprintf("%s(%s);", name, toString(call.args)),
