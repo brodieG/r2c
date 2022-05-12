@@ -171,7 +171,7 @@ VALID_FUNS <- list(
   fap_fun(
     "^", base::`^`, defn=function(e1, e2) NULL,
     type=list("vecrec", c("e1", "e2")), code.gen=code_gen_pow,
-    transform=pow_transform
+    # transform=pow_transform  # until we have sub-expression recognition
   )
 )
 names(VALID_FUNS) <- vapply(VALID_FUNS, "[[", "", "name")
