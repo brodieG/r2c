@@ -15,11 +15,14 @@
 
 code_gen_pow <-  function(fun, args.reg, args.ctrl, args.flags) {
   vetr(
-    . == "^",
+    identical(., "^"),
     args.reg=list(NULL, NULL),
     args.ctrl=list() && length(.) == 0L,
     args.flags=list() && length(.) == 0L
   )
+  name <- "power"
+  defn <- sprintf(bin_op_vec_rec, name, toString(F.ARGS.BASE), "pow", ",")
+  code_res(defn=defn, name=name, args=ARGS.NM.BASE, headers="<math.h>")
 }
 
 pow_transform <- function(call) {

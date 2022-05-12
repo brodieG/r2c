@@ -200,18 +200,22 @@ code_valid <- function(code, call) {
   TRUE
 }
 call_valid <- function(call) {
+  fun <- call[[1L]]
   if(!is.name(fun) && !is.character(fun))
     stop(
       "only calls in form `symbol(<parameters>)` are supported (i.e. not ",
       deparse1(call), ")."
     )
   func <- as.character(fun)
-  if(!func %in% names(valid_funs))
+  if(!func %in% names(VALID_FUNS))
     stop("`", func, "` is not a supported function.")
+  func
 }
 
 
 # To make sure we use the same structure everywhere.
 
-code_res <- function(defn, name, call, args, headers=character())
+code_res <- function(defn, name, args, headers=character()) {
+  call <- sprintf("%s(%s);", name, toString(CALL.ALL[match(args, ARGS.NM.ALL)]))
   list(defn=defn, name=name, call=call, args=args, headers=headers)
+}

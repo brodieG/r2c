@@ -136,24 +136,21 @@ pp_internal <- function(call, depth, x, argn="", env) {
   # Transform call (e.g. x^2 becomes x * x); ideally the transformation function
   # would have the matched call, but since the only use we have for it is a
   # primitive that doesn't match arguments we don't worry about that right now.
-  call.transform <- call
-  while(
-    is.call(call) && !identical(call, call.transform)
-  ) {
-    func <- call_valid(call)
-    call.transform <- VALID_FUNS[[func, "transform"]](call)
-  }
-  call <- call.transform
 
+  while(is.call(call)) { # equivalent to if(...) repeat
+    func <- call_valid(call)
+    call.transform <- VALID_FUNS[[c(func, "transform")]](call)
+    if(identical(call.transform, call)) break
+    call <- call.transform
+  }
   if(is.call(call)) {
     # - Recursion on Params ----------------------------------------------------
-
     func <- call_valid(call)
     # Classify Params
     args <- if(!is.null(defn <- VALID_FUNS[[c(func, "defn")]])) {
       match_call(definition=defn, call=call, envir=env, name=func)
     } else {
-      as.list(callm[-1L])
+      as.list(call[-1L])
     }
     args.types <- rep("other", length(args))
     args.types[names(args) %in% VALID_FUNS[[c(func, "ctrl")]]] <- "control"

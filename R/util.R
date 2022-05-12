@@ -18,7 +18,7 @@
 #' @export
 
 print_code_text <- function(x, ...) {
-  y <- unlist(strsplit(x, "\n"))
+  y <- unlist(strsplit(x[['code-text']], "\n"))
   writeLines(paste0(format(seq_along(y)), "| ", y))
   invisible(x)
 }

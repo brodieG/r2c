@@ -16,11 +16,15 @@
 OP.NAMES <- c(
   "+"="add", "-"="subtract", "*"="multiply", "/"="divide", "%"="modulo"
 )
+## Binary Opertors or Functions with Vecto Recycling
+##
+## Use %3$s for functions, %4$s for operators.
+##
 ## This supports unequal sizes.  We looked at having specialized functions for
 ## each of the possible length pairings, but that didn't seem to improve things
 ## too much (at least single core without any contention).
 
-arith_n_m <- '
+bin_op_vec_rec <- '
 static void %1$s(%2$s) {
   int di1 = datai[0];
   int di2 = datai[1];
@@ -38,7 +42,6 @@ static void %1$s(%2$s) {
     lens[dires] = 0;
     return;
   }
-
   // Ensure longest arg is first
   if(len1 >= len2) {
     e1 = data[di1];
@@ -74,14 +77,8 @@ code_gen_arith <- function(fun, args.reg, args.ctrl, args.flags) {
   )
   args <- ARGS.NM.BASE
   name <- OP.NAMES[fun]
-  defn <- sprintf(arith_n_m, name, toString(F.ARGS.BASE), "", fun)
-  code_res(
-    defn=defn,
-    name=name,
-    call=sprintf("%s(%s);", name, toString(CALL.BASE)),
-    args=args,
-    headers=character()
-  )
+  defn <- sprintf(bin_op_vec_rec, name, toString(F.ARGS.BASE), "", fun)
+  code_res(defn=defn, name=name, args=args, headers=character())
 }
 
 

@@ -8,6 +8,8 @@
 
 # To Do / Questions
 
+* Are names sufficient to disqualify from nakedness?  How do names behave in
+  recycling?  Do we want to allow other attributes to persist?
 * Only sort the columns that are used.
 * Is it possible for e.g. someone doing something like `sum(a, trim=1:3)` to
   mismatch to the parameter name, or do dots handle it properly (thinking of
@@ -46,7 +48,8 @@
   workflow around C functions?  Maybe okay if each group of functions does the
   right thing?  Do we need to include the headers before each group of
   functions?  Do we need to keep translation units independent (but the lose the
-  benefit of static funs)?
+  benefit of static funs)?  This is almost certainly a real problem that needs
+  to be addressed.
 * Ensure that all pointer parameters are allocated one extra element at end so
   that we can use the fun(++pointer) pattern without worrying about the last
   call overflowing (I think this might be allowed by the standard anyway,
