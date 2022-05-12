@@ -22,3 +22,22 @@ print_code_text <- function(x, ...) {
   writeLines(paste0(format(seq_along(y)), "| ", y))
   invisible(x)
 }
+
+#' Basic Split Apply Combine
+#'
+#' Evaluates quoted expressions in the context of data split by group.  Intended
+#' purely for testing against C calculations.
+#'
+#' @param data a data frame with numeric columns
+#' @param call quoted R call to evaluate
+#' @param env environment to use as enclosure
+#' @export
+
+base_grp_eval <- function(data, g, call, env=parent.frame()) {
+  dg <- split(data, g)
+  unlist(
+    unname(
+      lapply(dg, function(x, call) eval(call, envir=x, enclos=env), call=call)
+  ) )
+}
+

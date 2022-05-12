@@ -8,6 +8,8 @@
 
 # To Do / Questions
 
+* Better introspection tools for intermediate products so we can see what they
+  are.
 * Are names sufficient to disqualify from nakedness?  How do names behave in
   recycling?  Do we want to allow other attributes to persist?
 * Only sort the columns that are used.
