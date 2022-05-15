@@ -53,12 +53,12 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' compileq(sum(x + y))
 #' compile(quote(sum(x + y))
 
-cmp <- function(call, dir=tempfile()) {
+r2c <- function(call, dir=tempfile()) {
   preproc <- preprocess(call)
   so <- make_shlib(preproc[['code-text']])
   list(preproc=preproc, so=so)
 }
 #' @export
-#' @rdname cmp
+#' @rdname r2c
 
-cmpq <- function(call, dir=tempfile()) cmp(substitute(call))
+r2cq <- function(call, dir=tempfile()) r2c(substitute(call))

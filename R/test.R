@@ -13,9 +13,9 @@
 ##
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
-test1 <- function(x, y, z, w) .Call(FAPPLY_test1, x, y, z, w)
-test2 <- function(x, y, z, w) .Call(FAPPLY_test2, x, y, z, w)
-test3 <- function(x, y, z, w) .Call(FAPPLY_test3, x, y, z, w)
-test4 <- function(x, y, z, w) .Call(FAPPLY_test4, x, y, z, w)
-test5 <- function(x, y, z, w) .Call(FAPPLY_test5, x, y, z, w)
+test1 <- function(x, y, z, w) .Call(R2C_test1, x, y, z, w)
+test2 <- function(x, y, z, w) .Call(R2C_test2, x, y, z, w)
+test3 <- function(x, y, z, w) .Call(R2C_test3, x, y, z, w)
+test4 <- function(x, y, z, w) .Call(R2C_test4, x, y, z, w)
+test5 <- function(x, y, z, w) .Call(R2C_test5, x, y, z, w)
 

@@ -17,9 +17,9 @@ group_sizes <- function(go) .Call(R2C_group_sizes, go)
 
 #' @export
 
-fapply <- function(data, groups, obj, sort=TRUE) {
+group_exec <- function(obj, data, groups, sort=TRUE) {
   # FIXME: add validation for shlib
-  vetr(data.frame(), INT && length(.) == nrow(data), sort=LGL.1)
+  vetr(data=data.frame(), groups=INT && length(.) == nrow(data), sort=LGL.1)
   preproc <- obj[['preproc']]
   shlib <- obj[['so']]
 
