@@ -17,9 +17,12 @@ group_sizes <- function(go) .Call(FAPPLY_group_sizes, go)
 
 #' @export
 
-fapply <- function(data, groups, preproc, shlib, sort=TRUE) {
+fapply <- function(data, groups, obj, sort=TRUE) {
   # FIXME: add validation for shlib
   vetr(data.frame(), INT && length(.) == nrow(data), sort=LGL.1)
+  preproc <- obj[['preproc']]
+  shlib <- obj[['so']]
+
   if(sort) {
     o <- order(groups)
     go <- groups[o]

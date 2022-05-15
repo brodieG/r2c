@@ -8,6 +8,8 @@
 
 # To Do / Questions
 
+* Add destructors that will unload the shlib and delete file file when the
+  corresponding object is garbage collected.
 * Better introspection tools for intermediate products so we can see what they
   are.
 * Are names sufficient to disqualify from nakedness?  How do names behave in
@@ -99,11 +101,71 @@
 * Lags and similar (i.e. `x[i] = x[i] * x[i - 1]`).
 * Re-use repeated expressions.
 
+# Loop implementation
+
+Loop variables can be created in a child frame to the data.
+
+Each loop body will generate a `run` statement, e.g.:
+
+```
+run(...) {
+
+}
+run_loop_1(...) {
+  for(intmax_t i = 0; i < len; ++i) {
+    run(...);
+  }
+}
+run_loop_0(...) {
+  for(intmax_t i = 0; i < len; ++i) {
+    statement_0(...);
+    statement_1(...);
+    run_loop_1(...);
+  }
+}
+```
+
+Probably want two types of loops, loops where we know the start and end as
+constants or other derivable data (`seq_along`), and others where we have an
+unknown vector?  Might not be able to allow the second type, because at that
+point we can't know how large a vector that is assigned to with e.g. `x[i] <- y`
+will get.
+
+```
+for(i in seq_along(x))
+  y[i] <- x[i] + 1
+```
+
+Is the latter:
+
+```
+for(i in x)
+  y[i] <- z[i] + 1
+```
+
+At the allocation stage we need to determine the size of `y`.  It's fine if
+we're just referring to an external symbol (or even a group symbol) as we can
+check the content sizes.  But things like:
+
+```
+for(i in rev(x))
+```
+
+Get messier.  Likely we just allow symbols, or `seq_along`, or constant
+expressions like `a:b` where `a` and `b` are known at allocation time (changing
+them inside loop is fine since):
+
+> The seq in a for loop is evaluated at the start of the loop; changing it
+> subsequently does not affect the loop.
+
+But they can't be computed within the `r2c` code.
+
 # Benchmarks
 
 * 1e7 with group size 10, 1000.
 * Pre-sorted
 * sum(x), sum(x + y)
+
 
 # Done / Answered
 
@@ -830,6 +892,94 @@ doubles.
 
 # Interface
 
+
+These are very appealing for group/window because we can easily re-use the same
+shared object, and additionally 
+
+```
+obj <- r2c(<expr>)
+obj$run(data)                # intended for code with loops.
+obj$group(data, groups)
+obj$slide(data, size, ...)
+```
+
+Are `groups` quoted or as is?  Do we need:
+
+```
+obj$groupq(data, groups)
+```
+
+What if we want to remap args?
+
+```
+obj$group(data, groups)(x=z, y=v)
+obj $
+  map(x=z, y=v) $
+  group(data, groups)
+
+group(remap(obj, x=x, y=y), data, groups)
+```
+
+Or should we really do:
+
+```
+slope <- r2c(
+  function(x, y) (x - mean(x)) * (y - mean(y)) / (x - mean(x))^2
+)
+group(slope(x=v, y=z), data, groups)
+
+with(data, group(slope(v, z), groups))
+```
+
+
+```
+group(slope(x=v, y=z), data, groups)
+run(slope(x=v, y=z))
+slide(slope(x=v, y=z), window=window)
+
+slope(x=v, y=z) |> group(data, groups)
+```
+
+What would this do?  Run normally?
+
+```
+slope(x=v, y=z)
+slope$group(data, groups)(x=v, y=z)
+```
+
+Then? Do we need:
+
+```
+group(slope, data, groups)(x=v, y=z)
+group(slope(x=v, y=z), data, groups)     # Possible with NSE, but not ideal.
+group(slope, data, groups)               # would this run without remapping?
+group(slope, data, groups)()             # Or should it be this?
+
+slope |> group(data, groups)(x, y)
+
+slope$group(data, groups)(x, y)
+
+group(slope, data, groups, map=.(x=v, y=z))
+```
+
+Is this confusing?  Yes, the duality of `slope` being a function but also not is
+just weird.
+
+What's the benefit of defining as a function?  Makes it easier to re-map the
+variables in use, but then the remapping is weird.
+
+```
+slope$group(remap(data, x=v, y=z), groups)
+remap(slope, x=v, y=z)
+```
+
+
+Old stuff:
+
 ```
 fapply(X, INDEX, FUN)
+
+group_exe(data, groups, obj)
+window_exe(data, size, just, obj)
+for_exe(data, obj)
 ```

@@ -13,12 +13,11 @@
 ##
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
-#' Generate a Shared Library Object From C Code
-#'
-#' @export
-#' @param x character the C code to compile
-#' @return character file name of the SO; will be in a temporary directory, it is
-#'   the users responsibility to preserve and/or discard the file.
+## Generate a Shared Library Object From C Code
+##
+## @param x character the C code to compile
+## @return character file name of the SO; will be in a temporary directory, it is
+##   the users responsibility to preserve and/or discard the file.
 
 make_shlib <- function(x) {
   if(!is.character(x) || anyNA(x))
@@ -38,3 +37,28 @@ make_shlib <- function(x) {
 
 rand_string <- function(len, pool=c(letters, 0:9))
   paste0(sample(pool, len, replace=TRUE), collapse="")
+
+#' Compile an R Call Into Machine Instructions
+#'
+#' Translates an R call into C and compiles it into native instructions using 
+#' `R CMD SHLIB`.
+#'
+#' @export
+#' @param call an R expression, for `compileq` it is captured unevaluated, for
+#'   `compile` it should be pre-quoted.
+#' @param dir character(1L) name of a temporary directory to store the shared
+#'   object file in.
+#' @return the full path to the compiled shared object file.
+#' @examples
+#' compileq(sum(x + y))
+#' compile(quote(sum(x + y))
+
+cmp <- function(call, dir=tempfile()) {
+  preproc <- preprocess(call)
+  so <- make_shlib(preproc[['code-text']])
+  list(preproc=preproc, so=so)
+}
+#' @export
+#' @rdname cmp
+
+cmpq <- function(call, dir=tempfile()) cmp(substitute(call))
