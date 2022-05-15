@@ -1,4 +1,4 @@
-# fapply - Fast Repeated Numerical Calculations in R.
+# r2c - A DSL for Fast Repeated Numeric Calculations
 
 **Proof of Concept**.  Lightly tested, experimental.  TBD if this becomes a
 supported package.
@@ -11,7 +11,7 @@ arithmetic operators and basic statistics are supported, and the user can
 combine these to implement statics.
 
 Once compiled, the code can be called repeatedly with varying data without R
-interpreter overhead.  Currently `fapply` supports running the compiled code
+interpreter overhead.  Currently `r2c` supports running the compiled code
 against non-overlapping groups in `data.frame`s.
 
 ## Performance
@@ -30,7 +30,7 @@ function of interest, mine and others.
 Any function that observes vectorized/recycling semantics (e.g. arithmetic
 operators), outputs fixed sized output (e.g. `mean`, `range`), or outputs
 results the size of an input (e.g. `quantile`), can be accommodated by the
-`fapply` framework.  However, it is still necessary to implement them in C, so
+`r2c` framework.  However, it is still necessary to implement them in C, so
 functions that have direct analogues in C or that can be coded simply in C are
 the best candidates.
 
@@ -45,7 +45,7 @@ The following should be straightforward to implement:
 * `[[`, but only with integer-like scalar double index values.
 * `[`, but only with integer-like double index values.
 
-More challenging due to code complexity, but otherwise compatible with `fapply`:
+More challenging due to code complexity, but otherwise compatible with `r2c`:
 
 * `quantile`.
 * and others.
@@ -102,7 +102,7 @@ for each group.
 Conceptually this is similar to what e.g. `data.table`'s gforce, which for
 common statistics such as `mean(x)` skips the R function completely and instead
 runs native instructions on each group.  The primary difference is that with
-`fapply` it will be possible to compose complex statistics from the supported
+`r2c` it will be possible to compose complex statistics from the supported
 functions, whereas gforce is limited to single function single symbol
 expressions like `mean(x)`.
 

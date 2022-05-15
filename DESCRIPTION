@@ -1,15 +1,15 @@
-Package: fapply
-Title: DSL For Fast Groupwise Numeric Calculations
-Description: Compiles a subset of R into native instructions and provides
-   methods for executing those instructions on numeric data repeatedly while
-   avoiding R function evaluation overhead.
+Package: r2c
+Title: A DSL for Fast Repeated Numeric Calculations
+Description: Compiles a selected subset of R into native instructions so that
+    that expressions composed from that subset can be executed repeatedly on
+    varying data without interpreter overhead.
 Version: 0.0.1
 Authors@R: c(
     person("Brodie", "Gaslam", email="brodie.gaslam@yahoo.com",
     role=c("aut", "cre")))
 License: GPL-2 | GPL-3
-URL: https://github.com/brodieG/fapply
-BugReports: https://github.com/brodieG/fapply/issues
+URL: https://github.com/brodieG/r2c
+BugReports: https://github.com/brodieG/r2c/issues
 VignetteBuilder: knitr
 Suggests:
 Imports:
@@ -27,8 +27,8 @@ Collate:
     'alloc.R'
     'compile.R'
     'constants.R'
-    'fapply-package.R'
     'load.R'
+    'r2c-package.R'
     'run.R'
     'test.R'
     'util.R'

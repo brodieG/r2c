@@ -1,4 +1,4 @@
-# fapply
+# r2c
 
 # Next steps
 
@@ -934,6 +934,11 @@ with(data, group(slope(v, z), groups))
 
 ```
 group(slope(x=v, y=z), data, groups)
+group(slope, data, groups)                               # no remap
+group_exec(slope, data, groups)                          # no remap
+group_exec(slope(.remap=c(x="v", y="w")), data, groups)
+group_exec(remap(slope, c(x="v", y="w")), data, groups)
+
 run(slope(x=v, y=z))
 slide(slope(x=v, y=z), window=window)
 

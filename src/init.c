@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2022 Brodie Gaslam
  *
- * This file is part of "fapply - Fast Apply"
+ * This file is part of "r2c - A DSL for Fast Repeated Numeric Calculations"
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -17,17 +17,17 @@
 
 #include <R_ext/Rdynload.h>
 #include <R_ext/Visibility.h>
-#include "fapply.h"
+#include "r2c.h"
 
 static const
 R_CallMethodDef callMethods[] = {
-  {"group_sizes", (DL_FUNC) &FAPPLY_group_sizes, 1},
-  {"run_internal", (DL_FUNC) &FAPPLY_run_internal, 9},
+  {"group_sizes", (DL_FUNC) &R2C_group_sizes, 1},
+  {"run_internal", (DL_FUNC) &R2C_run_internal, 9},
 
   {NULL, NULL, 0}
 };
 
-void attribute_visible R_init_fapply(DllInfo *info)
+void attribute_visible R_init_r2c(DllInfo *info)
 {
  /* Register the .C and .Call routines.
     No .Fortran() or .External() routines,

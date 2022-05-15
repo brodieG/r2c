@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2022  Brodie Gaslam
  *
- * This file is part of "fapply - Fast Apply"
+ * This file is part of "r2c - A DSL for Fast Repeated Numeric Calculations"
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,9 +16,9 @@
  */
 
 // System headers if any go above ^^
-#include "fapply.h"
+#include "r2c.h"
 
-SEXP FAPPLY_test1(SEXP x, SEXP y, SEXP z, SEXP w) {
+SEXP R2C_test1(SEXP x, SEXP y, SEXP z, SEXP w) {
   if(
     XLENGTH(x) != XLENGTH(y) || XLENGTH(x) != XLENGTH(x) ||
     XLENGTH(x) != XLENGTH(w)
@@ -40,7 +40,7 @@ SEXP FAPPLY_test1(SEXP x, SEXP y, SEXP z, SEXP w) {
   UNPROTECT(1);
   return res;
 }
-SEXP FAPPLY_test2(SEXP x, SEXP y, SEXP z, SEXP w) {
+SEXP R2C_test2(SEXP x, SEXP y, SEXP z, SEXP w) {
   if(
     XLENGTH(x) != XLENGTH(y) || XLENGTH(x) != XLENGTH(x) ||
     XLENGTH(x) != XLENGTH(w)
@@ -65,7 +65,7 @@ SEXP FAPPLY_test2(SEXP x, SEXP y, SEXP z, SEXP w) {
 #include <R_ext/Itermacros.h>
 #define NINTERRUPT 1000000U
 
-SEXP FAPPLY_test3(SEXP x, SEXP y, SEXP z, SEXP w) {
+SEXP R2C_test3(SEXP x, SEXP y, SEXP z, SEXP w) {
   if(
     XLENGTH(x) != XLENGTH(y) || XLENGTH(x) != XLENGTH(x) ||
     XLENGTH(x) != XLENGTH(w)
@@ -92,7 +92,7 @@ SEXP FAPPLY_test3(SEXP x, SEXP y, SEXP z, SEXP w) {
   UNPROTECT(1);
   return res;
 }
-SEXP FAPPLY_test4(SEXP x, SEXP y, SEXP z, SEXP w) {
+SEXP R2C_test4(SEXP x, SEXP y, SEXP z, SEXP w) {
   if(
     XLENGTH(x) != XLENGTH(y) || XLENGTH(x) != XLENGTH(x) ||
     XLENGTH(x) != XLENGTH(w)
@@ -119,7 +119,7 @@ SEXP FAPPLY_test4(SEXP x, SEXP y, SEXP z, SEXP w) {
   UNPROTECT(1);
   return res;
 }
-SEXP FAPPLY_test5(SEXP x, SEXP y, SEXP z, SEXP w) {
+SEXP R2C_test5(SEXP x, SEXP y, SEXP z, SEXP w) {
   if(
     XLENGTH(x) != XLENGTH(y) || XLENGTH(x) != XLENGTH(x) ||
     XLENGTH(x) != XLENGTH(w)

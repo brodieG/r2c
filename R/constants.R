@@ -1,6 +1,6 @@
 ## Copyright (C) 2022 Brodie Gaslam
 ##
-## This file is part of "fapply - DSL For Fast Groupwise Numeric Calculations"
+## This file is part of "r2c - A DSL for Fast Repeated Numeric Calculations"
 ##
 ## This program is free software: you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by

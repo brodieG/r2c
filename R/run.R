@@ -1,6 +1,6 @@
 ## Copyright (C) 2022 Brodie Gaslam
 ##
-## This file is part of "fapply - DSL For Fast Groupwise Numeric Calculations"
+## This file is part of "r2c - A DSL for Fast Repeated Numeric Calculations"
 ##
 ## This program is free software: you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
@@ -13,7 +13,7 @@
 ##
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
-group_sizes <- function(go) .Call(FAPPLY_group_sizes, go)
+group_sizes <- function(go) .Call(R2C_group_sizes, go)
 
 #' @export
 
@@ -69,7 +69,7 @@ fapply <- function(data, groups, obj, sort=TRUE) {
   dat_cols <- sum(alloc[['alloc']][['type']] == "grp")
   handle <- dyn.load(shlib)
   .Call(
-    FAPPLY_run_internal,
+    R2C_run_internal,
     handle[['name']],
     alloc[['interface']],
     dat,

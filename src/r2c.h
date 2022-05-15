@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2022  Brodie Gaslam
  *
- * This file is part of "fapply - Fast Apply"
+ * This file is part of "r2c - A DSL for Fast Repeated Numeric Calculations"
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -15,8 +15,8 @@
  * Go to <https://www.r-project.org/Licenses> for a copies of the licenses.
  */
 
-#ifndef FAPPLY_H
-#define FAPPLY_H
+#ifndef R2C_H
+#define R2C_H
 
 // System headers go above
 #include <R.h>
@@ -24,10 +24,10 @@
 #include <Rversion.h>
 #include <stdint.h>
 
-SEXP FAPPLY_group_sizes(SEXP g);
-SEXP FAPPLY_run_internal(
+SEXP R2C_group_sizes(SEXP g);
+SEXP R2C_run_internal(
   SEXP so, SEXP interface, SEXP dat, SEXP dat_cols,
   SEXP ids, SEXP flag, SEXP ctrl, SEXP grp_lens, SEXP res_lens
 );
 
-#endif  /* FAPPLY_H */
+#endif  /* R2C_H */

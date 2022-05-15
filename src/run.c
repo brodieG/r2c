@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2022  Brodie Gaslam
  *
- * This file is part of "fapply - Fast Apply"
+ * This file is part of "r2c - A DSL for Fast Repeated Numeric Calculations"
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -16,7 +16,7 @@
  */
 
 // System headers if any go above ^^
-#include "fapply.h"
+#include "r2c.h"
 #include <R_ext/Rdynload.h>
 
 // Taken from Rdynpriv.h; we'll need to work around this
@@ -35,7 +35,7 @@ struct Rf_RegisteredNativeSymbol {
  * @param g sorted group indices
  */
 
-SEXP FAPPLY_group_sizes(SEXP g) {
+SEXP R2C_group_sizes(SEXP g) {
   if(TYPEOF(g) != INTSXP)
     error("Argument `g` should be an integer vector.");
 
@@ -83,7 +83,7 @@ SEXP FAPPLY_group_sizes(SEXP g) {
   return res;
 }
 
-SEXP FAPPLY_run_internal(
+SEXP R2C_run_internal(
   SEXP so,
   SEXP interface,  // what type of call interface into the runner
   SEXP dat,
