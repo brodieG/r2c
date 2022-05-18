@@ -37,7 +37,7 @@ struct Rf_RegisteredNativeSymbol {
 
 SEXP R2C_group_sizes(SEXP g) {
   if(TYPEOF(g) != INTSXP)
-    error("Argument `g` should be an integer vector.");
+    Rf_error("Argument `g` should be an integer vector.");
 
   int prt = 0;
   int *g_int = INTEGER(g);
@@ -48,8 +48,8 @@ SEXP R2C_group_sizes(SEXP g) {
     for(R_xlen_t gi = 1; gi < glen; ++gi)
       if(*(g_int + gi) != *(g_int + gi - 1)) ++gn;
   }
-  SEXP gsize_sxp = PROTECT(allocVector(REALSXP, gn)); ++prt;
-  SEXP goff_sxp = PROTECT(allocVector(REALSXP, gn)); ++prt;
+  SEXP gsize_sxp = PROTECT(Rf_allocVector(REALSXP, gn)); ++prt;
+  SEXP goff_sxp = PROTECT(Rf_allocVector(REALSXP, gn)); ++prt;
 
   double *gsize = REAL(gsize_sxp);
   double *goff = REAL(goff_sxp);
@@ -74,8 +74,8 @@ SEXP R2C_group_sizes(SEXP g) {
     *gsize = gsize_i + 1;
     if(*gsize > gmax) gmax = *gsize;
   }
-  SEXP res = PROTECT(allocVector(VECSXP, 3)); ++prt;
-  SEXP gmax_sxp = PROTECT(ScalarReal(gmax)); ++prt;
+  SEXP res = PROTECT(Rf_allocVector(VECSXP, 3)); ++prt;
+  SEXP gmax_sxp = PROTECT(Rf_ScalarReal(gmax)); ++prt;
   SET_VECTOR_ELT(res, 0, gsize_sxp);
   SET_VECTOR_ELT(res, 1, goff_sxp);
   SET_VECTOR_ELT(res, 2, gmax_sxp);
@@ -95,42 +95,42 @@ SEXP R2C_run_internal(
   SEXP res_lens
 ) {
   if(TYPEOF(so) != STRSXP || XLENGTH(so) != 1)
-    error("Argument `so` should be a scalar string.");
+    Rf_error("Argument `so` should be a scalar string.");
   if(TYPEOF(dat_cols) != INTSXP || XLENGTH(dat_cols) != 1)
-    error("Argument `dat_cols` should be a scalar integer.");
+    Rf_error("Argument `dat_cols` should be a scalar integer.");
   if(TYPEOF(interface) != INTSXP || XLENGTH(interface) != 1)
-    error("Argument `interface` should be a scalar integer.");
+    Rf_error("Argument `interface` should be a scalar integer.");
   if(TYPEOF(grp_lens) != REALSXP)
-    error("Argument `grp_lens` should be a real vector.");
+    Rf_error("Argument `grp_lens` should be a real vector.");
   if(TYPEOF(res_lens) != REALSXP || XLENGTH(grp_lens) != XLENGTH(res_lens))
-    error("Argument `res_lens` should REALSXP and same length as `grp_lens`.");
+    Rf_error("Argument `res_lens` should REALSXP and same length as `grp_lens`.");
   if(TYPEOF(dat) != VECSXP)
-    error("Argument `data` should be a list.");
+    Rf_error("Argument `data` should be a list.");
   if(TYPEOF(ids) != VECSXP)
-    error("Argument `ids` should be a list.");
+    Rf_error("Argument `ids` should be a list.");
   if(TYPEOF(ctrl) != VECSXP)
-    error("Argument `ctrl` should be a list.");
+    Rf_error("Argument `ctrl` should be a list.");
   if(TYPEOF(flag) != INTSXP)
-    error("Argument `flag` should be an integer vector.");
+    Rf_error("Argument `flag` should be an integer vector.");
   if(XLENGTH(ids) != XLENGTH(ctrl))
-    error("Argument `ids` and `ctrl` should be the same length.");
+    Rf_error("Argument `ids` and `ctrl` should be the same length.");
   if(XLENGTH(flag) != XLENGTH(ctrl))
-    error("Argument `flag` and `ctrl` should be the same length.");
+    Rf_error("Argument `flag` and `ctrl` should be the same length.");
 
   const char * fun_char = "run";
   const char * dll_char = CHAR(STRING_ELT(so, 0));
   struct Rf_RegisteredNativeSymbol * symbol = NULL;
   DL_FUNC fun = R_FindSymbol(fun_char, dll_char, symbol);
-  int dat_count = asInteger(dat_cols);
+  int dat_count = Rf_asInteger(dat_cols);
   R_xlen_t g_count = XLENGTH(grp_lens);
   double * g_lens = REAL(grp_lens);
   double * r_lens = REAL(res_lens);
-  int intrf = asInteger(interface);
+  int intrf = Rf_asInteger(interface);
 
   // Data columns are first, followed by result, and then external cols.
   // This check incompleted if there are external cols.
   if(dat_count < 0 || dat_count > XLENGTH(dat) - 1)
-    error("Internal Error: bad data col count.");
+    Rf_error("Internal Error: bad data col count.");
 
   // Retructure data to be seakable without overhead of VECTOR_ELT
   // R_alloc not guaranteed to align to pointers, blergh. FIXME.
@@ -139,9 +139,9 @@ SEXP R2C_run_internal(
   for(R_xlen_t i = 0; i < XLENGTH(dat); ++i) {
     SEXP elt = VECTOR_ELT(dat, i);
     if(TYPEOF(elt) != REALSXP)
-      error(
+      Rf_error(
         "Internal Error: non-real data at %jd (%s).\n",
-        (intmax_t) i, type2char(TYPEOF(elt))
+        (intmax_t) i, Rf_type2char(TYPEOF(elt))
       );
     *(data + i) = REAL(elt);
     *(lens + i) = XLENGTH(elt);
@@ -153,9 +153,9 @@ SEXP R2C_run_internal(
   for(R_xlen_t i = 0; i < call_count; ++i) {
     SEXP elt = VECTOR_ELT(ids, i);
     if(TYPEOF(elt) != INTSXP)
-      error(
+      Rf_error(
         "Internal Error: non-integer data at %jd (%s).\n",
-        (intmax_t) i, type2char(TYPEOF(elt))
+        (intmax_t) i, Rf_type2char(TYPEOF(elt))
       );
     *(datai + i) = INTEGER(elt);
     *(narg + i) = (int) XLENGTH(elt);
@@ -182,13 +182,13 @@ SEXP R2C_run_internal(
       case 6: (*fun)(data, lens, datai, narg, flag_int); break;
       case 7: (*fun)(data, lens, datai, narg, ctrl); break;
       case 8: (*fun)(data, lens, datai, narg, flag_int, ctrl); break;
-      default: error("Internal Error: invalid interface specified.");
+      default: Rf_error("Internal Error: invalid interface specified.");
     }
     // Increment the data pointers by group size; the last increment will be
     // one past end of data, but it will not be dereferenced so okay
     for(int j = 0; j < dat_count; ++j) *(data + j) += g_len;
     if(lens[dat_count] != r_len)
-      error(
+      Rf_error(
         "Group result size does not match expected (%ju vs expected %ju).",
         lens[dat_count], r_len
       );

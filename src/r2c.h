@@ -15,8 +15,10 @@
  * Go to <https://www.r-project.org/Licenses> for a copies of the licenses.
  */
 
+
 #ifndef R2C_H
 #define R2C_H
+#define R_NO_REMAP
 
 // System headers go above
 #include <R.h>

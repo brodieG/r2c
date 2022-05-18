@@ -23,10 +23,10 @@ SEXP R2C_test1(SEXP x, SEXP y, SEXP z, SEXP w) {
     XLENGTH(x) != XLENGTH(y) || XLENGTH(x) != XLENGTH(x) ||
     XLENGTH(x) != XLENGTH(w)
   )
-    error("Mismatched lengths.\n");
+    Rf_error("Mismatched lengths.\n");
 
   R_xlen_t xlen = XLENGTH(x);
-  SEXP res = PROTECT(allocVector(REALSXP, XLENGTH(x)));
+  SEXP res = PROTECT(Rf_allocVector(REALSXP, XLENGTH(x)));
   double * xr = REAL(x);
   double * yr = REAL(y);
   double * zr = REAL(z);
@@ -45,10 +45,10 @@ SEXP R2C_test2(SEXP x, SEXP y, SEXP z, SEXP w) {
     XLENGTH(x) != XLENGTH(y) || XLENGTH(x) != XLENGTH(x) ||
     XLENGTH(x) != XLENGTH(w)
   )
-    error("Mismatched lengths.\n");
+    Rf_error("Mismatched lengths.\n");
 
   R_xlen_t xlen = XLENGTH(x);
-  SEXP res = PROTECT(allocVector(REALSXP, XLENGTH(x)));
+  SEXP res = PROTECT(Rf_allocVector(REALSXP, XLENGTH(x)));
   double * xr = REAL(x);
   double * yr = REAL(y);
   double * zr = REAL(z);
@@ -70,10 +70,10 @@ SEXP R2C_test3(SEXP x, SEXP y, SEXP z, SEXP w) {
     XLENGTH(x) != XLENGTH(y) || XLENGTH(x) != XLENGTH(x) ||
     XLENGTH(x) != XLENGTH(w)
   )
-    error("Mismatched lengths.\n");
+    Rf_error("Mismatched lengths.\n");
 
   R_xlen_t xlen = XLENGTH(x);
-  SEXP res = PROTECT(allocVector(REALSXP, XLENGTH(x)));
+  SEXP res = PROTECT(Rf_allocVector(REALSXP, XLENGTH(x)));
   double * xr = REAL(x);
   double * yr = REAL(y);
   double * zr = REAL(z);
@@ -97,10 +97,10 @@ SEXP R2C_test4(SEXP x, SEXP y, SEXP z, SEXP w) {
     XLENGTH(x) != XLENGTH(y) || XLENGTH(x) != XLENGTH(x) ||
     XLENGTH(x) != XLENGTH(w)
   )
-    error("Mismatched lengths.\n");
+    Rf_error("Mismatched lengths.\n");
 
   R_xlen_t xlen = XLENGTH(x);
-  SEXP res = PROTECT(allocVector(REALSXP, XLENGTH(x)));
+  SEXP res = PROTECT(Rf_allocVector(REALSXP, XLENGTH(x)));
   double * xr = REAL(x);
   double * yr = REAL(y);
   double * zr = REAL(z);
@@ -124,10 +124,10 @@ SEXP R2C_test5(SEXP x, SEXP y, SEXP z, SEXP w) {
     XLENGTH(x) != XLENGTH(y) || XLENGTH(x) != XLENGTH(x) ||
     XLENGTH(x) != XLENGTH(w)
   )
-    error("Mismatched lengths.\n");
+    Rf_error("Mismatched lengths.\n");
 
   R_xlen_t xlen = XLENGTH(x);
-  SEXP res = PROTECT(allocVector(REALSXP, XLENGTH(x)));
+  SEXP res = PROTECT(Rf_allocVector(REALSXP, XLENGTH(x)));
   double * xr = REAL(x);
   double * yr = REAL(y);
   double * zr = REAL(z);
