@@ -2,12 +2,13 @@
 
 # Next steps
 
-* Implement Pow.
+* Implement Pow properly (see `R_pow`).
 * Implement an option to translate a call to a different form (specifically for
-  `pow` up to e.g power 3 or 4.
+  `pow` up to e.g power 3 or 4.  Note, it appears R does this for `x^2`.
 
 # To Do / Questions
 
+* Annotate code with the call that it corresponds to
 * Add destructors that will unload the shlib and delete file file when the
   corresponding object is garbage collected.
 * Better introspection tools for intermediate products so we can see what they

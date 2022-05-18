@@ -121,3 +121,22 @@ ctrl_val_summary <- function(ctrl, flag, call) {
 
 mean0 <- function(x, na.rm=TRUE) sum(x, na.rm=TRUE) / length(x)
 
+#' Length
+
+f_length <- '
+static void %s(%s) {
+  *data[datai[1]] = (double) lens[datai[0]];
+  lens[datai[1]] = 1;
+}'
+code_gen_length <-  function(fun, args.reg, args.ctrl, args.flags) {
+  vetr(
+    identical(., "length"),
+    args.reg=list(NULL),
+    args.ctrl=list() && length(.) == 0L,
+    args.flags=list() && length(.) == 0L
+  )
+  name <- "r2c_length"
+  defn <- sprintf(f_length, name, toString(F.ARGS.BASE))
+  code_res(defn=defn, name=name, args=ARGS.NM.BASE)
+}
+

@@ -126,15 +126,9 @@ fap_fun <- function(
 }
 # Make sure "(" is not added to this list.
 VALID_FUNS <- list(
+  # - Base Funs ----------------------------------------------------------------
   fap_fun(
     "sum", base::sum, function(..., na.rm=FALSE) NULL,
-    flag.params="na.rm",
-    type=list("constant", 1L),
-    code.gen=code_gen_summary,
-    ctrl.validate=ctrl_val_summary
-  ),
-  fap_fun(
-    "mean0", fun=mean0, defn=mean0,
     flag.params="na.rm",
     type=list("constant", 1L),
     code.gen=code_gen_summary,
@@ -147,6 +141,10 @@ VALID_FUNS <- list(
     type=list("constant", 1L),
     code.gen=code_gen_summary,
     ctrl.validate=ctrl_val_summary
+  ),
+  fap_fun(
+    "length", base::length, defn=function(x) NULL,
+    type=list("constant", 1L), code.gen=code_gen_length
   ),
   fap_fun(
     "+", base::`+`, defn=function(e1, e2) NULL,
@@ -171,7 +169,20 @@ VALID_FUNS <- list(
   fap_fun(
     "^", base::`^`, defn=function(e1, e2) NULL,
     type=list("vecrec", c("e1", "e2")), code.gen=code_gen_pow,
-    # transform=pow_transform  # until we have sub-expression recognition
+    transform=pow_transform
+  ),
+  # - r2c funs -----------------------------------------------------------------
+  fap_fun(
+    "mean0", fun=mean0, defn=mean0,
+    flag.params="na.rm",
+    type=list("constant", 1L),
+    code.gen=code_gen_summary,
+    ctrl.validate=ctrl_val_summary
+  ),
+  fap_fun(
+    "square", fun=square, defn=square,
+    type=list("arglen", "x"),
+    code.gen=code_gen_square
   )
 )
 names(VALID_FUNS) <- vapply(VALID_FUNS, "[[", "", "name")

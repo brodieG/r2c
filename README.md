@@ -1,9 +1,105 @@
-# r2c - A DSL for Fast Repeated Numeric Calculations
+# r2c - Fast Iterated Statistics in R
 
-**Proof of Concept**.  Lightly tested, experimental.  TBD if this becomes a
-supported package.
+**Proof of Concept**.  Lightly tested, experimental, and incomplete.
 
-## Overview
+Compiles a selected subset of R into native instructions so that
+that expressions composed from that subset can be executed repeatedly on
+varying data without interpreter overhead.
+
+## Background and Motivation
+
+R is nearly as fast as statically compiled languages for many common numerical
+calculations.  R's vector-first variables are a major reason for this, as it
+allows implicit loops, e.g. in:
+
+```
+set.seed(1)
+n <- 1e7
+x <- runif(n)  # random uniform numeric vector of length `n`
+y <- runif(n)  # random uniform numeric vector of length `n`
+
+system.time(z <- x + y)
+```
+
+The code semantics of the above are equivalent to (assuming equal length `x` and
+`y` and length greater than zero):
+
+```
+z <- numeric(length(x))
+system.time(
+  for(i in seq_along(x)) {
+    z[i] <- x[i] + y[i]
+  }
+)
+```
+
+The implicit loop syntax is nicer, and much faster as the loop is executed
+directly in machine instructions without interpreter overhead:
+
+    <bar plot>
+
+Unfortunately there are tasks that require iterated explicit calls to R
+functions that are saddled by the interpreter overhead.  A common one is to
+compute group statistics, as in:
+
+```
+g <- sample(n/10, n, replace=TRUE)  # make groups with size ~10 elements
+x.g <- split(x, g)                  # split x by group
+
+system.time(vapply(x.g, var, 0))
+##   user  system elapsed 
+## 13.301   0.342  14.292 
+``
+
+In this case we'll be calling the `var` R function ~1 million times.  Other
+problematic applications include rolling window statistics, explicit loops
+(e.g. to re-use prior calculations), solvers, and more.
+
+## The Trade Off
+
+R is an incredibly flexible programming language, but if all we want to do is
+compute statistics on numeric vectors, most of that flexibility is wasted on our
+dull work.  Additionally, this flexibility makes it difficult to automatically
+optimize R code into native instructions.
+
+If we accept to work with only numeric vectors, arithmetic operators, basic
+mathematical functions, and basic statistics, it becomes possible to
+programatically translate R expressions into C code which can then be compiled
+to native instructions.
+
+While it may seem like the constraints is restrictive, we can do quite a lot
+with even just a minimal set of functions.  For example, we can implement `var`
+as:
+
+```
+sum((x - mean(x)) ^ 2) / (length(x) - 1)
+```
+
+## The Payoff
+
+Speed, of course:
+
+```
+library(r2c)
+r2c_var <- r2cq(sum((x - mean(x)) ^ 2) / (length(x) - 1))
+system.time(group_exec(r2c_var, data.frame(x), g))
+```
+
+
+Compilation cost.
+
+Most data analysis is carried out on numeric vectors, so the implicit syntax is
+clearer and more convenient.  But more importantly for performance, the loop can
+be implemented in statically compiled code, which makes it fast.
+
+avoids interpreter overhead
+for each invocation of `+` (as well as the two calls to `[` to get the scalar
+value).
+
+
+
+through
+a combination of inte
 
 R code using a small subset of R functions and operating exclusively on numeric
 vectors can be converted to C and compiled to native instructions.  The standard

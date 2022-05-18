@@ -54,6 +54,7 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' compile(quote(sum(x + y))
 
 r2c <- function(call, dir=tempfile()) {
+  vetr(is.language(.))  # in theory could be e.g. 5L...
   preproc <- preprocess(call)
   so <- make_shlib(preproc[['code-text']])
   list(preproc=preproc, so=so)
