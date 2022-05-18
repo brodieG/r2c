@@ -1,5 +1,5 @@
 Package: r2c
-Title: A DSL for Fast Repeated Numeric Calculations
+Title: Fast Iterated Statistics in R
 Description: Compiles a selected subset of R into native instructions so that
     that expressions composed from that subset can be executed repeatedly on
     varying data without interpreter overhead.
