@@ -48,16 +48,30 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #'   `compile` it should be pre-quoted.
 #' @param dir character(1L) name of a temporary directory to store the shared
 #'   object file in.
-#' @return the full path to the compiled shared object file.
+#' @param environment to use as enclosure to function evaluation environment
+#' @return an "r2c_base_fun" function.
 #' @examples
-#' compileq(sum(x + y))
-#' compile(quote(sum(x + y))
+#' r2cq(sum(x + y))
+#' r2c(quote(sum(x + y))
 
-r2c <- function(call, dir=tempfile()) {
-  vetr(is.language(.))  # in theory could be e.g. 5L...
+r2c <- function(call, env=parent.frame(), dir=tempfile()) {
+  vetr(is.language(.), dir=character())
   preproc <- preprocess(call)
   so <- make_shlib(preproc[['code-text']])
-  list(preproc=preproc, so=so)
+
+  # generate formals that match the free symbols in the call
+  sym.free <- preproc[['sym.free']]
+  formals <- replicate(length(sym.free), alist(a=))
+  names(formals) <- sym.free
+
+  fun <- function() NULL
+  formals(fun) <- formals
+  body(fun) <- call
+  environment(fun) <- env
+
+  class(fun) <- "r2c_base_fun"
+  attr(fun, 'r2c') <- list(preproc=preproc, so=so)
+  fun
 }
 #' @export
 #' @rdname r2c

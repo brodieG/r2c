@@ -79,7 +79,8 @@ not_num_naked_err <- function(name, val) {
 preprocess <- function(call) {
   # All the data generated goes into x
   x <- list(
-    call=list(), depth=integer(), args=list(), args.type=list(), code=list()
+    call=list(), depth=integer(), args=list(), args.type=list(), code=list(),
+    sym.free=character(), sym.bound=character()
   )
   # We use this for match.call, but very questionable given the env might be
   # different when we actually run the code
@@ -160,7 +161,7 @@ pp_internal <- function(call, depth, x, argn="", env) {
       if(args.types[i] %in% c('control', 'flag')) {
         x <- record_call_dat(
           x, call=args[[i]], depth=depth + 1L, argn=names(args)[i],
-          type=args.types[i], code=code_blank()
+          type=args.types[i], code=code_blank(), sym.free=sym_free(args[[i]], x)
         )
       } else {
         x <- pp_internal(
@@ -185,7 +186,9 @@ pp_internal <- function(call, depth, x, argn="", env) {
 }
 ## Record Expression Data
 
-record_call_dat <- function(x, call, depth, argn, type, code) {
+record_call_dat <- function(
+  x, call, depth, argn, type, code, sym.free=sym_free(x, call)
+) {
   # list dataj
   x[['call']] <- c(x[['call']], list(call))
   x[['code']] <- c(x[['code']], list(code))
@@ -194,7 +197,14 @@ record_call_dat <- function(x, call, depth, argn, type, code) {
   x[['argn']] <- c(x[['argn']], argn)
   x[['depth']] <- c(x[['depth']], depth)
   x[['type']] <- c(x[['type']], type)
+  x[['sym.free']] <- union(x[['sym.free']], sym.free)
   x
+}
+sym_free <- function(x, sym) {
+  if(is.symbol(sym)) {
+    sym.chr <- as.character(sym)
+    if(!sym.chr %in% x[['sym.free']]) sym.chr
+  }
 }
 # These are the possible interfaces (this got out of hand), need better solution
 # 1. data, datai, len
