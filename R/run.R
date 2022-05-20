@@ -92,7 +92,19 @@ group_exec <- function(obj, data, groups, sort=TRUE) {
     group.res.sizes
   )
   # Result vector is modified by reference
-  dat[[which(alloc[['alloc']][['type']] == "res")]]
+  res <- dat[[which(alloc[['alloc']][['type']] == "res")]]
+
+  # Generate and attach group labels
+  g.lab <- rep(go[group.dat[[2L]] + 1L], group.res.sizes)
+
+  # Attach group labels
+  if(mode == 'df') {
+    data.frame(group=g.lab, V1=res)
+  } else if (mode == 'vec') {
+    names(res) <- g.lab
+    res
+  } else stop("Unknown return format mode")
+
 }
 
 run_int <- function(
