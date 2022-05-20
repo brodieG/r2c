@@ -80,8 +80,7 @@ group_exec <- function(obj, data, groups, sort=TRUE) {
 
   dat_cols <- sum(alloc[['alloc']][['type']] == "grp")
   handle <- dyn.load(shlib)
-  .Call(
-    R2C_run_internal,
+  run_int(
     handle[['name']],
     alloc[['interface']],
     dat,
@@ -96,3 +95,20 @@ group_exec <- function(obj, data, groups, sort=TRUE) {
   dat[[which(alloc[['alloc']][['type']] == "res")]]
 }
 
+run_int <- function(
+  handle, interface, dat, dat_cols, ids, flag, control, group.sizes,
+  group.res.sizes
+) {
+  .Call(
+    R2C_run_internal,
+    handle,
+    interface,
+    dat,
+    dat_cols,
+    ids,
+    flag,
+    control,
+    group.sizes,
+    group.res.sizes
+  )
+}
