@@ -54,16 +54,6 @@ match_call <- function(definition, call, envir, name) {
   )
 }
 
-is.num_naked <- function(x) vapply(x, is.vector, TRUE, "numeric")
-
-not_num_naked_err <- function(name, val) {
-  sprintf(
-    "(type: %s %s%s)",
-    typeof(val),
-    if(length(class(val))) "class: " else "",
-    if(length(class(val))) toString(class(arg.bad.val)) else ""
-) }
-
 #' Generate C Code for Compilation
 #'
 #' Match each R symbol to C code, possibly parameterized by some simple
