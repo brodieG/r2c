@@ -8,6 +8,11 @@
 
 # To Do / Questions
 
+* What do we do with NA groups?  Each it's own, or one big NA group?
+* Can we optimize label generation for cases where the last step is constant
+  size or size of groups?
+* Really need to figure out whether we want a formal interface to the functions.
+  It could be auto-generated from all the unbound symbols like gsubfn does it.
 * Annotate code with the call that it corresponds to
 * Add destructors that will unload the shlib and delete file file when the
   corresponding object is garbage collected.
@@ -893,6 +898,35 @@ doubles.
 
 # Interface
 
+Now leaning towards something like this:
+
+```
+group_exec(slope, data, groups, x=v)              ## remap
+group_exec_(slope, data, groups, remap=c(x='v'))  ## remap
+```
+
+But what if the `r2c` object contains `data`, or `groups`?  Then it becomes
+impossible to remap those.  We could make those reserved terms in the
+compilation analysis.  How does that evolve as we add more functions that have
+different parameter names?  Do we just lock up too much?  The alternative seems
+to be:
+
+```
+group_exec(r2c_slope, data, groups)()
+group(r2c_slope, data, groups)()
+slide(r2c_slope, data, width, ...)()
+r2c_slope()
+```
+
+Do we require parameters?
+
+```
+group(r2c_slope, data, groups)(x=x, y=y)
+group(r2c_slope, data, groups)(x, y)
+r2c_slope(x, y)
+```
+
+
 
 These are very appealing for group/window because we can easily re-use the same
 shared object, and additionally 
@@ -933,12 +967,18 @@ with(data, group(slope(v, z), groups))
 ```
 
 
+
+
 ```
 group(slope(x=v, y=z), data, groups)
 group(slope, data, groups)                               # no remap
 group_exec(slope, data, groups)                          # no remap
 group_exec(slope(.remap=c(x="v", y="w")), data, groups)
 group_exec(remap(slope, c(x="v", y="w")), data, groups)
+
+group_exec(slope, data, groups)       ## no remap
+group_exec(slope, data, groups, x=v)  ## remap
+
 
 run(slope(x=v, y=z))
 slide(slope(x=v, y=z), window=window)

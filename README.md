@@ -1,6 +1,7 @@
 # r2c - Fast Iterated Statistics in R
 
-**Proof of Concept**.  Lightly tested, experimental, and incomplete.
+**Proof of Concept**.  Lightly tested, experimental, and incomplete.  The
+interface will change substantially over the next few iterations.
 
 Compiles a selected subset of R into native instructions so that
 that expressions composed from that subset can be executed repeatedly on
@@ -9,81 +10,123 @@ varying data without interpreter overhead.
 ## Background and Motivation
 
 R is nearly as fast as statically compiled languages for many common numerical
-calculations.  R's vector-first variables are a major reason for this, as it
-allows implicit loops, e.g. in:
+calculations such as arithmetic on two large numeric vectors:
 
 ```
 set.seed(1)
 n <- 1e7
-x <- runif(n)  # random uniform numeric vector of length `n`
-y <- runif(n)  # random uniform numeric vector of length `n`
+x <- runif(n)
+y <- runif(n)
 
 system.time(z <- x + y)
+##   user  system elapsed
+##  0.023   0.000   0.023
 ```
 
-The code semantics of the above are equivalent to (assuming equal length `x` and
-`y` and length greater than zero):
+Or statistics:
 
 ```
-z <- numeric(length(x))
-system.time(
-  for(i in seq_along(x)) {
-    z[i] <- x[i] + y[i]
-  }
-)
+system.time(mean(x))
+##   user  system elapsed
+##  0.029   0.000   0.030
 ```
 
-The implicit loop syntax is nicer, and much faster as the loop is executed
-directly in machine instructions without interpreter overhead:
-
-    <bar plot>
-
-Unfortunately there are tasks that require iterated explicit calls to R
-functions that are saddled by the interpreter overhead.  A common one is to
-compute group statistics, as in:
+On my ancient 1.2GHz system that's about 2-4 **CPU cycles** for each of the 10
+million operations and loop overhead.  Hard to get much faster.  If we maintain
+a high ratio of native operations to R level calls our programs will be fast.
+But some tasks require more R-level calls, for example computing statistics on
+groups:
 
 ```
-g <- sample(n/10, n, replace=TRUE)  # make groups with size ~10 elements
-x.g <- split(x, g)                  # split x by group
+g <- cumsum(sample(c(TRUE, rep(FALSE, 9)), n, replace=TRUE))
+x.split <- split(x, g)
+length(x.split)            # ~1MM groups
+## [1] 1002099
+mean(lengths(x.split))     # ~10 average size
+## [1] 9.98
 
-system.time(vapply(x.g, var, 0))
+system.time(g.mean <- vapply(x.split, mean, numeric(1L)))
+##  user  system elapsed
+##  5.25    0.05    5.34
+```
+
+We added ~1MM R-level calls each with the associated interpreted overhead, and
+our program is now 100x slower despite the same number of useful calculations.
+
+## What If We Could Compile R?
+
+That would be nice, wouldn't it?  Well, we (at least I) can't compile the
+entirety of R, but...
+
+```
+library(r2c)
+r2c_mean <- r2cq(mean(x))
+## clang -mmacosx-version-min=10.13 -I"/Library/Frameworks/R.framework/Resources/include" -DNDEBUG   -I/usr/local/include   -fPIC  -Wall -g -O2  -fno-common -std=c99 -pedantic -Wall -Wextra -c /var/folders/47/5by_gx_x4wncdt46pzcb9bcr0000gq/T//RtmpsSyRz0/file60911e4258d2/code-ceujp2sv.c -o /var/folders/47/5by_gx_x4wncdt46pzcb9bcr0000gq/T//RtmpsSyRz0/file60911e4258d2/code-ceujp2sv.o
+## clang -mmacosx-version-min=10.13 -dynamiclib -Wl,-headerpad_max_install_names -undefined dynamic_lookup -single_module -multiply_defined suppress -L/Library/Frameworks/R.framework/Resources/lib -L/usr/local/lib -o /var/folders/47/5by_gx_x4wncdt46pzcb9bcr0000gq/T//RtmpsSyRz0/file60911e4258d2/code-ceujp2sv.so /var/folders/47/5by_gx_x4wncdt46pzcb9bcr0000gq/T//RtmpsSyRz0/file60911e4258d2/code-ceujp2sv.o -F/Library/Frameworks/R.framework/.. -framework R -Wl,-framework -Wl,CoreFoundation
+```
+
+And now:
+
+```
+system.time(g.mean2 <- group_exec(r2c_mean, x, g, sort=FALSE))
+sys.time(g.mean2 <- group_exec(r2c_mean, x, g, sort=FALSE))
+identical(g.mean, g.mean2)
+
+r2c_mean <- r2cq(mean(x))
 ##   user  system elapsed 
-## 13.301   0.342  14.292 
-``
+##  0.132   0.001   0.133 
+identical(g.mean, g.mean2)
+## [1] TRUE
 
-In this case we'll be calling the `var` R function ~1 million times.  Other
-problematic applications include rolling window statistics, explicit loops
-(e.g. to re-use prior calculations), solvers, and more.
+```
 
-## The Trade Off
+```
+library(data.table)
+setDTthreads(threads = 1)
+dt <- data.table(x, g)
+setkey(dt, g)
+system.time(dt[, mean(x), g])
+```
+
+## Constraints
 
 R is an incredibly flexible programming language, but if all we want to do is
 compute statistics on numeric vectors, most of that flexibility is wasted on our
 dull work.  Additionally, this flexibility makes it difficult to automatically
 optimize R code into native instructions.
 
-If we accept to work with only numeric vectors, arithmetic operators, basic
-mathematical functions, and basic statistics, it becomes possible to
-programatically translate R expressions into C code which can then be compiled
-to native instructions.
-
-While it may seem like the constraints is restrictive, we can do quite a lot
-with even just a minimal set of functions.  For example, we can implement `var`
-as:
+If we accept to work with only numeric vectors, basic arithmetic operators and
+statistics, and forsake method dispatch,  it becomes possible to
+programmatically translate R expressions into C code.  The constraints are
+restrictive, but we can do a lot under them.  For example, we can implement
+`var` (single variable) as:
 
 ```
 sum((x - mean(x)) ^ 2) / (length(x) - 1)
 ```
 
-## The Payoff
+## Performance
 
 Speed, of course:
 
 ```
 library(r2c)
-r2c_var <- r2cq(sum((x - mean(x)) ^ 2) / (length(x) - 1))
-system.time(group_exec(r2c_var, data.frame(x), g))
+o <- order(g)
+xo <- x[o]
+go <- g[o]
+system.time(r2c_var <- r2cq(sum((x - mean(x)) ^ 2) / (length(x) - 1)))
+r2c_mean <- r2cq(mean(x))
+
+system.time(v2 <- group_exec(r2c_var, data.frame(x=xo), go, sort=FALSE))
+system.time(m1 <- vapply(x.g, mean.default, 0))
+system.time(m2 <- group_exec(r2c_mean, data.frame(x=xo), go, sort=FALSE))
+identical(unname(v1), v2)
+all.equal(unname(v1), v2)
 ```
+
+Vs. `data.table`
+
+## Caveats
 
 
 Compilation cost.
