@@ -18,11 +18,23 @@ group_sizes <- function(go) .Call(R2C_group_sizes, go)
 #' @export
 
 group_exec <- function(obj, data, groups, sort=TRUE) {
+  data.sub <- substitute(data)
   # FIXME: add validation for shlib
-  vetr(data=data.frame(), groups=INT && length(.) == nrow(data), sort=LGL.1)
+  vetr(groups=integer() && length(.) == nrow(data), sort=LGL.1)
   preproc <- obj[['preproc']]
   shlib <- obj[['so']]
+  mode <- "df"
 
+  if(!is.data.frame(data)) {
+    if(!is.num_naked(list(data)) && !is.name(data.sub))
+      stop(
+        "Argument `data` must be a data frame or a *reference* to an ",
+        "attribute-less numeric vector."
+      )
+    data <- data.frame(data)
+    names(data) <- as.character(data.sub)
+    mode <- "vec"
+  }
   if(sort) {
     o <- order(groups)
     go <- groups[o]
