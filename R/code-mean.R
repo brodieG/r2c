@@ -41,10 +41,10 @@
 ## * Removes ITERATE_BY_REGION
 
 loop.mean <- '
-  if(!narm)
-    for (R_xlen_t k = 0; k < n; k++) %1$s;
-  else
-    for (R_xlen_t k = 0; k < n; k++) if(!isnan(dx[k])) %1$s;'
+if(!narm)
+  for (R_xlen_t k = 0; k < n; k++) %1$s;
+else
+  for (R_xlen_t k = 0; k < n; k++) if(!isnan(dx[k])) %1$s;'
 
 make_loop_mean <- function(term, pad=2) {
   sprintf(
