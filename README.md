@@ -26,16 +26,17 @@ system.time(z <- x + y)
 Or statistics:
 
 ```
-system.time(mean(x))
+system.time(sum(x))
+sys.time(sum(x))
 ##   user  system elapsed
-##  0.029   0.000   0.030
+##  0.043   0.000   0.043
 ```
 
-On my ancient 1.2GHz system that's about 2-4 **CPU cycles** for each of the 10
-million operations and loop overhead.  Hard to get much faster.  If we maintain
-a high ratio of native operations to R level calls our programs will be fast.
-But some tasks require more R-level calls, for example computing statistics on
-groups:
+On my system that's about 2-5 **CPU cycles** for each of the 10 million
+operations and associated loop overhead.  Hard to get much faster.  If we
+maintain a high ratio of native operations to R level calls our programs will be
+fast.  But some tasks require more R-level calls, for example computing
+statistics on groups:
 
 ```
 g <- cumsum(sample(c(TRUE, rep(FALSE, 9)), n, replace=TRUE))
@@ -45,13 +46,21 @@ length(x.split)            # ~1MM groups
 mean(lengths(x.split))     # ~10 average size
 ## [1] 9.98
 
-system.time(g.mean <- vapply(x.split, mean, numeric(1L)))
-##  user  system elapsed
-##  5.25    0.05    5.34
+system.time(g.mean <- vapply(x.split, sum, numeric(1L)))
+##   user  system elapsed 
+##  0.802   0.014   0.856 
 ```
 
-We added ~1MM R-level calls each with the associated interpreted overhead, and
-our program is now 100x slower despite the same number of useful calculations.
+Despite the same number of additions, our program slowed by over 20x.  And this
+is with a primitive R function that does nothing but go directly to C code:
+
+```
+sum
+## function (..., na.rm = FALSE)  .Primitive("sum")
+```
+
+The result is larger in the group case, but allocating and writing that is fast
+as shown by the earlier example with `z <- x + y` which is ~10x the size.
 
 ## What If We Could Compile R?
 
@@ -68,15 +77,14 @@ r2c_mean <- r2cq(mean(x))
 And now:
 
 ```
-system.time(g.mean2 <- group_exec(r2c_mean, x, g, sort=FALSE))
 sys.time(g.mean2 <- group_exec(r2c_mean, x, g, sort=FALSE))
-identical(g.mean, g.mean2)
-
-r2c_mean <- r2cq(mean(x))
 ##   user  system elapsed 
 ##  0.132   0.001   0.133 
 identical(g.mean, g.mean2)
 ## [1] TRUE
+
+r2c_sum <- r2cq(sum(x))
+sys.time(g.sum2 <- group_exec(r2c_sum, x, g, sort=FALSE))
 
 ```
 
@@ -255,4 +263,12 @@ whatsoever with C or C++.
 * `data.table`'s Gforce.
 * `dplyr`'s ?
 
+## 
+
+set.seed(1)
+x <- runif(1e7)
+microbenchmark::microbenchmark(
+  mean(x) * length(x),
+  sum(x)
+)
 

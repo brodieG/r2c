@@ -40,16 +40,26 @@
 ## * Replaces LDOUBLE by long double
 ## * Removes ITERATE_BY_REGION
 
-loop_mean <-
-'  if(!narm)
+loop.mean <- '
+  if(!narm)
     for (R_xlen_t k = 0; k < n; k++) %1$s;
   else
-    for (R_xlen_t k = 0; k < n; k++) if(!isnan(dx[k])) %1$s;
-'
-loop_mean1 <- sprintf(loop_mean, 's += dx[k]')
-loop_mean2 <- sprintf(loop_mean, 's += dx[k]/n')
-loop_mean3 <- sprintf(loop_mean, 't += (dx[k] - s)')
-loop_mean4 <- sprintf(loop_mean, 't += (dx[k] - s)/n')
+    for (R_xlen_t k = 0; k < n; k++) if(!isnan(dx[k])) %1$s;'
+
+make_loop_mean <- function(term, pad=2) {
+  sprintf(
+    paste0(
+      strrep(' ', pad),
+      unlist(strsplit(loop.mean, '\n', fixed=TRUE))[-1L],
+      collapse="\n"
+    ),
+    term
+  )
+}
+loop_mean1 <- make_loop_mean('s += dx[k]')
+loop_mean2 <- make_loop_mean('s += dx[k]/n', 4)
+loop_mean3 <- make_loop_mean('t += (dx[k] - s)', 4)
+loop_mean4 <- make_loop_mean('t += (dx[k] - s)/n', 4)
 
 f_mean <- sprintf('
 static void %%s(%%s) {
@@ -60,24 +70,24 @@ static void %%s(%%s) {
   int narm = flag;  // only one possible flag parameter
 
   long double s = 0.0;
-  %s
+%s
 
   Rboolean finite_s = R_FINITE((double) s);
   if (finite_s) {
     s /= n;
   } else { // infinite s, maybe just overflowed; try to use smaller terms:
     s = 0.;
-    %s
+%s
   }
   // Second precision enhancing pass
   if (finite_s && R_FINITE((double) s)) {
     long double t = 0.0;
-    %s
+%s
     s += t/n;
   }
   else if (R_FINITE((double) s)) { // was infinite: more careful
     long double t = 0.0;
-    %s
+%s
     s += t;
   }
   *data[di2] = s;

@@ -57,7 +57,7 @@ rand_string <- function(len, pool=c(letters, 0:9))
 r2c <- function(call, env=parent.frame(), dir=tempfile()) {
   vetr(is.language(.), dir=character())
   preproc <- preprocess(call)
-  so <- make_shlib(preproc[['code-text']])
+  so <- make_shlib(preproc[['code']])
 
   # generate formals that match the free symbols in the call
   sym.free <- preproc[['sym.free']]

@@ -85,29 +85,54 @@ preprocess <- function(call) {
   names.m <- match(names, unique(names))
   if(!identical(codes.m, names.m))
     stop("Internal error: functions redefind with changing definitions.")
-
+  codes.u <- paste0(
+    gsub("^(\\s|\\n)+|(\\s|\\n)+$", "", unique(codes[nzchar(codes)])),
+    "\n"
+  )
   args.u <- unique(unlist(lapply(x[['code']], "[[", "args")))
   args <- args.u[order(match(args.u, c(ARGS.NM.ALL)))]
 
-  code.calls <- vapply(x[['code']], "[[", "", "call")
+  # Generate the C equivalent code calls and annotate them with the R ones
+  c.calls <- vapply(x[['code']], "[[", "", "call")
+  r.calls.dep <- vapply(
+    x[['call']], function(x) paste0(deparse(x), collapse="\n"), ""
+  )
+  calls.keep <- nzchar(c.calls)
+  c.calls.keep <- c.calls[calls.keep]
+  r.calls.dep.keep <- r.calls.dep[calls.keep]
+  r.calls.dep.m <- grepl("\n", r.calls.dep.keep, fixed=TRUE)
+  c.calls.fmt <- format(c.calls.keep)
+  narrow <-
+    !r.calls.dep.m &
+    (nchar(c.calls.fmt) + nchar(r.calls.dep.keep) < 75)
+
+  calls.fin <- vector('list', length(c.calls.keep))
+  calls.fin[narrow] <-
+    paste(c.calls.fmt, "//", r.calls.dep.keep)[narrow]
+  calls.fin[!narrow] <- lapply(
+    which(!narrow),
+    function(i)
+      c(if(i > 1) "", paste("//", r.calls.dep.keep[i]), c.calls.keep[i])
+  )
+
   code.txt <- c(
     # Headers, system headers first (are these going to go in right order?)
     paste("#include", c(headers, "<R.h>", "<Rinternals.h>")),
-    # Function Definitions
-    unique(codes),
-    # Calls
     "",
+    # Function Definitions
+    codes.u,
+    # Calls
     sprintf("void run(%s) {", toString(R.ARGS.ALL[match(args, ARGS.NM.ALL)])),
     paste0(
       "  ",
       c(
         if(any(ARGS.NM.CTRL %in% args)) "int v=0;",
-        code.calls[nzchar(code.calls)]
+        unlist(calls.fin)
       )
     ),
     "}"
   )
-  x[['code-text']] <- structure(code.txt, class="code_text")
+  x[['code']] <- structure(code.txt, class="code_text")
   x[['interface']] <- interface_type(args)
   x
 }

@@ -28,29 +28,38 @@ static void %%s(%%s) {
   long double tmp = 0;
 
   R_xlen_t len_n = lens[di1];
-  %s;
-  double * dat = data[di1];
+  %sdouble * dat = data[di1];
   int narm = flag;  // only one possible flag parameter
-  %s%s
+%s%s
 
   *data[di2] = (double) tmp;
   lens[di2] = 1;
+}'
+loop.base <- '
+if(!narm)
+  for(R_xlen_t i = 0; i < len_n; ++i) tmp += dat[i];
+else
+  for(R_xlen_t i = 0; i < len_n; ++i)
+    if(!isnan(dat[i])) tmp += dat[i];%s
+'
+make_loop_base <- function(count.na=FALSE, pad=2) {
+  sprintf(
+    paste0(
+      strrep(' ', pad),
+      unlist(strsplit(loop.base, '\n', fixed=TRUE))[-1L],
+      collapse="\n"
+    ),
+    if(count.na) " else ++na_n;" else ""
+  )
 }
-'
-loop_base <- '
-  if(!narm)
-    for(R_xlen_t i = 0; i < len_n; ++i) tmp += dat[i];
-  else
-    for(R_xlen_t i = 0; i < len_n; ++i)
-      if(!isnan(dat[i])) tmp += dat[i];%s
-'
+
 f_mean0 <- sprintf(
   f_summary_base,
-  "R_xlen_t na_n = 0;",
-  sprintf(loop_base,  " else ++na_n;"),
+  "R_xlen_t na_n = 0;\n  ",
+  make_loop_base(count.na=TRUE),
   "\n  tmp /= (len_n - na_n);\n"
 )
-f_sum_1 <- sprintf(f_summary_base, "", sprintf(loop_base, ""), "")
+f_sum_1 <- sprintf(f_summary_base, "", make_loop_base(count.na=FALSE), "")
 f_sum_n_base <- '
 static void %%s(%%s) {
   long double tmp = 0;
@@ -65,9 +74,8 @@ static void %%s(%%s) {
   }
   *data[datai[narg]] = (double) tmp;
   lens[datai[narg]] = 1;
-}
-'
-f_sum_n <- sprintf(f_sum_n_base, sprintf(loop_base, ""));
+}'
+f_sum_n <- sprintf(f_sum_n_base, make_loop_base(count.na=FALSE, pad=4))
 
 ## Structure all strings into a list for ease of selection
 

@@ -66,8 +66,7 @@ static void %1$s(%2$s) {
     }
   }
   lens[dires] = len1;
-}
-'
+}'
 code_gen_arith <- function(fun, args.reg, args.ctrl, args.flags) {
   vetr(
     CHR.1 && . %in% names(OP.NAMES),

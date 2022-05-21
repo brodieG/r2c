@@ -921,11 +921,52 @@ r2c_slope()
 Do we require parameters?
 
 ```
-group(r2c_slope, data, groups)(x=x, y=y)
 group(r2c_slope, data, groups)(x, y)
 r2c_slope(x, y)
+slide(r2c_slope, data, window=5)(x, y)
 ```
 
+Setting the following as default just won't work, since the lookup semantics are
+to look in the function environment (and would cause the recursive lookup
+issue):
+
+```
+function(x=x, y=y)
+```
+
+So we can't have a function that observes R semantics but then also has the
+unmapped parameters. So things like this won't work:
+
+```
+group(r2c_slope, data, groups)()
+```
+
+But this is okay:
+
+```
+group(r2c_slope, data, groups)(x, y)
+```
+
+Since we don't have a way to declare the mapping order in a way visible to
+users.  So even if the print method does something like:
+
+```
+group(r2c_slope, data, groups)
+## function(x, y) <...>
+```
+
+When in reality it's:
+
+```
+## function(...) <...>
+```
+
+What does `r2c_slope` look like:
+
+```
+r2c_slope
+## function(x, y) <...>
+```
 
 
 These are very appealing for group/window because we can easily re-use the same
