@@ -77,7 +77,14 @@ r2c_mean <- r2cq(mean(x))
 And now:
 
 ```
-sys.time(g.mean2 <- group_exec(r2c_mean, x, g, sort=FALSE))
+set.seed(1)
+n <- 1e5
+x <- runif(n)
+g <- cumsum(sample(c(TRUE, rep(FALSE, 9)), n, replace=TRUE))
+library(r2c)
+r2c_mean <- r2cq(mean(x))
+
+system.time(g.mean2 <- group_exec(r2c_mean, g, x, sorted=TRUE))
 ##   user  system elapsed 
 ##  0.132   0.001   0.133 
 identical(g.mean, g.mean2)

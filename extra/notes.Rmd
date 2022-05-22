@@ -918,7 +918,7 @@ slide(r2c_slope, data, width, ...)()
 r2c_slope()
 ```
 
-Do we require parameters?
+Do we require parameters?  Yes.
 
 ```
 group(r2c_slope, data, groups)(x, y)
@@ -967,6 +967,32 @@ What does `r2c_slope` look like:
 r2c_slope
 ## function(x, y) <...>
 ```
+
+Hmm, but are we satisfied with the data/groups specification?
+
+```
+group(r2c_slope, data, data['g'])(x, y)
+with(data, group(r2c_slope, x, y, g))
+```
+
+How about this:
+
+```
+group(obj, ..., group)
+```
+
+This allows arbitrary objects in ..., and we can require that they are named.
+Group can be a single vector, does not need to be named, or it can be a list.
+
+```
+obj(x, y)
+objg <- with(data, group(obj, x, y, g))
+objg <- with(data, group(obj, x=x, y=y, g))
+objg(x, y)
+```
+
+If unnamed we can rely on the symbol.
+
 
 
 These are very appealing for group/window because we can easily re-use the same

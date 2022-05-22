@@ -15,36 +15,82 @@
 
 group_sizes <- function(go) .Call(R2C_group_sizes, go)
 
+#' Execute r2c Function Iteratively on Groups in Data
+#'
+#' Organizes `data` into row groups according to `groups`, and calls `r2c`
+#' functions for each group with the arguments bound to the portion of the data
+#' corresponding to each group.
+#'
 #' @export
+#' @param fun a function produced by `r2c`.
+#' @param groups an integer vector, or a list of equal-length integer vectors,
+#'   the interaction of which defines individual groups to organize the data
+#'   into.  Support for non-integer vectors will be added in the future.
+#' @param data a numeric vector, or a list of numeric vectors, each vector the
+#'   same length as the vector(s) in `groups`.  If a named list, the vectors
+#'   will be matched to `fun` parameters by those names.  Elements without names
+#'   are matched positionally.
+#' @param MoreArgs a list of R objects to pass on as non-data parameters to
+#'   `fun`.  Unlike with `data`, the entire object will be passed for each
+#'   group.  This is useful for arguments that are intended to remain constant
+#'   group to group.
+#' @param sorted TRUE or FALSE (default), whether the vectors in `data` and
+#'   `groups` are already sorted by `groups`.  If set to TRUE, the `data` will
+#'   not be sorted prior to computation; if the data is truly sorted this
+#'   produces the same results while avoiding the cost of sorting.
+#' @return a if `groups` and `data` are atomic vectors, a named numeric vector
+#'   with the results of executing `fun` on each group and the names set to the
+#'   groups.  Otherwise, a "data.frame" with the group vectors as columns and
+#'   the result column last.
 
-group_exec <- function(obj, data, groups, sort=TRUE) {
+group_exec <- function(fun, groups, data, MoreArgs=list(), sorted=TRUE) {
   data.sub <- substitute(data)
   # FIXME: add validation for shlib
-  vetr(groups=integer() && length(.) == nrow(data), sort=LGL.1)
+  vetr(
+    fun=is.function(.) && inherits(., 'r2c_base_fun'),
+    groups=integer() || (list() && all(vapply(., is.integer, TRUE))),
+    data=(numeric() || (list() && all(is.num_naked(.)))),
+    MoreArgs=list(),
+    sorted=LGL.1
+  )
+  obj <- attr(fun, 'r2c')
   preproc <- obj[['preproc']]
   shlib <- obj[['so']]
-  mode <- "df"
 
-  if(!is.data.frame(data)) {
-    if(!is.num_naked(list(data)) && !is.name(data.sub))
-      stop(
-        "Argument `data` must be a data frame or a *reference* to an ",
-        "attribute-less numeric vector."
-      )
-    data <- data.frame(data)
-    names(data) <- as.character(data.sub)
-    mode <- "vec"
-  }
-  if(sort) {
-    o <- order(groups)
-    go <- groups[o]
-    do <- data[o,,drop=FALSE]
+  # Make all arguments into lists
+  mode <- if(!is.list(data) && !is.list(groups)) "vec" else "list"
+  if(!is.list(data)) data <- list(data)
+  if(!is.list(groups)) groups <- list(groups)
+  if(length(g.len <- unique(lengths(groups))) != 1L)
+    stop("All `groups` vectors must be the same length.")
+  if(!all(lengths(data) == g.len))
+    stop("All `data` vectors must be the same length as the groups vectors.")
+  if(length(groups) != 1L)
+    stop("Only one grouping variable supported at the moment.")
+
+  # Match data against arguments
+  params <- names(formals(fun))
+  args.dummy <- as.list(seq_len(length(data) + length(MoreArgs)))
+  names(args.dummy) <- c(names(data), names(MoreArgs))
+  call.dummy <- as.call(c(list(fun), as.list(args.dummy)))
+  call.dummy.m <- unlist(
+    as.list(match.call(fun, call.dummy, envir=environment(fun)))[-1L]
+  )
+  dat.match <- call.dummy.m[call.dummy.m <= length(data)]
+  names(data)[dat.match] <- names(dat.match)
+  more.match <- call.dummy.m[call.dummy.m > length(data)]
+  names(MoreArgs)[more.match - length(data)] <- names(more.match)
+
+  if(!sorted) {
+    o <- do.call(order, groups)
+    go <- lapply(groups, "[", o)
+    do <- lapply(data, "[", o)
   } else {
     go <- groups
     do <- data
   }
   # return group lenghts, offsets, and max group size
-  group.dat <- group_sizes(go)
+  group.dat <- group_sizes(go[[1L]])
   alloc <- alloc(x=preproc, data=do, gmax=group.dat[[3L]])
   stack <- alloc[['stack']]
 
@@ -95,16 +141,15 @@ group_exec <- function(obj, data, groups, sort=TRUE) {
   res <- dat[[which(alloc[['alloc']][['type']] == "res")]]
 
   # Generate and attach group labels
-  g.lab <- rep(go[group.dat[[2L]] + 1L], group.res.sizes)
+  g.lab <- rep(go[[1L]][group.dat[[2L]] + 1L], group.res.sizes)
 
   # Attach group labels
-  if(mode == 'df') {
+  if(mode == 'list') {
     data.frame(group=g.lab, V1=res)
   } else if (mode == 'vec') {
     names(res) <- g.lab
     res
   } else stop("Unknown return format mode")
-
 }
 
 run_int <- function(
