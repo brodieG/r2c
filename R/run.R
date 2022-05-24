@@ -43,7 +43,7 @@ group_sizes <- function(go) .Call(R2C_group_sizes, go)
 #'   groups.  Otherwise, a "data.frame" with the group vectors as columns and
 #'   the result column last.
 
-group_exec <- function(fun, groups, data, MoreArgs=list(), sorted=TRUE) {
+group_exec <- function(fun, groups, data, MoreArgs=list(), sorted=FALSE) {
   data.sub <- substitute(data)
   # FIXME: add validation for shlib
   vetr(
@@ -58,7 +58,7 @@ group_exec <- function(fun, groups, data, MoreArgs=list(), sorted=TRUE) {
   shlib <- obj[['so']]
 
   # Make all arguments into lists
-  mode <- if(!is.list(data) && !is.list(groups)) "vec" else "list"
+  mode <- if(!is.list(groups)) "vec" else "list"
   if(!is.list(data)) data <- list(data)
   if(!is.list(groups)) groups <- list(groups)
   if(length(g.len <- unique(lengths(groups))) != 1L)
@@ -91,7 +91,10 @@ group_exec <- function(fun, groups, data, MoreArgs=list(), sorted=TRUE) {
   }
   # return group lenghts, offsets, and max group size
   group.dat <- group_sizes(go[[1L]])
-  alloc <- alloc(x=preproc, data=do, gmax=group.dat[[3L]])
+  alloc <- alloc(
+    x=preproc, data=do, gmax=group.dat[[3L]], par.env=environment(fun),
+    MoreArgs=MoreArgs
+  )
   stack <- alloc[['stack']]
 
   # Compute result size

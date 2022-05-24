@@ -25,9 +25,9 @@ NULL
 #'
 #' @param x the result of preprocessing an expression
 
-alloc <- function(x, data, gmax, par.env=parent.frame()) {
+alloc <- function(x, data, gmax, par.env, MoreArgs) {
   # - Initialize ---------------------------------------------------------------
-  env <- new.env(par.env, parent=par.env)
+  env <- list2env(MoreArgs, parent=par.env)
   # will track pending parameters to process
 
   # Add group data.
