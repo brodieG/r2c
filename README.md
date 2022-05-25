@@ -72,7 +72,7 @@ And now:
 
 <!--
 library(ggplot2)
-Method <- c('sum(x)', 'vapply(x.split, sum, 0)', 'r2c_sum(x)')
+Method <- c('sum(x)', 'vapply(x.split, sum, 0)', 'r2c_sum')
 dat <- data.frame(
   Method=factor(Method, Method),
   time=c(0.043, 0.747, 0.105)
@@ -98,7 +98,6 @@ overhead repeated operations for selected functions like `sum`:
     dt <- data.table(x, g)
     setkey(dt, g)
     system.time(g.sum.dt <- dt[, sum(x), g][['V1']])
-    system.time(g.mean.dt <- dt[, mean(x), g][['V1']])
     ##   user  system elapsed
     ##  0.205   0.027   0.234
     identical(unname(g.sum.r2c), g.sum.dt)
@@ -141,11 +140,10 @@ ggsave("extra/time_sum_r2c-vs-dt.png", p)
 -->
 ![](https://github.com/brodieG/r2c/raw/initial/extra/time_sum_r2c-vs-dt.png)
 
-`data.table` sees a ~8x slowdown, whereas `r2c` is essentially unaffected.
+`data.table` sees a ~8x slowdown, whereas `r2c` is essentially unaffected.  The
+differences get starker as we increase the complexity of the calculation:
 
-Let's take it further by computing the slope of a bivariate regression:
-
-    mean <- mean.default   # to even the odds a little
+    mean <- mean.default   # Avoid S3 dispatch for data.table
     system.time(
       g.slope.dt <- dt[,
         sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2), g
@@ -162,10 +160,6 @@ Let's take it further by computing the slope of a bivariate regression:
     identical(unname(g.slope.r2c), g.slope.dt)
     ## [1] TRUE
 
-`data.table` Gforce's Achilles heel is that for complex expressions it falls
-back to normal R evaluation.  `r2c` sticks to native instructions, and thus sees
-a 40x speed-up over `data.table`.
-
 For reference, with `base`:
 
     y.split <- split(y, g)
@@ -180,7 +174,8 @@ For reference, with `base`:
     identical(g.slope.r2c, g.slope.base)
     ## [1] TRUE
 
-To summarize:
+More complex expressions force `data.table` to fallback to standard R
+evaluation, and in this case make it ~40x slower than `r2c`.  To summarize:
 
 <!--
 ```
