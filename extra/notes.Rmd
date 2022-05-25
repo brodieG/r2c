@@ -8,6 +8,9 @@
 
 # To Do / Questions
 
+* Change title to "Iterated Statistic **Computation**"
+* Think about `df %>% group_by(g) %>% filter(x > min(df$x)`.  This should
+  resolve naturally if we allow `[['x']]` as "normal" expression.
 * What do we do with NA groups?  Each it's own, or one big NA group?
 * Can we optimize label generation for cases where the last step is constant
   size or size of groups?
@@ -979,6 +982,56 @@ How about this:
 
 ```
 group(obj, ..., group)
+
+groupwise(obj, group, ...)
+groupwise(obj, data, .(group), .(remap))
+```
+
+If this is the NSE interface:
+
+```
+groupwise(data, group, obj(x=x, y=y))
+obj(x=x, y=y)
+
+with(data, groupwise(obj, list(x, y), list(g)))
+
+with(data, r2c_group(obj, list(x, y), list(g)))
+
+r2c_group(obj, x, g)
+
+set.seed(1)
+x <- y <- runif(1e5)
+y[sample(1e5, 1e4)] <- NA
+microbenchmark::microbenchmark(sum(x), sum(y), mean(x), mean(y), times=10)
+
+set.seed(1)
+x <- y <- runif(1e5)
+y[sample(1e5, 1e4)] <- NA
+microbenchmark::microbenchmark(sum(x), sum(y), mean(x), mean(y), times=10)
+## Unit: microseconds
+##     expr   min    lq  mean median    uq   max neval
+##   sum(x)   299   315   342    335   367   413    10
+##   sum(y) 18441 18684 19587  18973 20461 22382    10
+##  mean(x)   234   265   281    276   294   343    10
+##  mean(y) 33009 33201 34449  33421 34584 38751    10
+
+```
+
+So we need:
+
+* data
+* groups
+* r2c object
+* remap
+
+
+```
+groupwise(data, group, obj, x=x, y=y)
+
+groupwise(obj, data, group, x=x, y=y)
+groupwiseq(obj, data, group, x=x, y=y)
+
+run(obj, x, y)
 ```
 
 This allows arbitrary objects in ..., and we can require that they are named.
