@@ -69,6 +69,10 @@ r2c <- function(call, env=parent.frame(), dir=tempfile()) {
   body(fun) <- call
   environment(fun) <- env
 
+  # pre-load to avoid cost on initial execution?  Mostly a benchmarking thing
+  # as no matter what we have to load it sometime.
+  dyn.load(so)
+
   class(fun) <- "r2c_base_fun"
   attr(fun, 'r2c') <- list(preproc=preproc, so=so)
   fun
