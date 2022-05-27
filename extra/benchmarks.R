@@ -60,4 +60,30 @@ resb <-  base_grp_eval(d2, g2, call)
 identical(res1, resb)
 
 
+    set.seed(1)
+    n <- 1e7
+    x <- runif(n)
+    y <- runif(n)
+    g <- cumsum(sample(c(TRUE, rep(FALSE, 9)), n, replace=TRUE))
+    x.split <- split(x, g)
+    y.split <- split(y, g)
+    mean <- mean.default
+
+    system.time(
+      g.slope.base <- mapply(
+        function(x, y)
+          sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2),
+          x.split, y.split
+    ) )
+
+
+    system.time({
+      res <- numeric(length(x.split))
+      for(i in seq_along(x.split)) {
+        xi <- x.split[[i]]
+        yi <- y.split[[i]]
+        res[i] <-
+          sum((xi - mean(xi)) * (yi - mean(yi))) / sum((xi - mean(xi)) ^ 2)
+      }
+    })
 
