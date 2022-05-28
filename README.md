@@ -212,7 +212,7 @@ dat.arrow <- data.frame(
 ggsave("extra/time_glope_all-vs.png", p)
 ```
 -->
-![](https://github.com/brodieG/r2c/raw/initial/extra/time_gslope_all.png)
+![](https://github.com/brodieG/r2c/raw/initial/extra/time_glope_all-vs.png)
 
 
 
