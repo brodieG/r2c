@@ -10,18 +10,16 @@ interpreter overhead.
 ## Background and Motivation
 
 R is nearly as fast as statically compiled languages for many common numerical
-calculations such as arithmetic on two large numeric vectors:
+calculations:
 
     set.seed(1)
     n <- 1e7
     x <- runif(n)
     y <- runif(n)
 
-    system.time(z <- x + y)
+    system.time(x + y)
     ##   user  system elapsed
     ##  0.023   0.000   0.023
-
-Or statistics:
 
     system.time(sum(x))
     ##   user  system elapsed
@@ -50,9 +48,6 @@ is with a primitive R function that does nothing but go directly to C code:
     sum
     ## function (..., na.rm = FALSE)  .Primitive("sum")
 
-> Notice I don't time the split step.  This is so we can focus on the overhead
-> of the statistic computation alone.
-
 ## What If We Could Compile R?
 
 That would be nice, wouldn't it?  Well, we (at least I) can't compile the
@@ -73,33 +68,52 @@ And now:
     identical(g.sum, g.sum.r2c)
     ## [1] TRUE
 
-<!--
-library(ggplot2)
-Method <- c('sum(x)', 'vapply(x.split, sum, 0)', 'r2c_sum')
-dat <- data.frame(
-  Method=factor(Method, Method),
-  time=c(0.043, 0.747, 0.105)
-)
-p <- ggplot(dat) + geom_col(aes(Method, time)) +
-  ggtitle("Sum Benchmarks") +
-  ggtitle("Sum (10MM Obs, ~1MM Groups)") +
-  ylab("Time in Seconds") + xlab(NULL)
-ggsave("extra/time_sum_base-vs-r2c.png", p)
--->
-![](https://github.com/brodieG/r2c/raw/initial/extra/time_sum_base-vs-r2c.png)
+Nearly as fast as the simple sum despite the additional overhead of managing the
+groups and the larger result.
 
-Not quite as fast as a simple sum, but there is overhead in computing each group
-separately, and `r2c` minimizes that relative to `vapply`.
+## A Note on Benchmarking
 
-> Our `g` variable is pre-sorted so that we may keep the sorting overhead out of
-> the benchmarks.  This is analogous to excluding the split step from the
-> earlier timings.
+I did not time the splitting step earlier, and our groups are pre-sorted:
+
+    head(g, 20)
+    ## [1] 0 0 1 1 1 1 1 2 2 2 2 2 2 2 3 3 3 4 4 4
+
+This is to focus benchmarks on the statistic computation.  When computing simple
+group statistics like `sum`, the sorting / splitting step can be slower than the
+computation.
+
+Additionally, I did not time the compilation step under the view that
+compilation should be amortized over many applications.
 
 ## Are we Re-Inventing the Wheel?
 
 If you're satisfied with simple expressions such as `sum(x)` then there are
 alternatives.  In particular [`{data.table}`][1] with it's Gforce[^2]
 optimization is a great option:
+
+    library(data.table)            # 1.14.0
+    setDTthreads(threads = 1)      # single thread for apples-to-apples
+    dt <- data.table(x, g)
+    setkey(dt, g)                  # pre-sort data
+
+    system.time(g.sum.dt <- dt[, sum(x), g][['V1']])
+    ##   user  system elapsed
+    ##  0.205   0.027   0.234
+    identical(unname(g.sum.r2c), g.sum.dt)
+    ## [1] TRUE
+
+This does something similar to `r2c`, recognizing the sum expression and using
+native code instead of R interpreted code, although it does not require
+compilation.
+
+Another intriguing option is [`{FastR}`][2], an implementation of R that can JIT
+compile R code to run on the [Graal VM][3].  It requires a different runtime
+(i.e. you can't just run your normal R installation) and has other trade-offs,
+including warm-up cycles and compatibility limitations.  But otherwise pretty
+impressively turns what would be interpreted R code into something akin to
+native instructions.
+
+This is what the timings look across the different methods discussed so far:
 
 <!--
 graal.slope <- read.table(
@@ -156,10 +170,8 @@ ggsave("extra/time_gsum_all-vs.png", p)
 -->
 ![](https://github.com/brodieG/r2c/raw/initial/extra/time_gsum_all-vs.png)
 
-[`{FastR}`][2] is intriguing as it accelerates all of R[^3], not just iterated
-statistic computation. It requires a different runtime (i.e. you can't just run
-your normal R installation) and has other trade-offs, including the warm-up
-period depicted above and compatibility limitations.
+For this specific task I would pick `data.table`.  No ad hoc compilation
+required, and it works right in your standard R installation.
 
 But `data.table`'s Gforce does not work on complex expressions such as the slope
 of a bivariate regression:
@@ -167,6 +179,19 @@ of a bivariate regression:
     slope <- \(x, y) sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2)
 
 Here `data.table` falls back to normal R evaluation:
+
+    mean <- mean.default   # Avoid S3 dispatch for data.table
+    system.time(dt[, sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2), g])
+    ##   user  system elapsed 
+    ## 11.397   0.062  11.519 
+
+Whereas `r2c` keeps on going on:
+
+    r2c_slope <- r2cq(sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2))
+    ## ... compilation output omitted ...
+    system.time(group_exec(r2c_slope, g, list(x, y), sorted=TRUE))
+    ##   user  system elapsed 
+    ##  0.279   0.002   0.284 
 
 <!--
 ```
@@ -214,17 +239,11 @@ ggsave("extra/time_glope_all-vs.png", p)
 -->
 ![](https://github.com/brodieG/r2c/raw/initial/extra/time_glope_all-vs.png)
 
+From my admittedly light testing it doesn't feel like `{FastR}` is a viable
+complete replacement for R, both due to the compatibility limitations, but also
+to the variable performance of the JIT compilation.  I imagine there are
+applications where it truly shines.
 
-
-`data.table` sees a ~8x slowdown, whereas `r2c` is essentially unaffected.  The
-differences get starker as we increase the complexity of the calculation:
-
-
-More complex expressions force `data.table` to fallback to standard R
-evaluation, and in this case make it ~40x slower than `r2c`.  To summarize:
-
-
-Nope, we're not re-inventing the wheel.
 
 ## Caveats - Of Course ...
 
@@ -373,19 +392,16 @@ On an Intel(R) Core(TM) m5-6Y54 CPU @ 1.20GHz (early 2016 Macbook), using the
 average of 11 iterations run after one `gc()` call.
 
     mean <- mean.default   # Avoid S3 dispatch for data.table
-    system.time(
-      g.slope.dt <- dt[,
-        sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2), g
-      ][['V1']]
-    )
+    system.time(dt[, sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2), g])
     ##   user  system elapsed 
     ## 11.397   0.062  11.519 
 
     r2c_slope <- r2cq(sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2))
     ## ... compilation output omitted ...
-    system.time(g.slope.r2c <- group_exec(r2c_slope, g, list(x, y), sorted=TRUE))
+    system.time(group_exec(r2c_slope, g, list(x, y), sorted=TRUE))
     ##   user  system elapsed 
     ##  0.279   0.002   0.284 
+
     identical(unname(g.slope.r2c), g.slope.dt)
     ## [1] TRUE
 
@@ -401,16 +417,6 @@ For reference, with `base`:
     ##   user  system elapsed 
     ## 11.895   0.079  12.168 
     identical(g.slope.r2c, g.slope.base)
-    ## [1] TRUE
-
-    library(data.table)            # 1.14.0
-    setDTthreads(threads = 1)      # for apples-to-apples
-    dt <- data.table(x, g)
-    setkey(dt, g)
-    system.time(g.sum.dt <- dt[, sum(x), g][['V1']])
-    ##   user  system elapsed
-    ##  0.205   0.027   0.234
-    identical(unname(g.sum.r2c), g.sum.dt)
     ## [1] TRUE
 
 This is in the same ballpark as `r2c`.  But look at what happens if we
@@ -431,13 +437,29 @@ complicate things by computing `sum(x + y)` instead of `sum(x)`:
     ## [1] TRUE
 
 
+<!--
+library(ggplot2)
+Method <- c('sum(x)', 'vapply(x.split, sum, 0)', 'r2c_sum')
+dat <- data.frame(
+  Method=factor(Method, Method),
+  time=c(0.043, 0.747, 0.105)
+)
+p <- ggplot(dat) + geom_col(aes(Method, time)) +
+  ggtitle("Sum Benchmarks") +
+  ggtitle("Sum (10MM Obs, ~1MM Groups)") +
+  ylab("Time in Seconds") + xlab(NULL)
+ggsave("extra/time_sum_base-vs-r2c.png", p)
+![](https://github.com/brodieG/r2c/raw/initial/extra/time_sum_base-vs-r2c.png)
+-->
+
 [1]: https://github.com/Rdatatable
 [2]: https://github.com/oracle/fastr
-[3]: 
+[3]: https://www.graalvm.org/
 
 [^1]: Depending on your compilation settings, there is likely some room for
   improvement, but not enough that R stands out as being particularly slow at
   this task.
 [^2]: Gforce is available for simple expressions of the form `fun(var)` for
   many of the basic statistic functions (see `?data.table::datatable.optimize).
-[^3]: I guess it is possible to "compile" the whole/most of R.
+[^3]: I am uncertain on the specifics of what `{fastr}` is doing 
+
