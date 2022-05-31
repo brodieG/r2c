@@ -1,7 +1,7 @@
 /*
  * Copyright (C) 2022  Brodie Gaslam
  *
- * This file is part of "r2c - Fast Iterated Statistics in R"
+ * This file is part of "r2c - Fast Iterated Statistic Computation in R"
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by

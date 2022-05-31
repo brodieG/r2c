@@ -38,7 +38,7 @@ call <- quote(sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2))
 call2 <- quote(sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) * (x - mean(x))))
 obj <- r2c(call)
 sys.time(res1 <- group_exec(obj, do, go, sort=FALSE))
-sys.time(
+system.time(
   res2 <- dto[,
     sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2), go
   ][['V1']]
@@ -69,12 +69,22 @@ identical(res1, resb)
     y.split <- split(y, g)
     mean <- mean.default
 
+    library(data.table)
+    dt <- data.table(x, y, g)
+    setkey(dt, g)
+
+
+
+    system.time(g.sum <- vapply(x.split, sum, 0))
+
+    system.time(g.sum <- vapply(x.split, sum, 0))
+
+    system.time(g.slope.base <- mapply(slope, x.split, y.split))
     system.time(
-      g.slope.base <- mapply(
-        function(x, y)
-          sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2),
-          x.split, y.split
-    ) )
+      g.slope.dt <- dt[,
+        sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2),
+        keyby=g
+    ] )
 
 
     system.time({
@@ -86,4 +96,15 @@ identical(res1, resb)
           sum((xi - mean(xi)) * (yi - mean(yi))) / sum((xi - mean(xi)) ^ 2)
       }
     })
+
+graal.slope <- read.table(
+  text=grep(
+    "\\d+\\.\\d+", readLines('extra/benchmarks-graal-mapply.txt'),
+    value=TRUE
+) )
+graal.sum <- read.table(
+  text=grep(
+    "\\d+\\.\\d+", readLines('extra/benchmarks-graal-sum.txt'),
+    value=TRUE
+) )
 
