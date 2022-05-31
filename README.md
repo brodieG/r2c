@@ -82,9 +82,6 @@ This is to focus benchmarks on the statistic computation.  When computing simple
 group statistics like `sum`, the sorting / splitting step can be slower than the
 computation.
 
-Additionally, I did not time the compilation step under the view that
-compilation should be amortized over many applications.
-
 ## Are we Re-Inventing the Wheel?
 
 If you're satisfied with simple expressions such as `sum(x)` then there are
@@ -103,13 +100,13 @@ optimization is a great option:
     ## [1] TRUE
 
 This does something similar to `r2c`, recognizing the sum expression and using
-native code instead of R interpreted code, although it does not require
+native code instead of R interpreted code, but without the need for adhoc
 compilation.
 
 Another intriguing option is [`{FastR}`][2], an implementation of R that can JIT
 compile R code to run on the [Graal VM][3].  It requires a different runtime
 (i.e. you can't just run your normal R installation) and has other trade-offs,
-including warm-up cycles and compatibility limitations.  But otherwise pretty
+including warm-up cycles and compatibility limitations.  But it otherwise pretty
 impressively turns what would be interpreted R code into something akin to
 native instructions.
 
@@ -170,11 +167,8 @@ ggsave("extra/time_gsum_all-vs.png", p)
 -->
 ![](https://github.com/brodieG/r2c/raw/initial/extra/time_gsum_all-vs.png)
 
-For this specific task I would pick `data.table`.  No ad hoc compilation
-required, and it works right in your standard R installation.
-
-But `data.table`'s Gforce does not work on complex expressions such as the slope
-of a bivariate regression:
+For this specific task I would pick `data.table`.  But `data.table`'s Gforce
+does not work on complex expressions such as the slope of a bivariate regression:
 
     slope <- \(x, y) sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2)
 
@@ -239,11 +233,9 @@ ggsave("extra/time_glope_all-vs.png", p)
 -->
 ![](https://github.com/brodieG/r2c/raw/initial/extra/time_glope_all-vs.png)
 
-From my admittedly light testing it doesn't feel like `{FastR}` is a viable
-complete replacement for R, both due to the compatibility limitations, but also
-to the variable performance of the JIT compilation.  I imagine there are
-applications where it truly shines.
-
+`r2c` retains enough of a speed edge over `FastR` best times that even if we
+ignore `FastR`'s compatibility limitations and the vagaries of the JIT
+compilation[^3], it carves out a useful niche for itself.
 
 ## Caveats - Of Course ...
 
@@ -346,7 +338,8 @@ there already exist similar implementations.  In particular Rich FitzJohn's
 
 There are likely many applications that would benefit from the capabilities
 provided by `r2c`.  It should be possible to define an interface for use by
-external code.
+external code.  Conceivably, `data.table` could be extended to run `r2c`
+compiled expressions.
 
 Additionally, it should be possible to allow users to define their own C
 routines that integrated into the `r2c` framework.
@@ -408,12 +401,7 @@ average of 11 iterations run after one `gc()` call.
 For reference, with `base`:
 
     y.split <- split(y, g)
-    system.time(
-      g.slope.base <- mapply(
-        function(x, y)
-          sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2),
-          x.split, y.split
-    ) )
+    system.time(g.slope.base <- mapply(slope, x.split, y.split))
     ##   user  system elapsed 
     ## 11.895   0.079  12.168 
     identical(g.slope.r2c, g.slope.base)
@@ -461,5 +449,13 @@ ggsave("extra/time_sum_base-vs-r2c.png", p)
   this task.
 [^2]: Gforce is available for simple expressions of the form `fun(var)` for
   many of the basic statistic functions (see `?data.table::datatable.optimize).
-[^3]: I am uncertain on the specifics of what `{fastr}` is doing 
+[^3]: My limited experience with `FastR` is that it is astonishing, but also
+  frustrating.  What it does is amazing, but the compatibility limitations are
+  real (e.g.  with the current version neither `data.table` nor `ggplot2`
+  install out of the box, and more), and performance is volatile (e.g. package
+  installation and some other tasks are painfully slow, some expressions will
+  hiccup after the initial warm-up).  At this point it does not seem like a
+  viable drop-in replacement to R.  It likely excels at running scalar
+  operations in loops and similar, something that R itself struggles at.
+
 
