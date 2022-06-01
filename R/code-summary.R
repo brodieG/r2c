@@ -72,6 +72,8 @@ static void %%s(%%s) {
     double * dat = data[din];
     %s
   }
+  // R checks if we would overflow, but we assume infinity exists in double so
+  // no overflow (at least in IEEE-754?).
   *data[datai[narg]] = (double) tmp;
   lens[datai[narg]] = 1;
 }'

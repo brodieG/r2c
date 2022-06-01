@@ -166,12 +166,14 @@ ggsave("extra/time_gsum_all-vs.png", p)
 -->
 ![](https://github.com/brodieG/r2c/raw/initial/extra/time_gsum_all-vs.png)
 
-For this specific task I would pick `data.table`.  But `data.table`'s Gforce
-does not work on complex expressions such as the slope of a bivariate regression:
+For this specific task I would pick `data.table`.  It is possible it ends up
+slower than `r2c` due to the additional structure required for multi-threading
+support, so it is at a disadvantage when we force single thread benchmarking.
+Also the `r2c` code is currently very simple (doesn't even check for
+interrupts), so will likely end up slightly slower in final implementation.
 
-    slope <- function (x, y) sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2)
-
-Here `data.table` falls back to normal R evaluation:
+But `data.table`'s Gforce does not work on complex expressions such as the slope
+of a bivariate regression:
 
     mean <- mean.default   # Avoid S3 dispatch
     system.time(dt[, sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2), g])
@@ -185,6 +187,9 @@ Whereas `r2c` keeps on going on:
     system.time(group_exec(r2c_slope, g, list(x, y), sorted=TRUE))
     ##   user  system elapsed 
     ##  0.279   0.002   0.284 
+
+We can based on the timings that `data.table` is falling back to standard R
+evaluation based:
 
 <!--
 ```
@@ -232,12 +237,9 @@ ggsave("extra/time_glope_all-vs.png", p)
 -->
 ![](https://github.com/brodieG/r2c/raw/initial/extra/time_glope_all-vs.png)
 
-Even after warm-up cycles `FastR` can't keep up with `r2c`
-
-On a timing basis alone 
-`r2c` retains enough of a speed edge over `FastR` best times that even if we
-ignore `FastR`'s compatibility limitations and the vagaries of the JIT
-compilation, it carves out a useful niche for itself.
+`FastR` does better, but even after warm-up can't keep up with `r2c`.  `FastR`
+can do a lot more than `r2c`, but for this specific task `r2c` is better and
+does not carry the other significant compromises of `FastR`.
 
 ## Caveats - Of Course ...
 
@@ -272,6 +274,8 @@ group-invariant data:
 
 Notice the `na.rm`, and that the `u` in `list(y=u)` is re-used in full for each
 group setting the output size to 3.
+
+
 
 ## Future - Maybe?
 

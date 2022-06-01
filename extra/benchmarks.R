@@ -61,10 +61,16 @@ identical(res1, resb)
 
 
     set.seed(1)
-    n <- 1e7
+    n <- 20
     x <- runif(n)
     y <- runif(n)
     g <- cumsum(sample(c(TRUE, rep(FALSE, 9)), n, replace=TRUE))
+    library(r2c)
+    r2c_sum <- r2cq(sum(x))
+    system.time(g.sum.r2c <- group_exec(r2c_sum, g, x, sorted=TRUE))
+
+
+
     x.split <- split(x, g)
     y.split <- split(y, g)
     mean <- mean.default

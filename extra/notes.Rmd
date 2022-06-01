@@ -8,15 +8,16 @@
 
 # To Do / Questions
 
-* Change title to "Iterated Statistic **Computation**"
+* Figure out a better way to store the object than embedding it with `bquote` in
+  the function.
+* Test forwarding dots to a `group_exec` function.
+* Look more into C99 and infinity, not super clear ATM whether we need to take
+  special precautions when converting from long double to double.
 * Think about `df %>% group_by(g) %>% filter(x > min(df$x)`.  This should
   resolve naturally if we allow `[['x']]` as "normal" expression.
 * What do we do with NA groups?  Each it's own, or one big NA group?
 * Can we optimize label generation for cases where the last step is constant
   size or size of groups?
-* Really need to figure out whether we want a formal interface to the functions.
-  It could be auto-generated from all the unbound symbols like gsubfn does it.
-* Annotate code with the call that it corresponds to
 * Add destructors that will unload the shlib and delete file file when the
   corresponding object is garbage collected.
 * Better introspection tools for intermediate products so we can see what they
@@ -109,6 +110,12 @@
 * Does altrep play into this in any way?
 * Lags and similar (i.e. `x[i] = x[i] * x[i - 1]`).
 * Re-use repeated expressions.
+
+## Done
+
+* Really need to figure out whether we want a formal interface to the functions.
+  It could be auto-generated from all the unbound symbols like gsubfn does it.
+* Annotate code with the call that it corresponds to
 
 # Loop implementation
 
