@@ -58,23 +58,30 @@ r2c <- function(call, env=parent.frame(), dir=tempfile()) {
   vetr(is.language(.), dir=character())
   preproc <- preprocess(call)
   so <- make_shlib(preproc[['code']])
+  obj <- list(preproc=preproc, so=so)
 
   # generate formals that match the free symbols in the call
   sym.free <- preproc[['sym.free']]
   formals <- replicate(length(sym.free), alist(a=))
   names(formals) <- sym.free
 
-  fun <- function() NULL
+  fun <- fun.dummy <- function() NULL
   formals(fun) <- formals
-  body(fun) <- call
   environment(fun) <- env
+  # This is ugly, we embed the object in the call proper so we don't interfere
+  # with symbol resolution.
+  body(fun) <- bquote({
+    group_exec_int(
+      .(obj), formals=formals(), env=environment(), groups=NULL,
+      data=as.list(environment()), MoreArgs=list(), sorted=TRUE
+    )
+  })
 
   # pre-load to avoid cost on initial execution?  Mostly a benchmarking thing
   # as no matter what we have to load it sometime.
   dyn.load(so)
 
   class(fun) <- "r2c_base_fun"
-  attr(fun, 'r2c') <- list(preproc=preproc, so=so)
   fun
 }
 #' @export

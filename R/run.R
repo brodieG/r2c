@@ -13,6 +13,12 @@
 ##
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
+## Compute Group Meta Data
+##
+## @param go ordered integer vector of groups ids
+## @return list containing group sizes, group start offset (i.e. 0 for first
+##   group), and largest group size.
+##
 group_sizes <- function(go) .Call(R2C_group_sizes, go)
 
 #' Execute r2c Function Iteratively on Groups in Data
@@ -48,51 +54,76 @@ group_exec <- function(fun, groups, data, MoreArgs=list(), sorted=FALSE) {
   # FIXME: add validation for shlib
   vetr(
     fun=is.function(.) && inherits(., 'r2c_base_fun'),
-    groups=integer() || (list() && all(vapply(., is.integer, TRUE))),
+    groups=integer() || (list() && all(vapply(., is.integer, TRUE))) || NULL,
     data=(numeric() || (list() && all(is.num_naked(.)))),
     MoreArgs=list(),
     sorted=LGL.1
   )
-  obj <- attr(fun, 'r2c')
+  obj <- body(fun)[[c(2L, 2L)]]  # the object is embedded in the function
+  group_exec_int(
+    obj, formals=formals(fun), env=environment(fun),
+    groups=groups, data=data, MoreArgs=MoreArgs, sorted=sorted
+  )
+}
+group_exec_int <- function(obj, formals, env, groups, data, MoreArgs, sorted) {
   preproc <- obj[['preproc']]
   shlib <- obj[['so']]
 
   # Make all arguments into lists
   mode <- if(!is.list(groups)) "vec" else "list"
   if(!is.list(data)) data <- list(data)
-  if(!is.list(groups)) groups <- list(groups)
-  if(length(g.len <- unique(lengths(groups))) != 1L)
-    stop("All `groups` vectors must be the same length.")
-  if(!all(lengths(data) == g.len))
-    stop("All `data` vectors must be the same length as the groups vectors.")
-  if(length(groups) != 1L)
-    stop("Only one grouping variable supported at the moment.")
-
-  # Match data against arguments
-  params <- names(formals(fun))
-  args.dummy <- as.list(seq_len(length(data) + length(MoreArgs)))
-  names(args.dummy) <- c(names(data), names(MoreArgs))
-  call.dummy <- as.call(c(list(fun), as.list(args.dummy)))
-  call.dummy.m <- unlist(
-    as.list(match.call(fun, call.dummy, envir=environment(fun)))[-1L]
-  )
-  dat.match <- call.dummy.m[call.dummy.m <= length(data)]
-  names(data)[dat.match] <- names(dat.match)
-  more.match <- call.dummy.m[call.dummy.m > length(data)]
-  names(MoreArgs)[more.match - length(data)] <- names(more.match)
-
-  if(!sorted) {
-    o <- do.call(order, groups)
-    go <- lapply(groups, "[", o)
-    do <- lapply(data, "[", o)
+  if(length(d.len <- unique(lengths(data))) > 1L)
+    stop("All `data` vectors must be the same length.")
+  if(!is.null(groups)) {
+    if(!is.list(groups)) groups <- list(groups)
+    if(length(g.len <- unique(lengths(groups))) != 1L)
+      stop("All `groups` vectors must be the same length.")
+    if(length(groups) != 1L)
+      stop("Only one grouping variable supported at the moment.")
+    if(length(d.len) == 0 || !identical(d.len, g.len))
+      stop("`groups` vectors must be the same length as `data` vectors.")
   } else {
-    go <- groups
-    do <- data
+    mode <- "ungrouped"
+    if(!length(data))
+      stop("NULL `groups` allowed only if `data` is non-empty.")
   }
-  # return group lenghts, offsets, and max group size
-  group.dat <- group_sizes(go[[1L]])
+  if (mode != "ungrouped") {
+    if(!sorted) {
+      o <- do.call(order, groups)
+      go <- lapply(groups, "[", o)
+      do <- lapply(data, "[", o)
+    } else  {
+      go <- groups
+      do <- data
+    }
+    # return group lenghts, offsets, and max group size
+    group.dat <- group_sizes(go[[1L]])
+  } else {
+    # Fake a single group
+    do <- data
+    group.dat <- list(as.numeric(length(d.len)), 0, as.numeric(length(d.len)))
+  }
+  # Match data against arguments
+  params <- names(formals)
+  args.dummy <- as.list(seq_len(length(do) + length(MoreArgs)))
+  fun.dummy <- function() NULL
+  formals(fun.dummy) <- formals
+  environment(fun.dummy) <- env
+
+  names(args.dummy) <- c(names(do), names(MoreArgs))
+  call.dummy <- as.call(c(list(fun.dummy), as.list(args.dummy)))
+  call.dummy.m <- unlist(
+    # envir might not be righ there, test by forwarding dots
+    as.list(match.call(fun.dummy, call.dummy, envir=env))[-1L]
+  )
+  dat.match <- call.dummy.m[call.dummy.m <= length(do)]
+  names(do)[dat.match] <- names(dat.match)
+  more.match <- call.dummy.m[call.dummy.m > length(do)]
+  names(MoreArgs)[more.match - length(do)] <- names(more.match)
+
+  # Prepare temporary memory allocations
   alloc <- alloc(
-    x=preproc, data=do, gmax=group.dat[[3L]], par.env=environment(fun),
+    x=preproc, data=do, gmax=group.dat[[3L]], par.env=env,
     MoreArgs=MoreArgs
   )
   stack <- alloc[['stack']]
@@ -144,15 +175,16 @@ group_exec <- function(fun, groups, data, MoreArgs=list(), sorted=FALSE) {
   res <- dat[[which(alloc[['alloc']][['type']] == "res")]]
 
   # Generate and attach group labels
-  g.lab <- rep(go[[1L]][group.dat[[2L]] + 1L], group.res.sizes)
-
-  # Attach group labels
-  if(mode == 'list') {
-    data.frame(group=g.lab, V1=res)
-  } else if (mode == 'vec') {
-    names(res) <- g.lab
-    res
-  } else stop("Unknown return format mode")
+  if(mode != "ungrouped") {
+    g.lab <- rep(go[[1L]][group.dat[[2L]] + 1L], group.res.sizes)
+    # Attach group labels
+    if(mode == 'list') {
+      data.frame(group=g.lab, V1=res)
+    } else if (mode == 'vec') {
+      names(res) <- g.lab
+    } else stop("Unknown return format mode")
+  }
+  res
 }
 
 run_int <- function(
