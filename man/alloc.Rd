@@ -4,7 +4,7 @@
 \alias{alloc}
 \title{Allocate Required Storage}
 \usage{
-alloc(x, data, gmax, par.env = parent.frame())
+alloc(x, data, gmax, par.env, MoreArgs)
 }
 \arguments{
 \item{x}{the result of preprocessing an expression}

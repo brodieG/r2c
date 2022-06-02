@@ -50,7 +50,6 @@ group_sizes <- function(go) .Call(R2C_group_sizes, go)
 #'   the result column last.
 
 group_exec <- function(fun, groups, data, MoreArgs=list(), sorted=FALSE) {
-  data.sub <- substitute(data)
   # FIXME: add validation for shlib
   vetr(
     fun=is.function(.) && inherits(., 'r2c_base_fun'),
@@ -59,7 +58,7 @@ group_exec <- function(fun, groups, data, MoreArgs=list(), sorted=FALSE) {
     MoreArgs=list(),
     sorted=LGL.1
   )
-  obj <- body(fun)[[c(2L, 2L)]]  # the object is embedded in the function
+  obj <- get_r2c_dat(fun)
   group_exec_int(
     obj, formals=formals(fun), env=environment(fun),
     groups=groups, data=data, MoreArgs=MoreArgs, sorted=sorted
