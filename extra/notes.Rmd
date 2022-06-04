@@ -8,6 +8,7 @@
 
 # To Do / Questions
 
+* Add a finalizer to the r2c objects to clean-up after themselves when `rm`ed?
 * Add check to `r2c` funs that verify the `r2c` version, the R version, and the
   platform (anything else)?
 * What should the environment of an "r2c_fun" be?
