@@ -3,28 +3,15 @@
 \name{r2c}
 \alias{r2c}
 \alias{r2cq}
-\alias{get_c_code}
-\alias{get_r2c_dat}
-\title{Compile an R Call Into Machine Instructions}
+\title{Compile Eligible R Calls Into Native Instructions}
 \usage{
-r2c(
-  call,
-  env = parent.frame(),
-  dir = tempfile(),
-  check = getOption("r2c.check.result", FALSE)
-)
+r2c(call, dir = tempfile(), check = getOption("r2c.check.result", FALSE))
 
 r2cq(call, dir = tempfile(), check = getOption("r2c.check.result", FALSE))
-
-get_c_code(r2c.fun)
-
-get_r2c_dat(r2c.fun)
 }
 \arguments{
-\item{call}{an R expression, for \code{compileq} it is captured unevaluated, for
-\code{compile} it should be pre-quoted.}
-
-\item{env}{environment to use as enclosure to function evaluation environment}
+\item{call}{an R expression, for \code{r2cq} it is captured unevaluated, for
+\code{r2c} it should be quoted with e.g. \code{\link{quote}}..}
 
 \item{dir}{character(1L) name of a file system directory to store the shared
 object file in.  The shared object will also be loaded, so the object file
@@ -36,51 +23,57 @@ is unlikely to work well across different machines.}
 with the input data and compare that result to the one obtained from the
 \code{r2c} C code evaluation, producing an error if not identical.}
 
-\item{r2c.fun}{an "r2c_base_fun" object to extract meta data from.}
+\item{env}{environment to use as enclosure to function evaluation environment}
+
+\item{r2c.fun}{an "r2c_fun" object to extract meta data from.}
 }
 \value{
-an "r2c_base_fun" function; this is an unusual function so please see
+an "r2c_fun" function; this is an unusual function so please see
 details.
 }
 \description{
-Translates an R call into C and compiles it into native instructions using
-\verb{R CMD SHLIB}, to produce an "r2c_base_fun" function.  This function
-will behave similarly to an R function that has for body the provided call
-and for parameters the free symbols in the order they appear in the call
-tree.  Unlike the R function, that it will execute native instructions
-generated directly, and is compatible with \code{r2c} runner functions like
-\code{\link{group_exec}}.
+Translates eligible R calls into C and compiles them into native instructions
+using \verb{R CMD SHLIB}, and creates an interface to that code returned as an
+"r2c_fun" function.  This function will behave like an R function that
+has for body the provided \code{call} and for parameters the free parameter
+symbols in the order they appear in the call tree.  Unlike the R function, it
+will execute native instructions generated directly, and is compatible with
+\code{r2c} runner functions like \code{\link{group_exec}}.
 }
 \details{
-While "r2c_base_fun" functions can be called in the same way as normal R
-functions, there is limited value in doing so (at least until such a time as
-loop support is added).  Instead, they are intended to be invoked indirectly
-with runners like \code{\link{group_exec}} (currently the only one implemented).  The
-structure of "r2c_base_fun" objects is subject to change without notice in
-future \code{r2c} releases.  The only supported uses of them are standard
-invocation with the \code{(} operator and use with \code{r2c} functions that accept
-them as inputs.
+While "r2c_fun" functions can be called in the same way as normal R
+functions, there is limited value in doing so.  Instead, they are intended to
+be invoked indirectly with runners like \code{\link{group_exec}} (currently the only
+one implemented).  The structure of "r2c_fun" objects is subject to change
+without notice in future \code{r2c} releases.  The only supported uses of them
+are standard invocation with the \code{(} operator and use with \code{r2c} functions
+that accept them as inputs.
 
-The \verb{get_*} functions extract possibly useful data from the \code{r2c} object
-embedded in "r2c_base_fun" functions.  \code{get_r2c_dat} is intended primarily
-for internal purposes, and thus the structure of the return value is subject
-to change without notice in future versions of \code{r2c}.
+Currently the following functions are supported in \code{call}:
+\itemize{
+\item Binary operators: \code{+}, \code{-}, \code{*}, \code{/}, and \verb{\%}.
+\item Statistics: \code{mean}, \code{sum}, \code{length}.
+}
+
+All calls present in \code{call} must be in the form \code{fun(...)} where \code{fun} is the
+unquoted name of the function (i.e. not \code{"fun"(...)} or many of the other
+variations that R will normally allow).
 }
 \note{
-"r2c_base_fun" functions embed meta information within themselves for
+"r2c_fun" functions may not operate correctly if the \code{::} operator from
+the base package is masked by the environment chain starting with \code{env}.
+
+"r2c_fun" functions embed meta information within themselves for
 use by other \code{r2c} functions using environments.  If you modify these
-environments all copies of that "r2c_base_fun" that you may have made will
+environments all copies of that "r2c_fun" that you may have made will
 be affected.  There is no \code{r2c}-endorsed reason for you to be modifying
 these environments.
 }
 \examples{
 r2c_sum_add <- r2cq(sum(x + y))
-r2c(quote(sum(x + y))  ## equivalently
-
-## Retrieve meta data
-get_r_body(r2c_sum_add)
-writeLines(get_c_code(r2c_sum_add))
+r2c_sum_add <- r2c(quote(sum(x + y))  ## equivalently
+r2c_sum_add(1, runif(10))
 }
 \seealso{
-\code{\link{group_exec}} to iterate this function groupwise on data.
+\code{\link{group_exec}} to iterate this function groupwise on data, .
 }
