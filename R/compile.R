@@ -40,8 +40,8 @@ rand_string <- function(len, pool=c(letters, 0:9))
 
 #' Compile Eligible R Calls Into Native Instructions
 #'
-#' Translates eligible R calls into C and compiles them into native instructions
-#' using `R CMD SHLIB`, and creates an interface to that code returned as an
+#' Translates eligible R calls into C, compiles them into native instructions
+#' using `R CMD SHLIB`, and returns an interface to that code in the form of an
 #' "r2c_fun" function.  This function will behave like an R function that
 #' has for body the provided `call` and for parameters the free parameter
 #' symbols in the order they appear in the call tree.  Unlike the R function, it
@@ -159,16 +159,15 @@ r2c <- function(
   body(fun) <- if(!check) {
     bquote({
       .(PREAMBLE)
-      eval(eval(.(GEXE)), envir=getNamespace('r2c'))
+      eval(evalq(.(GEXE)), envir=getNamespace('r2c'))
     })
   } else {
     # Symbol creation is order so that no created symbols will interfere with
     # symbols referenced in the evaluated expressions.
     bquote({
       .(PREAMBLE)
-      eval(eval(.(GEXE)), envir=getNamespace('r2c'))
       test <- identical(
-        eval(eval(.(GEXE)), envir=getNamespace('r2c')),
+        eval(evalq(.(GEXE)), envir=getNamespace('r2c')),
         res <- eval(.(call), envir=.ENV)
       )
       if(!test) stop("`r2c` eval does not match standard eval.")
