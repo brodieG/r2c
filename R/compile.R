@@ -38,37 +38,44 @@ make_shlib <- function(x) {
 rand_string <- function(len, pool=c(letters, 0:9))
   paste0(sample(pool, len, replace=TRUE), collapse="")
 
-#' Compile an R Call Into Machine Instructions
+#' Compile Eligible R Calls Into Native Instructions
 #'
-#' Translates an R call into C and compiles it into native instructions using
-#' `R CMD SHLIB`, and returns a special "r2c_base_fun" function.  This function
-#' will behave similarly to a normal R function with the call as the body and
-#' the free symbols bound to parameters in the order they appear in the call
-#' tree.  The body will be implemented in "r2c" C code.
+#' Translates eligible R calls into C and compiles them into native instructions
+#' using `R CMD SHLIB`, and creates an interface to that code returned as an
+#' "r2c_fun" function.  This function will behave like an R function that
+#' has for body the provided `call` and for parameters the free parameter
+#' symbols in the order they appear in the call tree.  Unlike the R function, it
+#' will execute native instructions generated directly, and is compatible with
+#' `r2c` runner functions like [`group_exec`].
 #'
-#' While "r2c_base_fun" functions can be called in the same way as normal R
-#' functions, there is limited value in doing so (at least until such a time as
-#' loop support is added).  Instead, they are intended to be invoked indirectly
-#' with runners like [`group_exec`] (currently the only one implemented).  The
-#' structure of "r2c_base_fun" objects is subject to change without notice in
-#' future `r2c` releases.  The only supported uses of them are standard
-#' invocation with the `(` operator and use with `r2c` functions that accept
-#' them as inputs.
+#' While "r2c_fun" functions can be called in the same way as normal R
+#' functions, there is limited value in doing so.  Instead, they are intended to
+#' be invoked indirectly with runners like [`group_exec`] (currently the only
+#' one implemented).  The structure of "r2c_fun" objects is subject to change
+#' without notice in future `r2c` releases.  The only supported uses of them
+#' are standard invocation with the `(` operator and use with `r2c` functions
+#' that accept them as inputs.
 #'
-#' The `get_*` functions extract possibly useful data from the `r2c` object
-#' embedded in "r2c_base_fun" functions.  `get_r2c_dat` is intended primarily
-#' for internal purposes, and thus the structure of the return value is subject
-#' to change without notice in future versions of `r2c`.
+#' Currently the following functions are supported in `call`:
 #'
-#' @note "r2c_base_fun" functions embed meta information within themselves for
+#' * Binary operators: `+`, `-`, `*`, `/`, and `%`.
+#' * Statistics: `mean`, `sum`, `length`.
+#'
+#' All calls present in `call` must be in the form `fun(...)` where `fun` is the
+#' unquoted name of the function (i.e. not `"fun"(...)` or many of the other
+#' variations that R will normally allow).
+#'
+#' @note "r2c_fun" functions may not operate correctly if the `::` operator from
+#'   the base package is masked by the environment chain starting with `env`.
+#' @note "r2c_fun" functions embed meta information within themselves for
 #'   use by other `r2c` functions using environments.  If you modify these
-#'   environments all copies of that "r2c_base_fun" that you may have made will
+#'   environments all copies of that "r2c_fun" that you may have made will
 #'   be affected.  There is no `r2c`-endorsed reason for you to be modifying
 #'   these environments.
 #'
 #' @export
-#' @param call an R expression, for `compileq` it is captured unevaluated, for
-#'   `compile` it should be pre-quoted.
+#' @param call an R expression, for `r2cq` it is captured unevaluated, for
+#'   `r2c` it should be quoted with e.g. [`quote`]..
 #' @param dir character(1L) name of a file system directory to store the shared
 #'   object file in.  The shared object will also be loaded, so the object file
 #'   does not need to be preserved unless a function is serialized for re-use
@@ -78,26 +85,26 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' @param check TRUE or FALSE (default), if TRUE will evaluate the R expression
 #'   with the input data and compare that result to the one obtained from the
 #'   `r2c` C code evaluation, producing an error if not identical.
-#' @param r2c.fun an "r2c_base_fun" object to extract meta data from.
-#' @return an "r2c_base_fun" function; this is an unusual function so please see
+#' @param r2c.fun an "r2c_fun" object to extract meta data from.
+#' @return an "r2c_fun" function; this is an unusual function so please see
 #'   details.
 #' @seealso [`group_exec`] to iterate this function groupwise on data.
 #' @examples
 #' r2c_sum_add <- r2cq(sum(x + y))
-#' r2c(quote(sum(x + y))  ## equivalently
+#' r2c_sum_add <- r2c(quote(sum(x + y))  ## equivalently
+#' r2c_sum_add(1, runif(10))
 #'
 #' ## Retrieve meta data
 #' get_r_body(r2c_sum_add)
 #' writeLines(get_c_code(r2c_sum_add))
 
 r2c <- function(
-  call, env=parent.frame(), dir=tempfile(),
-  check=getOption('r2c.check.result', FALSE)
+  call, dir=tempfile(), check=getOption('r2c.check.result', FALSE)
 ) {
   vetr(is.language(.), dir=character(), check=LGL.1)
   preproc <- preprocess(call)
   so <- make_shlib(preproc[['code']])
-  obj <- list2env(list(preproc=preproc, so=so, call=call))
+  OBJ <- list2env(list(preproc=preproc, so=so, call=call), parent=emptyenv())
 
   # generate formals that match the free symbols in the call
   sym.free <- preproc[['sym.free']]
@@ -106,31 +113,67 @@ r2c <- function(
 
   fun <- fun.dummy <- function() NULL
   formals(fun) <- formals
-  environment(fun) <- env
-  DOC <- paste0(c("r2c implementation of:", "", deparse(call)), collapse="\n")
-  # This is ugly, we embed the object in the call proper so we don't interfere
-  # with symbol resolution.
+  environment(fun) <- .BaseNamespaceEnv
+
+  # This is ugly because:
+  #
+  # 1. We need the function itself to be able to recover the `r2c` object data,
+  #    which means we need to embed the actual object (not a symbol referencing
+  #    it) in the function (we could alternatively use the `sys.call()` trick
+  #    from `rlang` to get the attribute, but that feels like it relies on an
+  #    implementation detail).
+  # 2. We need the function to survive a re-loading of r2c (but we probably
+  #    shouldn't allow it to survive across different versions)
+  #
+  # Thus, we directly embed the object with `.(obj)`, and we make the parent of
+  # the function the base environment.
+  #
+  # , we embed the object in the call proper so we don't interfere
+  # with symbol resolution.  We use `eval` so that the function is robust to
+  # re-installation of r2c (whereby the captured environments would be bad).  We
+  # use `base::` anyplace symbol resolution could be compromised.
+  GEXE <- quote(
+    bquote(
+      group_exec_int(
+        NULL, formals=.(.FRM), env=.(.ENV), groups=NULL,
+        data=.(.DAT), MoreArgs=list(), sorted=TRUE
+  ) ) )
+  DOC <- as.call(
+    list(
+      as.name("{"),
+      c(
+        strrep("-", 60),
+        paste0("| ",
+          format(
+            c(
+              "**R2C** implementation of:", strrep(" ", 60),
+              deparse(call, width.cutoff=40),
+              if(check) c("", "self-check ON", "")
+        ) ) ),
+        paste0("+", strrep("-", 61))
+  ) ) )
+  PREAMBLE <- bquote({
+    .(DOC)
+    .(OBJ)  # for ease of access
+    .FRM <- formals()
+    .DAT <- as.list(environment())
+    .ENV <- parent.frame()
+  })
+  GEXE[[c(2L, 2L)]] <- OBJ  # nesting bquote a pain
   body(fun) <- if(!check) {
     bquote({
-      .(DOC)
-      .(obj)  # for ease of access
-      group_exec_int(
-          .(obj), formals=formals(), env=environment(), groups=NULL,
-          data=as.list(environment()), MoreArgs=list(), sorted=TRUE
-      )}
-    )
+      .(PREAMBLE)
+      eval(eval(.(GEXE)), envir=getNamespace('r2c'))
+    })
   } else {
     # Symbol creation is order so that no created symbols will interfere with
     # symbols referenced in the evaluated expressions.
     bquote({
-      .(paste0(DOC, "\nSelf-Check Enabled"))
-      .(obj)  # for ease of access
+      .(PREAMBLE)
+      eval(eval(.(GEXE)), envir=getNamespace('r2c'))
       test <- identical(
-        group_exec_int(
-          .(obj), formals=formals(), env=environment(), groups=NULL,
-          data=as.list(environment()), MoreArgs=list(), sorted=TRUE
-        ),
-        res <- eval(call, envir=env)
+        eval(eval(.(GEXE)), envir=getNamespace('r2c')),
+        res <- eval(.(call), envir=.ENV)
       )
       if(!test) stop("`r2c` eval does not match standard eval.")
     })
@@ -139,7 +182,7 @@ r2c <- function(
   # as no matter what we have to load it sometime.
   dyn.load(so)
 
-  class(fun) <- "r2c_base_fun"
+  class(fun) <- "r2c_fun"
   fun
 }
 #' @export
@@ -156,9 +199,17 @@ r2cq <- function(
 get_c_code <- function(r2c.fun) get_r2c_dat(r2c.fun)[['preproc']][['code']]
 get_r_code <- function(r2c.fun) get_r2c_dat(r2c.fun)[['call']]
 
+#' Extract Data from "r2c_fun" Objects
+#'
+#' `get_c_code` The `get_*` functions extract possibly useful data from the
+#' `r2c` object embedded in "r2c_fun" functions.  `get_r2c_dat` is intended
+#' primarily for internal purposes, and thus the structure of the return value
+#' is subject to change without notice in future versions of `r2c`.
+#'
+#'
 #' @export
 #' @rdname r2c
 
 get_r2c_dat <- function(r2c.fun) {
-  body(r2c.fun)[[3L]]  # the object is embedded in the function
+  as.list(body(r2c.fun)[[c(3L,2L)]])  # the object is embedded in the function
 }

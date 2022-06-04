@@ -20,7 +20,7 @@
 #' data without interpreter overhead.
 #'
 #' @docType package
-#' @name r2c
+#' @name r2c-package
 #' @import vetr
 #' @useDynLib r2c, .registration=TRUE, .fixes="R2C_"
 

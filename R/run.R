@@ -49,10 +49,12 @@ group_sizes <- function(go) .Call(R2C_group_sizes, go)
 #'   groups.  Otherwise, a "data.frame" with the group vectors as columns and
 #'   the result column last.
 
-group_exec <- function(fun, groups, data, MoreArgs=list(), sorted=FALSE) {
+group_exec <- function(
+  fun, groups, data, MoreArgs=list(), sorted=FALSE, env=parent.frame()
+) {
   # FIXME: add validation for shlib
   vetr(
-    fun=is.function(.) && inherits(., 'r2c_base_fun'),
+    fun=is.function(.) && inherits(., 'r2c_fun'),
     groups=integer() || (list() && all(vapply(., is.integer, TRUE))) || NULL,
     data=(numeric() || (list() && all(is.num_naked(.)))),
     MoreArgs=list(),
@@ -60,8 +62,8 @@ group_exec <- function(fun, groups, data, MoreArgs=list(), sorted=FALSE) {
   )
   obj <- get_r2c_dat(fun)
   group_exec_int(
-    obj, formals=formals(fun), env=environment(fun),
-    groups=groups, data=data, MoreArgs=MoreArgs, sorted=sorted
+    obj, formals=formals(fun), env=env, groups=groups, data=data,
+    MoreArgs=MoreArgs, sorted=sorted
   )
 }
 group_exec_int <- function(obj, formals, env, groups, data, MoreArgs, sorted) {
@@ -100,14 +102,13 @@ group_exec_int <- function(obj, formals, env, groups, data, MoreArgs, sorted) {
   } else {
     # Fake a single group
     do <- data
-    group.dat <- list(as.numeric(length(d.len)), 0, as.numeric(length(d.len)))
+    group.dat <- list(as.numeric(d.len), 0, as.numeric(d.len))
   }
   # Match data against arguments
   params <- names(formals)
   args.dummy <- as.list(seq_len(length(do) + length(MoreArgs)))
   fun.dummy <- function() NULL
   formals(fun.dummy) <- formals
-  environment(fun.dummy) <- env
 
   names(args.dummy) <- c(names(do), names(MoreArgs))
   call.dummy <- as.call(c(list(fun.dummy), as.list(args.dummy)))

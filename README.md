@@ -1,7 +1,8 @@
 # r2c - Fast Iterated Statistic Computation in R
 
 **Proof of Concept**.  Lightly tested, experimental, and incomplete.  The
-interface will change substantially over the next few iterations.
+interface will change substantially over the next few iterations (even parts not
+explicitly documented as subject to change).
 
 Compiles a selected subset of R into native instructions so that expressions
 using only that subset can be executed repeatedly on varying data without
@@ -275,7 +276,9 @@ group-invariant data:
 Notice the `na.rm`, and that the `u` in `list(y=u)` is re-used in full for each
 group setting the output size to 3.
 
-
+The C counterparts to the R functions are intended to produce identical outputs,
+but have different implementations.  As such, it is possible that for a
+particular set of inputs on a particular platform the results might diverge.
 
 ## Future - Maybe?
 

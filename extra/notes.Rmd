@@ -8,6 +8,9 @@
 
 # To Do / Questions
 
+* Add check to `r2c` funs that verify the `r2c` version, the R version, and the
+  platform (anything else)?
+* What should the environment of an "r2c_fun" be?
 * Figure out a better way to store the object than embedding it with `bquote` in
   the function.
 * Test forwarding dots to a `group_exec` function.
