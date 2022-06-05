@@ -41,7 +41,9 @@ base_grp_eval <- function(data, g, call, env=parent.frame()) {
   ) )
 }
 
-is.num_naked <- function(x) vapply(x, is.vector, TRUE, "numeric")
+is.num_naked <- function(x)
+  vapply(x, is.vector, TRUE, "numeric") |
+  vapply(x, is.vector, TRUE, "integer")
 
 not_num_naked_err <- function(name, val) {
   sprintf(

@@ -172,7 +172,9 @@ SEXP R2C_run_internal(
     // the C functions to reflect the size of the intermediate results
     for(int j = 0; j < dat_count; ++j) lens[j] = g_len;
 
-    // This got out of hand, was trying to avoid compiler warnings
+    // This got out of hand, was trying to avoid compiler warnings.  Can
+    // probably avoid just by referencing the variables in the functions in a
+    // NULL op.
     switch(intrf) {
       case 1: (*fun)(data, lens, datai); break;
       case 2: (*fun)(data, lens, datai, narg); break;

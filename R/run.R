@@ -56,7 +56,7 @@ group_exec <- function(
   vetr(
     fun=is.function(.) && inherits(., 'r2c_fun'),
     groups=integer() || (list() && all(vapply(., is.integer, TRUE))) || NULL,
-    data=(numeric() || (list() && all(is.num_naked(.)))),
+    data=((numeric() || integer()) || (list() && all(is.num_naked(.)))),
     MoreArgs=list(),
     sorted=LGL.1
   )
@@ -172,7 +172,9 @@ group_exec_int <- function(obj, formals, env, groups, data, MoreArgs, sorted) {
     group.res.sizes
   )
   # Result vector is modified by reference
-  res <- dat[[which(alloc[['alloc']][['type']] == "res")]]
+  res.i <- which(alloc[['alloc']][['type']] == "res")
+  res <- dat[[res.i]]
+  if(alloc[['alloc']][['typeof']][res.i] == "integer") res <- as.integer(res)
 
   # Generate and attach group labels
   if(mode != "ungrouped") {

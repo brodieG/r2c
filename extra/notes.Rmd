@@ -8,6 +8,8 @@
 
 # To Do / Questions
 
+* Side effects from evaluation of control parameters?  Where should assigned
+  variables reside?
 * Add a finalizer to the r2c objects to clean-up after themselves when `rm`ed?
 * Add check to `r2c` funs that verify the `r2c` version, the R version, and the
   platform (anything else)?
@@ -120,6 +122,20 @@
 * Really need to figure out whether we want a formal interface to the functions.
   It could be auto-generated from all the unbound symbols like gsubfn does it.
 * Annotate code with the call that it corresponds to
+
+# Integer variables
+
+We wish to convert integer variables to real, but ideally we would return them
+as integer if possible (or NA if overflow) at the end of the computation.  The
+first part is relatively easy: if an object is integer, convert it to real.
+What if the object is used both as a control and non-control parameter?  I
+guess, too bad, it will be real.
+
+If all non-integer
+
+Functions will need to track whether they preserve integerness and under what
+conditions.  Presumably it should be if all non-control, non-flag parameters are
+integer, then the result is integer.
 
 # Loop implementation
 

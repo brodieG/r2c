@@ -49,7 +49,7 @@ alloc <- function(x, data, gmax, par.env, MoreArgs) {
   # intermediate calculations in the call tree.
   #
   # The call tree has been linearized depth first, so the parameters are
-  # recorded before the call they belong to.  To process We will accumulate
+  # recorded before the call they belong to.  To process we will accumulate
   # parameters in a stack, until we see a call at which point reduce.
   #
   # For each call we want to record:
@@ -75,10 +75,19 @@ alloc <- function(x, data, gmax, par.env, MoreArgs) {
       # size, allocate for it, etc.
       check_fun(name, env)
       ftype <- VALID_FUNS[[c(name, "type")]]
+      # If all non-control, non-flag inputs were know to be integer, and we're
+      # dealing with a function that returns integer for those, make it known
+      # the result should be integer.
+
+      res.typeof <- if(
+        VALID_FUNS[[c(name, "preserve.int")]] &&
+        all(alloc[['typeof']][stack['id', ]] == "integer")
+      ) "integer" else "double"
+
       if(ftype[[1L]] == "constant") {
         # Always constant size, e.g. 1 for `sum`
         size <- ftype[[2L]]
-        alloc <- alloc_dat(alloc, depth, size=size, call)
+        alloc <- alloc_dat(alloc, depth, size=size, call, typeof=res.typeof)
         group <- 0
       } else if(ftype[[1L]] %in% c("arglen", "vecrec")) {
         # Length of a specific argument, like `probs` for `quantile`
@@ -95,7 +104,8 @@ alloc <- function(x, data, gmax, par.env, MoreArgs) {
           drop=FALSE
         ]
         alloc <- alloc_dat(
-          alloc, depth, size=vec_rec_max_size(sizes.tmp, gmax), call
+          alloc, depth, size=vec_rec_max_size(sizes.tmp, gmax), call,
+          typeof=res.typeof
         )
         size <- vec_rec_known_size(sizes.tmp[1L,])  # knowable sizes
         group <- max(sizes.tmp[2L,])                # any group size in the lot?
@@ -126,7 +136,7 @@ alloc <- function(x, data, gmax, par.env, MoreArgs) {
       if(type == "leaf" && !is.num_naked(list(arg.e)))
         stop(
           "External Parameter `", name, "` for `", deparse1(call),
-          "` is not unclassed double ", not_num_naked_err(name), "."
+          "` is not unclassed numeric ", not_num_naked_err(name), "."
         )
 
       size <- length(arg.e)
@@ -169,7 +179,9 @@ alloc <- function(x, data, gmax, par.env, MoreArgs) {
   } )
   stack['id',] <- match(stack['id',], ids.keep)
 
-  alloc.fin <- lapply(alloc[c('dat', 'alloc', 'depth', 'type')], "[", ids.keep)
+  alloc.fin <- lapply(
+    alloc[c('dat', 'alloc', 'depth', 'type', 'typeof')], "[", ids.keep
+  )
   alloc.fin[['i']] <- match(alloc[['i']], ids.keep)
   list(
     alloc=alloc.fin, call.dat=call.dat, stack=stack, interface=x[['interface']]
@@ -220,11 +232,13 @@ vec_rec_max_size <- function(x, gmax) {
 ## * alloc: the "true" size of the vector.
 ## * type: one of "tmp" (allocated), "grp" (from the data we're generating
 ##   groups from, "ext" (any other data vector), or "res" (the result)
+## * typeof: the intended data format at the end of the computation.  Used to
+##   try to track integer-ness (if any).
 ## * depth: the depth at which allocation occurred, only relevant for
 ##   `type == "tmp"`
 ## * i: scalar integer the first index of the appended items.
 
-alloc_dat <- function(dat, depth, size, call) {
+alloc_dat <- function(dat, depth, size, call, typeof='double') {
   # writeLines(sprintf("  d: %d s: %d c: %s", depth, size, deparse1(call)))
   if(depth == .Machine$integer.max)
     stop("Expression max depth exceeded for alloc.") # exceedingly unlikely
@@ -239,6 +253,7 @@ alloc_dat <- function(dat, depth, size, call) {
       id <- if(length(dat[['ids']])) max(dat[['ids']]) + 1L else 1L
       dat[['ids']] <- c(dat[['ids']], id)
       dat[['type']] <- c(dat[['type']], 'tmp')
+      dat[['typeof']] <- c(dat[['typeof']], typeof)
       dat[['dat']] <- c(dat[['dat']], list(numeric(size)))
       # writeLines(paste0("    alloc new: ", size))
       dat[['i']] <- id
@@ -250,11 +265,14 @@ alloc_dat <- function(dat, depth, size, call) {
       #   sprintf("    re-use slot: %d (size %d)", slot, dat[['alloc']][slot])
       # )
       dat[['depth']][slot] <- depth
+      dat[['typeof']][slot] <- typeof
       dat[['i']] <- dat[['ids']][slot]
     }
   } else {
       # Result
-      dat[['i']] <- which(dat[['type']] == "res")
+      slot <- which(dat[['type']] == "res")
+      dat[['i']] <- slot
+      dat[['typeof']][slot] <- typeof
   }
   # Free the data we no longer need for the next go-around.  This is not a
   # "free" in the malloc sense, just an indication that next time this function
@@ -265,7 +283,7 @@ alloc_dat <- function(dat, depth, size, call) {
 }
 init_dat <- function() list(
   dat=list(), alloc=numeric(), depth=integer(), ids=integer(), type=character(),
-  i=0L
+  typeof=character(), i=0L
 )
 # Data need to contain:
 #
@@ -278,11 +296,15 @@ append_dat <- function(dat, new, sizes, depth, type) {
   if(!length(new)) stop("Internal Error: at least one column must be added.")
   if(!type %in% c("res", "grp", "ext")) stop("Internal Error: bad type.")
   id.max <- length(dat[['dat']])
-  dat[['dat']] <- c(dat[['dat']], new)
+  dat[['dat']] <- c(
+    dat[['dat']],
+    lapply(new, function(x) if(is.integer(x)) as.numeric(x) else x)
+  )
   dat[['ids']] <- c(dat[['ids']], seq_along(new) + id.max)
   dat[['alloc']] <- c(dat[['alloc']], sizes)
   dat[['depth']] <- c(dat[['depth']], rep(depth, length(new)))
   dat[['type']] <- c(dat[['type']], rep(type, length(new)))
+  dat[['typeof']] <- c(dat[['typeof']], vapply(new, typeof, "character"))
   dat[['i']] <- id.max + 1L
   dat
 }

@@ -61,14 +61,22 @@ identical(res1, resb)
 
 
     set.seed(1)
-    n <- 20
+    n <- 1e2
     x <- runif(n)
     y <- runif(n)
-    g <- cumsum(sample(c(TRUE, rep(FALSE, 9)), n, replace=TRUE))
+    g <- rep(1L, n)
+    # g <- cumsum(sample(c(TRUE, rep(FALSE, 9)), n, replace=TRUE))
     library(r2c)
     r2c_sum <- r2cq(sum(x))
     system.time(g.sum.r2c <- group_exec(r2c_sum, g, x, sorted=TRUE))
 
+    x.split <- split(x, g)
+    y.split <- split(y, g)
+    mean <- mean.default
+    system.time(g.sum <- vapply(x.split, sum, 0))
+    identical(g.sum, g.sum.r2c)
+
+    r2c_sum <- r2cq(sum(x, na.rm=TRUE))
 
 
     x.split <- split(x, g)

@@ -13,7 +13,8 @@ fap_fun(
   type,
   code.gen,
   ctrl.validate = function(...) 0L,
-  transform = identity
+  transform = identity,
+  preserve.int = FALSE
 )
 }
 \arguments{

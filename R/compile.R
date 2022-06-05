@@ -63,19 +63,19 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #'
 #' All calls present in `call` must be in the form `fun(...)` where `fun` is the
 #' unquoted name of the function (i.e. not `"fun"(...)` or many of the other
-#' variations that R will normally allow).
+#' variations that R will normally allow for function invocation).
 #'
-#' @note "r2c_fun" functions may not operate correctly if the `::` operator from
-#'   the base package is masked by the environment chain starting with `env`.
-#' @note "r2c_fun" functions embed meta information within themselves for
-#'   use by other `r2c` functions using environments.  If you modify these
-#'   environments all copies of that "r2c_fun" that you may have made will
-#'   be affected.  There is no `r2c`-endorsed reason for you to be modifying
-#'   these environments.
+#' Parameters used with "r2c_fun" supported functions are categorized into data
+#' parameters and control parameters.  For example, in `sum(x, na.rm=TRUE)`, `x`
+#' is considered a data parameter and `na.rm` a control parameter.  All data
+#' parameters must be attribute-less numeric vectors.  Integer vectors are
+#' supported, but they are coerced to numeric for all intermediate calculations.
+#' If all data inputs are integer and the R counterpart functions in `call`
+#' support integer output, the result will be returned as integer.
 #'
 #' @export
 #' @param call an R expression, for `r2cq` it is captured unevaluated, for
-#'   `r2c` it should be quoted with e.g. [`quote`]..
+#'   `r2c` it should be quoted with e.g. [`quote`].
 #' @param dir character(1L) name of a file system directory to store the shared
 #'   object file in.  The shared object will also be loaded, so the object file
 #'   does not need to be preserved unless a function is serialized for re-use
@@ -88,7 +88,9 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' @param r2c.fun an "r2c_fun" object to extract meta data from.
 #' @return an "r2c_fun" function; this is an unusual function so please see
 #'   details.
-#' @seealso [`group_exec`] to iterate this function groupwise on data, .
+#' @seealso [`group_exec`] to iterate this function groupwise on data,
+#'   [`get_c_code`] to retrieve the generate C code use to produce the native
+#'   instructions.
 #' @examples
 #' r2c_sum_add <- r2cq(sum(x + y))
 #' r2c_sum_add <- r2c(quote(sum(x + y))  ## equivalently
@@ -121,13 +123,12 @@ r2c <- function(
   # 2. We need the function to survive a re-loading of r2c (but we probably
   #    shouldn't allow it to survive across different versions)
   #
-  # Thus, we directly embed the object with `.(obj)`, and we make the parent of
-  # the function the base environment.
-  #
-  # , we embed the object in the call proper so we don't interfere
-  # with symbol resolution.  We use `eval` so that the function is robust to
-  # re-installation of r2c (whereby the captured environments would be bad).  We
-  # use `base::` anyplace symbol resolution could be compromised.
+  # Thus, we directly embed the object with `.(OBJ)`, and we make the parent of
+  # the function the base environment.  We use the same trick for several other
+  # objects, both directly those generated here, and also those that will be
+  # generated at call time, to ensure that no run-time objects can interfere
+  # with the symbol resolution of the "r2c_fun" against its parameters.
+
   GEXE <- quote(
     bquote(
       group_exec_int(

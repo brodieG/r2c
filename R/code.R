@@ -75,7 +75,8 @@ NULL
 
 fap_fun <- function(
   name, fun, defn, ctrl.params=character(), flag.params=character(),
-  type, code.gen, ctrl.validate=function(...) 0L, transform=identity
+  type, code.gen, ctrl.validate=function(...) 0L, transform=identity,
+  preserve.int=FALSE
 ) {
   vetr(
     name=CHR.1,
@@ -90,7 +91,8 @@ fap_fun <- function(
     type=list(NULL, NULL),
     code.gen=is.function(.),
     ctrl.validate=is.function(.),
-    transform=is.function(.)
+    transform=is.function(.),
+    preserve.int=LGL.1
   )
   if(length(intersect(ctrl.params, flag.params)))
     stop("Control and Flag parameters may not overlap.")
@@ -121,7 +123,7 @@ fap_fun <- function(
   list(
     name=name, fun=fun, defn=defn, ctrl=ctrl.params, flag=flag.params,
     type=type, code.gen=code.gen, ctrl.validate=ctrl.validate,
-    transform=transform
+    transform=transform, preserve.int=preserve.int
   )
 }
 # Make sure "(" is not added to this list.
@@ -132,7 +134,8 @@ VALID_FUNS <- list(
     flag.params="na.rm",
     type=list("constant", 1L),
     code.gen=code_gen_summary,
-    ctrl.validate=ctrl_val_summary
+    ctrl.validate=ctrl_val_summary,
+    preserve.int=TRUE
   ),
   fap_fun(
     "mean", fun=base::mean, defn=base::mean.default,
@@ -148,15 +151,18 @@ VALID_FUNS <- list(
   ),
   fap_fun(
     "+", base::`+`, defn=function(e1, e2) NULL,
-    type=list("vecrec", c("e1", "e2")), code.gen=code_gen_arith
+    type=list("vecrec", c("e1", "e2")), code.gen=code_gen_arith,
+    preserve.int=TRUE
   ),
   fap_fun(
     "-", base::`-`, defn=function(e1, e2) NULL,
-    type=list("vecrec", c("e1", "e2")), code.gen=code_gen_arith
+    type=list("vecrec", c("e1", "e2")), code.gen=code_gen_arith,
+    preserve.int=TRUE
   ),
   fap_fun(
     "*", base::`*`, defn=function(e1, e2) NULL,
-    type=list("vecrec", c("e1", "e2")), code.gen=code_gen_arith
+    type=list("vecrec", c("e1", "e2")), code.gen=code_gen_arith,
+    preserve.int=TRUE
   ),
   fap_fun(
     "/", base::`/`, defn=function(e1, e2) NULL,
@@ -164,7 +170,8 @@ VALID_FUNS <- list(
   ),
   fap_fun(
     "%%", base::`%%`, defn=function(e1, e2) NULL,
-    type=list("vecrec", c("e1", "e2")), code.gen=code_gen_arith
+    type=list("vecrec", c("e1", "e2")), code.gen=code_gen_arith,
+    preserve.int=TRUE
   ),
   fap_fun(
     "^", base::`^`, defn=function(e1, e2) NULL,

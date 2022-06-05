@@ -11,7 +11,7 @@ r2cq(call, dir = tempfile(), check = getOption("r2c.check.result", FALSE))
 }
 \arguments{
 \item{call}{an R expression, for \code{r2cq} it is captured unevaluated, for
-\code{r2c} it should be quoted with e.g. \code{\link{quote}}..}
+\code{r2c} it should be quoted with e.g. \code{\link{quote}}.}
 
 \item{dir}{character(1L) name of a file system directory to store the shared
 object file in.  The shared object will also be loaded, so the object file
@@ -32,8 +32,8 @@ an "r2c_fun" function; this is an unusual function so please see
 details.
 }
 \description{
-Translates eligible R calls into C and compiles them into native instructions
-using \verb{R CMD SHLIB}, and creates an interface to that code returned as an
+Translates eligible R calls into C, compiles them into native instructions
+using \verb{R CMD SHLIB}, and returns an interface to that code in the form of an
 "r2c_fun" function.  This function will behave like an R function that
 has for body the provided \code{call} and for parameters the free parameter
 symbols in the order they appear in the call tree.  Unlike the R function, it
@@ -57,17 +57,19 @@ Currently the following functions are supported in \code{call}:
 
 All calls present in \code{call} must be in the form \code{fun(...)} where \code{fun} is the
 unquoted name of the function (i.e. not \code{"fun"(...)} or many of the other
-variations that R will normally allow).
+variations that R will normally allow for function invocation).
+
+Parameters used with "r2c_fun" supported functions are categorized into data
+parameters and control parameters.  For example, in \code{sum(x, na.rm=TRUE)}, \code{x}
+is considered a data parameter and \code{na.rm} a control parameter.  All data
+parameters must be attribute-less numeric vectors.  Integer vectors are
+supported, but they are coerced to numeric for all intermediate calculations.
+If all data inputs are integer and the R counterpart functions in \code{call}
+support integer output, the result will be returned as integer.
 }
 \note{
 "r2c_fun" functions may not operate correctly if the \code{::} operator from
 the base package is masked by the environment chain starting with \code{env}.
-
-"r2c_fun" functions embed meta information within themselves for
-use by other \code{r2c} functions using environments.  If you modify these
-environments all copies of that "r2c_fun" that you may have made will
-be affected.  There is no \code{r2c}-endorsed reason for you to be modifying
-these environments.
 }
 \examples{
 r2c_sum_add <- r2cq(sum(x + y))
@@ -75,5 +77,7 @@ r2c_sum_add <- r2c(quote(sum(x + y))  ## equivalently
 r2c_sum_add(1, runif(10))
 }
 \seealso{
-\code{\link{group_exec}} to iterate this function groupwise on data, .
+\code{\link{group_exec}} to iterate this function groupwise on data,
+\code{\link{get_c_code}} to retrieve the generate C code use to produce the native
+instructions.
 }
