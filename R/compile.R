@@ -172,6 +172,7 @@ r2c <- function(
         res <- eval(.(call), envir=.ENV)
       )
       if(!test) stop("`r2c` eval does not match standard eval.")
+      res
     })
   }
   # pre-load to avoid cost on initial execution?  Mostly a benchmarking thing
