@@ -87,6 +87,9 @@ SEXP R2C_run_internal(
   SEXP so,
   SEXP interface,  // what type of call interface into the runner
   SEXP dat,
+  // how many of the leading columns of `dat` are of the group varying type.
+  // The result vector will be after that, and the rest of the data will be any
+  // external data references.
   SEXP dat_cols,
   SEXP ids,
   SEXP flag,
@@ -96,8 +99,8 @@ SEXP R2C_run_internal(
 ) {
   if(TYPEOF(so) != STRSXP || XLENGTH(so) != 1)
     Rf_error("Argument `so` should be a scalar string.");
-  if(TYPEOF(dat_cols) != INTSXP || XLENGTH(dat_cols) != 1)
-    Rf_error("Argument `dat_cols` should be a scalar integer.");
+  if(TYPEOF(dat_cols) != INTSXP)
+    Rf_error("Argument `dat_cols` should be scalar integer.");
   if(TYPEOF(interface) != INTSXP || XLENGTH(interface) != 1)
     Rf_error("Argument `interface` should be a scalar integer.");
   if(TYPEOF(grp_lens) != REALSXP)
@@ -158,7 +161,7 @@ SEXP R2C_run_internal(
         (intmax_t) i, Rf_type2char(TYPEOF(elt))
       );
     *(datai + i) = INTEGER(elt);
-    *(narg + i) = (int) XLENGTH(elt);
+    *(narg + i) = (int) XLENGTH(elt) - 1;  // Last element is the result
   }
   // Integer flags representing TRUE/FALSE control parameters
   int * flag_int = INTEGER(flag);
@@ -194,6 +197,7 @@ SEXP R2C_run_internal(
         "Group result size does not match expected (%ju vs expected %ju).",
         lens[dat_count], r_len
       );
+
     *(data + dat_count) += r_len;
   }
   return R_NilValue;
