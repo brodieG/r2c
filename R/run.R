@@ -56,7 +56,10 @@ group_exec <- function(
   vetr(
     fun=is.function(.) && inherits(., 'r2c_fun'),
     groups=integer() || (list() && all(vapply(., is.integer, TRUE))) || NULL,
-    data=((numeric() || integer()) || (list() && all(is.num_naked(.)))),
+    data=(
+      (numeric() || integer()) ||
+      (list() && all(is.num_naked(.)) && length(.) > 0)
+    ),
     MoreArgs=list(),
     sorted=LGL.1
   )
@@ -104,6 +107,9 @@ group_exec_int <- function(obj, formals, env, groups, data, MoreArgs, sorted) {
     do <- data
     group.dat <- list(as.numeric(d.len), 0, as.numeric(d.len))
   }
+  if(is.null(names(do))) names(do) <- character(length(do))
+  if(is.null(names(MoreArgs))) names(MoreArgs) <- character(length(MoreArgs))
+
   # Match data against arguments
   params <- names(formals)
   args.dummy <- as.list(seq_len(length(do) + length(MoreArgs)))

@@ -43,14 +43,32 @@ match_call <- function(definition, call, envir, name) {
       toString(sprintf("`%s`", frms.req[!frms.req.have])),
       " for `", name, "`."
     )
-  # Add defaults, collapse dot, don't worry about order (should be okay)
+  # Add defaults, expand dots, order matters
   mcall.nm.missing <- names(frm)[!names(frm) %in% c(mcall.nm, "...")]
   mcall.dots <- mcall[['...']]
-  if(length(mcall.dots)) names(mcall.dots) <- rep('...', length(mcall.dots))
-  c(
+  if(is.null(mcall.dots)) mcall.dots <- list()
+  args.nm <- c(
+    names(mcall[seq_along(mcall) != 1L & names(mcall) != "..."]),
+    if(!is.null(mcall.dots)) "...",
+    names(frm[mcall.nm.missing])
+  )
+  args.dummy <- c(
     as.list(mcall[seq_along(mcall) != 1L & names(mcall) != "..."]),
-    mcall.dots,
+    list(NULL),     # placeholder for dots
     frm[mcall.nm.missing]
+  )
+  args.ord <- match(args.nm, names(frm))
+  args <- args.dummy[args.ord]
+  args.dot.pos <- if(length(mcall.dots)) {
+    names(mcall.dots) <- rep('...', length(mcall.dots))
+    match("...", args.nm[args.ord])
+  } else length(args)
+  # expand the dots
+  c(
+    args[seq_len(args.dot.pos - 1L)],
+    mcall.dots,
+    if(length(args.dummy) > args.dot.pos)
+      args[seq(args.dot.pos + 1L, length(args), by=1L)]
   )
 }
 

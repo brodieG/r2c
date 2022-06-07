@@ -133,7 +133,7 @@ r2c <- function(
     bquote(
       group_exec_int(
         NULL, formals=.(.FRM), env=.(.ENV), groups=NULL,
-        data=.(.DAT), MoreArgs=list(), sorted=TRUE
+        data=.(.DAT[1L]), MoreArgs=.(.DAT[-1L]), sorted=TRUE
   ) ) )
   DOC <- as.call(
     list(
@@ -152,8 +152,8 @@ r2c <- function(
   PREAMBLE <- bquote({
     .(DOC)
     .(OBJ)  # for ease of access
+    .DAT <- as.list(environment())  # first, so no other symbols
     .FRM <- formals()
-    .DAT <- as.list(environment())
     .ENV <- parent.frame()
   })
   GEXE[[c(2L, 2L)]] <- OBJ  # nesting bquote a pain
