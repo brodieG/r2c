@@ -30,6 +30,8 @@ static void %%s(%%s) {
   R_xlen_t len_n = lens[di1];
   %sdouble * dat = data[di1];
   int narm = flag;  // only one possible flag parameter
+  Rprintf("flag: %%%%d\\n", flag);
+
 %s%s
 
   *data[di2] = (double) tmp;

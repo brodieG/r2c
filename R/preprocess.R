@@ -194,7 +194,8 @@ pp_internal <- function(call, depth, x, argn="", env) {
       if(args.types[i] %in% c('control', 'flag')) {
         x <- record_call_dat(
           x, call=args[[i]], depth=depth + 1L, argn=names(args)[i],
-          type=args.types[i], code=code_blank(), sym.free=sym_free(args[[i]], x)
+          type=args.types[i], code=code_blank(),
+          sym.free=sym_free(x, args[[i]])
         )
       } else {
         x <- pp_internal(

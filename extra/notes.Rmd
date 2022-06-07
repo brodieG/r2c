@@ -8,6 +8,8 @@
 
 # To Do / Questions
 
+* Currently we require at least one data column so we can get away with using
+  the group logic for the stand alone evaluation of the r2c funs.
 * Side effects from evaluation of control parameters?  Where should assigned
   variables reside?
 * Add a finalizer to the r2c objects to clean-up after themselves when `rm`ed?

@@ -58,7 +58,7 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #'
 #' Currently the following functions are supported in `call`:
 #'
-#' * Binary operators: `+`, `-`, `*`, `/`, and `%`.
+#' * Binary operators: `+`, `-`, `*`, `/`, `%%`, and `^`.
 #' * Statistics: `mean`, `sum`, `length`.
 #'
 #' All calls present in `call` must be in the form `fun(...)` where `fun` is the
@@ -71,7 +71,10 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' parameters must be attribute-less numeric vectors.  Integer vectors are
 #' supported, but they are coerced to numeric for all intermediate calculations.
 #' If all data inputs are integer and the R counterpart functions in `call`
-#' support integer output, the result will be returned as integer.
+#' support integer output, the result will be returned as integer.  There are no
+#' general restrictions on control parameters, but each implemented function
+#' will only accept values for them that would make sense for the R
+#' counterparts.
 #'
 #' @export
 #' @param call an R expression, for `r2cq` it is captured unevaluated, for
@@ -85,7 +88,6 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' @param check TRUE or FALSE (default), if TRUE will evaluate the R expression
 #'   with the input data and compare that result to the one obtained from the
 #'   `r2c` C code evaluation, producing an error if not identical.
-#' @param r2c.fun an "r2c_fun" object to extract meta data from.
 #' @return an "r2c_fun" function; this is an unusual function so please see
 #'   details.
 #' @seealso [`group_exec`] to iterate this function groupwise on data,
@@ -208,7 +210,7 @@ r2cq <- function(
 #'   [`r2c`].
 #' @examples
 #' r2c_sum_add <- r2cq(sum(x + y))
-#' get_r_body(r2c_sum_add)
+#' get_r_code(r2c_sum_add)
 #' writeLines(get_c_code(r2c_sum_add))
 
 get_c_code <- function(r2c.fun) get_r2c_dat(r2c.fun)[['preproc']][['code']]

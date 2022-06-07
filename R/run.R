@@ -23,31 +23,70 @@ group_sizes <- function(go) .Call(R2C_group_sizes, go)
 
 #' Execute r2c Function Iteratively on Groups in Data
 #'
-#' Organizes `data` into row groups according to `groups`, and calls `r2c`
-#' functions for each group with the arguments bound to the portion of the data
-#' corresponding to each group.
+#' Organizes `data` into row groups according to `groups`, and calls the
+#' native code associated with the provided "r2c_fun" function for each group
+#' with the arguments bound to the portion of the data corresponding to each
+#' group.  Each iteration of the native code is issue directly from native code
+#' without R interpreted overhead.
 #'
 #' @export
-#' @param fun a function produced by `r2c`.
-#' @param groups an integer vector, or a list of equal-length integer vectors,
-#'   the interaction of which defines individual groups to organize the data
-#'   into.  Support for non-integer vectors will be added in the future.
+#' @seealso [`r2c`] for more details on the behavior and constraints of
+#'   "r2c_fun" functions.
+#' @param fun an "r2c_fun" function as produced by [`r2c`].
 #' @param data a numeric vector, or a list of numeric vectors, each vector the
 #'   same length as the vector(s) in `groups`.  If a named list, the vectors
 #'   will be matched to `fun` parameters by those names.  Elements without names
-#'   are matched positionally.
-#' @param MoreArgs a list of R objects to pass on as non-data parameters to
-#'   `fun`.  Unlike with `data`, the entire object will be passed for each
+#'   are matched positionally.  If a list must contain at least one element.
+#' @param groups an integer vector, or a list of equal-length integer vectors,
+#'   the interaction of which defines individual groups to organize the vectors
+#'   in `data` into.  The native code associated with the "r2c_fun" function
+#'   will be invoked once for each group with the vectors in `data` subset to
+#'   the elements corresponding to that group.  Currently only one group vector
+#'   is allowed.  Support for multiple group vectors and non-integer vectors
+#'   will be added in the future.
+#' @param MoreArgs a list of R objects to pass on as group-invariant arguments
+#'   to `fun`.  Unlike with `data`, the entire object will be passed for each
 #'   group.  This is useful for arguments that are intended to remain constant
-#'   group to group.
+#'   group to group.  Matching of these objects to `fun` parameters is the same
+#'   as for `data`, with positional matching occurring after the elements in
+#'   `data` are matched.
 #' @param sorted TRUE or FALSE (default), whether the vectors in `data` and
 #'   `groups` are already sorted by `groups`.  If set to TRUE, the `data` will
 #'   not be sorted prior to computation; if the data is truly sorted this
 #'   produces the same results while avoiding the cost of sorting.
-#' @return a if `groups` and `data` are atomic vectors, a named numeric vector
-#'   with the results of executing `fun` on each group and the names set to the
-#'   groups.  Otherwise, a "data.frame" with the group vectors as columns and
-#'   the result column last.
+#' @return a if `groups` and `data` are atomic vectors, a named numeric or
+#'   integer vector with the results of executing `fun` on each group and the
+#'   names set to the groups.  Otherwise, a "data.frame" with the group vectors
+#'   as columns and the result column last.
+#' @examples
+#' r2c_mean <- r2cq(mean(x))
+#' with(
+#'   mtcars,
+#'   group_exec(r2c_mean, as.integer(cyl), hp)
+#' )
+#'
+#' r2c_slope <- r2cq(
+#'   sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2)
+#' )
+#' with(
+#'   mtcars,
+#'   group_exec(r2c_slope, as.integer(cyl), list(hp, qsec))
+#' )
+#'
+#' ## If we know data to be pre-sorted on the grouping variables,
+#' ## this is faster:
+#' with(
+#'   warpbreaks,
+#'   group_exec(r2c_mean, as.integer(wool), breaks, sorted=TRUE)
+#' )
+#'
+#' ## We can provide group=invariant parameters:
+#' r2c_sum_add_na <- r2cq(sum(x * y, na.rm=na.rm) / sum(y))
+#' a <- runif(10)
+#' a[8] <- NA
+#' weights <- c(.1, .1, .2, .2, .4)
+#' g <- rep(1:2, each=5)
+#' group_exec(r2c_sum_add_na, g, a, list(y=b, na.rm=TRUE))
 
 group_exec <- function(
   fun, groups, data, MoreArgs=list(), sorted=FALSE, env=parent.frame()
@@ -159,6 +198,7 @@ group_exec_int <- function(obj, formals, env, groups, data, MoreArgs, sorted) {
   dat <- alloc[['alloc']][['dat']]
   control <- lapply(alloc[['call.dat']], "[[", "ctrl")
   flag <- vapply(alloc[['call.dat']], "[[", 0L, "flag")
+  # Ids into call.dat, last one will be the result
   ids <- lapply(alloc[['call.dat']], "[[", "ids")
   if(!all(unlist(ids) %in% seq_along(dat)))
     stop("Internal Error: Invalid data indices.")

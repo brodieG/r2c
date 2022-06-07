@@ -61,11 +61,12 @@ identical(res1, resb)
 
 
     set.seed(1)
-    n <- 1e2
+    n <- 1e7
     x <- runif(n)
+    x <- sample(n)
     y <- runif(n)
     g <- rep(1L, n)
-    # g <- cumsum(sample(c(TRUE, rep(FALSE, 9)), n, replace=TRUE))
+    g <- cumsum(sample(c(TRUE, rep(FALSE, 9)), n, replace=TRUE))
     library(r2c)
     r2c_sum <- r2cq(sum(x))
     system.time(g.sum.r2c <- group_exec(r2c_sum, g, x, sorted=TRUE))
@@ -73,7 +74,7 @@ identical(res1, resb)
     x.split <- split(x, g)
     y.split <- split(y, g)
     mean <- mean.default
-    system.time(g.sum <- vapply(x.split, sum, 0))
+    system.time(g.sum <- vapply(x.split, sum, 0L))
     identical(g.sum, g.sum.r2c)
 
     r2c_sum <- r2cq(sum(x, na.rm=TRUE))
