@@ -63,14 +63,13 @@ f_sum_1 <- sprintf(f_summary_base, "", make_loop_base(count.na=FALSE), "")
 f_sum_n_base <- '
 static void %%s(%%s) {
   long double tmp = 0;
-  *res = 0;
   int narm = flag;  // only one possible flag parameter
 
   for(int arg = 0; arg < narg; ++arg) {
-    int din = datai[arg]
+    int din = datai[arg];
     R_xlen_t len_n = lens[din];
     double * dat = data[din];
-    %s
+%s
   }
   // R checks if we would overflow, but we assume infinity exists in double so
   // no overflow (at least in IEEE-754?).
