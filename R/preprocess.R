@@ -49,7 +49,7 @@ match_call <- function(definition, call, envir, name) {
   if(is.null(mcall.dots)) mcall.dots <- list()
   args.nm <- c(
     names(mcall[seq_along(mcall) != 1L & names(mcall) != "..."]),
-    if(!is.null(mcall.dots)) "...",
+    "...",
     names(frm[mcall.nm.missing])
   )
   args.dummy <- c(
@@ -57,7 +57,8 @@ match_call <- function(definition, call, envir, name) {
     list(NULL),     # placeholder for dots
     frm[mcall.nm.missing]
   )
-  args.ord <- match(args.nm, names(frm))
+  args.pos <- match(args.nm, names(frm))
+  args.ord <- order(args.pos)
   args <- args.dummy[args.ord]
   args.dot.pos <- if(length(mcall.dots)) {
     names(mcall.dots) <- rep('...', length(mcall.dots))
@@ -102,14 +103,11 @@ preprocess <- function(call) {
   codes.m <- match(codes, unique(codes))
   names.m <- match(names, unique(names))
   if(!identical(codes.m, names.m))
-    stop("Internal error: functions redefind with changing definitions.")
+    stop("Internal error: functions redefined with changing definitions.")
   codes.u <- paste0(
     gsub("^(\\s|\\n)+|(\\s|\\n)+$", "", unique(codes[nzchar(codes)])),
     "\n"
   )
-  args.u <- unique(unlist(lapply(x[['code']], "[[", "args")))
-  args <- args.u[order(match(args.u, c(ARGS.NM.ALL)))]
-
   # Generate the C equivalent code calls and annotate them with the R ones
   c.calls <- vapply(x[['code']], "[[", "", "call")
   r.calls.dep <- vapply(
@@ -120,19 +118,29 @@ preprocess <- function(call) {
   r.calls.dep.keep <- r.calls.dep[calls.keep]
   r.calls.dep.m <- grepl("\n", r.calls.dep.keep, fixed=TRUE)
   c.calls.fmt <- format(c.calls.keep)
-  narrow <-
-    !r.calls.dep.m &
-    (nchar(c.calls.fmt) + nchar(r.calls.dep.keep) < 75)
 
-  calls.fin <- vector('list', length(c.calls.keep))
-  calls.fin[narrow] <-
-    paste(c.calls.fmt, "//", r.calls.dep.keep)[narrow]
-  calls.fin[!narrow] <- lapply(
-    which(!narrow),
+  # Do we need extra parameters that need to be incremented explicitly?
+  c.narg <- vapply(x[['code']][calls.keep], "[[", TRUE, "narg")
+  c.flag <- vapply(x[['code']][calls.keep], "[[", TRUE, "flag")
+  c.ctrl <- vapply(x[['code']][calls.keep], "[[", TRUE, "ctrl")
+  any.inc <- c.narg | c.flag | c.ctrl
+
+  calls.fin <- lapply(
+    seq_along(which(calls.keep)),
     function(i)
-      c(if(i > 1) "", paste("//", r.calls.dep.keep[i]), c.calls.keep[i])
+      c(
+        if(i > 1) "", paste("//", r.calls.dep.keep[i]), c.calls.keep[i],
+        if(any(any.inc))
+          sprintf(
+            "%s;",
+            paste(
+              c(
+                if(any(c.narg)) INC.VAR, if(any(c.flag)) INC.FLAG,
+                if(any(c.ctrl)) INC.CTRL
+              ),
+              collapse="; "
+      )   ) )
   )
-
   code.txt <- c(
     # Headers, system headers first (are these going to go in right order?)
     paste("#include", c(headers, "<R.h>", "<Rinternals.h>")),
@@ -140,18 +148,21 @@ preprocess <- function(call) {
     # Function Definitions
     codes.u,
     # Calls
-    sprintf("void run(%s) {", toString(R.ARGS.ALL[match(args, ARGS.NM.ALL)])),
+    sprintf("void run(\n  %s\n) {", toString(R.ARGS.ALL)),
     paste0(
       "  ",
       c(
-        if(any(ARGS.NM.CTRL %in% args)) "int v=0;",
+        if(any(c.ctrl)) "int v=0;",
+        if(!any(c.narg)) "(void) narg; // unused",
+        if(!any(c.flag)) "(void) flag; // unused",
+        if(!any(c.ctrl)) "(void) ctrl; // unused",
+        "",
         unlist(calls.fin)
       )
     ),
     "}"
   )
   x[['code']] <- structure(code.txt, class="code_text")
-  x[['interface']] <- interface_type(args)
   x
 }
 
@@ -239,35 +250,4 @@ sym_free <- function(x, sym) {
     sym.chr <- as.character(sym)
     if(!sym.chr %in% x[['sym.free']]) sym.chr
   }
-}
-# These are the possible interfaces (this got out of hand), need better solution
-# 1. data, datai, len
-# 2. data, datai, len, narg
-# 3. data, datai, len, flag
-# 4. data, datai, len, ctrl
-# 5. data, datai, len, flag, ctrl
-# 6. data, datai, len, narg, flag
-# 7. data, datai, len, narg, ctrl
-# 8. data, datai, len, narg, flag, ctrl
-
-interface_type <- function(x) {
-  ids <- toString(match(x, ARGS.NM.ALL))
-  valid <- vapply(
-    list(
-      match(ARGS.NM.BASE, ARGS.NM.ALL),
-      match(c(ARGS.NM.BASE, ARGS.NM.VAR), ARGS.NM.ALL),
-      match(c(ARGS.NM.BASE, ARGS.NM.FLAG), ARGS.NM.ALL),
-      match(c(ARGS.NM.BASE, ARGS.NM.CTRL), ARGS.NM.ALL),
-      match(c(ARGS.NM.BASE, ARGS.NM.FLAG, ARGS.NM.CTRL), ARGS.NM.ALL),
-      match(c(ARGS.NM.BASE, ARGS.NM.VAR, ARGS.NM.FLAG), ARGS.NM.ALL),
-      match(c(ARGS.NM.BASE, ARGS.NM.VAR, ARGS.NM.CTRL), ARGS.NM.ALL),
-      seq_along(ARGS.NM.ALL)
-    ),
-    toString,
-    ""
-  )
-  if(!ids %in% valid)
-    stop("Internal Error: invalid generated paramters")
-
-  match(ids, valid)
 }

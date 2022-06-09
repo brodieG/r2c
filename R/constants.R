@@ -13,7 +13,7 @@
 ##
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
-ARGS.NM.BASE <- c('data', 'lens', 'datai')
+ARGS.NM.BASE <- c('data', 'lens', 'di')
 ARGS.NM.VAR <- 'narg'
 ARGS.NM.CTRL <- 'ctrl'
 ARGS.NM.FLAG <- 'flag'
@@ -38,10 +38,14 @@ F.ARGS.ALL <- c(F.ARGS.BASE, F.ARGS.VAR, F.ARGS.FLAG, F.ARGS.CTRL)
 R.ARGS.ALL <- c(R.ARGS.BASE, R.ARGS.VAR, R.ARGS.FLAG, R.ARGS.CTRL)
 
 CALL.BASE <- c(ARGS.NM.BASE[1L:2L], paste0("*", ARGS.NM.BASE[3L], "++"))
-CALL.VAR <- "*narg++"
-CALL.CTRL <- "VECTOR_ELT(ctrl, v++)"  # this should be length 1 (see checks)
-CALL.FLAG <- "*flag++";
+CALL.VAR <- "*narg"
+CALL.CTRL <- "VECTOR_ELT(ctrl, v)"  # this should be length 1 (see checks)
+CALL.FLAG <- "*flag";
 CALL.ALL <- c(CALL.BASE, CALL.VAR, CALL.FLAG, CALL.CTRL)
+
+INC.VAR <- paste0("++", ARGS.NM.VAR);
+INC.FLAG <- paste0("++", ARGS.NM.FLAG);
+INC.CTRL <- "++v";
 
 ## Sanity checks
 pat <- "\\bSEXP\\b|\\bdouble\\b|\\bint\\b|\\bR_xlen_t\\b|[ +*]"

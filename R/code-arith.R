@@ -26,9 +26,9 @@ OP.NAMES <- c(
 
 bin_op_vec_rec <- '
 static void %1$s(%2$s) {
-  int di1 = datai[0];
-  int di2 = datai[1];
-  int dires = datai[2];
+  int di1 = di[0];
+  int di2 = di[1];
+  int dires = di[2];
 
   double * res = data[dires];
 
@@ -74,10 +74,9 @@ code_gen_arith <- function(fun, args.reg, args.ctrl, args.flags) {
     args.ctrl=list() && length(.) == 0L,
     args.flags=list() && length(.) == 0L
   )
-  args <- ARGS.NM.BASE
   name <- OP.NAMES[fun]
   defn <- sprintf(bin_op_vec_rec, name, toString(F.ARGS.BASE), "", fun)
-  code_res(defn=defn, name=name, args=args, headers=character())
+  code_res(defn=defn, name=name, headers=character())
 }
 
 

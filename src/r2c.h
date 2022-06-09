@@ -28,7 +28,7 @@
 
 SEXP R2C_group_sizes(SEXP g);
 SEXP R2C_run_internal(
-  SEXP so, SEXP interface, SEXP dat, SEXP dat_cols,
+  SEXP so, SEXP dat, SEXP dat_cols,
   SEXP ids, SEXP flag, SEXP ctrl, SEXP grp_lens, SEXP res_lens
 );
 

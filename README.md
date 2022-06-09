@@ -59,6 +59,10 @@ This is to keep the focus benchmarks on the statistic computation.  When
 computing simple group statistics like `sum`, the sorting / splitting step can
 be slower than the statistic computation.
 
+For this very specific task R also provides `rowsum`, but as it is limited to
+sums and we cannot separate the splitting and summing steps for timing we will
+not discuss it further.
+
 ## What If We Could Compile R?
 
 That would be nice, wouldn't it?  Well, we (at least I) can't compile the

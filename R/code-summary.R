@@ -23,14 +23,13 @@ NULL
 
 f_summary_base <- '
 static void %%s(%%s) {
-  int di1 = datai[0];
-  int di2 = datai[1];
+  int di1 = di[0];
+  int di2 = di[1];
   long double tmp = 0;
 
   R_xlen_t len_n = lens[di1];
   %sdouble * dat = data[di1];
   int narm = flag;  // only one possible flag parameter
-  Rprintf("flag: %%%%d\\n", flag);
 
 %s%s
 
@@ -68,15 +67,15 @@ static void %%s(%%s) {
   int narm = flag;  // only one possible flag parameter
 
   for(int arg = 0; arg < narg; ++arg) {
-    int din = datai[arg];
+    int din = di[arg];
     R_xlen_t len_n = lens[din];
     double * dat = data[din];
 %s
   }
   // R checks if we would overflow, but we assume infinity exists in double so
   // no overflow (at least in IEEE-754?).
-  *data[datai[narg]] = (double) tmp;
-  lens[datai[narg]] = 1;
+  *data[di[narg]] = (double) tmp;
+  lens[di[narg]] = 1;
 }'
 f_sum_n <- sprintf(f_sum_n_base, make_loop_base(count.na=FALSE, pad=4))
 
@@ -97,12 +96,13 @@ code_gen_summary <- function(fun, args.reg, args.ctrl, args.flag) {
   )
   multi <- length(args.reg) > 1L
   name <- paste0(fun, if(multi) "_n")
-  args <- c(ARGS.NM.BASE, if(multi) ARGS.NM.VAR, ARGS.NM.FLAG)
-  def.args <- F.ARGS.ALL[match(args, ARGS.NM.ALL)]
 
   code_res(
-    defn=sprintf(f_summary[[name]], name, toString(def.args)),
-    name=name, args=args, headers="<math.h>"
+    defn=sprintf(
+      f_summary[[name]], name,
+      toString(c(F.ARGS.BASE, if(multi) F.ARGS.VAR, F.ARGS.FLAG))
+    ),
+    name=name, narg=multi, flag=TRUE, headers="<math.h>"
   )
 }
 ## @param x a list of the matched parameters for the call `call`
@@ -130,16 +130,16 @@ ctrl_val_summary <- function(ctrl, flag, call) {
 #' @export
 #' @return scalar numeric
 
-mean0 <- function(x, na.rm=TRUE) sum(x, na.rm=TRUE) / length(x)
+mean0 <- function(x, na.rm=FALSE) sum(x, na.rm=na.rm) / length(x)
 
 #' Length
 
 f_length <- '
 static void %s(%s) {
-  *data[datai[1]] = (double) lens[datai[0]];
-  lens[datai[1]] = 1;
+  *data[di[1]] = (double) lens[di[0]];
+  lens[di[1]] = 1;
 }'
-code_gen_length <-  function(fun, args.reg, args.ctrl, args.flags) {
+code_gen_length <- function(fun, args.reg, args.ctrl, args.flags) {
   vetr(
     identical(., "length"),
     args.reg=list(NULL),
@@ -148,6 +148,6 @@ code_gen_length <-  function(fun, args.reg, args.ctrl, args.flags) {
   )
   name <- "r2c_length"
   defn <- sprintf(f_length, name, toString(F.ARGS.BASE))
-  code_res(defn=defn, name=name, args=ARGS.NM.BASE)
+  code_res(defn=defn, name=name)
 }
 

@@ -183,9 +183,7 @@ alloc <- function(x, data, gmax, par.env, MoreArgs) {
     alloc[c('dat', 'alloc', 'depth', 'type', 'typeof')], "[", ids.keep
   )
   alloc.fin[['i']] <- match(alloc[['i']], ids.keep)
-  list(
-    alloc=alloc.fin, call.dat=call.dat, stack=stack, interface=x[['interface']]
-  )
+  list(alloc=alloc.fin, call.dat=call.dat, stack=stack)
 }
 
 ## Compute Max Possible Size

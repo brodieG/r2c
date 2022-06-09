@@ -63,8 +63,8 @@ loop_mean4 <- make_loop_mean('t += (dx[k] - s)/n', 4)
 
 f_mean <- sprintf('
 static void %%s(%%s) {
-  int di1 = datai[0];
-  int di2 = datai[1];
+  int di1 = di[0];
+  int di2 = di[1];
   R_xlen_t n = lens[di1];
   double * dx = data[di1];
   int narm = flag;  // only one possible flag parameter

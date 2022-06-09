@@ -8,6 +8,16 @@
 
 # To Do / Questions
 
+* What is the implementation cost of allowing internal functions to advance the
+  data pointers so they don't have to be manually moved after each function
+  iteration?
+* Implement sum64 and mean64 to use double accumulator.
+* We can no longer use `mean <- mean.default` and `r2c` at same time (this might
+  be correct, but will make readme a bit more complicated).  Also, error message
+  is very confusing in this case as `mean.default` is also from the base
+  namespace, even though the masking is defined at the global level.
+* Is it possible that set.seed could interfere badly with the random file name
+  generation?
 * Currently we require at least one data column so we can get away with using
   the group logic for the stand alone evaluation of the r2c funs.
 * Side effects from evaluation of control parameters?  Where should assigned
@@ -203,6 +213,30 @@ But they can't be computed within the `r2c` code.
 * 1e7 with group size 10, 1000.
 * Pre-sorted
 * sum(x), sum(x + y)
+
+In this case mean did not get inlined, whereas the others did.  Addly subtract
+shows up three times, but still not inlined.
+# 
+# 3.01 s   10.2%	54.00 ms	                       run
+# 1.90 s    6.4%	1.75 s	 	                       mean
+# 153.00 ms    0.5%	37.00 ms                        R_finite
+# 166.00 ms    0.5%	166.00 ms                      multiply
+# 160.00 ms    0.5%	160.00 ms                      sum
+# 156.00 ms    0.5%	156.00 ms                      sum
+# 128.00 ms    0.4%	128.00 ms                      subtract
+# 125.00 ms    0.4%	125.00 ms                      subtract
+# 109.00 ms    0.3%	109.00 ms                      sqr
+# 105.00 ms    0.3%	105.00 ms                      subtract
+# 96.00 ms    0.3%	96.00 ms                       divide
+# 6.00 ms    0.0%	6.00 ms	 	                       DYLD-STUB$$R_finite
+
+We tried only having two calls to mean, but there is something preventing
+inlining, and non-inlining is expensive.  Maybe R_FINITE prevents inlining?
+Although that's weird b/c from timings, it seems the inlining stopped happening
+after we revised the interface to have all the parameters.
+
+`mean0` does show non-inlining.  Simplifying parameter structure does not seem
+to allow `mean` to become inlined.
 
 
 # Done / Answered

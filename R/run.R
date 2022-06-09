@@ -23,11 +23,9 @@ group_sizes <- function(go) .Call(R2C_group_sizes, go)
 
 #' Execute r2c Function Iteratively on Groups in Data
 #'
-#' Organizes `data` into row groups according to `groups`, and calls the
-#' native code associated with the provided "r2c_fun" function for each group
-#' with the arguments bound to the portion of the data corresponding to each
-#' group.  Each iteration of the native code is issue directly from native code
-#' without R interpreted overhead.
+#' Organizes `data` according to `groups`, and calls the native code associated
+#' with `fun` for each group with the arguments bound to the portion of the data
+#' corresponding to each group, and without R interpreter overhead.
 #'
 #' @export
 #' @seealso [`r2c`] for more details on the behavior and constraints of
@@ -86,7 +84,7 @@ group_sizes <- function(go) .Call(R2C_group_sizes, go)
 #' a[8] <- NA
 #' weights <- c(.1, .1, .2, .2, .4)
 #' g <- rep(1:2, each=5)
-#' group_exec(r2c_sum_add_na, g, a, list(y=b, na.rm=TRUE))
+#' group_exec(r2c_sum_add_na, g, a, list(y=weights, na.rm=TRUE))
 
 group_exec <- function(
   fun, groups, data, MoreArgs=list(), sorted=FALSE, env=parent.frame()
@@ -208,7 +206,6 @@ group_exec_int <- function(obj, formals, env, groups, data, MoreArgs, sorted) {
   handle <- dyn.load(shlib)
   run_int(
     handle[['name']],
-    alloc[['interface']],
     dat,
     dat_cols,
     ids,
@@ -236,13 +233,11 @@ group_exec_int <- function(obj, formals, env, groups, data, MoreArgs, sorted) {
 }
 
 run_int <- function(
-  handle, interface, dat, dat_cols, ids, flag, control, group.sizes,
-  group.res.sizes
+  handle, dat, dat_cols, ids, flag, control, group.sizes, group.res.sizes
 ) {
   .Call(
     R2C_run_internal,
     handle,
-    interface,
     dat,
     dat_cols,
     ids,

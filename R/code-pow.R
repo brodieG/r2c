@@ -22,14 +22,14 @@ code_gen_pow <-  function(fun, args.reg, args.ctrl, args.flags) {
   )
   name <- "power"
   defn <- sprintf(bin_op_vec_rec, name, toString(F.ARGS.BASE), "pow", ",")
-  code_res(defn=defn, name=name, args=ARGS.NM.BASE, headers="<math.h>")
+  code_res(defn=defn, name=name, headers="<math.h>")
 }
 
 ## Interim solution until we add the deduplication of calculations
 square_code <- '
 static void %1$s(%2$s) {
-  int di1 = datai[0];
-  int dires = datai[1];
+  int di1 = di[0];
+  int dires = di[1];
   double * res = data[dires];
 
   double * e1 = data[di1];
@@ -53,7 +53,7 @@ code_gen_square <- function(fun, args.reg, args.ctrl, args.flags) {
   )
   name <- "sqr"
   defn <- sprintf(square_code, name, toString(F.ARGS.BASE))
-  code_res(defn=defn, name=name, args=ARGS.NM.BASE, headers="<math.h>")
+  code_res(defn=defn, name=name, headers="<math.h>")
 }
 #' Raise a Vector to the Power of Two
 #'

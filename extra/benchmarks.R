@@ -65,7 +65,6 @@ identical(res1, resb)
     x <- runif(n)
     x <- sample(n)
     y <- runif(n)
-    g <- rep(1L, n)
     g <- cumsum(sample(c(TRUE, rep(FALSE, 9)), n, replace=TRUE))
     library(r2c)
     r2c_sum <- r2cq(sum(x))
@@ -77,7 +76,23 @@ identical(res1, resb)
     system.time(g.sum <- vapply(x.split, sum, 0L))
     identical(g.sum, g.sum.r2c)
 
+    r2c_sum <- r2cq(sum(x))
+    system.time(r2c.slope <- group_exec(r2c_sum, g, list(x, y), sorted=TRUE))
     r2c_sum <- r2cq(sum(x, na.rm=TRUE))
+    r2c_slope <- r2cq(sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2))
+    system.time(r2c.slope <- group_exec(r2c_slope, g, list(x, y), sorted=TRUE))
+    r2c_slope0 <- r2cq(sum((x - mean0(x)) * (y - mean0(y))) / sum((x - mean0(x)) ^ 2))
+    system.time(r2c.slope0 <- group_exec(r2c_slope0, g, list(x, y), sorted=TRUE))
+    r2c_slope2 <- r2cq(mean((x - sum(x)) * (y - sum(y))) / mean((x - sum(x)) ^ 2))
+    system.time(group_exec(r2c_slope2, g, list(x, y), sorted=TRUE))
+
+    fmean2 <- function(x, gg) rep(fmean(x, gg), gg[['group.sizes']])
+    fsum2 <- function(x, gg) rep(fsum(x, gg), gg[['group.sizes']])
+    system.time(
+      clp.slope <-
+        fsum2((x - fmean2(x, gg)) * (y - fmean2(y, gg)), gg) /
+        fsum2((x - fmean2(x, gg))^2, gg)
+    )
 
 
     x.split <- split(x, g)
@@ -102,6 +117,7 @@ identical(res1, resb)
     ] )
 
 
+
     system.time({
       res <- numeric(length(x.split))
       for(i in seq_along(x.split)) {
@@ -123,3 +139,18 @@ graal.sum <- read.table(
     value=TRUE
 ) )
 
+# In this case mean did not get inlined, whereas the others did.  Addly subtract
+# shows up three times, but still not inlined.
+# 
+# 3.01 s   10.2%	54.00 ms	                       run
+# 1.90 s    6.4%	1.75 s	 	                       mean
+# 153.00 ms    0.5%	37.00 ms                        R_finite
+# 166.00 ms    0.5%	166.00 ms                      multiply
+# 160.00 ms    0.5%	160.00 ms                      sum
+# 156.00 ms    0.5%	156.00 ms                      sum
+# 128.00 ms    0.4%	128.00 ms                      subtract
+# 125.00 ms    0.4%	125.00 ms                      subtract
+# 109.00 ms    0.3%	109.00 ms                      sqr
+# 105.00 ms    0.3%	105.00 ms                      subtract
+# 96.00 ms    0.3%	96.00 ms                       divide
+# 6.00 ms    0.0%	6.00 ms	 	                       DYLD-STUB$$R_finite

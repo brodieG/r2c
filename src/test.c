@@ -16,6 +16,7 @@
  */
 
 // System headers if any go above ^^
+/*
 #include "r2c.h"
 
 SEXP R2C_test1(SEXP x, SEXP y, SEXP z, SEXP w) {
@@ -142,4 +143,4 @@ SEXP R2C_test5(SEXP x, SEXP y, SEXP z, SEXP w) {
   UNPROTECT(1);
   return res;
 }
-
+*/

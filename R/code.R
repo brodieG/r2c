@@ -194,24 +194,16 @@ VALID_FUNS <- list(
 )
 names(VALID_FUNS) <- vapply(VALID_FUNS, "[[", "", "name")
 
-#' Code Generation Functions
-#'
-#' * Must accept one of four possible signatures.
-#' * Must set result by reference.
-#' * Must set result size by reference.
-
-code_gen <- function(dat) {
-
-}
-code_blank <- function() list(
-  defn="", name="", call="", args=character(), headers=character()
-)
+code_blank <- function()
+  list(
+    defn="", name="", call="", narg=FALSE, flag=FALSE, ctrl=FALSE,
+    headers=character()
+  )
 code_valid <- function(code, call) {
-  isTRUE(check <- vet(CHR.1, code$defn)) &&
-    isTRUE(check <- vet(CHR.1, code$name)) &&
-    isTRUE(check <- vet(CHR.1, code$call)) &&
-    isTRUE(check <- vet(CHR, code$args)) &&
-    isTRUE(check <- vet(CHR, code$headers))
+  isTRUE(check <- vet(CHR.1, code[['defn']])) &&
+    isTRUE(check <- vet(CHR.1, code[['name']])) &&
+    isTRUE(check <- vet(CHR.1, code[['call']])) &&
+    isTRUE(check <- vet(CHR, code[['headers']]))
   if(!isTRUE(check))
     stop("Generated code format invalid for `", deparse1(call), "`:\n", check)
 
@@ -229,11 +221,21 @@ call_valid <- function(call) {
     stop("`", func, "` is not a supported function.")
   func
 }
-
-
 # To make sure we use the same structure everywhere.
 
-code_res <- function(defn, name, args, headers=character()) {
-  call <- sprintf("%s(%s);", name, toString(CALL.ALL[match(args, ARGS.NM.ALL)]))
-  list(defn=defn, name=name, call=call, args=args, headers=headers)
+code_res <- function(
+  defn, name, narg=FALSE, flag=FALSE, ctrl=FALSE, headers=character()
+) {
+  call <- sprintf(
+    "%s(%s%s%s%s);",
+    name,
+    toString(CALL.BASE),
+    if(narg) paste0(", ", CALL.VAR) else "",
+    if(flag) paste0(", ", CALL.FLAG) else "",
+    if(ctrl) paste0(", ", CALL.CTRL) else ""
+  )
+  list(
+    defn=defn, name=name, call=call, headers=headers,
+    narg=narg, flag=flag, ctrl=ctrl
+  )
 }

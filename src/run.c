@@ -85,7 +85,6 @@ SEXP R2C_group_sizes(SEXP g) {
 
 SEXP R2C_run_internal(
   SEXP so,
-  SEXP interface,  // what type of call interface into the runner
   SEXP dat,
   // how many of the leading columns of `dat` are of the group varying type.
   // The result vector will be after that, and the rest of the data will be any
@@ -101,8 +100,6 @@ SEXP R2C_run_internal(
     Rf_error("Argument `so` should be a scalar string.");
   if(TYPEOF(dat_cols) != INTSXP)
     Rf_error("Argument `dat_cols` should be scalar integer.");
-  if(TYPEOF(interface) != INTSXP || XLENGTH(interface) != 1)
-    Rf_error("Argument `interface` should be a scalar integer.");
   if(TYPEOF(grp_lens) != REALSXP)
     Rf_error("Argument `grp_lens` should be a real vector.");
   if(TYPEOF(res_lens) != REALSXP || XLENGTH(grp_lens) != XLENGTH(res_lens))
@@ -128,7 +125,6 @@ SEXP R2C_run_internal(
   R_xlen_t g_count = XLENGTH(grp_lens);
   double * g_lens = REAL(grp_lens);
   double * r_lens = REAL(res_lens);
-  int intrf = Rf_asInteger(interface);
 
   // Data columns are first, followed by result, and then external cols.
   // This check incompleted if there are external cols.
@@ -175,20 +171,8 @@ SEXP R2C_run_internal(
     // the C functions to reflect the size of the intermediate results
     for(int j = 0; j < dat_count; ++j) lens[j] = g_len;
 
-    // This got out of hand, was trying to avoid compiler warnings.  Can
-    // probably avoid just by referencing the variables in the functions in a
-    // NULL op.
-    switch(intrf) {
-      case 1: (*fun)(data, lens, datai); break;
-      case 2: (*fun)(data, lens, datai, narg); break;
-      case 3: (*fun)(data, lens, datai, flag_int); break;
-      case 4: (*fun)(data, lens, datai, ctrl); break;
-      case 5: (*fun)(data, lens, datai, flag_int, ctrl); break;
-      case 6: (*fun)(data, lens, datai, narg, flag_int); break;
-      case 7: (*fun)(data, lens, datai, narg, ctrl); break;
-      case 8: (*fun)(data, lens, datai, narg, flag_int, ctrl); break;
-      default: Rf_error("Internal Error: invalid interface specified.");
-    }
+    (*fun)(data, lens, datai, narg, flag_int, ctrl);
+
     // Increment the data pointers by group size; the last increment will be
     // one past end of data, but it will not be dereferenced so okay
     for(int j = 0; j < dat_count; ++j) *(data + j) += g_len;
