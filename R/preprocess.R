@@ -79,6 +79,7 @@ match_call <- function(definition, call, envir, name) {
 #' parameters such as which parameters are specified, but not much else as
 #' we need to know the groupwise data to make more decisions.
 #'
+#' @noRd
 #' @param call an unevaluated R call
 #' @return a list containing (update):
 #'   * Accrued temporary storage requirements.

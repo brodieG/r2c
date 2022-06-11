@@ -33,6 +33,7 @@ NULL
 #'
 #' Function parameters are specifically defined.
 #'
+#' @noRd
 #' @param name character(1L) symbol that will reference the function
 #' @param fun the function we're trying to emulate
 #' @param defn NULL if fun is a closure, otherwise a function template to use

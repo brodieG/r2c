@@ -78,13 +78,6 @@ with(
   group_exec(r2c_slope, list(as.integer(cyl)), list(y=hp, x=qsec))
 )
 
-## If we know data to be pre-sorted on the grouping variables,
-## this is faster:
-with(
-  warpbreaks,
-  group_exec(r2c_mean, as.integer(wool), breaks, sorted=TRUE)
-)
-
 ## We can provide group=invariant parameters:
 r2c_sum_add_na <- r2cq(sum(x * y, na.rm=na.rm) / sum(y))
 str(formals(r2c_sum_add_na))
@@ -113,6 +106,7 @@ x <- 1:8
 g <- rep(rep(1:2, each=2), 2)
 g
 group_exec(r2c_mean, list(g), x, sorted=TRUE)
+group_exec(r2c_mean, list(g), x, sorted=FALSE)
 }
 \seealso{
 \code{\link{r2c}} for more details on the behavior and constraints of

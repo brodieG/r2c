@@ -23,6 +23,7 @@ NULL
 #' data.  For each call, we record indices into the storage list for each
 #' argument and the result of evaluating the call.
 #'
+#' @noRd
 #' @param x the result of preprocessing an expression
 
 alloc <- function(x, data, gmax, par.env, MoreArgs) {

@@ -67,9 +67,10 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' * Binary operators: `+`, `-`, `*`, `/`, `%%`, and `^`.
 #' * Statistics: `mean`, `sum`, `length`.
 #'
-#' All calls present in `call` must be in the form `fun(...)` where `fun` is the
-#' unquoted name of the function (i.e. not `"fun"(...)` or many of the other
-#' variations that R will normally allow for function invocation).
+#' All calls present in `call` must be in the form `fun(...)` or for operators
+#' `a fun b` where `fun` is the unquoted name of the function (i.e. not
+#' `"fun"(...)` or many of the other variations that R will normally allow for
+#' function invocation).
 #'
 #' Parameters used with "r2c_fun" supported functions are categorized into data
 #' parameters and control parameters.  For example, in `sum(x, na.rm=TRUE)`, `x`

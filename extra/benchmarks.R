@@ -62,8 +62,8 @@ identical(res1, resb)
 
     set.seed(1)
     n <- 1e7
-    x <- runif(n)
-    y <- runif(n)
+    x <- runif(n) * runif(n)  # full 64 bit precision randomness
+    y <- runif(n) * runif(n)
     g <- cumsum(sample(c(TRUE, rep(FALSE, 9)), n, replace=TRUE))
     # g <- cumsum(sample(c(TRUE, rep(FALSE, 1000)), n, replace=TRUE))
     library(r2c)

@@ -15,23 +15,15 @@
 
 ## Used to be an S3 method, but that makes reloading package a problem.
 
-#' @export
-
-print_code_text <- function(x, ...) {
-  y <- unlist(strsplit(x[['code-text']], "\n"))
-  writeLines(paste0(format(seq_along(y)), "| ", y))
-  invisible(x)
-}
-
-#' Basic Split Apply Combine
-#'
-#' Evaluates quoted expressions in the context of data split by group.  Intended
-#' purely for testing against C calculations.
-#'
-#' @param data a data frame with numeric columns
-#' @param call quoted R call to evaluate
-#' @param env environment to use as enclosure
-#' @export
+## Basic Split Apply Combine
+##
+## Evaluates quoted expressions in the context of data split by group.  Intended
+## purely for testing against C calculations.
+##
+## @param data a data frame with numeric columns
+## @param call quoted R call to evaluate
+## @param env environment to use as enclosure
+## @return numeric vector
 
 base_grp_eval <- function(data, g, call, env=parent.frame()) {
   dg <- split(data, g)

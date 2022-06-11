@@ -7,31 +7,42 @@
 \usage{
 r2c(
   call,
-  dir = tempfile(),
+  dir = NULL,
   check = getOption("r2c.check.result", FALSE),
-  quiet = getOption("r2c.quiet", TRUE)
+  quiet = getOption("r2c.quiet", TRUE),
+  clean = is.null(dir)
 )
 
 r2cq(
   call,
-  dir = tempfile(),
+  dir = NULL,
   check = getOption("r2c.check.result", FALSE),
-  quiet = getOption("r2c.quiet", TRUE)
+  quiet = getOption("r2c.quiet", TRUE),
+  clean = is.null(dir)
 )
 }
 \arguments{
 \item{call}{an R expression, for \code{r2cq} it is captured unevaluated, for
 \code{r2c} it should be quoted with e.g. \code{\link{quote}}.}
 
-\item{dir}{character(1L) name of a file system directory to store the shared
-object file in.  The shared object will also be loaded, so the object file
-does not need to be preserved unless a function is serialized for re-use
-across sessions.  Currently such re-use is not well tested / supported, and
-is unlikely to work well across different machines.}
+\item{dir}{NULL (default), or character(1L) name of a file system directory
+to store the shared object file in.  If NULL a temporary directory will be
+used. The shared object will also be loaded, and if \code{dir} is NULL the
+directory with the file will be removed after loading.  Currently the
+capability to re-use generated shared objects across R sessions is not
+formally supported, but can likely be arranged for by preserving the
+directory.}
 
 \item{check}{TRUE or FALSE (default), if TRUE will evaluate the R expression
 with the input data and compare that result to the one obtained from the
 \code{r2c} C code evaluation, producing an error if not identical.}
+
+\item{clean}{TRUE or FALSE, whether to remove the \code{dir} folder containing the
+generated C code and the shared object file after the shared object is
+\code{\link{dyn.load}}ed.  Normally this is an auto-generated temporary folder.  This
+will only delete folders that have the same directory root as one generated
+by \code{tempfile()} to avoid accidents.  If you manually provide \code{dir} you will
+need to manually delete the directory yourself.}
 
 \item{env}{environment to use as enclosure to function evaluation environment}
 }
@@ -63,9 +74,10 @@ Currently the following functions are supported in \code{call}:
 \item Statistics: \code{mean}, \code{sum}, \code{length}.
 }
 
-All calls present in \code{call} must be in the form \code{fun(...)} where \code{fun} is the
-unquoted name of the function (i.e. not \code{"fun"(...)} or many of the other
-variations that R will normally allow for function invocation).
+All calls present in \code{call} must be in the form \code{fun(...)} or for operators
+\verb{a fun b} where \code{fun} is the unquoted name of the function (i.e. not
+\code{"fun"(...)} or many of the other variations that R will normally allow for
+function invocation).
 
 Parameters used with "r2c_fun" supported functions are categorized into data
 parameters and control parameters.  For example, in \code{sum(x, na.rm=TRUE)}, \code{x}

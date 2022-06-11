@@ -129,10 +129,20 @@ ctrl_val_summary <- function(ctrl, flag, call) {
 #' @inheritParams base::mean
 #' @export
 #' @return scalar numeric
+#' @examples
+#' mean0(runif(10))
+#'
+#' ## Overflow even 80 bit long double:
+#' mean0(rep(.Machine$double.xmax, 2^4))
+#' mean(rep(.Machine$double.xmax, 2^4))
+#'
+#' ## Reduced precision
+#' x <- runif(10) ^ 2
+#' mean(x) - mean0(x)
 
 mean0 <- function(x, na.rm=FALSE) sum(x, na.rm=na.rm) / length(x)
 
-#' Length
+## Length
 
 f_length <- '
 static void %s(%s) {
