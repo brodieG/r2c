@@ -19,20 +19,26 @@
 ## @return character file name of the SO; will be in a temporary directory, it is
 ##   the users responsibility to preserve and/or discard the file.
 
-make_shlib <- function(x) {
+make_shlib <- function(x, dir, quiet) {
   if(!is.character(x) || anyNA(x))
     stop("Argument `x` must be character and free of NAs.")
 
-  dir <- tempfile()
   dir.create(dir)
-  file.base <- file.path(dir, sprintf('code-%s', rand_string(8)))
+  file.base <- file.path(dir, sprintf('r2c-%s', rand_string(10)))
   file.src <- paste0(file.base, ".c")
   file.obj <- paste0(file.base, ".so")
+  if(file.exists(file.src))
+    stop(
+      "Randomly generated file name ", file.src, "' already exists. ",
+      "Bad luck?  Try again."
+    )
   writeLines(x, file.src)
-  system2(R.home("bin/R"), c("CMD", "SHLIB", file.src))
+  comp.out <-
+    system2(R.home("bin/R"), c("CMD", "SHLIB", file.src), stdout=TRUE)
+  if(!quiet) writeLines(comp.out)
   # is this what's returned on windows (we can specify, but should make sure if
   # the extension matters)?
-  file.obj
+  list(so=file.obj, out=comp.out)
 }
 
 rand_string <- function(len, pool=c(letters, 0:9))
@@ -79,15 +85,23 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' @export
 #' @param call an R expression, for `r2cq` it is captured unevaluated, for
 #'   `r2c` it should be quoted with e.g. [`quote`].
-#' @param dir character(1L) name of a file system directory to store the shared
-#'   object file in.  The shared object will also be loaded, so the object file
-#'   does not need to be preserved unless a function is serialized for re-use
-#'   across sessions.  Currently such re-use is not well tested / supported, and
-#'   is unlikely to work well across different machines.
+#' @param dir NULL (default), or character(1L) name of a file system directory
+#'   to store the shared object file in.  If NULL a temporary directory will be
+#'   used. The shared object will also be loaded, and if `dir` is NULL the
+#'   directory with the file will be removed after loading.  Currently the
+#'   capability to re-use generated shared objects across R sessions is not
+#'   formally supported, but can likely be arranged for by preserving the
+#'   directory.
 #' @param env environment to use as enclosure to function evaluation environment
 #' @param check TRUE or FALSE (default), if TRUE will evaluate the R expression
 #'   with the input data and compare that result to the one obtained from the
 #'   `r2c` C code evaluation, producing an error if not identical.
+#' @param clean TRUE or FALSE, whether to remove the `dir` folder containing the
+#'   generated C code and the shared object file after the shared object is
+#'   [`dyn.load`]ed.  Normally this is an auto-generated temporary folder.  This
+#'   will only delete folders that have the same directory root as one generated
+#'   by `tempfile()` to avoid accidents.  If you manually provide `dir` you will
+#'   need to manually delete the directory yourself.
 #' @return an "r2c_fun" function; this is an unusual function so please see
 #'   details.
 #' @seealso [`group_exec`] to iterate this function groupwise on data,
@@ -95,17 +109,32 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #'   instructions.
 #' @examples
 #' r2c_sum_add <- r2cq(sum(x + y))
-#' r2c_sum_add <- r2c(quote(sum(x + y))  ## equivalently
+#' r2c_sum_add <- r2c(quote(sum(x + y)))  ## equivalently
 #' r2c_sum_add(1, runif(10))
 
 r2c <- function(
-  call, dir=tempfile(), check=getOption('r2c.check.result', FALSE)
+  call, dir=NULL, check=getOption('r2c.check.result', FALSE),
+  quiet=getOption('r2c.quiet', TRUE), clean=is.null(dir)
 ) {
-  vetr(is.language(.), dir=character(), check=LGL.1)
+  vetr(is.language(.), dir=CHR.1 || NULL, check=LGL.1, quiet=LGL.1, clean=LGL.1)
   preproc <- preprocess(call)
-  so <- make_shlib(preproc[['code']])
-  OBJ <- list2env(list(preproc=preproc, so=so, call=call), parent=emptyenv())
+  if(is.null(dir)) dir <- tempfile()
 
+  so <- make_shlib(preproc[['code']], dir=dir, quiet=quiet)
+  # pre-load to avoid cost on initial execution?  Mostly a benchmarking thing
+  # as no matter what we have to load it sometime.
+  handle <- dyn.load(so[['so']])
+  if(clean) {
+    so[['so']] <- NA_character_
+    unlink(dir, recursive=TRUE)
+  }
+  OBJ <- list2env(
+    list(
+      preproc=preproc, so=so[['so']], handle=handle,
+      call=call, compile.out=so[['out']]
+    ),
+    parent=emptyenv()
+  )
   # generate formals that match the free symbols in the call
   sym.free <- preproc[['sym.free']]
   formals <- replicate(length(sym.free), alist(a=))
@@ -177,9 +206,6 @@ r2c <- function(
       res
     })
   }
-  # pre-load to avoid cost on initial execution?  Mostly a benchmarking thing
-  # as no matter what we have to load it sometime.
-  dyn.load(so)
 
   class(fun) <- "r2c_fun"
   fun
@@ -188,9 +214,10 @@ r2c <- function(
 #' @rdname r2c
 
 r2cq <- function(
-  call, dir=tempfile(), check=getOption('r2c.check.result', FALSE)
+  call, dir=NULL, check=getOption('r2c.check.result', FALSE),
+  quiet=getOption('r2c.quiet', TRUE), clean=is.null(dir)
 )
-  r2c(substitute(call), dir=dir, check=check)
+  r2c(substitute(call), dir=dir, check=check, quiet=quiet)
 
 #' Extract Data from "r2c_fun" Objects
 #'
@@ -198,16 +225,19 @@ r2cq <- function(
 #' compiled native code associated with the functions.  The `get_*` functions
 #' documented here extract various aspects of this data.
 #'
+#' * `get_so_loc` the file system location of the shared object file.
+#' * `get_c_code` the generated C code used to produced the shared object.
+#' * `get_r_code` the R call that was translated into the C code.
+#' * `get_compile_out` the "stdout" produced during the compilation of the
+#'   shared object.
+#'
 #' @rdname get_r2c_data
 #' @aliases get_c_code get_r_code
 #' @seealso [`r2c`].
 #' @export
 #' @param r2c.fun an "r2c_fun" function as generated by e.g. [`r2c`].
-#' @return for `get_c_code` a character vector with each element a line in the
-#'   generated C code that correspond to the associated shared object, for
-#'   `get_r_code` the R language object the C code is based on, for `get_so_loc`
-#'   the file system location the shared object was stored in when generated by
-#'   [`r2c`].
+#' @return for `get_r_code` the R language object the C code is based on,
+#'   otherwise a character vector.
 #' @examples
 #' r2c_sum_add <- r2cq(sum(x + y))
 #' get_r_code(r2c_sum_add)
@@ -225,6 +255,10 @@ get_r_code <- function(r2c.fun) get_r2c_dat(r2c.fun)[['call']]
 
 get_so_loc <- function(r2c.fun) get_r2c_dat(r2c.fun)[['so']]
 
+#' @export
+#' @rdname get_r2c_data
+
+get_compile_out <- function(r2c.fun) get_r2c_dat(r2c.fun)[['compile.out']]
 
 get_r2c_dat <- function(r2c.fun) {
   as.list(body(r2c.fun)[[c(2L,3L)]])  # the object is embedded in the function

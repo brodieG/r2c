@@ -4,7 +4,7 @@
 \alias{mean0}
 \title{Single Pass Mean Calculation}
 \usage{
-mean0(x, na.rm = TRUE)
+mean0(x, na.rm = FALSE)
 }
 \arguments{
 \item{x}{An \R object.  Currently there are methods for

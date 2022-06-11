@@ -5,9 +5,19 @@
 \alias{r2cq}
 \title{Compile Eligible R Calls Into Native Instructions}
 \usage{
-r2c(call, dir = tempfile(), check = getOption("r2c.check.result", FALSE))
+r2c(
+  call,
+  dir = tempfile(),
+  check = getOption("r2c.check.result", FALSE),
+  quiet = getOption("r2c.quiet", TRUE)
+)
 
-r2cq(call, dir = tempfile(), check = getOption("r2c.check.result", FALSE))
+r2cq(
+  call,
+  dir = tempfile(),
+  check = getOption("r2c.check.result", FALSE),
+  quiet = getOption("r2c.quiet", TRUE)
+)
 }
 \arguments{
 \item{call}{an R expression, for \code{r2cq} it is captured unevaluated, for
@@ -24,8 +34,6 @@ with the input data and compare that result to the one obtained from the
 \code{r2c} C code evaluation, producing an error if not identical.}
 
 \item{env}{environment to use as enclosure to function evaluation environment}
-
-\item{r2c.fun}{an "r2c_fun" object to extract meta data from.}
 }
 \value{
 an "r2c_fun" function; this is an unusual function so please see
@@ -51,7 +59,7 @@ that accept them as inputs.
 
 Currently the following functions are supported in \code{call}:
 \itemize{
-\item Binary operators: \code{+}, \code{-}, \code{*}, \code{/}, and \verb{\%}.
+\item Binary operators: \code{+}, \code{-}, \code{*}, \code{/}, \code{\%\%}, and \code{^}.
 \item Statistics: \code{mean}, \code{sum}, \code{length}.
 }
 
@@ -65,15 +73,14 @@ is considered a data parameter and \code{na.rm} a control parameter.  All data
 parameters must be attribute-less numeric vectors.  Integer vectors are
 supported, but they are coerced to numeric for all intermediate calculations.
 If all data inputs are integer and the R counterpart functions in \code{call}
-support integer output, the result will be returned as integer.
-}
-\note{
-"r2c_fun" functions may not operate correctly if the \code{::} operator from
-the base package is masked by the environment chain starting with \code{env}.
+support integer output, the result will be returned as integer.  There are no
+general restrictions on control parameters, but each implemented function
+will only accept values for them that would make sense for the R
+counterparts.
 }
 \examples{
 r2c_sum_add <- r2cq(sum(x + y))
-r2c_sum_add <- r2c(quote(sum(x + y))  ## equivalently
+r2c_sum_add <- r2c(quote(sum(x + y)))  ## equivalently
 r2c_sum_add(1, runif(10))
 }
 \seealso{

@@ -8,6 +8,8 @@
 
 # To Do / Questions
 
+* For running function directly, can we pass data as an env so the traceback
+  doesn't explode?
 * What is the implementation cost of allowing internal functions to advance the
   data pointers so they don't have to be manually moved after each function
   iteration?
@@ -216,7 +218,7 @@ But they can't be computed within the `r2c` code.
 
 In this case mean did not get inlined, whereas the others did.  Addly subtract
 shows up three times, but still not inlined.
-# 
+
 # 3.01 s   10.2%	54.00 ms	                       run
 # 1.90 s    6.4%	1.75 s	 	                       mean
 # 153.00 ms    0.5%	37.00 ms                        R_finite
@@ -238,6 +240,18 @@ after we revised the interface to have all the parameters.
 `mean0` does show non-inlining.  Simplifying parameter structure does not seem
 to allow `mean` to become inlined.
 
+To conclude, there is no evidence that `mean` was ever inlined in the earlier
+tests.  This was a whole big red herring for a performance "regression" that was
+really just accidentally computing on `x` as integer instead of `numeric`.
+
+Comparing to `fsum`, `fsum` appears to have less overhead (as it should), at
+group sizes of 1000 its performance is comparable to `r2c`, at group sizes of 10
+it is twice as fast (i.e. overhead for r2c is about what it takes to compute 10
+additions).
+
+It appears `fmean` runs a single pass.  Additionally both `fsum` and `fmean` use
+64 bit accumulators, which performance wise is not an advantage on my CPU
+(looking at timings at group size of 1000).
 
 # Done / Answered
 

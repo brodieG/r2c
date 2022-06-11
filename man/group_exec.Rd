@@ -14,35 +14,107 @@ group_exec(
 )
 }
 \arguments{
-\item{fun}{a function produced by \code{r2c}.}
+\item{fun}{an "r2c_fun" function as produced by \code{\link{r2c}}.}
 
 \item{groups}{an integer vector, or a list of equal-length integer vectors,
-the interaction of which defines individual groups to organize the data
-into.  Support for non-integer vectors will be added in the future.}
+the interaction of which defines individual groups to organize the vectors
+in \code{data} into.  If a list, the result of the calculation will be returned
+as a "data.frame", otherwise as a named vector.  Currently only one group
+vector is allowed, even when using list mode.  Support for multiple group
+vectors and non-integer vectors will be added in the future.}
 
 \item{data}{a numeric vector, or a list of numeric vectors, each vector the
 same length as the vector(s) in \code{groups}.  If a named list, the vectors
 will be matched to \code{fun} parameters by those names.  Elements without names
-are matched positionally.}
+are matched positionally.  If a list must contain at least one element.}
 
-\item{MoreArgs}{a list of R objects to pass on as non-data parameters to
-\code{fun}.  Unlike with \code{data}, the entire object will be passed for each
-group.  This is useful for arguments that are intended to remain constant
-group to group.}
+\item{MoreArgs}{a list of R objects to pass on as group-invariant arguments
+to \code{fun}.  Unlike with \code{data}, each of the objects therein are passed in
+full to the native code for each group.  This is useful for arguments that
+are intended to remain constant group to group.  Matching of these objects
+to \code{fun} parameters is the same as for \code{data}, with positional matching
+occurring after the elements in \code{data} are matched.}
 
 \item{sorted}{TRUE or FALSE (default), whether the vectors in \code{data} and
 \code{groups} are already sorted by \code{groups}.  If set to TRUE, the \code{data} will
-not be sorted prior to computation; if the data is truly sorted this
-produces the same results while avoiding the cost of sorting.}
+not be sorted prior to computation. If the data is truly sorted this
+produces the same results while avoiding the cost of sorting.  If the data
+is not sorted groups \code{g} will produce groups corresponding to equal-value
+runs it contains, which might be useful in some circumstances.}
 }
 \value{
-a if \code{groups} and \code{data} are atomic vectors, a named numeric vector
-with the results of executing \code{fun} on each group and the names set to the
-groups.  Otherwise, a "data.frame" with the group vectors as columns and
-the result column last.
+If \code{groups} is an atomic vectors, a named numeric or
+integer vector with the results of executing \code{fun} on each group and the
+names set to the groups.  Otherwise, a "data.frame" with the group vectors
+as columns and the result of the computation as the last column.
 }
 \description{
-Organizes \code{data} into row groups according to \code{groups}, and calls \code{r2c}
-functions for each group with the arguments bound to the portion of the data
-corresponding to each group.
+Organizes \code{data} according to \code{groups}, and calls the native code associated
+with \code{fun} iteratively for each group.  Data provided in \code{data} will be
+subset provided to the native code subset to the portion corresponding to
+each group.  Each iteration of the native code is invoked directly from
+native code and thus avoids R interpreter overhead.
+}
+\examples{
+r2c_mean <- r2cq(mean(x))
+with(
+  mtcars,
+  group_exec(r2c_mean, as.integer(cyl), hp)
+)
+
+r2c_slope <- r2cq(
+  sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2)
+)
+with(
+  mtcars,
+  group_exec(r2c_slope, as.integer(cyl), list(hp, qsec))
+)
+## Parameters are generated in the order they are encountered
+str(formals(r2c_slope))
+
+## Data frame output, re-order arguments
+with(
+  mtcars,
+  group_exec(r2c_slope, list(as.integer(cyl)), list(y=hp, x=qsec))
+)
+
+## If we know data to be pre-sorted on the grouping variables,
+## this is faster:
+with(
+  warpbreaks,
+  group_exec(r2c_mean, as.integer(wool), breaks, sorted=TRUE)
+)
+
+## We can provide group=invariant parameters:
+r2c_sum_add_na <- r2cq(sum(x * y, na.rm=na.rm) / sum(y))
+str(formals(r2c_sum_add_na))
+a <- runif(10)
+a[8] <- NA
+weights <- c(.1, .1, .2, .2, .4)
+g <- rep(1:2, each=5)
+group_exec(
+  r2c_sum_add_na,
+  g,
+  a,
+  list(y=weights, na.rm=TRUE)  ## use MoreArgs for group-invariant
+)
+
+## Groups known to be sorted can save substantial time
+n <- 1e7
+x <- runif(1e7)
+g <- cumsum(sample(c(TRUE, rep(FALSE, 99)), n, replace=TRUE))
+identical(g, sort(g))  # sorted already!
+system.time(res1 <- group_exec(r2c_mean, g, x))
+system.time(res2 <- group_exec(r2c_mean, g, x, sorted=TRUE))
+identical(res1, res2)
+
+## We can also group by runs with `sorted`
+x <- 1:8
+g <- rep(rep(1:2, each=2), 2)
+g
+group_exec(r2c_mean, list(g), x, sorted=TRUE)
+}
+\seealso{
+\code{\link{r2c}} for more details on the behavior and constraints of
+"r2c_fun" functions.
 }

@@ -24,38 +24,41 @@ group_sizes <- function(go) .Call(R2C_group_sizes, go)
 #' Execute r2c Function Iteratively on Groups in Data
 #'
 #' Organizes `data` according to `groups`, and calls the native code associated
-#' with `fun` for each group with the arguments bound to the portion of the data
-#' corresponding to each group, and without R interpreter overhead.
+#' with `fun` iteratively for each group.  Data provided in `data` will be
+#' subset provided to the native code subset to the portion corresponding to
+#' each group.  Each iteration of the native code is invoked directly from
+#' native code and thus avoids R interpreter overhead.
 #'
 #' @export
 #' @seealso [`r2c`] for more details on the behavior and constraints of
 #'   "r2c_fun" functions.
 #' @param fun an "r2c_fun" function as produced by [`r2c`].
+#' @param groups an integer vector, or a list of equal-length integer vectors,
+#'   the interaction of which defines individual groups to organize the vectors
+#'   in `data` into.  If a list, the result of the calculation will be returned
+#'   as a "data.frame", otherwise as a named vector.  Currently only one group
+#'   vector is allowed, even when using list mode.  Support for multiple group
+#'   vectors and non-integer vectors will be added in the future.
 #' @param data a numeric vector, or a list of numeric vectors, each vector the
 #'   same length as the vector(s) in `groups`.  If a named list, the vectors
 #'   will be matched to `fun` parameters by those names.  Elements without names
 #'   are matched positionally.  If a list must contain at least one element.
-#' @param groups an integer vector, or a list of equal-length integer vectors,
-#'   the interaction of which defines individual groups to organize the vectors
-#'   in `data` into.  The native code associated with the "r2c_fun" function
-#'   will be invoked once for each group with the vectors in `data` subset to
-#'   the elements corresponding to that group.  Currently only one group vector
-#'   is allowed.  Support for multiple group vectors and non-integer vectors
-#'   will be added in the future.
 #' @param MoreArgs a list of R objects to pass on as group-invariant arguments
-#'   to `fun`.  Unlike with `data`, the entire object will be passed for each
-#'   group.  This is useful for arguments that are intended to remain constant
-#'   group to group.  Matching of these objects to `fun` parameters is the same
-#'   as for `data`, with positional matching occurring after the elements in
-#'   `data` are matched.
+#'   to `fun`.  Unlike with `data`, each of the objects therein are passed in
+#'   full to the native code for each group.  This is useful for arguments that
+#'   are intended to remain constant group to group.  Matching of these objects
+#'   to `fun` parameters is the same as for `data`, with positional matching
+#'   occurring after the elements in `data` are matched.
 #' @param sorted TRUE or FALSE (default), whether the vectors in `data` and
 #'   `groups` are already sorted by `groups`.  If set to TRUE, the `data` will
-#'   not be sorted prior to computation; if the data is truly sorted this
-#'   produces the same results while avoiding the cost of sorting.
-#' @return a if `groups` and `data` are atomic vectors, a named numeric or
+#'   not be sorted prior to computation. If the data is truly sorted this
+#'   produces the same results while avoiding the cost of sorting.  If the data
+#'   is not sorted groups `g` will produce groups corresponding to equal-value
+#'   runs it contains, which might be useful in some circumstances.
+#' @return If `groups` is an atomic vectors, a named numeric or
 #'   integer vector with the results of executing `fun` on each group and the
 #'   names set to the groups.  Otherwise, a "data.frame" with the group vectors
-#'   as columns and the result column last.
+#'   as columns and the result of the computation as the last column.
 #' @examples
 #' r2c_mean <- r2cq(mean(x))
 #' with(
@@ -70,21 +73,44 @@ group_sizes <- function(go) .Call(R2C_group_sizes, go)
 #'   mtcars,
 #'   group_exec(r2c_slope, as.integer(cyl), list(hp, qsec))
 #' )
+#' ## Parameters are generated in the order they are encountered
+#' str(formals(r2c_slope))
 #'
-#' ## If we know data to be pre-sorted on the grouping variables,
-#' ## this is faster:
+#' ## Data frame output, re-order arguments
 #' with(
-#'   warpbreaks,
-#'   group_exec(r2c_mean, as.integer(wool), breaks, sorted=TRUE)
+#'   mtcars,
+#'   group_exec(r2c_slope, list(as.integer(cyl)), list(y=hp, x=qsec))
 #' )
 #'
 #' ## We can provide group=invariant parameters:
 #' r2c_sum_add_na <- r2cq(sum(x * y, na.rm=na.rm) / sum(y))
+#' str(formals(r2c_sum_add_na))
 #' a <- runif(10)
 #' a[8] <- NA
 #' weights <- c(.1, .1, .2, .2, .4)
 #' g <- rep(1:2, each=5)
-#' group_exec(r2c_sum_add_na, g, a, list(y=weights, na.rm=TRUE))
+#' group_exec(
+#'   r2c_sum_add_na,
+#'   g,
+#'   a,
+#'   list(y=weights, na.rm=TRUE)  ## use MoreArgs for group-invariant
+#' )
+#'
+#' ## Groups known to be sorted can save substantial time
+#' n <- 1e7
+#' x <- runif(1e7)
+#' g <- cumsum(sample(c(TRUE, rep(FALSE, 99)), n, replace=TRUE))
+#' identical(g, sort(g))  # sorted already!
+#' system.time(res1 <- group_exec(r2c_mean, g, x))
+#' system.time(res2 <- group_exec(r2c_mean, g, x, sorted=TRUE))
+#' identical(res1, res2)
+#'
+#' ## We can also group by runs with `sorted`
+#' x <- 1:8
+#' g <- rep(rep(1:2, each=2), 2)
+#' g
+#' group_exec(r2c_mean, list(g), x, sorted=TRUE)
+#' group_exec(r2c_mean, list(g), x, sorted=FALSE)
 
 group_exec <- function(
   fun, groups, data, MoreArgs=list(), sorted=FALSE, env=parent.frame()
@@ -203,7 +229,14 @@ group_exec_int <- function(obj, formals, env, groups, data, MoreArgs, sorted) {
   ids <- lapply(ids, "-", 1L) # 0-index for C
 
   dat_cols <- sum(alloc[['alloc']][['type']] == "grp")
-  handle <- dyn.load(shlib)
+  handle <- obj[['handle']]
+
+  if(!is.na(shlib) && !is.loaded("run", PACKAGE=handle)) {
+    handle <- dyn.load(shlib)
+  }
+  if(!is.loaded("run", PACKAGE=handle[['name']]))
+    stop("Could not load native code.")
+
   run_int(
     handle[['name']],
     dat,

@@ -2,6 +2,7 @@
 
 export(base_grp_eval)
 export(get_c_code)
+export(get_compile_out)
 export(get_r_code)
 export(get_so_loc)
 export(group_exec)

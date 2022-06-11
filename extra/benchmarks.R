@@ -63,12 +63,14 @@ identical(res1, resb)
     set.seed(1)
     n <- 1e7
     x <- runif(n)
-    x <- sample(n)
     y <- runif(n)
     g <- cumsum(sample(c(TRUE, rep(FALSE, 9)), n, replace=TRUE))
+    # g <- cumsum(sample(c(TRUE, rep(FALSE, 1000)), n, replace=TRUE))
     library(r2c)
     r2c_sum <- r2cq(sum(x))
+    r2c_mean <- r2cq(mean(x))
     system.time(g.sum.r2c <- group_exec(r2c_sum, g, x, sorted=TRUE))
+    system.time(g.mean.r2c <- group_exec(r2c_mean, g, x, sorted=TRUE))
 
     x.split <- split(x, g)
     y.split <- split(y, g)
@@ -86,6 +88,11 @@ identical(res1, resb)
     r2c_slope2 <- r2cq(mean((x - sum(x)) * (y - sum(y))) / mean((x - sum(x)) ^ 2))
     system.time(group_exec(r2c_slope2, g, list(x, y), sorted=TRUE))
 
+    library(collapse)
+    gg <- GRP(g)
+    system.time(fsum(x, gg))
+
+
     fmean2 <- function(x, gg) rep(fmean(x, gg), gg[['group.sizes']])
     fsum2 <- function(x, gg) rep(fsum(x, gg), gg[['group.sizes']])
     system.time(
@@ -93,6 +100,7 @@ identical(res1, resb)
         fsum2((x - fmean2(x, gg)) * (y - fmean2(y, gg)), gg) /
         fsum2((x - fmean2(x, gg))^2, gg)
     )
+
 
 
     x.split <- split(x, g)

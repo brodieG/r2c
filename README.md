@@ -193,8 +193,8 @@ Whereas `r2c` keeps on going on:
     ##   user  system elapsed 
     ##  0.279   0.002   0.284 
 
-We can based on the timings that `data.table` is falling back to standard R
-evaluation based:
+We can infer based on timings that `data.table` is falling back to standard R
+evaluation:
 
 <!--
 ```
