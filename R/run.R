@@ -257,7 +257,7 @@ group_exec_int <- function(obj, formals, env, groups, data, MoreArgs, sorted) {
     g.lab <- rep(go[[1L]][group.dat[[2L]] + 1L], group.res.sizes)
     # Attach group labels
     if(mode == 'list') {
-      data.frame(group=g.lab, V1=res)
+      res <- data.frame(group=g.lab, V1=res)
     } else if (mode == 'vec') {
       names(res) <- g.lab
     } else stop("Unknown return format mode")
