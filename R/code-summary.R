@@ -63,18 +63,18 @@ f_mean0 <- sprintf(
 f_sum_1 <- sprintf(f_summary_base, "", make_loop_base(count.na=FALSE), "")
 f_sum_n_base <- '
 static void %%s(%%s) {
-  long double tmp = 0;
   int narm = flag;  // only one possible flag parameter
+  *data[di[narg]] = 0;
 
   for(int arg = 0; arg < narg; ++arg) {
+    long double tmp = 0;
     int din = di[arg];
     R_xlen_t len_n = lens[din];
     double * dat = data[din];
 %s
+    // base uses a double, not long double, intermediate acc.
+    *data[di[narg]] += (double) tmp;
   }
-  // R checks if we would overflow, but we assume infinity exists in double so
-  // no overflow (at least in IEEE-754?).
-  *data[di[narg]] = (double) tmp;
   lens[di[narg]] = 1;
 }'
 f_sum_n <- sprintf(f_sum_n_base, make_loop_base(count.na=FALSE, pad=4))
