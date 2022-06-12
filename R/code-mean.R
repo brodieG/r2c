@@ -40,50 +40,58 @@
 ## * Replaces LDOUBLE by long double
 ## * Removes ITERATE_BY_REGION
 
-loop.mean <- '
+loop.mean.base <- '
 if(!narm)
-  for (R_xlen_t k = 0; k < n; k++) %1$s;
+  for (R_xlen_t k = 0; k < n; k++) %%1$s;
 else
-  for (R_xlen_t k = 0; k < n; k++) if(!isnan(dx[k])) %1$s;'
+  for (R_xlen_t k = 0; k < n; k++) if(!isnan(dx[k])) %s'
 
-make_loop_mean <- function(term, pad=2) {
+lp.mn <- sprintf(loop.mean.base, "%1$s;")
+# this one is to set the count of non-na elements
+lp.mn.0 <- sprintf(loop.mean.base, "%1$s; else --m;")
+
+make_loop_mean <- function(base, term, pad=2) {
   sprintf(
     paste0(
       strrep(' ', pad),
-      unlist(strsplit(loop.mean, '\n', fixed=TRUE))[-1L],
+      unlist(strsplit(base, '\n', fixed=TRUE))[-1L],
       collapse="\n"
     ),
     term
   )
 }
-loop_mean1 <- make_loop_mean('s += dx[k]')
-loop_mean2 <- make_loop_mean('s += dx[k]/n', 4)
-loop_mean3 <- make_loop_mean('t += (dx[k] - s)', 4)
-loop_mean4 <- make_loop_mean('t += (dx[k] - s)/n', 4)
+loop_mean1 <- make_loop_mean(lp.mn.0, 's += dx[k]')
+loop_mean2 <- make_loop_mean(lp.mn, 's += dx[k]/m', 4)
+loop_mean3 <- make_loop_mean(lp.mn, 't += (dx[k] - s)', 4)
+loop_mean4 <- make_loop_mean(lp.mn, 't += (dx[k] - s)/m', 4)
 
 f_mean <- sprintf('
 static void %%s(%%s) {
   int di1 = di[0];
   int di2 = di[1];
-  R_xlen_t n = lens[di1];
+  R_xlen_t n, m;
+  n = m = lens[di1];
   double * dx = data[di1];
   int narm = flag;  // only one possible flag parameter
 
   long double s = 0.0;
 %s
 
+  if(!narm) m = n;   // reset non-na counter if we do not care
+
   Rboolean finite_s = R_FINITE((double) s);
   if (finite_s) {
-    s /= n;
+    s /= m;
   } else { // infinite s, maybe just overflowed; try to use smaller terms:
     s = 0.;
 %s
   }
+
   // Second precision enhancing pass
   if (finite_s && R_FINITE((double) s)) {
     long double t = 0.0;
 %s
-    s += t/n;
+    s += t / m;
   }
   else if (R_FINITE((double) s)) { // was infinite: more careful
     long double t = 0.0;
