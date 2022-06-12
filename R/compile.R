@@ -187,6 +187,12 @@ r2c <- function(
     .DAT <- as.list(environment())  # first, so no other symbols
     .FRM <- formals()
     .ENV <- parent.frame()
+    .CALL <- sys.call()
+    # Force promises, otherwise access missing symbols via .DAT
+    tryCatch(
+      for(i in names(.DAT)) eval(as.name(i)),
+      error=function(e) stop(simpleError(conditionMessage(e), .CALL))
+    )
   })
   GEXE[[c(2L, 2L)]] <- OBJ  # nesting bquote a pain
   body(fun) <- if(!check) {
