@@ -144,7 +144,9 @@ ctrl_val_summary <- function(ctrl, flag, call) {
 #' x <- runif(10) ^ 2
 #' mean(x) - mean0(x)
 
-mean0 <- function(x, na.rm=FALSE) sum(x, na.rm=na.rm) / length(x)
+mean0 <- function(x, na.rm=FALSE)
+  sum(x, na.rm=na.rm) /
+    if(na.rm) sum(!is.na(x)) else length(x)
 
 ## Length
 
