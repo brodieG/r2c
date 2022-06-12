@@ -110,13 +110,17 @@ code_gen_summary <- function(fun, args.reg, args.ctrl, args.flag) {
 
 ctrl_val_summary <- function(ctrl, flag, call) {
   # for mean.default
-  if(!is.null(ctrl[['trim']]) && !identical(ctrl[['trim']], 0))
+  trim <- ctrl[['trim']]
+  if(!isTRUE(trim.test <- vet(NULL || identical(., 0), trim)))
     stop(
-      "Only the default value for `trim` is allowed in ",
-      "`", deparse1(call), "`."
-    )
-  if(!flag[['na.rm']] %in% c(TRUE, FALSE))
-    stop("`na.rm` must be TRUE or FALSE in ", "`", deparse1(call), "`.")
+      paste0(
+        c("`trim` must be set to default value (", trim.test, ")"),
+        collapse="\n"
+    ) )
+
+  na.rm <- flag[['na.rm']]
+  if(!isTRUE(na.test <- vet(LGL.1, na.rm)))
+    stop(na.test, " in `", deparse1(call), "`.")
 
   if(flag[['na.rm']]) 1L else 0L # avoid bizarre cases of TRUE != 1L
 }
