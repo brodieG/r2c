@@ -169,11 +169,13 @@ VALID_FUNS <- list(
     "/", base::`/`, defn=function(e1, e2) NULL,
     type=list("vecrec", c("e1", "e2")), code.gen=code_gen_arith
   ),
-  fap_fun(
-    "%%", base::`%%`, defn=function(e1, e2) NULL,
-    type=list("vecrec", c("e1", "e2")), code.gen=code_gen_arith,
-    preserve.int=TRUE
-  ),
+  ## # Not implemented for now given not just a simple counterpart, but
+  ## # could add a function like square to deal with it..
+  ## fap_fun(
+  ##   "%%", base::`%%`, defn=function(e1, e2) NULL,
+  ##   type=list("vecrec", c("e1", "e2")), code.gen=code_gen_arith,
+  ##   preserve.int=TRUE
+  ## ),
   fap_fun(
     "^", base::`^`, defn=function(e1, e2) NULL,
     type=list("vecrec", c("e1", "e2")), code.gen=code_gen_pow,

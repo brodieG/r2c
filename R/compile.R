@@ -64,7 +64,7 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #'
 #' Currently the following functions are supported in `call`:
 #'
-#' * Binary operators: `+`, `-`, `*`, `/`, `%%`, and `^`.
+#' * Binary operators: `+`, `-`, `*`, `/`, and `^`.
 #' * Statistics: `mean`, `sum`, `length`.
 #'
 #' All calls present in `call` must be in the form `fun(...)` or for operators

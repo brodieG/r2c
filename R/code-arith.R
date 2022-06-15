@@ -14,8 +14,10 @@
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
 OP.NAMES <- c(
-  "+"="add", "-"="subtract", "*"="multiply", "/"="divide", "%"="modulo"
+  "+"="add", "-"="subtract", "*"="multiply", "/"="divide", "%%"="modulo"
 )
+OP.OP <- c("+"="+", "-"="-", "*"="*", "/"="/", "%%"="%")
+
 ## Binary Opertors or Functions with Vecto Recycling
 ##
 ## Use %3$s for functions, %4$s for operators.
@@ -75,7 +77,8 @@ code_gen_arith <- function(fun, args.reg, args.ctrl, args.flags) {
     args.flags=list() && length(.) == 0L
   )
   name <- OP.NAMES[fun]
-  defn <- sprintf(bin_op_vec_rec, name, toString(F.ARGS.BASE), "", fun)
+  op <- OP.OP[fun]      # needed for modulo
+  defn <- sprintf(bin_op_vec_rec, name, toString(F.ARGS.BASE), "", op)
   code_res(defn=defn, name=name, headers=character())
 }
 

@@ -288,27 +288,27 @@ init_dat <- function() list(
   dat=list(), alloc=numeric(), depth=integer(), ids=integer(), type=character(),
   typeof=character(), i=0L
 )
-# Data need to contain:
-#
-# * List of the actual data, NULLs (or numerics); we could do the latter but a
-#   bit dangerous.
-# *
+# Naked numeric data, including group varying data, result, and other in that
+# order, where other is external data and temporary variables, although the
+# temorary variables are added by `alloc_dat`, not this function.
 
 append_dat <- function(dat, new, sizes, depth, type) {
-  if(!all(is.num_naked(new))) stop("Internal Error: bad data column.")
-  if(!length(new)) stop("Internal Error: at least one column must be added.")
-  if(!type %in% c("res", "grp", "ext")) stop("Internal Error: bad type.")
-  id.max <- length(dat[['dat']])
-  dat[['dat']] <- c(
-    dat[['dat']],
-    lapply(new, function(x) if(is.integer(x)) as.numeric(x) else x)
-  )
-  dat[['ids']] <- c(dat[['ids']], seq_along(new) + id.max)
-  dat[['alloc']] <- c(dat[['alloc']], sizes)
-  dat[['depth']] <- c(dat[['depth']], rep(depth, length(new)))
-  dat[['type']] <- c(dat[['type']], rep(type, length(new)))
-  dat[['typeof']] <- c(dat[['typeof']], vapply(new, typeof, "character"))
-  dat[['i']] <- id.max + 1L
+  if(length(new)) { # it's possible `data` has no numeric nums
+    if(!is.list(new)) stop("Internal Error: `new` must be list.")
+    if(!all(is.num_naked(new))) stop("Internal Error: bad data column.")
+    if(!type %in% c("res", "grp", "ext")) stop("Internal Error: bad type.")
+    id.max <- length(dat[['dat']])
+    dat[['dat']] <- c(
+      dat[['dat']],
+      lapply(new, function(x) if(is.integer(x)) as.numeric(x) else x)
+    )
+    dat[['ids']] <- c(dat[['ids']], seq_along(new) + id.max)
+    dat[['alloc']] <- c(dat[['alloc']], sizes)
+    dat[['depth']] <- c(dat[['depth']], rep(depth, length(new)))
+    dat[['type']] <- c(dat[['type']], rep(type, length(new)))
+    dat[['typeof']] <- c(dat[['typeof']], vapply(new, typeof, "character"))
+    dat[['i']] <- id.max + 1L
+  }
   dat
 }
 ## Stack used to track parameters ahead of reduction when processing call.
