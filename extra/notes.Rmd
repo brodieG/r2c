@@ -1,13 +1,28 @@
 # r2c
 
-# Next steps
+# Next
 
-* Implement Pow properly (see `R_pow`).
-* Implement an option to translate a call to a different form (specifically for
-  `pow` up to e.g power 3 or 4.  Note, it appears R does this for `x^2`.
+Figure out how to report missing arguments in `alloc`
 
 # To Do / Questions
 
+* Perhaps we got too lazy with POW, do we need to handle all the other cases
+  arith handles?
+* Re-implement modulo.
+* How can we efficiently warn of "longer object length is not a multiple" in
+  vecrec?  We don't want a modulo for each group.  But we could check that the
+  shorter object has not hit its length at the end of the loop and set a global
+  variable?  Or use `flags` to communicate back?  When we compute each
+  interaction size, we do (or could know) the group sizes, including possibly
+  max and min group size.  But to be certain of a multiple you must be certain
+  that there are no groups of odd sizes...  So I think it has to be done at run
+  time, annoyingly.
+* If we use environments to carry `data` and `MoreArgs` around, we should make
+  sure we don't introduce reference issues / reference count issues.
+* The check might be better done with an explicit check function.
+* Document that we assume IEEE-754 (and thus existence of infinity and no
+  overflow on conversion from long double to double), and check whether this is
+  a reasonable assumption under C99 (probably no), or failing that under R.
 * For running function directly, can we pass data as an env so the traceback
   doesn't explode?
 * What is the implementation cost of allowing internal functions to advance the
@@ -31,8 +46,6 @@
 * Figure out a better way to store the object than embedding it with `bquote` in
   the function.
 * Test forwarding dots to a `group_exec` function.
-* Look more into C99 and infinity, not super clear ATM whether we need to take
-  special precautions when converting from long double to double.
 * Think about `df %>% group_by(g) %>% filter(x > min(df$x)`.  This should
   resolve naturally if we allow `[['x']]` as "normal" expression.
 * What do we do with NA groups?  Each it's own, or one big NA group?

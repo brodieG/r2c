@@ -91,6 +91,57 @@ identical(res1, resb)
     library(collapse)
     gg <- GRP(g)
     system.time(fsum(x, gg))
+    options(digits=3)
+
+    set.seed(1)
+    n <- 1e7
+    x <- mx <- runif(n) * runif(n)  # full 64 bit precision randomness
+    g <- rep(seq_len(n/10), each=10)
+
+    dim(mx) <- c(10, n/10)
+    library(data.table); setDTthreads(1);
+    dt <- setkey(data.table(x, g), g)
+
+    library(collapse)
+    cg <- collapse::GRP(g)
+
+    microbenchmark::microbenchmark(times=20,
+      dt.x <- dt[, sum(x), keyby=g],
+      collapse.x <- fsum(x, cg),
+      base.x <- colSums(mx)
+    )
+    all.equal(dt.x$V1, base.x)
+    all.equal(unname(collapse.x), base.x)
+
+set.seed(1)
+n <- 1e7
+x <- mx <- runif(n) * runif(n)       # full 64 bit precision randomness
+g <- rep(seq_len(n/10), each=10)     # pre-ordered groups
+
+dim(mx) <- c(10, n/10)
+library(data.table); setDTthreads(1) # One thread only for apples-apples
+dt <- setkey(data.table(x, g), g)    # mark as pre-ordered by group
+library(collapse)
+cg <- collapse::GRP(g)               # mark as pre-ordered by group
+
+microbenchmark::microbenchmark(times=20,
+  dt.x <- dt[, sum(x), keyby=g],
+  collapse.x <- fsum(x, cg),
+  base.x <- colSums(mx),
+  collap(x, cg, fsum)
+)
+## Unit: milliseconds
+##                             expr   min    lq  mean median    uq   max neval
+##  dt.x <- dt[, sum(x), keyby = g] 201.5 212.0 245.5  244.9 272.9 293.1    20
+##        collapse.x <- fsum(x, cg)  28.6  29.4  31.5   30.9  33.7  34.9    20
+##            base.x <- colSums(mx)  21.4  24.9  27.5   26.0  26.3  56.5    20
+all.equal(dt.x$V1, base.x)
+## [1] TRUE
+all.equal(unname(collapse.x), base.x)
+## [1] TRUE
+
+
+
 
 
     fmean2 <- function(x, gg) rep(fmean(x, gg), gg[['group.sizes']])

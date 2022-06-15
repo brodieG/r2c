@@ -155,16 +155,17 @@ r2c <- function(
   # 2. We need the function to survive a re-loading of r2c (but we probably
   #    shouldn't allow it to survive across different versions)
   #
-  # Thus, we directly embed the object with `.(OBJ)`, and we make the parent of
-  # the function the base environment.  We use the same trick for several other
-  # objects, both directly those generated here, and also those that will be
-  # generated at call time, to ensure that no run-time objects can interfere
+  # Thus, we directly embed the object with `.(OBJ)`, and we make the enclosure
+  # of the function the base environment.  We use the same trick for several
+  # other objects, both directly those generated here, and also those that will
+  # be generated at call time, to ensure that no run-time objects can interfere
   # with the symbol resolution of the "r2c_fun" against its parameters.
 
   GEXE <- quote(
     bquote(
       group_exec_int(
         NULL, formals=.(.FRM), env=.(.ENV), groups=NULL,
+        # Pretend firrt argument is group-varying, even though it's not
         data=.(.DAT[1L]), MoreArgs=.(.DAT[-1L]), sorted=TRUE
   ) ) )
   DOC <- as.call(
@@ -183,7 +184,7 @@ r2c <- function(
   ) ) )
   PREAMBLE <- bquote({
     .(DOC)
-    .(OBJ)  # for ease of access
+    .(OBJ)  # for ease of access, embedded in actual fun later
     .DAT <- as.list(environment())  # first, so no other symbols
     .FRM <- formals()
     .ENV <- parent.frame()
