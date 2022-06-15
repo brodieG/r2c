@@ -134,12 +134,16 @@ alloc <- function(x, data, gmax, par.env, MoreArgs) {
       # Need to eval parameter
       arg.e <- eval(call, envir=data, enclos=env)
       # Validate external args after eval
-      if(type == "leaf" && !is.num_naked(list(arg.e)))
+      if(type == "leaf" && !is.num_naked(list(arg.e))) {
+        # Next call, if any
+        next.call.v <- which(seq_along(x[['call']]) > i & x[['type']] == 'call')
+        err.call <-
+          if(length(next.call.v)) x[['call']][[next.call.v[1L]]]
+          else call
         stop(
-          "External Parameter `", name, "` for `", deparse1(call),
-          "` is not unclassed numeric ", not_num_naked_err(name), "."
-        )
-
+          "External argument `", name, "` for `", deparse1(err.call),
+          "` is not unclassed numeric ", not_num_naked_err(name, arg.e), "."
+      ) }
       size <- length(arg.e)
       if(type == "control") {
         ctrl <- list(arg.e)
