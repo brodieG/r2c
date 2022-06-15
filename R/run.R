@@ -201,6 +201,7 @@ group_exec_int <- function(obj, formals, env, groups, data, MoreArgs, sorted) {
   if(ncol(stack) != 1L)
     stop("Internal Error: unexpected stack state at exit.")
 
+  empty.res <- FALSE
   group.sizes <- group.dat[[1L]]
   if(!stack['group', 1L]) { # constant group size
     group.res.sizes <- rep(stack['size', 1L], length(group.dat[[1L]]))
@@ -208,48 +209,54 @@ group_exec_int <- function(obj, formals, env, groups, data, MoreArgs, sorted) {
     group.res.sizes <- group.sizes
   } else if (stack['size', 1L]) {
     group.res.sizes <- group.sizes
-    group.res.sizes[stack['group', 1L] < stack['size', 1L]] <- stack['size', 1L]
-  } else { # zero size
-    stop("figure out what to do with zero size")
+    group.res.sizes[
+      group.res.sizes < stack['size', 1L] & group.res.sizes != 0
+    ] <- stack['size', 1L]
+  } else {
+    group.res.sizes <- numeric()
   }
-  # Allocate result vector, this will be modified by reference
-  if(length(alloc[['alloc']][['dat']][[alloc[['alloc']][['i']]]]))
-    stop("Internal Error: result should be zero length when uninitialized.")
-  alloc[['alloc']][['dat']][[alloc[['alloc']][['i']]]] <-
-    numeric(sum(group.res.sizes))
-
-  # Extract control parameters, and run sanity checks (not fool proof)
-  dat <- alloc[['alloc']][['dat']]
-  control <- lapply(alloc[['call.dat']], "[[", "ctrl")
-  flag <- vapply(alloc[['call.dat']], "[[", 0L, "flag")
-  # Ids into call.dat, last one will be the result
-  ids <- lapply(alloc[['call.dat']], "[[", "ids")
-  if(!all(unlist(ids) %in% seq_along(dat)))
-    stop("Internal Error: Invalid data indices.")
-  ids <- lapply(ids, "-", 1L) # 0-index for C
-
-  dat_cols <- sum(alloc[['alloc']][['type']] == "grp")
-  handle <- obj[['handle']]
-
-  if(!is.na(shlib) && !is.loaded("run", PACKAGE=handle)) {
-    handle <- dyn.load(shlib)
-  }
-  if(!is.loaded("run", PACKAGE=handle[['name']]))
-    stop("Could not load native code.")
-
-  run_int(
-    handle[['name']],
-    dat,
-    dat_cols,
-    ids,
-    flag,
-    control,
-    group.sizes,
-    group.res.sizes
-  )
-  # Result vector is modified by reference
   res.i <- which(alloc[['alloc']][['type']] == "res")
-  res <- dat[[res.i]]
+  res <- if(length(group.res.sizes)) {
+    # Allocate result vector, this will be modified by reference
+    if(length(alloc[['alloc']][['dat']][[alloc[['alloc']][['i']]]]))
+      stop("Internal Error: result should be zero length when uninitialized.")
+    alloc[['alloc']][['dat']][[alloc[['alloc']][['i']]]] <-
+      numeric(sum(group.res.sizes))
+
+    # Extract control parameters, and run sanity checks (not fool proof)
+    dat <- alloc[['alloc']][['dat']]
+    control <- lapply(alloc[['call.dat']], "[[", "ctrl")
+    flag <- vapply(alloc[['call.dat']], "[[", 0L, "flag")
+    # Ids into call.dat, last one will be the result
+    ids <- lapply(alloc[['call.dat']], "[[", "ids")
+    if(!all(unlist(ids) %in% seq_along(dat)))
+      stop("Internal Error: Invalid data indices.")
+    ids <- lapply(ids, "-", 1L) # 0-index for C
+
+    dat_cols <- sum(alloc[['alloc']][['type']] == "grp")
+    handle <- obj[['handle']]
+
+    if(!is.na(shlib) && !is.loaded("run", PACKAGE=handle)) {
+      handle <- dyn.load(shlib)
+    }
+    if(!is.loaded("run", PACKAGE=handle[['name']]))
+      stop("Could not load native code.")
+
+    run_int(
+      handle[['name']],
+      dat,
+      dat_cols,
+      ids,
+      flag,
+      control,
+      group.sizes,
+      group.res.sizes
+    )
+    # Result vector is modified by reference
+    dat[[res.i]]
+  } else {
+    numeric()
+  }
   if(alloc[['alloc']][['typeof']][res.i] == "integer") res <- as.integer(res)
 
   # Generate and attach group labels
