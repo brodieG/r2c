@@ -42,7 +42,7 @@ not_num_naked_err <- function(name, val) {
     "(type: %s %s%s)",
     typeof(val),
     if(length(class(val))) "class: " else "",
-    if(length(class(val))) toString(class(arg.bad.val)) else ""
+    if(length(class(val))) toString(class(val)) else ""
 ) }
 
 
