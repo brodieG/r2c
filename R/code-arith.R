@@ -31,43 +31,43 @@ static void %1$s(%2$s) {
   int di1 = di[0];
   int di2 = di[1];
   int dires = di[2];
-
-  double * res = data[dires];
-
-  double * e1;
-  double * e2;
+  double * e1 = data[di1];
+  double * e2 = data[di2];
   R_xlen_t len1 = lens[di1];
   R_xlen_t len2 = lens[di2];
-  R_xlen_t len12 = 0;
+  double * res = data[dires];
 
   if(len1 == 0 || len2 == 0) { // empty recycle is zero
     lens[dires] = 0;
     return;
   }
-  // Ensure longest arg is first
-  if(len1 >= len2) {
-    e1 = data[di1];
-    e2 = data[di2];
-  } else {
-    e1 = data[di2];
-    e2 = data[di1];
-    len12 = len2;
-    len2 = len1;
-    len1 = len12;
-  }
+  // Not all "arith" operators are commutative
+  // so we cannot play tricks with switching parameter order
+
   // Mod iterate by region?
   R_xlen_t i, j;
   if(len1 == len2) {
     for(i = 0; i < len1; ++i) res[i] = %3$s(e1[i] %4$s e2[i]);
+    lens[dires] = len1;
   } else if (len2 == 1) {
     for(i = 0; i < len1; ++i) res[i] = %3$s(e1[i] %4$s *e2);
-  } else {
+    lens[dires] = len1;
+  } else if (len1 == 1) {
+    for(i = 0; i < len2; ++i) res[i] = %3$s(*e1 %4$s e2[i]);
+    lens[dires] = len2;
+  } else if (len1 > len2) {
     for(i = 0, j = 0; i < len1; ++i, ++j) {
-      if(j > len2) j = 0;
+      if(j >= len2) j = 0;
       res[i] = %3$s(e1[i] %4$s e2[j]);
     }
+    lens[dires] = len1;
+  } else if (len2 > len1) {
+    for(i = 0, j = 0; i < len2; ++i, ++j) {
+      if(j >= len1) j = 0;
+      res[i] = %3$s(e1[j] %4$s e2[i]);
+    }
+    lens[dires] = len2;
   }
-  lens[dires] = len1;
 }'
 code_gen_arith <- function(fun, args.reg, args.ctrl, args.flags) {
   vetr(
