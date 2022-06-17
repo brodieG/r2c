@@ -181,10 +181,12 @@ group_exec_int <- function(obj, formals, env, groups, data, MoreArgs, sorted) {
 
   names(args.dummy) <- c(names(do), names(MoreArgs))
   call.dummy <- as.call(c(list(fun.dummy), as.list(args.dummy)))
-  call.dummy.m <- unlist(
-    # envir might not be righ there, test by forwarding dots
-    as.list(match.call(fun.dummy, call.dummy, envir=env))[-1L]
-  )
+  call.dummy.m <- tryCatch(
+    unlist(as.list(match.call(fun.dummy, call.dummy, envir=env))[-1L]),
+    error=function(e) {
+      # Default error is confusing
+      stop("Could not match provided arguments to the r2c function formals.")
+  } )
   dat.match <- call.dummy.m[call.dummy.m <= length(do)]
   names(do)[dat.match] <- names(dat.match)
   more.match <- call.dummy.m[call.dummy.m > length(do)]
