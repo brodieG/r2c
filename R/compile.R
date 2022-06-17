@@ -96,7 +96,9 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' @param env environment to use as enclosure to function evaluation environment
 #' @param check TRUE or FALSE (default), if TRUE will evaluate the R expression
 #'   with the input data and compare that result to the one obtained from the
-#'   `r2c` C code evaluation, producing an error if not identical.
+#'   `r2c` C code evaluation, marking the result with attributes that indicate
+#'   that the result was identical, and if not, also with an attribute with the
+#'   result of an `all.equal` comparison.
 #' @param clean TRUE or FALSE, whether to remove the `dir` folder containing the
 #'   generated C code and the shared object file after the shared object is
 #'   [`dyn.load`]ed.  Normally this is an auto-generated temporary folder.  This
@@ -168,6 +170,7 @@ r2c <- function(
         # Pretend firrt argument is group-varying, even though it's not
         data=.(.DAT[1L]), MoreArgs=.(.DAT[-1L]), sorted=TRUE
   ) ) )
+  GEXE[[c(2L, 2L)]] <- OBJ  # embed object directly in call (replaces 1st NULL)
   DOC <- as.call(
     list(
       as.name("{"),
@@ -195,26 +198,26 @@ r2c <- function(
       error=function(e) stop(simpleError(conditionMessage(e), .CALL))
     )
   })
-  GEXE[[c(2L, 2L)]] <- OBJ  # nesting bquote a pain
   body(fun) <- if(!check) {
     bquote({
       .(PREAMBLE)
-      eval(evalq(.(GEXE)), envir=getNamespace('r2c'))
+      eval(.(GEXE), envir=getNamespace('r2c'))
     })
   } else {
     # Symbol creation is order so that no created symbols will interfere with
     # symbols referenced in the evaluated expressions.
     bquote({
       .(PREAMBLE)
-      test <- identical(
-        eval(evalq(.(GEXE)), envir=getNamespace('r2c')),
-        res <- eval(.(call), envir=.ENV)
+      test.i <- identical(
+        res0 <- eval(.(call), envir=.ENV),
+        res1 <- eval(.(GEXE), envir=getNamespace('r2c'))
       )
-      if(!test) stop("`r2c` eval does not match standard eval.")
-      res
+      test.ae <- if(!test.i) all.equal(res0, re1)
+      attr(res1, 'r2c.check.identical') <- test.i
+      attr(res1, 'r2c.check.all.equal') <- test.ae
+      res1
     })
   }
-
   class(fun) <- "r2c_fun"
   fun
 }
