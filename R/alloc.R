@@ -218,7 +218,7 @@ vec_rec_max_size <- function(x, gmax) {
     stop("Internal error, malformed size data.")
 
   size <- x[1L,]
-  group <- which(as.logical(x[2L,]))
+  group <- as.logical(x[2L,])
   size[is.na(size) | group] <- gmax
   if(any(size == 0)) 0 else max(size)
 }
