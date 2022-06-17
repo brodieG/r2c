@@ -35,7 +35,9 @@ directory.}
 
 \item{check}{TRUE or FALSE (default), if TRUE will evaluate the R expression
 with the input data and compare that result to the one obtained from the
-\code{r2c} C code evaluation, producing an error if not identical.}
+\code{r2c} C code evaluation, marking the result with attributes that indicate
+that the result was identical, and if not, also with an attribute with the
+result of an \code{all.equal} comparison.}
 
 \item{clean}{TRUE or FALSE, whether to remove the \code{dir} folder containing the
 generated C code and the shared object file after the shared object is
@@ -70,7 +72,7 @@ that accept them as inputs.
 
 Currently the following functions are supported in \code{call}:
 \itemize{
-\item Binary operators: \code{+}, \code{-}, \code{*}, \code{/}, \code{\%\%}, and \code{^}.
+\item Binary operators: \code{+}, \code{-}, \code{*}, \code{/}, and \code{^}.
 \item Statistics: \code{mean}, \code{sum}, \code{length}.
 }
 

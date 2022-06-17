@@ -6,6 +6,15 @@ Figure out how to report missing arguments in `alloc`
 
 # To Do / Questions
 
+* Figure out why external vectors are being duplicated.  Were seeing:
+
+    Browse[2]> .Internal(inspect(alloc$alloc$dat[[5]]))
+    @7fe16de86b68 14 REALSXP g0c0 [MARK,REF(65535)]  1 : 3 (compact)
+    Browse[2]> .Internal(inspect(alloc$alloc$dat[[6]]))
+    @7fe16de8b7b8 14 REALSXP g0c0 [MARK,REF(65535)]  1 : 3 (compact)
+
+  for the slope calculation with y as 1:3 (literal).
+
 * Perhaps we got too lazy with POW, do we need to handle all the other cases
   arith handles?
 * Re-implement modulo.

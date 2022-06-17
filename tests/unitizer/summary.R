@@ -14,7 +14,6 @@
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
 unitizer_sect('sum', {
-  r2c_sum <- r2cq(sum(x))
   r2c_sum_na <- r2cq(sum(x, na.rm=na.rm))
   r2c_sum_narm <- r2cq(sum(x, na.rm=TRUE))
   r2c_sum_n <- r2cq(sum(x, y))

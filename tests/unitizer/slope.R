@@ -14,7 +14,20 @@
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
 unitizer_sect("slope", {
-  r2c_slope <- r2cq(sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2))
+  r2c_slope(x, y)
+  r2c_slope(z, y)
+  r2c_slope(z, x=y)
 
-
+  r2c_slope(x.weird, y)
+  r2c_slope(x.na, y)
+  r2c_slope(x.inf, y)
+  r2c_slope(y, x.weird)
+  r2c_slope(y, x.na)
+  r2c_slope(y, x.inf)
+  r2c_slope(x, numeric())
+  r2c_slope(numeric(), x)
+  r2c_slope(x, 1:3)
+  r2c_slope(1:3, x)
+  r2c_slope(x, 1:101)
+  r2c_slope(1:101, x)
 })

@@ -30,7 +30,7 @@ x.na <- x.inf <- x.ovrf.dbl <- x.ovrf.ldbl <- x
 x.na[sample(n, 3)] <- NA_real_
 
 g.na <- g
-g.na[sample(n, 3)] <- NA_real_
+g.na[sample(n, 3)] <- NA_integer_
 x.inf[sample(n, 4)] <- c(Inf, -Inf, Inf, -Inf)
 
 x.weird <- x
@@ -49,4 +49,11 @@ x.ovrf.dbl.na[which(g == 12L)[1L]] <- NA_real_
 x.ovrf.ldbl.na <- x.ovrf.ldbl
 x.ovrf.ldbl.na[ldbl.na[1L]] <- NA_real_
 
+# Functions used in multiple places
+
+r2c_slope <- r2cq(
+  sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2),
+  check=TRUE
+)
+r2c_sum <- r2cq(sum(x))
 
