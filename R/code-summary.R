@@ -69,6 +69,7 @@ static void %%s(%%s) {
     double * dat = data[din];
 %s
     // base uses a double, not long double, intermediate acc.
+    // Overflow to Inf (and we check Inf available in assumptions.c)
     *data[di[narg]] += (double) tmp;
   }
   lens[di[narg]] = 1;
