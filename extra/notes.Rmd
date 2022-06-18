@@ -6,17 +6,10 @@ Figure out how to report missing arguments in `alloc`
 
 # To Do / Questions
 
-* Figure out why external vectors are being duplicated.  Were seeing:
-
-    Browse[2]> .Internal(inspect(alloc$alloc$dat[[5]]))
-    @7fe16de86b68 14 REALSXP g0c0 [MARK,REF(65535)]  1 : 3 (compact)
-    Browse[2]> .Internal(inspect(alloc$alloc$dat[[6]]))
-    @7fe16de8b7b8 14 REALSXP g0c0 [MARK,REF(65535)]  1 : 3 (compact)
-
-  for the slope calculation with y as 1:3 (literal).
-
 * Perhaps we got too lazy with POW, do we need to handle all the other cases
-  arith handles?
+  arith handles?  Maybe, but if we do we'll likely need our own `pow` function,
+  as it stands right now we're likely to get non-identical results in the case
+  of NA or Inf (or at least particular variations of them).
 * Re-implement modulo.
 * How can we efficiently warn of "longer object length is not a multiple" in
   vecrec?  We don't want a modulo for each group.  But we could check that the
@@ -28,10 +21,7 @@ Figure out how to report missing arguments in `alloc`
   time, annoyingly.
 * If we use environments to carry `data` and `MoreArgs` around, we should make
   sure we don't introduce reference issues / reference count issues.
-* The check might be better done with an explicit check function.
-* Document that we assume IEEE-754 (and thus existence of infinity and no
-  overflow on conversion from long double to double), and check whether this is
-  a reasonable assumption under C99 (probably no), or failing that under R.
+* The `check=TRUE` might be better done with an explicit check function.
 * For running function directly, can we pass data as an env so the traceback
   doesn't explode?
 * What is the implementation cost of allowing internal functions to advance the
@@ -154,6 +144,19 @@ Figure out how to report missing arguments in `alloc`
 * Re-use repeated expressions.
 
 ## Done
+
+* Document that we assume IEEE-754 (and thus existence of infinity and no
+  overflow on conversion from long double to double), and check whether this is
+  a reasonable assumption under C99 (probably no), or failing that under R.
+* Figure out why external vectors are being duplicated.  Were seeing:
+
+    Browse[2]> .Internal(inspect(alloc$alloc$dat[[5]]))
+    @7fe16de86b68 14 REALSXP g0c0 [MARK,REF(65535)]  1 : 3 (compact)
+    Browse[2]> .Internal(inspect(alloc$alloc$dat[[6]]))
+    @7fe16de8b7b8 14 REALSXP g0c0 [MARK,REF(65535)]  1 : 3 (compact)
+
+  for the slope calculation with y as 1:3 (literal).  Duh, is this just because
+  we use `as.numeric`.
 
 * Really need to figure out whether we want a formal interface to the functions.
   It could be auto-generated from all the unbound symbols like gsubfn does it.

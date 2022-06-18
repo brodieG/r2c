@@ -83,6 +83,15 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' will only accept values for them that would make sense for the R
 #' counterparts.
 #'
+#' In general `r2c` attempts to mimic the corresponding R function semantics to
+#' the `identical` level, but there may be corner cases that differ,
+#' particularly those involving missing or infinite values.
+#'
+#' `r2c` requires a C99 compatible implementation with infinity defined.
+#' Compiling with other implementations may produce undefined behavior, although
+#' such implementations should be rare and might not even be supported by R
+#' proper.
+#'
 #' @export
 #' @param call an R expression, for `r2cq` it is captured unevaluated, for
 #'   `r2c` it should be quoted with e.g. [`quote`].

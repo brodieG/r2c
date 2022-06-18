@@ -98,7 +98,8 @@ static void %%s(%%s) {
 %s
     s += t;
   }
-  *data[di2] = s;
+  // Overflow to Inf (and we check Inf available in assumptions.c)
+  *data[di2] = (double) s;
   lens[di2] = 1;
 }', loop_mean1, loop_mean2, loop_mean3, loop_mean4)
 

@@ -15,22 +15,20 @@
  * Go to <https://www.r-project.org/Licenses> for a copies of the licenses.
  */
 
+#include <math.h>
+// System headers if any go above ^^
+#include "r2c.h"
 
-#ifndef R2C_H
-#define R2C_H
-#define R_NO_REMAP
+SEXP R2C_assumptions() {
+#ifndef INFINITY
+  Rf_error("C implementation does not define INFINITY.");
+#endif
+  // This should generate a compiler warning if it is not infinite
+  float inf = INFINITY;
+  // Per C99 6.3.1.5 promotion to double does not change values, so if (float)
+  // inf is infinite, so must (double) inf.  We rely on infinity being present
+  // so it is defined that long double values can always be cast to double.
+  if(isfinite(inf)) Rf_error("C implementation does not support infinity.");
+  return Rf_ScalarLogical(1);
+}
 
-// System headers go above
-#include <R.h>
-#include <Rinternals.h>
-#include <Rversion.h>
-#include <stdint.h>
-
-SEXP R2C_assumptions();
-SEXP R2C_group_sizes(SEXP g);
-SEXP R2C_run_internal(
-  SEXP so, SEXP dat, SEXP dat_cols,
-  SEXP ids, SEXP flag, SEXP ctrl, SEXP grp_lens, SEXP res_lens
-);
-
-#endif  /* R2C_H */

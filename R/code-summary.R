@@ -17,10 +17,6 @@
 
 NULL
 
-## We'll be changing this to be less like sum?
-##
-## Maybe we should also have a low error sum.
-
 f_summary_base <- '
 static void %%s(%%s) {
   int di1 = di[0];
