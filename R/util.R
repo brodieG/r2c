@@ -27,8 +27,10 @@
 #' @return numeric vector
 
 bsac <- function(call, g, data, MoreArgs=list(), env=parent.frame()) {
+  data <- if(!is.data.frame(data)) as.data.frame(data) else data
   d.s <- split(data, g)
-  more <- list2env(MoreArgs, envir=env)
+
+  more <- list2env(MoreArgs, parent=env)
   res <- lapply(
     d.s,
     function(x, call) eval(call, envir=x, enclos=more), call=call
