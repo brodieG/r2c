@@ -185,8 +185,13 @@ group_exec_int <- function(obj, formals, env, groups, data, MoreArgs, sorted) {
   call.dummy.m <- tryCatch(
     unlist(as.list(match.call(fun.dummy, call.dummy, envir=env))[-1L]),
     error=function(e) {
-      # Default error is confusing
-      stop("Could not match provided arguments to the r2c function formals.")
+      # Error produced by this is confusing because we're matching to positions,
+      # so instead match agains the actual data for better error message
+      args <- c(data, MoreArgs)
+      call.dummy <- as.call(c(list(fun.dummy), args))
+      match.call(fun.dummy, call.dummy, envir=env)
+      # In case the above somehow doesn't produce an error; it always should
+      stop("Internal Error: no param match error; contact maintainer.")
   } )
   dat.match <- call.dummy.m[call.dummy.m <= length(do)]
   names(do)[dat.match] <- names(dat.match)
