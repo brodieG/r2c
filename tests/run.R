@@ -14,5 +14,5 @@
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
 library(unitizer)
-unitize_dir('unitizer')
+unitize_dir('unitizer', state='recommended')
 
