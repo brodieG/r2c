@@ -4,7 +4,7 @@
 \alias{bsac}
 \title{Basic Split Apply Combine}
 \usage{
-bsac(call, g, data, MoreArgs, env = parent.frame())
+bsac(call, g, data, MoreArgs = list(), env = parent.frame())
 }
 \arguments{
 \item{call}{quoted R call to evaluate}
@@ -18,5 +18,5 @@ numeric vector
 }
 \description{
 Evaluates quoted expressions in the context of data split by group.  Intended
-purely for testing against C calculations.
+purely for testing against r2c calculations.
 }

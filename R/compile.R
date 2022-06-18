@@ -50,8 +50,9 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' using `R CMD SHLIB`, and returns an interface to that code in the form of an
 #' "r2c_fun" function.  This function will behave like an R function that
 #' has for body the provided `call` and for parameters the free parameter
-#' symbols in the order they appear in the call tree.  Unlike the R function, it
-#' will execute native instructions generated directly, and is compatible with
+#' symbols in the order they appear in the call tree.  Unlike the R function,
+#' it carries out numerical calculations with `r2c` native instructions instead
+#' of with the standard R routines, and most importantly it is compatible with
 #' `r2c` runner functions like [`group_exec`].
 #'
 #' While "r2c_fun" functions can be called in the same way as normal R

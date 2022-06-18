@@ -57,8 +57,9 @@ Translates eligible R calls into C, compiles them into native instructions
 using \verb{R CMD SHLIB}, and returns an interface to that code in the form of an
 "r2c_fun" function.  This function will behave like an R function that
 has for body the provided \code{call} and for parameters the free parameter
-symbols in the order they appear in the call tree.  Unlike the R function, it
-will execute native instructions generated directly, and is compatible with
+symbols in the order they appear in the call tree.  Unlike the R function,
+it carries out numerical calculations with \code{r2c} native instructions instead
+of with the standard R routines, and most importantly it is compatible with
 \code{r2c} runner functions like \code{\link{group_exec}}.
 }
 \details{
@@ -91,6 +92,15 @@ support integer output, the result will be returned as integer.  There are no
 general restrictions on control parameters, but each implemented function
 will only accept values for them that would make sense for the R
 counterparts.
+
+In general \code{r2c} attempts to mimic the corresponding R function semantics to
+the \code{identical} level, but there may be corner cases that differ,
+particularly those involving missing or infinite values.
+
+\code{r2c} requires a C99 compatible implementation with infinity defined.
+Compiling with other implementations may produce undefined behavior, although
+such implementations should be rare and might not even be supported by R
+proper.
 }
 \examples{
 r2c_sum_add <- r2cq(sum(x + y))
