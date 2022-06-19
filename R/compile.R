@@ -42,7 +42,7 @@ make_shlib <- function(x, dir, quiet) {
 }
 
 rand_string <- function(len, pool=c(letters, 0:9))
-  paste0(sample(pool, len, replace=TRUE), collapse="")
+  without_seed(paste0(sample(pool, len, replace=TRUE), collapse=""))
 
 #' Compile Eligible R Calls Into Native Instructions
 #'

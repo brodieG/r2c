@@ -51,4 +51,23 @@ not_num_naked_err <- function(name, val) {
     if(length(class(val))) toString(class(val)) else ""
 ) }
 
+## Run an Expression with Random Seed Unset
+##
+## In cases where we would really like something to be random and not dictated
+## by a set seed.
+
+without_seed <- function(expr, env=parent.frame()) {
+  prev.seed <- mget(
+    ".Random.seed", envir=.GlobalEnv, ifnotfound=list(NULL)
+  )[[1L]]
+  on.exit({
+    if(is.null(prev.seed) && exists(".Random.seed", envir=.GlobalEnv))
+      rm(".Random.seed", envir=.GlobalEnv)
+    else
+      assign(".Random.seed", prev.seed, envir=.GlobalEnv)
+  })
+  set.seed(NULL)
+  expr
+}
+
 

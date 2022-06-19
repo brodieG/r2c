@@ -6,11 +6,7 @@ Figure out how to report missing arguments in `alloc`
 
 # To Do / Questions
 
-* Perhaps we got too lazy with POW, do we need to handle all the other cases
-  arith handles?  Maybe, but if we do we'll likely need our own `pow` function,
-  as it stands right now we're likely to get non-identical results in the case
-  of NA or Inf (or at least particular variations of them).
-* Re-implement modulo.
+* What should the environment of an "r2c_fun" be?
 * How can we efficiently warn of "longer object length is not a multiple" in
   vecrec?  We don't want a modulo for each group.  But we could check that the
   shorter object has not hit its length at the end of the loop and set a global
@@ -19,11 +15,15 @@ Figure out how to report missing arguments in `alloc`
   max and min group size.  But to be certain of a multiple you must be certain
   that there are no groups of odd sizes...  So I think it has to be done at run
   time, annoyingly.
-* If we use environments to carry `data` and `MoreArgs` around, we should make
-  sure we don't introduce reference issues / reference count issues.
+
+* Perhaps we got too lazy with POW, do we need to handle all the other cases
+  arith handles?  Maybe, but if we do we'll likely need our own `pow` function,
+  as it stands right now we're likely to get non-identical results in the case
+  of NA or Inf (or at least particular variations of them).
+* Re-implement modulo.
 * The `check=TRUE` might be better done with an explicit check function.
 * For running function directly, can we pass data as an env so the traceback
-  doesn't explode?
+  doesn't explode (but make sure this doesn't cause reference / refcount issues)?
 * What is the implementation cost of allowing internal functions to advance the
   data pointers so they don't have to be manually moved after each function
   iteration?
@@ -32,8 +32,6 @@ Figure out how to report missing arguments in `alloc`
   be correct, but will make readme a bit more complicated).  Also, error message
   is very confusing in this case as `mean.default` is also from the base
   namespace, even though the masking is defined at the global level.
-* Is it possible that set.seed could interfere badly with the random file name
-  generation?
 * Currently we require at least one data column so we can get away with using
   the group logic for the stand alone evaluation of the r2c funs.
 * Side effects from evaluation of control parameters?  Where should assigned
@@ -41,13 +39,11 @@ Figure out how to report missing arguments in `alloc`
 * Add a finalizer to the r2c objects to clean-up after themselves when `rm`ed?
 * Add check to `r2c` funs that verify the `r2c` version, the R version, and the
   platform (anything else)?
-* What should the environment of an "r2c_fun" be?
 * Figure out a better way to store the object than embedding it with `bquote` in
-  the function.
-* Test forwarding dots to a `group_exec` function.
+  the function (e.g. retrieve from the call like `rlang`, but not sure that's
+  better).
 * Think about `df %>% group_by(g) %>% filter(x > min(df$x)`.  This should
   resolve naturally if we allow `[['x']]` as "normal" expression.
-* What do we do with NA groups?  Each it's own, or one big NA group?
 * Can we optimize label generation for cases where the last step is constant
   size or size of groups?
 * Add destructors that will unload the shlib and delete file file when the
@@ -56,7 +52,6 @@ Figure out how to report missing arguments in `alloc`
   are.
 * Are names sufficient to disqualify from nakedness?  How do names behave in
   recycling?  Do we want to allow other attributes to persist?
-* Only sort the columns that are used.
 * Is it possible for e.g. someone doing something like `sum(a, trim=1:3)` to
   mismatch to the parameter name, or do dots handle it properly (thinking of
   validation function).
@@ -69,14 +64,11 @@ Figure out how to report missing arguments in `alloc`
 * Make sure pointer arrays are aligned.  Use `malloc`?  If so internal code
   cannot use `error`, and we can't guarantee that?  Can we register a finalizer
   somehow (probably will need to).
-* Look into GraalVM, Renjin?
 * Check assumption that double will hold `R_xlen_t`?  Or that length is no
   longer that the allowable size?  A bit tricky; no way to know what double size
   is.  This is because we return the group size to R; otherwise it would just be
   an R_xlen_t vector.  We need this to get the group max for the allocation.
   It's possible R guarantees this will be no bigger than e.g. 2^53 or some such.
-* Be sure to test situations where we have external data larger and smaller than
-  group sizes.
 * Do we need to handle the issue of `envir` for `match.call` at allocation time
   instead of at compile time?  Seems like the way this goes wrong is if the
   expression being looked at itself contains dots, e.g. literally `sum(...)`
@@ -114,14 +106,10 @@ Figure out how to report missing arguments in `alloc`
 * Add capability to specify functions in non-standard ways (e.g. `base::sum`, or
   `(get("sum", as.environment("package:base"))`)?  Maybe not, that seems like
   potential trouble.  Certainly document also things like `f <- sum; f(x)`.
-* Evaluation of non-compilable expressions in an env child of an env with
-  appropriate symbols protected?  Such would be the symbols in the data, but
-  what about the functions that are used?  That seems excessive.
 * Make sure there are interrupts.  Can we use "R_ext/Intermacros.h".  It seems
   yes generally, but they are not explicitly part of the API, and then there is
   the question of whether it makes sense to do so, or if we should just be doing
   this at the group level?
-* Think though corner case of R_NA, NaN, Inf, etc: are we preserving semantics.
 * Is it faster to compute complex expressions pairwise (i.e. full vector scan of
   two vectors), or do each row in full once?
 * Look into using R_GetCCallable (see WRE) instead of what we're doing now.  It
@@ -132,10 +120,8 @@ Figure out how to report missing arguments in `alloc`
 * Figure out how to call the current version of R (e.g. `RD CMD SHLIB`).
 * See how far back this works in terms of R versions.
 * What happens when this stuff is serialized?
-* What does inline do?
 * Is there an alternative to R_FindSymbol?  Can we get it to be made part of the
   API.
-* Recycling warnings?
 * Can we use this in some way for e.g. really wide matrices where each column
   takes the place of an argument?  Generating a pointer for each column then may
   be less efficient.
@@ -145,6 +131,21 @@ Figure out how to report missing arguments in `alloc`
 
 ## Done
 
+* Is it possible that set.seed could interfere badly with the random file name
+  generation?  Yes, maybe try to initialize the pool
+* Evaluation of non-compilable expressions in an env child of an env with
+  appropriate symbols protected?  Such would be the symbols in the data, but
+  what about the functions that are used?  That seems excessive.  No, we won't
+  support this.
+* Think though corner case of R_NA, NaN, Inf, etc: are we preserving semantics.
+  Yes, mostly, but maybe not always (e.g. when we use `pow` instead of `square`)
+* Look into GraalVM, Renjin?
+* Only sort the columns that are used.  This is the case already as only things
+  that match to the `r2c_fun` are submitable.
+* Be sure to test situations where we have external data larger and smaller than
+  group sizes.
+* What do we do with NA groups?  Each it's own, or one big NA group?  One big NA
+  group.  Single group; now documented.
 * Document that we assume IEEE-754 (and thus existence of infinity and no
   overflow on conversion from long double to double), and check whether this is
   a reasonable assumption under C99 (probably no), or failing that under R.
