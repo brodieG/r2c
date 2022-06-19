@@ -29,6 +29,20 @@ SEXP R2C_assumptions() {
   // inf is infinite, so must (double) inf.  We rely on infinity being present
   // so it is defined that long double values can always be cast to double.
   if(isfinite(inf)) Rf_error("C implementation does not support infinity.");
+
+  double xlen_test_dbl = R_XLEN_T_MAX;
+  intmax_t xlen_test_int = (intmax_t) xlen_test_dbl;
+  if(xlen_test_int != R_XLEN_T_MAX)
+    Rf_error("Double cannot hold R_LEN_T_MAX without precision loss.");
+
+  // Need to make sure the full range of R_xlen_t values can be accomodated by
+  // double as we use doubles to store vector indices.
+  if(
+    ((R_xlen_t)((double) R_XLEN_T_MAX) != R_XLEN_T_MAX) ||
+      ((R_xlen_t)((double) R_XLEN_T_MAX - 1) != R_XLEN_T_MAX - 1)
+  )
+    Rf_error("Double cannot hold R_LEN_T_MAX without precision loss.");
+
   return Rf_ScalarLogical(1);
 }
 

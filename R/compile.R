@@ -71,7 +71,8 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' All calls present in `call` must be in the form `fun(...)` or for operators
 #' `a fun b` where `fun` is the unquoted name of the function (i.e. not
 #' `"fun"(...)` or many of the other variations that R will normally allow for
-#' function invocation).
+#' function invocation).  Functions must be bound to their original symbols for
+#' them to be recognized.
 #'
 #' Parameters used with "r2c_fun" supported functions are categorized into data
 #' parameters and control parameters.  For example, in `sum(x, na.rm=TRUE)`, `x`
@@ -118,8 +119,8 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' @return an "r2c_fun" function; this is an unusual function so please see
 #'   details.
 #' @seealso [`group_exec`] to iterate this function groupwise on data,
-#'   [`get_c_code`] to retrieve the generate C code use to produce the native
-#'   instructions.
+#'   [`get_c_code`] for functions to retrieve meta data from the function,
+#'   including the generated C code and the compiler output.
 #' @examples
 #' r2c_sum_add <- r2cq(sum(x + y))
 #' r2c_sum_add <- r2c(quote(sum(x + y)))  ## equivalently

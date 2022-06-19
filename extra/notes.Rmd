@@ -34,9 +34,8 @@ Figure out how to report missing arguments in `alloc`
   namespace, even though the masking is defined at the global level.
 * Currently we require at least one data column so we can get away with using
   the group logic for the stand alone evaluation of the r2c funs.
-* Side effects from evaluation of control parameters?  Where should assigned
-  variables reside?
-* Add a finalizer to the r2c objects to clean-up after themselves when `rm`ed?
+* Add destructors that will unload the shlib and delete file file when the
+  corresponding object is garbage collected (finalizer).
 * Add check to `r2c` funs that verify the `r2c` version, the R version, and the
   platform (anything else)?
 * Figure out a better way to store the object than embedding it with `bquote` in
@@ -46,8 +45,6 @@ Figure out how to report missing arguments in `alloc`
   resolve naturally if we allow `[['x']]` as "normal" expression.
 * Can we optimize label generation for cases where the last step is constant
   size or size of groups?
-* Add destructors that will unload the shlib and delete file file when the
-  corresponding object is garbage collected.
 * Better introspection tools for intermediate products so we can see what they
   are.
 * Are names sufficient to disqualify from nakedness?  How do names behave in
@@ -60,15 +57,9 @@ Figure out how to report missing arguments in `alloc`
 * Can we get more memory efficient by e.g. using `+=` to avoid having to have
   memory allocated for both LHS and RHS for the arithmetic operators?  Might
   complicate things substantially.
-* Issue recycling warnings?
 * Make sure pointer arrays are aligned.  Use `malloc`?  If so internal code
   cannot use `error`, and we can't guarantee that?  Can we register a finalizer
   somehow (probably will need to).
-* Check assumption that double will hold `R_xlen_t`?  Or that length is no
-  longer that the allowable size?  A bit tricky; no way to know what double size
-  is.  This is because we return the group size to R; otherwise it would just be
-  an R_xlen_t vector.  We need this to get the group max for the allocation.
-  It's possible R guarantees this will be no bigger than e.g. 2^53 or some such.
 * Do we need to handle the issue of `envir` for `match.call` at allocation time
   instead of at compile time?  Seems like the way this goes wrong is if the
   expression being looked at itself contains dots, e.g. literally `sum(...)`
@@ -77,21 +68,12 @@ Figure out how to report missing arguments in `alloc`
   each sub-call will then seek the symbol through the nested environments.
   We'll need to bind the data symbols to e.g. environments so they may be
   uniquely identified and we can confirm they've been found.
-* Test a single symbol to make sure logic doesn't choke on that.
-* Can we compute non-varying variables before compilation for sizing purposes?
-  E.g. `1:10` is of knowable size at compilation assuming we don't mess with
-  `:`.  Could allow this for non-control parameters.  Definitely non-trivial
-  though.
 * Make sure headers go in in correct order; it may not work if we structure
   workflow around C functions?  Maybe okay if each group of functions does the
   right thing?  Do we need to include the headers before each group of
   functions?  Do we need to keep translation units independent (but the lose the
   benefit of static funs)?  This is almost certainly a real problem that needs
   to be addressed.
-* Ensure that all pointer parameters are allocated one extra element at end so
-  that we can use the fun(++pointer) pattern without worrying about the last
-  call overflowing (I think this might be allowed by the standard anyway,
-  check).
 * Ensure all entry point names are unique and that there are no collisions.
   Maybe this can be done on registration?
 * Special case where all groups are same size and there is an external vector of
@@ -103,6 +85,8 @@ Figure out how to report missing arguments in `alloc`
 * Support for functions with defaults that need to be evaluated?  No.  This
   substantially increases complexity because we have to do so in the function
   evaluation environment and need access to all the other arguments.
+* Side effects from evaluation of control parameters?  Where should assigned
+  variables reside?
 * Add capability to specify functions in non-standard ways (e.g. `base::sum`, or
   `(get("sum", as.environment("package:base"))`)?  Maybe not, that seems like
   potential trouble.  Certainly document also things like `f <- sum; f(x)`.
@@ -131,6 +115,16 @@ Figure out how to report missing arguments in `alloc`
 
 ## Done
 
+* Check assumption that double will hold `R_xlen_t`?  Or that length is no
+  longer that the allowable size?  A bit tricky; no way to know what double size
+  is.  This is because we return the group size to R; otherwise it would just be
+  an R_xlen_t vector.  We need this to get the group max for the allocation.
+  It's possible R guarantees this will be no bigger than e.g. 2^53 or some such.
+  We added a check to assumptions.c.
+* Ensure that all pointer parameters are allocated one extra element at end so
+  that we can use the fun(++pointer) pattern without worrying about the last
+  call overflowing (I think this might be allowed by the standard anyway,
+  check).  Yes, allowed by C99 6.5.6 p8.
 * Is it possible that set.seed could interfere badly with the random file name
   generation?  Yes, maybe try to initialize the pool
 * Evaluation of non-compilable expressions in an env child of an env with
