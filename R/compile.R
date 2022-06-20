@@ -72,7 +72,10 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' `a fun b` where `fun` is the unquoted name of the function (i.e. not
 #' `"fun"(...)` or many of the other variations that R will normally allow for
 #' function invocation).  Functions must be bound to their original symbols for
-#' them to be recognized.
+#' them to be recognized.  Symbols used as parameters to `call` and its
+#' constituent sub-calls (e.g. the `x` and `y` in `sum(x) + y`) will become
+#' parameters to the "r2c_fun" function.  There must be at least one such symbol
+#' in `call`.
 #'
 #' Parameters used with "r2c_fun" supported functions are categorized into data
 #' parameters and control parameters.  For example, in `sum(x, na.rm=TRUE)`, `x`
@@ -89,14 +92,14 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' the `identical` level, but there may be corner cases that differ,
 #' particularly those involving missing or infinite values.
 #'
-#' `r2c` requires a C99 compatible implementation with infinity defined.
-#' Compiling with other implementations may produce undefined behavior, although
-#' such implementations should be rare and might not even be supported by R
-#' proper.
+#' `r2c` requires a C99 compatible implementation with floating point infinity
+#' defined and the `R_xlen_t` range representable without precision loss as
+#' double precision floating point.  It is unknown whether R supports C
+#' implementations that fail this requirement.
 #'
 #' @export
 #' @param call an R expression, for `r2cq` it is captured unevaluated, for
-#'   `r2c` it should be quoted with e.g. [`quote`].
+#'   `r2c` it should be quoted with e.g. [`quote`].  See details.
 #' @param dir NULL (default), or character(1L) name of a file system directory
 #'   to store the shared object file in.  If NULL a temporary directory will be
 #'   used. The shared object will also be loaded, and if `dir` is NULL the
@@ -154,6 +157,10 @@ r2c <- function(
   )
   # generate formals that match the free symbols in the call
   sym.free <- preproc[['sym.free']]
+  if(!length(sym.free))
+    stop(
+      "Expression `", deparse(call), "` does not contain any parameter symbols."
+    )
   formals <- replicate(length(sym.free), alist(a=))
   names(formals) <- sym.free
 
@@ -182,7 +189,7 @@ r2c <- function(
       group_exec_int(
         NULL, formals=.(.FRM), env=.(.ENV), groups=NULL,
         # Pretend firrt argument is group-varying, even though it's not
-        data=.(.DAT[1L]), MoreArgs=.(.DAT[-1L]), sorted=TRUE
+        data=.(.DGRP), MoreArgs=.(.DAT[-1L]), sorted=TRUE
   ) ) )
   GEXE[[c(2L, 2L)]] <- OBJ  # embed object directly in call (replaces 1st NULL)
   DOC <- as.call(
@@ -202,13 +209,14 @@ r2c <- function(
   PREAMBLE <- bquote({
     .(DOC)
     .(OBJ)  # for ease of access, embedded in actual fun later
-    .DAT <- as.list(environment())  # first, so no other symbols
+    .DAT <- as.list(environment(), all.names=TRUE) # first, so no other symbols
+    .DGRP <- if(length(.DAT)) .DAT[1L] else list()
     .FRM <- formals()
     .ENV <- parent.frame()
     .CALL <- sys.call()
     # Force promises, otherwise access missing symbols via .DAT
     tryCatch(
-      for(i in names(.DAT)) eval(as.name(i)),
+      for(i in names(.DAT)) eval(as.name(i), envir=.ENV),
       error=function(e) stop(simpleError(conditionMessage(e), .CALL))
     )
   })
