@@ -128,10 +128,13 @@ rand_string <- function(len, pool=c(letters, 0:9))
 
 r2c <- function(
   call, dir=NULL, check=getOption('r2c.check.result', FALSE),
-  quiet=getOption('r2c.quiet', TRUE), clean=is.null(dir)
+  quiet=getOption('r2c.quiet', TRUE), clean=is.null(dir), env=parent.frame()
 ) {
-  vetr(is.language(.), dir=CHR.1 || NULL, check=LGL.1, quiet=LGL.1, clean=LGL.1)
-  preproc <- preprocess(call)
+  vetr(
+    is.language(.), dir=CHR.1 || NULL, check=LGL.1, quiet=LGL.1, clean=LGL.1,
+    env=is.environment(.)
+  )
+  preproc <- preprocess(call, env)
   if(is.null(dir)) dir <- tempfile()
 
   so <- make_shlib(preproc[['code']], dir=dir, quiet=quiet)
@@ -237,9 +240,9 @@ r2c <- function(
 
 r2cq <- function(
   call, dir=NULL, check=getOption('r2c.check.result', FALSE),
-  quiet=getOption('r2c.quiet', TRUE), clean=is.null(dir)
+  quiet=getOption('r2c.quiet', TRUE), clean=is.null(dir), env=parent.frame()
 )
-  r2c(substitute(call), dir=dir, check=check, quiet=quiet)
+  r2c(substitute(call), dir=dir, check=check, quiet=quiet, clean=clean, env=env)
 
 #' Extract Data from "r2c_fun" Objects
 #'

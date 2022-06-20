@@ -56,4 +56,5 @@ r2c_slope <- r2cq(
   check=TRUE
 )
 r2c_sum <- r2cq(sum(x))
+r2c_add <- r2cq(x + y)
 

@@ -7,6 +7,14 @@ Figure out how to report missing arguments in `alloc`
 # To Do / Questions
 
 * What should the environment of an "r2c_fun" be?
+* Is it possible for e.g. someone doing something like `sum(a, trim=1:3)` to
+  mismatch to the parameter name, or do dots handle it properly (thinking of
+  validation function).
+* Do we need to handle the issue of `envir` for `match.call` at allocation time
+  instead of at compile time?  Seems like the way this goes wrong is if the
+  expression being looked at itself contains dots, e.g. literally `sum(...)`
+  where the `...` need to be fetched.
+
 * How can we efficiently warn of "longer object length is not a multiple" in
   vecrec?  We don't want a modulo for each group.  But we could check that the
   shorter object has not hit its length at the end of the loop and set a global
@@ -49,9 +57,6 @@ Figure out how to report missing arguments in `alloc`
   are.
 * Are names sufficient to disqualify from nakedness?  How do names behave in
   recycling?  Do we want to allow other attributes to persist?
-* Is it possible for e.g. someone doing something like `sum(a, trim=1:3)` to
-  mismatch to the parameter name, or do dots handle it properly (thinking of
-  validation function).
 * Make sure to have a function that uses the `ctrl` functionality to check that
   it works properly (once we switch to `flag` for most functions).
 * Can we get more memory efficient by e.g. using `+=` to avoid having to have
@@ -60,10 +65,6 @@ Figure out how to report missing arguments in `alloc`
 * Make sure pointer arrays are aligned.  Use `malloc`?  If so internal code
   cannot use `error`, and we can't guarantee that?  Can we register a finalizer
   somehow (probably will need to).
-* Do we need to handle the issue of `envir` for `match.call` at allocation time
-  instead of at compile time?  Seems like the way this goes wrong is if the
-  expression being looked at itself contains dots, e.g. literally `sum(...)`
-  where the `...` need to be fetched.
 * To allow assignments we can just use a series of nested environments such that
   each sub-call will then seek the symbol through the nested environments.
   We'll need to bind the data symbols to e.g. environments so they may be
