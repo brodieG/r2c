@@ -13,6 +13,11 @@
 ##
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
+#' @include constants.R
+
+NULL
+
+
 OP.NAMES <- c(
   "+"="add", "-"="subtract", "*"="multiply", "/"="divide", "%%"="modulo"
 )
@@ -26,15 +31,15 @@ OP.OP <- c("+"="+", "-"="-", "*"="*", "/"="/", "%%"="%")
 ## each of the possible length pairings, but that didn't seem to improve things
 ## too much (at least single core without any contention).
 
-bin_op_vec_rec <- '
+bin_op_vec_rec <- paste0('
 static void %1$s(%2$s) {
-  int di1 = di[0];
-  int di2 = di[1];
+  int di0 = di[0];
+  int di1 = di[1];
   int dires = di[2];
-  double * e1 = data[di1];
-  double * e2 = data[di2];
-  R_xlen_t len1 = lens[di1];
-  R_xlen_t len2 = lens[di2];
+  double * e1 = data[di0];
+  double * e2 = data[di1];
+  R_xlen_t len1 = lens[di0];
+  R_xlen_t len2 = lens[di1];
   double * res = data[dires];
 
   if(len1 == 0 || len2 == 0) { // empty recycle is zero
@@ -60,15 +65,17 @@ static void %1$s(%2$s) {
       if(j >= len2) j = 0;
       res[i] = %3$s(e1[i] %4$s e2[j]);
     }
+    if(j != len2) data[%5$s][%6$s] = 1.;   // bad recycle
     lens[dires] = len1;
   } else if (len2 > len1) {
     for(i = 0, j = 0; i < len2; ++i, ++j) {
       if(j >= len1) j = 0;
       res[i] = %3$s(e1[j] %4$s e2[i]);
     }
+    if(j != len1) data[%5$s][%6$s] = 1.;   // bad recycle
     lens[dires] = len2;
   }
-}'
+}')
 code_gen_arith <- function(fun, args.reg, args.ctrl, args.flags) {
   vetr(
     CHR.1 && . %in% names(OP.NAMES),
@@ -78,7 +85,10 @@ code_gen_arith <- function(fun, args.reg, args.ctrl, args.flags) {
   )
   name <- OP.NAMES[fun]
   op <- OP.OP[fun]      # needed for modulo
-  defn <- sprintf(bin_op_vec_rec, name, toString(F.ARGS.BASE), "", op)
+  defn <- sprintf(
+    bin_op_vec_rec, name, toString(F.ARGS.BASE), "", op,
+    IX[['I.STAT']], IX[['STAT.RECYCLE']]
+  )
   code_res(defn=defn, name=name, headers=character())
 }
 

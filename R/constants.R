@@ -13,6 +13,8 @@
 ##
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
+# - C Fun Parameters -----------------------------------------------------------
+
 ARGS.NM.BASE <- c('data', 'lens', 'di')
 ARGS.NM.VAR <- 'narg'
 ARGS.NM.CTRL <- 'ctrl'
@@ -57,4 +59,10 @@ stopifnot(
     ARGS.NM.ALL[-length(ARGS.NM.ALL)] # CALL.CTRL hard to compare
   )
 )
+
+# - Constants ------------------------------------------------------------------
+
+# Filled in via onLoad from values stored in C (so C and R stay in sync)
+
+IX <- list()
 

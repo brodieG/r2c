@@ -223,6 +223,7 @@ group_exec_int <- function(obj, formals, env, groups, data, MoreArgs, sorted) {
   } else {
     group.res.sizes <- numeric()
   }
+  status <- numeric(1)
   res.i <- which(alloc[['alloc']][['type']] == "res")
   res <- if(length(group.res.sizes)) {
     # Allocate result vector, this will be modified by reference
@@ -250,7 +251,7 @@ group_exec_int <- function(obj, formals, env, groups, data, MoreArgs, sorted) {
     if(!is.loaded("run", PACKAGE=handle[['name']]))
       stop("Could not load native code.")
 
-    run_int(
+    status <- run_int(
       handle[['name']],
       dat,
       dat_cols,
@@ -276,6 +277,14 @@ group_exec_int <- function(obj, formals, env, groups, data, MoreArgs, sorted) {
     } else if (mode == 'vec') {
       names(res) <- g.lab
     } else stop("Unknown return format mode")
+    if(status) {
+      warning(
+        "longer object length is not a multiple of shorter object length ",
+        sprintf("(first at group %.0f).", status)
+      )
+    }
+  } else if(status) {
+    warning("longer object length is not a multiple of shorter object length.")
   }
   res
 }

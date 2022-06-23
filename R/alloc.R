@@ -29,20 +29,24 @@ NULL
 alloc <- function(x, data, gmax, par.env, MoreArgs) {
   # - Initialize ---------------------------------------------------------------
   env <- list2env(MoreArgs, parent=par.env)
-  # will track pending parameters to process
 
+  # Status control placeholder.
+  alloc <- append_dat(
+    init_dat(), new=list(numeric(IX[['STAT.N']])), sizes=IX[['STAT.N']],
+    depth=0L, type="sts"
+  )
+  # Result placeholder, to be alloc'ed once we know group sizes.
+  alloc <- append_dat(
+    alloc, new=list(numeric()), sizes=0L, depth=0L, type="res"
+  )
   # Add group data.
   if(!all(nzchar(names(data)))) stop("All data must be named.")
   data.naked <- data[is.num_naked(data)]
   data.used <- logical(length(data.naked))
   names(data.used) <- names(data.naked)
   alloc <- append_dat(
-    init_dat(), new=data.naked, sizes=rep(gmax, length(data.naked)),
+    alloc, new=data.naked, sizes=rep(gmax, length(data.naked)),
     depth=0L, type="grp"
-  )
-  # Put in a dummy for the result, to be alloc'ed once we know group sizes.
-  alloc <- append_dat(
-    alloc, new=list(numeric()), sizes=0L, depth=0L, type="res"
   )
   # - Process ------------------------------------------------------------------
   #
@@ -167,7 +171,8 @@ alloc <- function(x, data, gmax, par.env, MoreArgs) {
     } else if (id <- match(name, names(data.naked), nomatch=0)) {
       # Record size (note `id` computed in conditional)
       stack <- append_stack(
-        stack, id=id, depth=depth, size=NA_real_, group=1, argn=argn
+        stack, id=get_gdat_id(id), depth=depth, size=NA_real_,
+        group=1, argn=argn
       )
       data.used[id] <- TRUE
     } else stop("Internal Error: unexpected token.")
@@ -175,7 +180,8 @@ alloc <- function(x, data, gmax, par.env, MoreArgs) {
   # Remove unused data, and re-index to account for that
   ids.all <- seq_along(alloc[['dat']])
   ids.keep <- ids.all[
-    alloc[['type']] %in% c("res", "ext", "tmp") | ids.all %in% which(data.used)
+    alloc[['type']] %in% c("res", "ext", "tmp", "sts") |
+    ids.all %in% get_gdat_id(which(data.used))
   ]
   call.dat <- lapply(
     call.dat, function(x) {
@@ -189,6 +195,14 @@ alloc <- function(x, data, gmax, par.env, MoreArgs) {
   )
   alloc.fin[['i']] <- match(alloc[['i']], ids.keep)
   list(alloc=alloc.fin, call.dat=call.dat, stack=stack)
+}
+## Convert Group Varying data ID to Alloc ID
+##
+## Group varying data is offset from beginning of allocation data, so we need to
+## translate.
+
+get_gdat_id <- function(gd_id) {
+  gd_id + IX[['I.GRP']]  # starting column for group varying data
 }
 
 ## Compute Max Possible Size
@@ -296,7 +310,8 @@ append_dat <- function(dat, new, sizes, depth, type) {
   if(length(new)) { # it's possible `data` has no numeric nums
     if(!is.list(new)) stop("Internal Error: `new` must be list.")
     if(!all(is.num_naked(new))) stop("Internal Error: bad data column.")
-    if(!type %in% c("res", "grp", "ext")) stop("Internal Error: bad type.")
+    if(!type %in% c("res", "grp", "ext", "sts"))
+      stop("Internal Error: bad type.")
     id.max <- length(dat[['dat']])
     dat[['dat']] <- c(
       dat[['dat']],

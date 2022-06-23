@@ -216,7 +216,7 @@ r2c <- function(
     .CALL <- sys.call()
     # Force promises, otherwise access missing symbols via .DAT
     tryCatch(
-      for(i in names(.DAT)) eval(as.name(i), envir=.ENV),
+      for(i in names(.DAT)) eval(as.name(i)),
       error=function(e) stop(simpleError(conditionMessage(e), .CALL))
     )
   })

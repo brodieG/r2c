@@ -27,10 +27,22 @@
 #include <stdint.h>
 
 SEXP R2C_assumptions();
+SEXP R2C_constants();
 SEXP R2C_group_sizes(SEXP g);
 SEXP R2C_run_internal(
   SEXP so, SEXP dat, SEXP dat_cols,
   SEXP ids, SEXP flag, SEXP ctrl, SEXP grp_lens, SEXP res_lens
 );
+
+// Important indices in the alloc data
+#define I_STAT      0
+#define I_RES       1
+#define I_GRP       2   // start of group varying data
+
+// Indices in the I_STAT element of the alloc_data (only 1 so far)
+#define STAT_N       1  // how many STATUS entries there are
+#define STAT_RECYCLE 0  // bad recycling
+
+struct const_dat {const char * name; const int value;};
 
 #endif  /* R2C_H */

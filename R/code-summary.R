@@ -19,18 +19,18 @@ NULL
 
 f_summary_base <- '
 static void %%s(%%s) {
-  int di1 = di[0];
-  int di2 = di[1];
+  int di0 = di[0];
+  int di1 = di[1];
   long double tmp = 0;
 
-  R_xlen_t len_n = lens[di1];
-  %sdouble * dat = data[di1];
+  R_xlen_t len_n = lens[di0];
+  %sdouble * dat = data[di0];
   int narm = flag;  // only one possible flag parameter
 
 %s%s
 
-  *data[di2] = (double) tmp;
-  lens[di2] = 1;
+  *data[di1] = (double) tmp;
+  lens[di1] = 1;
 }'
 loop.base <- '
 if(!narm)

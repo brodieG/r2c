@@ -21,19 +21,22 @@ code_gen_pow <-  function(fun, args.reg, args.ctrl, args.flags) {
     args.flags=list() && length(.) == 0L
   )
   name <- "power"
-  defn <- sprintf(bin_op_vec_rec, name, toString(F.ARGS.BASE), "pow", ",")
+  defn <- sprintf(
+    bin_op_vec_rec, name, toString(F.ARGS.BASE), "pow", ",",
+    IX[['I.STAT']], IX[['STAT.RECYCLE']]
+  )
   code_res(defn=defn, name=name, headers="<math.h>")
 }
 
 ## Interim solution until we add the deduplication of calculations
 square_code <- '
 static void %1$s(%2$s) {
-  int di1 = di[0];
+  int di0 = di[0];
   int dires = di[1];
   double * res = data[dires];
 
-  double * e1 = data[di1];
-  R_xlen_t len = lens[di1];
+  double * e1 = data[di0];
+  R_xlen_t len = lens[di0];
 
   if(len == 0) { // empty recycle is zero
     lens[dires] = 0;

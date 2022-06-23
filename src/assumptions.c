@@ -19,6 +19,9 @@
 // System headers if any go above ^^
 #include "r2c.h"
 
+extern struct const_dat consts[];
+extern int CONST_N;
+
 SEXP R2C_assumptions() {
 #ifndef INFINITY
   Rf_error("C implementation does not define INFINITY.");

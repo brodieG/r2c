@@ -19,6 +19,9 @@
 #include "r2c.h"
 #include <R_ext/Rdynload.h>
 
+extern struct const_dat consts[];
+extern int CONST_N;
+
 // Taken from Rdynpriv.h; we'll need to work around this
 // Dummy struct, per C99 all pointers to struct are the same size, and since
 // we're just going to pass a NULL pointer which R_FindSymbol checks for this
@@ -85,10 +88,11 @@ SEXP R2C_group_sizes(SEXP g) {
 
 SEXP R2C_run_internal(
   SEXP so,
+  // starts with the status vector, followed by the result vector, then followed
+  // by the group varying data, and finally any collected external references
+  // afterwards.
   SEXP dat,
-  // how many of the leading columns of `dat` are of the group varying type.
-  // The result vector will be after that, and the rest of the data will be any
-  // external data references.
+  // How many of the columns of `dat` are of the group varying type.
   SEXP dat_cols,
   SEXP ids,
   SEXP flag,
@@ -123,12 +127,13 @@ SEXP R2C_run_internal(
   DL_FUNC fun = R_FindSymbol(fun_char, dll_char, symbol);
   int dat_count = Rf_asInteger(dat_cols);
   R_xlen_t g_count = XLENGTH(grp_lens);
+  if(g_count >= R_XLEN_T_MAX)
+    Rf_error("Maximum allowed group count of %jd exceeded.", R_XLEN_T_MAX - 1);
   double * g_lens = REAL(grp_lens);
   double * r_lens = REAL(res_lens);
 
-  // Data columns are first, followed by result, and then external cols.
-  // This check incompleted if there are external cols.
-  if(dat_count < 0 || dat_count > XLENGTH(dat) - 1)
+  // Not a foolproof check, but we need at least group varying cols + 2 data
+  if(dat_count < 0 || dat_count > XLENGTH(dat) - 2)
     Rf_error("Internal Error: bad data col count.");
 
   // Retructure data to be seakable without overhead of VECTOR_ELT
@@ -156,33 +161,46 @@ SEXP R2C_run_internal(
         "Internal Error: non-integer data at %jd (%s).\n",
         (intmax_t) i, Rf_type2char(TYPEOF(elt))
       );
+    // Each call accesses some numbers of elements from data, where the last one
+    // is the result of evaluating the call (by convention)
     *(datai + i) = INTEGER(elt);
-    *(narg + i) = (int) XLENGTH(elt) - 1;  // Last element is the result
+    *(narg + i) = (int) XLENGTH(elt) - 1;
   }
   // Integer flags representing TRUE/FALSE control parameters
   int * flag_int = INTEGER(flag);
+  int dat_start = I_GRP;
+  int dat_end = I_GRP + dat_count - 1;
+  R_xlen_t grp_recycle_warn = 0;  // these will be stored 1-index
 
-  // Compute.  Resuls is in `data[dat_count]` and is updated by reference
+  // Compute.  Result will be in `data[I_RES]` and is updated by reference
   for(R_xlen_t i = 0; i < g_count; ++i) {
-    R_xlen_t g_len = (R_xlen_t) g_lens[i];  // rows in group
-    R_xlen_t r_len = (R_xlen_t) r_lens[i];  // final output size
+    R_xlen_t g_len = (R_xlen_t) g_lens[i];  // rows in current group
+    R_xlen_t r_len = (R_xlen_t) r_lens[i];  // group result size
 
     // Update group length and result length; note: `lens` should be updated by
     // the C functions to reflect the size of the intermediate results
-    for(int j = 0; j < dat_count; ++j) lens[j] = g_len;
+    for(int j = dat_start; j <= dat_end; ++j) lens[j] = g_len;
 
     (*fun)(data, lens, datai, narg, flag_int, ctrl);
 
+    // Record recycling error if any
+    if(data[I_STAT][STAT_RECYCLE] && !grp_recycle_warn)
+      grp_recycle_warn = i + 1; // g_count < R_XLEN_T_MAX
+
     // Increment the data pointers by group size; the last increment will be
-    // one past end of data, but it will not be dereferenced so okay
-    for(int j = 0; j < dat_count; ++j) *(data + j) += g_len;
-    if(lens[dat_count] != r_len)
+    // one past end of data, but it will not be dereferenced so okay.
+    for(int j = dat_start; j <= dat_end; ++j) *(data + j) += g_len;
+    if(lens[I_RES] != r_len)
       Rf_error(
-        "Group result size does not match expected (%ju vs expected %ju).",
-        lens[dat_count], r_len
+        "Group result size does not match expected (%jd vs expected %jd).",
+        lens[I_RES], r_len
       );
 
-    *(data + dat_count) += r_len;
+    // Increment to the next result slot; the last increment will be
+    // one past end of data, but it will not be dereferenced so okay.
+    *(data + I_RES) += r_len;
   }
-  return R_NilValue;
+  // Return the recycle status flag; if we add more in the future we'll need to
+  // adapt the logic a little for multiple flags
+  return Rf_ScalarReal((double) grp_recycle_warn);
 }
