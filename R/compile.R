@@ -75,7 +75,8 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' them to be recognized.  Symbols used as parameters to `call` and its
 #' constituent sub-calls (e.g. the `x` and `y` in `sum(x) + y`) will become
 #' parameters to the "r2c_fun" function.  There must be at least one such symbol
-#' in `call`.
+#' in `call`.  Symbols that match the regular expression "^\\.ARG[0-9]+$" are
+#' disallowed.
 #'
 #' Parameters used with "r2c_fun" supported functions are categorized into data
 #' parameters and control parameters.  For example, in `sum(x, na.rm=TRUE)`, `x`
@@ -163,7 +164,6 @@ r2c <- function(
     )
   formals <- replicate(length(sym.free), alist(a=))
   names(formals) <- sym.free
-
   fun <- fun.dummy <- function() NULL
   formals(fun) <- formals
   environment(fun) <- .BaseNamespaceEnv
