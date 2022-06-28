@@ -21,7 +21,7 @@ NULL
 ##
 ## Also, result is a list with just the arguments, not the original call.
 
-match_call <- function(definition, call, envir, name) {
+match_call <- function(definition, call, name) {
   frm <- formals(definition)
   frm.req <-
     vapply(frm, function(x) is.name(x) && !nzchar(as.character(x)), TRUE)
@@ -31,11 +31,21 @@ match_call <- function(definition, call, envir, name) {
 
   # Match, check call
   call[[1L]] <- as.character(call[[1L]]) # hack for e.g. `+`
-  mcall <-
-    match.call(definition=definition, call=call, envir=envir, expand.dots=FALSE)
+  # Replace dots (note these are dots as an argument, as opposed to dots in the
+  # formals of the function we'll generate); we do not want these dots to be
+  # matched against anything since that will be done at run-time, not now (i.e.
+  # dots might not even exist at the meoment).
+  any.dots <- vapply(call[-1L], identical, TRUE, quote(...))
+  any.r2cdots <- vapply(call[-1L], identical, TRUE, quote(.R2C.DOTS))
+  if(any(any.r2cdots)) stop("Symbol `.R2C.DOTS` is disallowed.")
+  if(any(any.dots)) call[-1L][which(any.dots)] <- list(quote(.R2C.DOTS))
+
+  mcall <- match.call(definition=definition, call=call, expand.dots=FALSE)
   mcall.nm <- names(mcall)[-1L]
 
   frms.req <- names(frm)[frm.req]
+  # recall: these dots (from formals) are not the ones replaced by .R2C.DOTS
+  # (forwarded as an argument)!
   frms.req <- frms.req[frms.req != "..."]
   if(!all(frms.req.have <- frms.req %in% mcall.nm))
     stop(
@@ -43,7 +53,7 @@ match_call <- function(definition, call, envir, name) {
       toString(sprintf("`%s`", frms.req[!frms.req.have])),
       " for `", name, "`."
     )
-  # Add defaults, expand dots, order matters
+  # Add defaults, expand formals dots, order matters
   mcall.nm.missing <- names(frm)[!names(frm) %in% c(mcall.nm, "...")]
   mcall.dots <- mcall[['...']]
   if(is.null(mcall.dots)) mcall.dots <- list()
@@ -86,7 +96,7 @@ match_call <- function(definition, call, envir, name) {
 #'   * Size of the current call being assessed.
 #'   * A linear list of generated code and associated calls.
 
-preprocess <- function(call, env) {
+preprocess <- function(call) {
   # All the data generated goes into x
   x <- list(
     call=list(), depth=integer(), args=list(), args.type=list(), code=list(),
@@ -94,7 +104,7 @@ preprocess <- function(call, env) {
   )
   # We use this for match.call, but very questionable given the env might be
   # different when we actually run the code
-  x <- pp_internal(call=call, depth=0L, x=x, env=env)
+  x <- pp_internal(call=call, depth=0L, x=x)
 
   # Deduplicate the code and generate the final C file (need headers).
   headers <- unique(unlist(lapply(x[['code']], "[[", "headers")))
@@ -166,7 +176,7 @@ preprocess <- function(call, env) {
   x
 }
 
-pp_internal <- function(call, depth, x, argn="", env) {
+pp_internal <- function(call, depth, x, argn="") {
   if(depth == .Machine$integer.max)
     stop("Expression max depth exceeded.") # exceedingly unlikely
 
@@ -193,7 +203,7 @@ pp_internal <- function(call, depth, x, argn="", env) {
     func <- call_valid(call)
     # Classify Params
     args <- if(!is.null(defn <- VALID_FUNS[[c(func, "defn")]])) {
-      match_call(definition=defn, call=call, envir=env, name=func)
+      match_call(definition=defn, call=call, name=func)
     } else {
       as.list(call[-1L])
     }
@@ -210,7 +220,7 @@ pp_internal <- function(call, depth, x, argn="", env) {
         )
       } else {
         x <- pp_internal(
-          call=args[[i]], depth=depth + 1L, x=x, argn=names(args)[i], env=env
+          call=args[[i]], depth=depth + 1L, x=x, argn=names(args)[i]
     ) } }
     type <- "call"
     # Generate Code
@@ -249,7 +259,11 @@ record_call_dat <- function(
   x, call, depth, argn, type, code, sym.free=sym_free(x, call)
 ) {
   # list dataj
-  x[['call']] <- c(x[['call']], list(call))
+  x[['call']] <- c(
+    x[['call']],
+    # Undo the dots replacement
+    list(if(identical(call, quote(.R2C.DOTS))) QDOTS else call)
+  )
   x[['code']] <- c(x[['code']], list(code))
 
   # vec data
@@ -262,6 +276,32 @@ record_call_dat <- function(
 sym_free <- function(x, sym) {
   if(is.symbol(sym)) {
     sym.chr <- as.character(sym)
+    if(identical(sym.chr, ".R2C.DOTS")) sym.chr <- "..."
     if(!sym.chr %in% x[['sym.free']]) sym.chr
   }
+}
+
+## Expand Dots
+##
+## Once we have an actual param match at runtime, we need to expand out the call
+## data matched to dots to the number of dots.
+
+expand_dots <- function(x, arg.names) {
+  exp.fields <- c('argn', 'type', 'depth')
+  is.dots <- vapply(x[['call']], identical, TRUE, QDOTS)
+  is.dots.m <- grepl(RX.ARG, arg.names)
+  if(any(is.dots) && any(is.dots.m)) {
+    dots.m.names <- lapply(arg.names[is.dots.m], as.name)
+    # Could have multiple sets of dots
+    for(i in which(is.dots)) {
+      x[['call']][[i]] <- NULL
+      x[['call']] <- append(x[['call']], dots.m.names, after=i - 1L)
+      for(j in exp.fields) {
+        exp.val <- x[[j]][i]
+        x[[j]] <- c(
+          x[[j]][seq_len(i - 1L)],
+          rep(exp.val, sum(is.dots.m)),
+          x[[j]][seq_len(length(x[[j]]) - i) + i]
+  ) } } }
+  x
 }

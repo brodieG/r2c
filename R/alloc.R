@@ -19,8 +19,7 @@ NULL
 
 #' Allocate Required Storage
 #'
-#' Group data goes first, then result, then any other temporary or external
-#' data.  For each call, we record indices into the storage list for each
+#' For each call, we record indices into the storage list for each
 #' argument and the result of evaluating the call.
 #'
 #' @noRd

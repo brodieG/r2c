@@ -65,4 +65,9 @@ stopifnot(
 # Filled in via onLoad from values stored in C (so C and R stay in sync)
 
 IX <- list()
+QDOTS <- quote(...)
+
+# - Regex ----------------------------------------------------------------------
+
+RX.ARG <- "^\\.ARG\\.\\d+$"
 

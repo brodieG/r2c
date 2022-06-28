@@ -75,8 +75,9 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' them to be recognized.  Symbols used as parameters to `call` and its
 #' constituent sub-calls (e.g. the `x` and `y` in `sum(x) + y`) will become
 #' parameters to the "r2c_fun" function.  There must be at least one such symbol
-#' in `call`.  Symbols that match the regular expression "^\\.ARG[0-9]+$" are
-#' disallowed.
+#' in `call`.  The symbol `.R2C.DOTS` as well as any symbols that match the
+#' regular expression "^\\.ARG[0-9]+$" are reserved for use by `r2c` and thus
+#' disallowed in `call`.
 #'
 #' Parameters used with "r2c_fun" supported functions are categorized into data
 #' parameters and control parameters.  For example, in `sum(x, na.rm=TRUE)`, `x`
@@ -132,23 +133,25 @@ rand_string <- function(len, pool=c(letters, 0:9))
 
 r2c <- function(
   call, dir=NULL, check=getOption('r2c.check.result', FALSE),
-  quiet=getOption('r2c.quiet', TRUE), clean=is.null(dir), env=parent.frame()
+  quiet=getOption('r2c.quiet', TRUE), clean=is.null(dir)
 ) {
   vetr(
-    is.language(.), dir=CHR.1 || NULL, check=LGL.1, quiet=LGL.1, clean=LGL.1,
-    env=is.environment(.)
+    is.language(.), dir=CHR.1 || NULL, check=LGL.1, quiet=LGL.1, clean=LGL.1
   )
-  preproc <- preprocess(call, env)
+  # Parse R expression and Generate the C code
+  preproc <- preprocess(call)
   if(is.null(dir)) dir <- tempfile()
 
+  # Compile C code
   so <- make_shlib(preproc[['code']], dir=dir, quiet=quiet)
-  # pre-load to avoid cost on initial execution?  Mostly a benchmarking thing
-  # as no matter what we have to load it sometime.
+  # Pre-load lib as by default we don't keep the SO file
   handle <- dyn.load(so[['so']])
   if(clean) {
     so[['so']] <- NA_character_
     unlink(dir, recursive=TRUE)
   }
+  # But if we do keep it, we want to be able to recover it later.  We store the
+  # data in an environment for deparse into <environment> instead of a list.
   OBJ <- list2env(
     list(
       preproc=preproc, so=so[['so']], handle=handle,
@@ -156,7 +159,7 @@ r2c <- function(
     ),
     parent=emptyenv()
   )
-  # generate formals that match the free symbols in the call
+  # Generate formals that match the free symbols in the call
   sym.free <- preproc[['sym.free']]
   if(!length(sym.free))
     stop(
@@ -168,7 +171,8 @@ r2c <- function(
   formals(fun) <- formals
   environment(fun) <- .BaseNamespaceEnv
 
-  # This is ugly because:
+  # The generated function needs to be be callable stand-alone, and useable by
+  # runners like group_exec.  We have the following requirements:
   #
   # 1. We need the function itself to be able to recover the `r2c` object data,
   #    which means we need to embed the actual object (not a symbol referencing
@@ -184,14 +188,7 @@ r2c <- function(
   # be generated at call time, to ensure that no run-time objects can interfere
   # with the symbol resolution of the "r2c_fun" against its parameters.
 
-  GEXE <- quote(
-    bquote(
-      group_exec_int(
-        NULL, formals=.(.FRM), env=.(.ENV), groups=NULL,
-        # Pretend firrt argument is group-varying, even though it's not
-        data=.(.DGRP), MoreArgs=.(.DAT[-1L]), sorted=TRUE
-  ) ) )
-  GEXE[[c(2L, 2L)]] <- OBJ  # embed object directly in call (replaces 1st NULL)
+  # Generate the docstring that will appear at beginning of function
   DOC <- as.call(
     list(
       as.name("{"),
@@ -206,20 +203,46 @@ r2c <- function(
         ) ) ),
         paste0("+", strrep("-", 61))
   ) ) )
+  # See below, we can't do this inline as it would be nested bquote
+  FORCE <- quote(eval(bquote(list(.(as.name(i))))))
+  # All required variables and meta-data; DOC and OBJ are embedded as
+  # actual R objects, not unevaluated symbols like the rest.
   PREAMBLE <- bquote({
     .(DOC)
     .(OBJ)  # for ease of access, embedded in actual fun later
     .DAT <- as.list(environment(), all.names=TRUE) # first, so no other symbols
+    if(dot.pos <- match('...', names(.DAT), nomatch=0))
+      tryCatch(
+        .DAT <- c(
+          .DAT[seq_len(dot.pos - 1L)], list(...),
+          .DAT[seq_len(length(.DAT) - dot.pos) + dot.pos]
+        ),
+        error=function(e) stop(simpleError(conditionMessage(e), .CALL))
+      )
     .DGRP <- if(length(.DAT)) .DAT[1L] else list()
     .FRM <- formals()
     .ENV <- parent.frame()
     .CALL <- sys.call()
-    # Force promises, otherwise access missing symbols via .DAT
+    # Force promises, otherwise access missing symbols via .DAT, use list in
+    # case we have "..." in parameters.
     tryCatch(
-      for(i in names(.DAT)) eval(as.name(i)),
+      lapply(.DAT, force),
       error=function(e) stop(simpleError(conditionMessage(e), .CALL))
     )
   })
+  # We'll use group_exec with a single group to act as the runner for the
+  # stand-alone use of this function, so ue `groups=NULL`.
+  GEXE <- quote(
+    bquote(
+      group_exec_int(
+        NULL, formals=.(.FRM), env=.(.ENV), groups=NULL,
+        # Pretend first argument is group-varying, even though it's not
+        data=.(.DGRP), MoreArgs=.(.DAT[-1L]), sorted=TRUE
+  ) ) )
+  GEXE[[c(2L, 2L)]] <- OBJ  # embed object directly in call (replaces 1st NULL)
+
+  # Assemble the full function, we have a normal version, and a self check
+  # version that compares against normal eval.
   body(fun) <- if(!check) {
     bquote({
       .(PREAMBLE)
@@ -248,9 +271,9 @@ r2c <- function(
 
 r2cq <- function(
   call, dir=NULL, check=getOption('r2c.check.result', FALSE),
-  quiet=getOption('r2c.quiet', TRUE), clean=is.null(dir), env=parent.frame()
+  quiet=getOption('r2c.quiet', TRUE), clean=is.null(dir)
 )
-  r2c(substitute(call), dir=dir, check=check, quiet=quiet, clean=clean, env=env)
+  r2c(substitute(call), dir=dir, check=check, quiet=quiet, clean=clean)
 
 #' Extract Data from "r2c_fun" Objects
 #'

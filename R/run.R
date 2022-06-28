@@ -171,22 +171,30 @@ group_exec_int <- function(obj, formals, env, groups, data, MoreArgs, sorted) {
     do <- data
     group.dat <- list(as.numeric(d.len), 0, as.numeric(d.len))
   }
+  # Fill in missing names caused by e.g. dots
+  if(any(grepl(RX.ARG, names(do))))
+    stop("`data` names may not match regular expression \"", RX.ARG, "\".")
+  if(any(grepl(RX.ARG, names(MoreArgs))))
+    stop("`MoreArgs` names may not match regular expression \"", RX.ARG, "\".")
   if(is.null(names(do))) names(do) <- character(length(do))
   if(is.null(names(MoreArgs))) names(MoreArgs) <- character(length(MoreArgs))
+  nn.do <- !nzchar(names(do))
+  names(do)[nn.do] <- sprintf(".ARG.%d", seq_len(sum(nn.do)))
+  nn.ma <- !nzchar(names(MoreArgs))
+  names(MoreArgs)[nn.ma] <- sprintf(".ARG.%d", seq_len(sum(nn.ma)) + sum(nn.do))
 
   # Match data against arguments
   params <- names(formals)
   args.dummy <- as.list(seq_len(length(do) + length(MoreArgs)))
   fun.dummy <- function() NULL
   formals(fun.dummy) <- formals
-
   names(args.dummy) <- c(names(do), names(MoreArgs))
   call.dummy <- as.call(c(list(fun.dummy), as.list(args.dummy)))
   call.dummy.m <- tryCatch(
     unlist(as.list(match.call(fun.dummy, call.dummy, envir=env))[-1L]),
     error=function(e) {
       # Error produced by this is confusing because we're matching to positions,
-      # so instead match agains the actual data for better error message
+      # so instead match against the actual data for better error message
       args <- c(data, MoreArgs)
       call.dummy <- as.call(c(list(fun.dummy), args))
       match.call(fun.dummy, call.dummy, envir=env)
@@ -197,6 +205,9 @@ group_exec_int <- function(obj, formals, env, groups, data, MoreArgs, sorted) {
   names(do)[dat.match] <- names(dat.match)
   more.match <- call.dummy.m[call.dummy.m > length(do)]
   names(MoreArgs)[more.match - length(do)] <- names(more.match)
+
+  # Expand any dots in the preprocess data to match the dot args we were given
+  preproc <- expand_dots(preproc, c(names(do), names(MoreArgs)))
 
   # Prepare temporary memory allocations
   alloc <- alloc(
