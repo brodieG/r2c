@@ -44,11 +44,12 @@ is.num_naked <- function(x)
   vapply(x, is.vector, TRUE, "integer")
 
 not_num_naked_err <- function(name, val) {
+  has.class <- length(class(val)) && !identical(class(val), typeof(val))
   sprintf(
-    "(type: %s %s%s)",
+    "(type: %s%s%s)",
     typeof(val),
-    if(length(class(val))) "class: " else "",
-    if(length(class(val))) toString(class(val)) else ""
+    if(has.class) ", class: " else "",
+    if(has.class) toString(class(val)) else ""
 ) }
 
 ## Run an Expression with Random Seed Unset

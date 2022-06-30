@@ -25,7 +25,7 @@ NULL
 #' @noRd
 #' @param x the result of preprocessing an expression
 
-alloc <- function(x, data, gmax, par.env, MoreArgs) {
+alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
   # - Initialize ---------------------------------------------------------------
   env <- list2env(MoreArgs, parent=par.env)
 
@@ -97,10 +97,14 @@ alloc <- function(x, data, gmax, par.env, MoreArgs) {
         # Length of a specific argument, like `probs` for `quantile`
         if(!all(ftype[[2L]] %in% colnames(stack)))
           stop(
-            "Parameter(s) ",
-            deparse1(ftype[[2L]][!ftype[[2L]]%in% colnames(stack)]),
-            " missing but required for sizing."
-          )
+            simpleError(
+              paste0(
+                "Parameter(s) ",
+                deparse1(ftype[[2L]][!ftype[[2L]]%in% colnames(stack)]),
+                " missing but required for sizing."
+              ),
+              .CALL
+          ) )
         # Get parameter data (depth + 1L should be params to current call)
         sizes.tmp <- stack[
           c('size', 'group'),
@@ -135,7 +139,10 @@ alloc <- function(x, data, gmax, par.env, MoreArgs) {
       type %in% c("control", "flag") || !name %in% names(data.naked)
     ) {
       # Need to eval parameter
-      arg.e <- eval(call, envir=data, enclos=env)
+      tryCatch(
+        arg.e <- eval(call, envir=data, enclos=env),
+        error=function(e) stop(simpleError(conditionMessage(e), .CALL))
+      )
       # Validate external args after eval
       if(type == "leaf" && !is.num_naked(list(arg.e))) {
         # Next call, if any
@@ -144,9 +151,13 @@ alloc <- function(x, data, gmax, par.env, MoreArgs) {
           if(length(next.call.v)) x[['call']][[next.call.v[1L]]]
           else call
         stop(
-          "External argument `", name, "` for `", deparse1(err.call),
-          "` is not unclassed numeric ", not_num_naked_err(name, arg.e), "."
-      ) }
+          simpleError(
+            paste0(
+              "External argument `", name, "` for `", deparse1(err.call),
+              "` is not unclassed numeric ", not_num_naked_err(name, arg.e), "."
+            ),
+            .CALL
+      ) ) }
       size <- length(arg.e)
       if(type == "control") {
         ctrl <- list(arg.e)

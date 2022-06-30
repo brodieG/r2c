@@ -290,7 +290,7 @@ expand_dots <- function(x, arg.names) {
   exp.fields <- c('argn', 'type', 'depth')
   is.dots <- vapply(x[['call']], identical, TRUE, QDOTS)
   is.dots.m <- grepl(RX.ARG, arg.names)
-  if(any(is.dots) && any(is.dots.m)) {
+  if(any(is.dots)) {
     dots.m.names <- lapply(arg.names[is.dots.m], as.name)
     # Could have multiple sets of dots
     for(i in which(is.dots)) {

@@ -68,27 +68,27 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' * Binary operators: `+`, `-`, `*`, `/`, and `^`.
 #' * Statistics: `mean`, `sum`, `length`.
 #'
-#' All calls present in `call` must be in the form `fun(...)` or for operators
-#' `a fun b` where `fun` is the unquoted name of the function (i.e. not
-#' `"fun"(...)` or many of the other variations that R will normally allow for
-#' function invocation).  Functions must be bound to their original symbols for
-#' them to be recognized.  Symbols used as parameters to `call` and its
-#' constituent sub-calls (e.g. the `x` and `y` in `sum(x) + y`) will become
-#' parameters to the "r2c_fun" function.  There must be at least one such symbol
-#' in `call`.  The symbol `.R2C.DOTS` as well as any symbols that match the
-#' regular expression "^\\.ARG[0-9]+$" are reserved for use by `r2c` and thus
-#' disallowed in `call`.
+#' `call` and all sub-calls it comprises must be in the form `fun(...)` or for
+#' operators `a fun b` where `fun` is the unquoted name of the function (i.e.
+#' not `"fun"(...)` or many of the other variations that R will normally allow
+#' for function invocation).  Functions must be bound to their original
+#' symbols for them to be recognized.  Symbols used as parameters to `call`
+#' and its constituent sub-calls (e.g. the `x` and `y` in `sum(x) + y`) will
+#' become parameters to the "r2c_fun" function.  There must be at least one such
+#' symbol in `call`.  Symbol order in the "r2c_fun" parameter list is based on
+#' order of appearance in the call tree after everything is [`match.call`]ed.
+#' `.R2C.DOTS` and any symbols that match the regular expression
+#' "^\\.ARG[0-9]+$" are reserved for use by `r2c` and thus disallowed in `call`.
 #'
 #' Parameters used with "r2c_fun" supported functions are categorized into data
 #' parameters and control parameters.  For example, in `sum(x, na.rm=TRUE)`, `x`
 #' is considered a data parameter and `na.rm` a control parameter.  All data
 #' parameters must be attribute-less numeric vectors.  Integer vectors are
-#' supported, but they are coerced to numeric for all intermediate calculations.
-#' If all data inputs are integer and the R counterpart functions in `call`
-#' support integer output, the result will be returned as integer.  There are no
-#' general restrictions on control parameters, but each implemented function
-#' will only accept values for them that would make sense for the R
-#' counterparts.
+#' supported, but they are coerced to numeric (and thus copied) before use.  If
+#' all data inputs are integer and the R counterpart functions in `call` support
+#' integer output, the result will be returned as integer.  There are no general
+#' type restrictions on control parameters, but each implemented function will
+#' only accept values for them that would make sense for the R counterparts.
 #'
 #' In general `r2c` attempts to mimic the corresponding R function semantics to
 #' the `identical` level, but there may be corner cases that differ,
@@ -97,7 +97,8 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' `r2c` requires a C99 compatible implementation with floating point infinity
 #' defined and the `R_xlen_t` range representable without precision loss as
 #' double precision floating point.  It is unknown whether R supports C
-#' implementations that fail this requirement.
+#' implementations that fail this requirement, and if it does they are probably
+#' rare.
 #'
 #' @export
 #' @param call an R expression, for `r2cq` it is captured unevaluated, for
@@ -210,7 +211,12 @@ r2c <- function(
   PREAMBLE <- bquote({
     .(DOC)
     .(OBJ)  # for ease of access, embedded in actual fun later
-    .DAT <- as.list(environment(), all.names=TRUE) # first, so no other symbols
+    try <- tryCatch(
+      .DAT <- as.list(environment(), all.names=TRUE), error=function(e) e
+    )
+    .CALL <- sys.call()
+    if(inherits(try, 'simpleError'))
+      stop(simpleError(conditionMessage(try), .CALL))
     if(dot.pos <- match('...', names(.DAT), nomatch=0))
       tryCatch(
         .DAT <- c(
@@ -222,13 +228,6 @@ r2c <- function(
     .DGRP <- if(length(.DAT)) .DAT[1L] else list()
     .FRM <- formals()
     .ENV <- parent.frame()
-    .CALL <- sys.call()
-    # Force promises, otherwise access missing symbols via .DAT, use list in
-    # case we have "..." in parameters.
-    tryCatch(
-      lapply(.DAT, force),
-      error=function(e) stop(simpleError(conditionMessage(e), .CALL))
-    )
   })
   # We'll use group_exec with a single group to act as the runner for the
   # stand-alone use of this function, so ue `groups=NULL`.
@@ -237,7 +236,8 @@ r2c <- function(
       group_exec_int(
         NULL, formals=.(.FRM), env=.(.ENV), groups=NULL,
         # Pretend first argument is group-varying, even though it's not
-        data=.(.DGRP), MoreArgs=.(.DAT[-1L]), sorted=TRUE
+        data=.(.DGRP), MoreArgs=.(.DAT[-1L]), sorted=TRUE,
+        call=quote(.(.CALL))
   ) ) )
   GEXE[[c(2L, 2L)]] <- OBJ  # embed object directly in call (replaces 1st NULL)
 

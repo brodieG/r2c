@@ -128,20 +128,24 @@ group_exec <- function(
     sorted=LGL.1
   )
   obj <- get_r2c_dat(fun)
+  call <- sys.call()
   group_exec_int(
     obj, formals=formals(fun), env=env, groups=groups, data=data,
-    MoreArgs=MoreArgs, sorted=sorted
+    MoreArgs=MoreArgs, sorted=sorted, call=call
   )
 }
-group_exec_int <- function(obj, formals, env, groups, data, MoreArgs, sorted) {
+group_exec_int <- function(
+  obj, formals, env, groups, data, MoreArgs, sorted, call
+) {
   preproc <- obj[['preproc']]
   shlib <- obj[['so']]
 
-  # Make all arguments into lists
+  # - Prep and Check -----------------------------------------------------------
   mode <- if(!is.list(groups)) "vec" else "list"
   if(!is.list(data)) data <- list(data)
   if(length(d.len <- unique(lengths(data))) > 1L)
     stop("All `data` vectors must be the same length.")
+  if(!length(d.len)) d.len <- 0L  # No data
   if(!is.null(groups)) {
     if(!is.list(groups)) groups <- list(groups)
     if(length(g.len <- unique(lengths(groups))) != 1L)
@@ -152,8 +156,8 @@ group_exec_int <- function(obj, formals, env, groups, data, MoreArgs, sorted) {
       stop("`groups` vectors must be the same length as `data` vectors.")
   } else {
     mode <- "ungrouped"
-    if(!length(data))
-      stop("NULL `groups` allowed only if `data` is non-empty.")
+    # if(!length(data))
+    #   stop("NULL `groups` allowed only if `data` is non-empty.")
   }
   if (mode != "ungrouped") {
     if(!sorted) {
@@ -171,39 +175,50 @@ group_exec_int <- function(obj, formals, env, groups, data, MoreArgs, sorted) {
     do <- data
     group.dat <- list(as.numeric(d.len), 0, as.numeric(d.len))
   }
-  # Fill in missing names caused by e.g. dots
+  # - Match Data to Parameters -------------------------------------------------
+
+  # Trick here is data is split across two parameters so we have to merge
+  # together to match, but then split the data back into the two parameters.
+
   if(any(grepl(RX.ARG, names(do))))
     stop("`data` names may not match regular expression \"", RX.ARG, "\".")
   if(any(grepl(RX.ARG, names(MoreArgs))))
     stop("`MoreArgs` names may not match regular expression \"", RX.ARG, "\".")
   if(is.null(names(do))) names(do) <- character(length(do))
   if(is.null(names(MoreArgs))) names(MoreArgs) <- character(length(MoreArgs))
-  nn.do <- !nzchar(names(do))
-  names(do)[nn.do] <- sprintf(".ARG.%d", seq_len(sum(nn.do)))
-  nn.ma <- !nzchar(names(MoreArgs))
-  names(MoreArgs)[nn.ma] <- sprintf(".ARG.%d", seq_len(sum(nn.ma)) + sum(nn.do))
 
-  # Match data against arguments
+  # Generate a function and arg list with the combined params to match; we use
+  # for param values the index of each item in the original data, and we'll use
+  # those indices to split the data back after matching.
   params <- names(formals)
   args.dummy <- as.list(seq_len(length(do) + length(MoreArgs)))
-  fun.dummy <- function() NULL
-  formals(fun.dummy) <- formals
+  f.dummy <- function() NULL
+  formals(f.dummy) <- formals
   names(args.dummy) <- c(names(do), names(MoreArgs))
-  call.dummy <- as.call(c(list(fun.dummy), as.list(args.dummy)))
+  call.dummy <- as.call(c(list(f.dummy), as.list(args.dummy)))
   call.dummy.m <- tryCatch(
-    unlist(as.list(match.call(fun.dummy, call.dummy, envir=env))[-1L]),
+    as.list(match.call(f.dummy, call.dummy, envir=env, expand.dots=FALSE))[-1L] ,
     error=function(e) {
       # Error produced by this is confusing because we're matching to positions,
       # so instead match against the actual data for better error message
       args <- c(data, MoreArgs)
-      call.dummy <- as.call(c(list(fun.dummy), args))
-      match.call(fun.dummy, call.dummy, envir=env)
+      call.dummy <- as.call(c(list(f.dummy), args))
+      match.call(f.dummy, call.dummy, envir=env)
       # In case the above somehow doesn't produce an error; it always should
       stop("Internal Error: no param match error; contact maintainer.")
   } )
-  dat.match <- call.dummy.m[call.dummy.m <= length(do)]
+  # Rename the dots and splice back in; there is no dots forwarding once we get
+  # to r2c implementations, so the original names are useless, and we need new
+  # names so we can recognize which arguments came from dots.
+  if(dots.pos <- match("...", names(call.dummy.m), nomatch=0)) {
+    dots <- call.dummy.m[[dots.pos]]
+    names(dots) <- sprintf(".ARG.%d", seq_along(dots))
+    call.dummy.m <- append(call.dummy.m[-dots.pos], dots, after=dots.pos - 1L)
+  }
+  # Split back into group varying vs not
+  dat.match <- unlist(call.dummy.m[call.dummy.m <= length(do)])
   names(do)[dat.match] <- names(dat.match)
-  more.match <- call.dummy.m[call.dummy.m > length(do)]
+  more.match <- unlist(call.dummy.m[call.dummy.m > length(do)])
   names(MoreArgs)[more.match - length(do)] <- names(more.match)
 
   # Expand any dots in the preprocess data to match the dot args we were given
@@ -212,7 +227,7 @@ group_exec_int <- function(obj, formals, env, groups, data, MoreArgs, sorted) {
   # Prepare temporary memory allocations
   alloc <- alloc(
     x=preproc, data=do, gmax=group.dat[[3L]], par.env=env,
-    MoreArgs=MoreArgs
+    MoreArgs=MoreArgs, .CALL=call
   )
   stack <- alloc[['stack']]
 
