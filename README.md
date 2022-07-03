@@ -1,6 +1,6 @@
 # r2c - Fast Iterated Statistic Computation in R
 
-**Proof of Concept**.  Experimental, incomplete, and interface subject to
+**Proof of Concept**.  Experimental, incomplete, with an interface subject to
 change.
 
 Compiles a subset of R into machine code so that expressions composed with that
@@ -29,7 +29,7 @@ of the 10 million operations and associated loop overhead.  Hard to get much
 faster[^1].  If we maintain a high ratio of native operations to R level calls
 our programs will be fast.
 
-Some tasks require more R-level calls, such as computing group statistics:
+Some tasks require more R-level calls, such as computing group statistics[^7]:
 <span id=in-r>
 
     g <- cumsum(sample(c(TRUE, rep(FALSE, 9)), n, replace=TRUE))
@@ -43,25 +43,11 @@ Some tasks require more R-level calls, such as computing group statistics:
     ##   user  system elapsed 
     ##  0.735   0.004   0.747 
 
-Despite the same number of additions, our program slowed by ~20x.  And this
+Despite the same number of additions, our program **slowed by ~20x**.  And this
 is with a primitive R function that does nothing but go directly to C code:
 
     sum
     ## function (..., na.rm = FALSE)  .Primitive("sum")
-
-Note we did not time the splitting step, and our groups are purposefully
-pre-sorted:
-
-    head(g, 20)
-    ## [1] 0 0 1 1 1 1 1 2 2 2 2 2 2 2 3 3 3 4 4 4
-
-This is to keep the focus benchmarks on the statistic computation.  When
-computing simple group statistics like `sum`, the sorting / splitting step can
-be slower than the statistic computation.
-
-For this very specific task R also provides `rowsum`, but as it is limited to
-sums and we cannot separate the splitting and summing steps for timing we will
-not discuss it further.
 
 ## What If We Could Compile R?
 
@@ -287,6 +273,30 @@ ggsave("extra/time_glope_all-vs.png", p)
 -->
 ![](https://github.com/brodieG/r2c/raw/initial/extra/time_glope_all-vs.png)
 
+To summarize:
+
+> `{r2c}` let's you create complex statistics from simple building blocks, using
+> R syntax and semantics, and let's you run them as fast as if you had written
+> them in a statically compiled language yourself.
+
+## Interlude - On Sorting
+
+Note our groups are purposefully pre-sorted:
+
+    head(g, 20)
+    ## [1] 0 0 1 1 1 1 1 2 2 2 2 2 2 2 3 3 3 4 4 4
+
+And for the base examples we do not time the splitting step.
+
+This is to keep the focus benchmarks on the statistic computation.  When
+computing simple group statistics like `sum`, the sorting / splitting step can
+be slower than the statistic computation.
+
+Fast group statistic computation requires fast sorting to organize data into
+groups.  This is possible in R thanks to `{data.table}` contributing their fast
+radix sort starting with R 3.3.0.  Without this contribution `{r2c}` and other
+implementations would be uncompetitive.
+
 ## Caveats - Of Course ...
 
 First is that `r2c` requires compilation.  I have not included that step in
@@ -330,6 +340,10 @@ particular set of inputs on a particular platform the results might diverge.
 In addition to cleaning up the existing code, there are many extensions that can
 be built on this proof of concept.  Some are listed below.  How many I end up
 working on will depend on some interaction of external and my own interest.
+
+### Better Grouping Semantics
+
+Implement multi-column grouping and non-integer grouping columns.
 
 ### More Functions
 
@@ -454,6 +468,7 @@ Different systems / compilers / settings may produce different results.
 [5]: https://dplyr.tidyverse.org/
 [6]: https://github.com/tidyverse/dplyr/issues/5017
 [7]: https://github.com/eddelbuettel/inline
+[8]: https://twitter.com/BrodieGaslam/status/1527829442374025219?s=20&t=rg6aybJlGxPEUwBsI0ii1Q
 
 [^1]: Depending on your compilation settings and machine, there is room for
   improvement, but not enough that R stands out as being particularly slow at
@@ -471,11 +486,12 @@ Different systems / compilers / settings may produce different results.
 [^4]: `{collapse}` defaults to `na.rm=TRUE`, hence the need to switch for an
   apples to apples comparison.  Notice that `fsum` with groups is faster than
   even the straight up `sum` without groups, primarily because it handles the
-  `narm` as a dedicated branch instead of a conditional in the loop.
-  `fsum` also uses a plain double accumulator and not the long double used by
-  the other implementations so the results are not identical to the other
-  implementations that use long doubles (on systems that support them).
-  Curiously on my system summing long doubles is faster than summing doubles.
+  `narm` as a dedicated branch instead of a conditional in the loop (this is an
+  [oddity with `sum`[8] on some platforms).  `fsum` also uses a plain double
+  accumulator and not the long double used by the other implementations so the
+  results are not identical to the other implementations that use long doubles
+  (on systems that support them).  Curiously on my system summing long doubles
+  is faster than summing doubles.
 [^5]: Knowing that a single operation is to be applied over a single vector
   provides nice optimization opportunities.  Notwithstanding, `{r2c}` likely
   could be optimized further as the primary focus has been simply to get it
@@ -483,4 +499,7 @@ Different systems / compilers / settings may produce different results.
   similar which are currently omitted.
 [^6]: The first compilation can be quite slow as it requires loading the
   compiler, etc.  Subsequent compilations run in the tenths of seconds.
+[^7]: For this very specific task R also provides `rowsum`, but as it is limited
+  to sums and we cannot separate the splitting and summing steps for timing we
+  will not discuss it further.
 
