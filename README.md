@@ -1,16 +1,12 @@
 # r2c - Fast Iterated Statistic Computation in R
 
-**Proof of Concept**.  Lightly tested, experimental, and incomplete.  The
-interface will change substantially over the next few iterations (even parts not
-explicitly documented as subject to change).
+**Proof of Concept**.  Experimental, incomplete, and interface subject to
+change.
 
-Compiles a selected subset of R into native instructions so that that
-expressions composed with functions from that subset can be executed repeatedly
-on varying data without interpreter overhead.
+Compiles a subset of R into machine code so that expressions composed with that
+subset can be applied repeatedly on varying data without interpreter overhead.
 
 ## Background and Motivation
-
-### R is Fast
 
 R is nearly as fast as statically compiled languages for many common numerical
 calculations:
@@ -33,9 +29,8 @@ of the 10 million operations and associated loop overhead.  Hard to get much
 faster[^1].  If we maintain a high ratio of native operations to R level calls
 our programs will be fast.
 
-### But Not at Everything
-
 Some tasks require more R-level calls, such as computing group statistics:
+<span id=in-r>
 
     g <- cumsum(sample(c(TRUE, rep(FALSE, 9)), n, replace=TRUE))
     x.split <- split(x, g)
@@ -71,7 +66,7 @@ not discuss it further.
 ## What If We Could Compile R?
 
 That would be nice, wouldn't it?  Well, we (at least I) can't compile the
-entirety of R, but...
+entirety of R, but a small set we can manage:
 
     library(r2c)
     r2c_sum <- r2cq(sum(x))
@@ -106,12 +101,12 @@ optimization is a great option:
     identical(unname(g.sum), g.sum.dt[['V1']])
     ## [1] TRUE
 
-This does something similar to `r2c`, recognizing the sum expression and using
-native code instead of R interpreted code, but without the need for adhoc
+This does something similar to `{r2c}`, recognizing the sum expression and using
+native code instead of R interpreted code, but without the need for ad hoc
 compilation.
 
-[`{collapse}`][4], takes a different approach by providing individual functions
-capable of computing statistics on groups:
+[`{collapse}`][4], takes a different approach by providing specialized functions
+to compute statistics on groups, and this allows it to be very fast:
 
     library(collapse)              # 1.8.6
     cg <- GRP(g)                   # pre-sort data
@@ -126,8 +121,8 @@ Another intriguing option is [`{FastR}`][2], an implementation of R that can JIT
 compile R code to run on the [Graal VM][3].  It requires a different runtime
 (i.e. you can't just run your normal R installation) and has other trade-offs,
 including warm-up cycles and compatibility limitations[^3].  But otherwise you
-type in what [you would have in normal R](but-not-at-everything) and see some
-impressive speed-ups.
+type in what [you would have in normal R](#in-r) and see some impressive
+speed-ups.
 
 This is what the timings look across the different methods discussed so far:
 
@@ -143,7 +138,7 @@ graal.sum <- read.table(
     value=TRUE
 ) )
 Method <- c('sum(x)', 'vapply(..., sum)', 'data.table', 'collapse', 'r2c',
-'fastR')
+'FastR')
 types <- c('Single Pass', 'Group Wise')
 graal.sum.2 <- unique(cummin(graal.sum[['V3']]))
 dat <- data.frame(
@@ -152,7 +147,7 @@ dat <- data.frame(
   time=c(0.043, 0.747, 0.234, 0.027, 0.105, min(graal.sum.2))
 )
 dat.graal <- data.frame(
-  Method=factor('fastR', levels=Method),
+  Method=factor('FastR', levels=Method),
   type=factor('Group Wise', levels=types),
   time=graal.sum.2
 )
@@ -161,7 +156,7 @@ dat.both <- rbind(
   cbind(dat, alpha=1)
 )
 dat.arrow <- data.frame(
-  Method=factor('fastR', levels=Method),
+  Method=factor('FastR', levels=Method),
   time=rev(range(graal.sum.2)) + diff(range(graal.sum.2)) * c(-.01,.01),
   type=factor('Group Wise', levels=types)
 )
@@ -213,9 +208,10 @@ expect.  But not so with `{data.table}`'s Gforce:
     ##   user  system elapsed 
     ## 11.397   0.062  11.519 
     identical(unname(g.slp.r2c), g.slope.dt[['V1']])
+    ## [1] TRUE
 
-We can infer from base timings that `{data.table}` is essentially falling back
-to standard R evaluation[^2]:
+We can infer comparing with  base timings that `{data.table}` is essentially
+falling back to standard R evaluation[^2]:
 
     y.split <- split(y, g)
     slope <- \(x, y) sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2)
@@ -225,9 +221,9 @@ to standard R evaluation[^2]:
     identical(g.slp, g.slp.r2c)
     ## [1] TRUE
 
-`{collapse}` does better, but is slowed down by the need to re-expand
-intermediate statistics back to group size for subsequent calculations (here
-done with `rep` in `fsum2` and `fmean2`):
+`{collapse}` can do better if we carefully compose the equivalent expression,
+but it is slowed down by the need to re-expand intermediate statistics back to
+group size.  We do that here with `rep` in `fsum2` and `fmean2`:
 
     fmean2 <- function(x, cg) rep(fmean(x, cg, na.rm=FALSE), cg[['group.sizes']])
     fsum2 <- function(x, cg) rep(fsum(x, cg, na.rm=FALSE), cg[['group.sizes']])
@@ -239,13 +235,13 @@ done with `rep` in `fsum2` and `fmean2`):
     ##   user  system elapsed 
     ##  1.737   0.035   1.776 
 
-`{Fastr}` also does reasonably well, but is afflicted by the warm-up cycles and
-even after them does not keep up with `{r2c}`.
+`{FastR}` also does reasonably well, but is warm-up cycles remain an issue, and
+even after them it does not keep up with `{r2c}`.
 
 <!--
 ```
 Method <- c(
-'slope(x)', 'vapply(..., slope)', 'data.table', 'collapse', 'r2c', 'fastR'
+'slope(x)', 'vapply(..., slope)', 'data.table', 'collapse', 'r2c', 'FastR'
 )
 graal.slope.2 <- unique(cummin(graal.slope[['V3']]))
 dat <- data.frame(
@@ -254,7 +250,7 @@ dat <- data.frame(
   time=c(0.250, 12.570 , 11.519, 1.776, 0.284, min(graal.slope.2))
 )
 dat.graal <- data.frame(
-  Method=factor('fastR', levels=Method),
+  Method=factor('FastR', levels=Method),
   type=factor('Group Wise', levels=types),
   time=graal.slope.2
 )
@@ -263,7 +259,7 @@ dat.both <- rbind(
   cbind(dat, alpha=1)
 )
 dat.arrow <- data.frame(
-  Method=factor('fastR', levels=Method),
+  Method=factor('FastR', levels=Method),
   time=rev(range(graal.slope.2)) + diff(range(graal.slope.2)) * c(-.01,.01),
   type=factor('Group Wise', levels=types)
 )
@@ -296,7 +292,8 @@ ggsave("extra/time_glope_all-vs.png", p)
 First is that `r2c` requires compilation.  I have not included that step in
 timings[^6] under the view that the compilation time will be amortized over many
 calculations.  The facilities for this don't exist yet, but the plan is to to
-have `r2c` maintain a local library of pre-compiled user-defined functions.
+have `{r2c}` maintain a local library of pre-compiled user-defined functions,
+and for packages to compile `{r2c}` functions at install-time.
 
 More importantly, we cannot compile and execute arbitrary R expressions:
 
@@ -317,7 +314,6 @@ group-invariant data:
     h <- rep(1:2, each=2)
 
     r2c_fun <- r2cq(sum(x, na.rm=TRUE) * y)
-    ## ... compilation output omitted ...
     group_exec(r2c_fun, groups=h, data=list(x=w), MoreArgs=list(y=u))
     ##  1  1  1  2  2  2
     ## -1  1  0 -5  5  0
@@ -346,13 +342,12 @@ following should be straightforward to implement:
 * `cos`, `sin`, and other trigonometric functions.
 * `range`.
 * `length`, `seq_along`.
-* `[[`, `[`, and maybe `$`, likely with limitations on allowable index values.
+* `[[`, `[`, and maybe `$`, likely with limitations on allowable index types.
 * Many others.
 
 More challenging due to code complexity, but otherwise compatible with `r2c`:
 
-* `quantile`.
-* And others.
+* `quantile` and others.
 
 Some other useful functions will require more work:
 
@@ -394,17 +389,17 @@ there already exist similar implementations.  In particular Rich FitzJohn's
 
 #### API
 
-There are likely many applications that would benefit from the capabilities
-provided by `r2c`.  It should be possible to define an interface for use by
-external code.  Conceivably, `data.table` could be extended to run `r2c`
+There are likely many applications that could benefit from the capabilities
+provided by {`r2c`}.  It should be possible to define an interface for use by
+external code.  Conceivably, {`data.table`} could be extended to run {`r2c`}
 compiled expressions.
 
 Additionally, it should be possible to allow users to define their own C
-routines that integrated into the `r2c` framework.
+routines that integrated into the {`r2c`} framework.
 
 ### Re-using Compilation / Cleanup
 
-Ideally once an expression is compiled into an `r2c` function it would be
+Ideally once an expression is compiled into an {`r2c`} function it would be
 preserved for re-use in future R sessions.  Doing so within a package would be
 relatively straight-forward, but it should also be possible to create a local
 library to store such objects in.
@@ -419,6 +414,7 @@ cleanup.
 
 * More aggressive re-use of intermediate memory.
 * Identification of re-used calculations.
+* Reduce per-group/iteration overhead.
 
 And likely more.  So far the focus has been on implementation rather than
 optimization.
@@ -428,8 +424,16 @@ optimization.
 * [`{Odin}`](https://github.com/mrc-ide/odin), which implements a very similar R
   to C translation and compilation, but specialized for differential
   equation solving problems.
-* `data.table`'s Gforce (see `?data.table::datatable.optimize).
-* `dplyr`'s Hybrid Eval?
+* [`{data.table}`][1]'s Gforce (see `?data.table::datatable.optimize).
+* [`{FastR}`][2] an implementation of R that can JIT compile R code to run on
+  the [Graal VM][3].
+* [`{collapse}`][4]'s specialized group statistic functions.
+* [`{inline}`][7] to allow compilation and access to generated native code
+  directly from R.
+* In theory [`{dplyr}`][5]'s Hybrid Eval is similar to Gforce, but AFAICT it was
+  [quietly dropped][6] and despite suggestions it might return for v1.1 I see no
+  trace of it in the most recent 1.1 candidate development versions (as of
+  2022-07-03).
 
 ## Notes on Benchmarking
 
@@ -447,15 +451,18 @@ Different systems / compilers / settings may produce different results.
 [2]: https://github.com/oracle/fastr
 [3]: https://www.graalvm.org/
 [4]: https://github.com/SebKrantz/collapse
+[5]: https://dplyr.tidyverse.org/
+[6]: https://github.com/tidyverse/dplyr/issues/5017
+[7]: https://github.com/eddelbuettel/inline
 
 [^1]: Depending on your compilation settings and machine, there is room for
   improvement, but not enough that R stands out as being particularly slow at
   this task.
 [^2]: Gforce is available for simple expressions of the form `fun(var)` for
   many of the basic statistic functions (see `?data.table::datatable.optimize).
-[^3]: My limited experience with `FastR` is that it is astonishing, but also
+[^3]: My limited experience with {`FastR`}is that it is astonishing, but also
   frustrating.  What it does is amazing, but the compatibility limitations are
-  real (e.g.  with the current version neither `data.table` nor `ggplot2`
+  real (e.g.  with the current version neither {`data.table`} nor {`ggplot2`}
   install out of the box, and more), and performance is volatile (e.g. package
   installation and some other tasks are painfully slow, some expressions will
   hiccup after the initial warm-up).  At this point it does not seem like a

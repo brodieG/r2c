@@ -1,8 +1,8 @@
 Package: r2c
 Title: Fast Iterated Statistic Computation in R
-Description: Compiles a selected subset of R into native instructions so that
-  that expressions composed with functions from that subset can be executed
-  repeatedly on varying data without interpreter overhead.
+Description: Compiles a subset of R into machine code so that expressions
+    composed with that subset can be applied repeatedly on varying data without
+    interpreter overhead.
 Version: 0.0.1
 Authors@R: c(
     person("Brodie", "Gaslam", email="brodie.gaslam@yahoo.com",
