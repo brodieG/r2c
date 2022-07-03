@@ -4,11 +4,13 @@
 interface will change substantially over the next few iterations (even parts not
 explicitly documented as subject to change).
 
-Compiles a selected subset of R into native instructions so that expressions
-using only that subset can be executed repeatedly on varying data without
-interpreter overhead.
+Compiles a selected subset of R into native instructions so that that
+expressions composed with functions from that subset can be executed repeatedly
+on varying data without interpreter overhead.
 
 ## Background and Motivation
+
+### R is Fast
 
 R is nearly as fast as statically compiled languages for many common numerical
 calculations:
@@ -29,8 +31,11 @@ calculations:
 On [my system](#notes-on-benchmarking) that's about 2-5 **CPU cycles** for each
 of the 10 million operations and associated loop overhead.  Hard to get much
 faster[^1].  If we maintain a high ratio of native operations to R level calls
-our programs will be fast.  But some tasks require more R-level calls, such as
-computing group statistics:
+our programs will be fast.
+
+### But Not at Everything
+
+Some tasks require more R-level calls, such as computing group statistics:
 
     g <- cumsum(sample(c(TRUE, rep(FALSE, 9)), n, replace=TRUE))
     x.split <- split(x, g)
@@ -70,8 +75,6 @@ entirety of R, but...
 
     library(r2c)
     r2c_sum <- r2cq(sum(x))
-    ## clang -mmacosx-version-min=10.13 -I"/Library/Frameworks/R.framework/Resources/include" -DNDEBUG   -I/usr/local/include   -fPIC  -Wall -g -O2  -fno-common -std=c99 -pedantic -Wall -Wextra -c /var/folders/47/5by_gx_x4wncdt46pzcb9bcr0000gq/T//RtmpsSyRz0/file60911e4258d2/code-ceujp2sv.c -o /var/folders/47/5by_gx_x4wncdt46pzcb9bcr0000gq/T//RtmpsSyRz0/file60911e4258d2/code-ceujp2sv.o
-    ## clang -mmacosx-version-min=10.13 -dynamiclib -Wl,-headerpad_max_install_names -undefined dynamic_lookup -single_module -multiply_defined suppress -L/Library/Frameworks/R.framework/Resources/lib -L/usr/local/lib -o /var/folders/47/5by_gx_x4wncdt46pzcb9bcr0000gq/T//RtmpsSyRz0/file60911e4258d2/code-ceujp2sv.so /var/folders/47/5by_gx_x4wncdt46pzcb9bcr0000gq/T//RtmpsSyRz0/file60911e4258d2/code-ceujp2sv.o -F/Library/Frameworks/R.framework/.. -framework R -Wl,-framework -Wl,CoreFoundation
 
 And now:
 
@@ -97,22 +100,34 @@ optimization is a great option:
     dt <- data.table(x, g)
     setkey(dt, g)                  # pre-sort data
 
-    system.time(g.sum.dt <- dt[, sum(x), g][['V1']])
+    system.time(g.sum.dt <- dt[, sum(x), g])
     ##   user  system elapsed
     ##  0.205   0.027   0.234
-    identical(unname(g.sum.r2c), g.sum.dt)
+    identical(unname(g.sum), g.sum.dt[['V1']])
     ## [1] TRUE
 
 This does something similar to `r2c`, recognizing the sum expression and using
 native code instead of R interpreted code, but without the need for adhoc
 compilation.
 
+[`{collapse}`][4], takes a different approach by providing individual functions
+capable of computing statistics on groups:
+
+    library(collapse)              # 1.8.6
+    cg <- GRP(g)                   # pre-sort data
+
+    system.time(g.sum.c <- fsum(x, cg, na.rm=FALSE))
+    ##   user  system elapsed
+    ##  0.027   0.000   0.027
+    all.equal(g.sum.r2c, g.sum.c)
+    ## [1] TRUE
+
 Another intriguing option is [`{FastR}`][2], an implementation of R that can JIT
 compile R code to run on the [Graal VM][3].  It requires a different runtime
 (i.e. you can't just run your normal R installation) and has other trade-offs,
-including warm-up cycles and compatibility limitations[^3].  But it otherwise
-pretty impressively turns what would be interpreted R code into something akin
-to native instructions.
+including warm-up cycles and compatibility limitations[^3].  But otherwise you
+type in what [you would have in normal R](but-not-at-everything) and see some
+impressive speed-ups.
 
 This is what the timings look across the different methods discussed so far:
 
@@ -127,16 +142,17 @@ graal.sum <- read.table(
     "\\d+\\.\\d+", readLines('extra/benchmarks-graal-sum.txt'),
     value=TRUE
 ) )
-Method <- c('sum(x)', 'vapply(..., sum)', 'data.table', 'r2c', 'graal')
+Method <- c('sum(x)', 'vapply(..., sum)', 'data.table', 'collapse', 'r2c',
+'fastR')
 types <- c('Single Pass', 'Group Wise')
 graal.sum.2 <- unique(cummin(graal.sum[['V3']]))
 dat <- data.frame(
   Method=factor(Method, levels=Method),
-  type=factor(c('Single Pass', rep('Group Wise', 4)), levels=types),
-  time=c(0.043, 0.747, 0.234, 0.105, min(graal.sum.2))
+  type=factor(c('Single Pass', rep('Group Wise', 5)), levels=types),
+  time=c(0.043, 0.747, 0.234, 0.027, 0.105, min(graal.sum.2))
 )
 dat.graal <- data.frame(
-  Method=factor('graal', levels=Method),
+  Method=factor('fastR', levels=Method),
   type=factor('Group Wise', levels=types),
   time=graal.sum.2
 )
@@ -145,18 +161,18 @@ dat.both <- rbind(
   cbind(dat, alpha=1)
 )
 dat.arrow <- data.frame(
-  Method=factor('graal', levels=Method),
+  Method=factor('fastR', levels=Method),
   time=rev(range(graal.sum.2)) + diff(range(graal.sum.2)) * c(-.01,.01),
   type=factor('Group Wise', levels=types)
 )
 (p <- ggplot(dat.both, aes(y=time)) +
   geom_col(aes(x=Method, alpha=I(alpha)), position='identity') +
   geom_line(
-    aes(x=I(rep(3.65, 2))),
+    aes(x=I(rep(4.65, 2))),
     data=dat.arrow, arrow=arrow(type='closed', length=unit(.1, "inches")),
   ) +
   geom_text(
-    x=3.75, y=mean(range(graal.sum.2)),
+    x=4.75, y=mean(range(graal.sum.2)),
     label=paste0(
       strwrap("GraalVM requires several iterations to \"warm\" up.", 16),
       collapse="\n"
@@ -164,6 +180,7 @@ dat.arrow <- data.frame(
     size=3,
     hjust=0
   ) +
+  geom_text(data=dat, aes(x=Method, label=time), vjust=-.2) +
   ggtitle("Group Sum (10MM Obs, ~1MM Groups)") +
   facet_grid(.~type, drop=TRUE, scales="free_x", space="free") +
   ylab("Time in Seconds") + xlab(NULL))
@@ -171,42 +188,73 @@ ggsave("extra/time_gsum_all-vs.png", p)
 -->
 ![](https://github.com/brodieG/r2c/raw/initial/extra/time_gsum_all-vs.png)
 
-For this specific task I would pick `data.table`.  It is possible it ends up
-slower than `r2c` due to the additional structure required for multi-threading
-support, so it is at a disadvantage when we force single thread benchmarking.
-Also the `r2c` code is currently very simple (doesn't even check for
-interrupts), so will likely end up slightly slower in final implementation.
+For this specific task `{collapse}` makes an impressive case for itself[^4].
+Both `{r2c}` and `{data.table}` bear the overhead of applying arbitrary
+C functions groupwise[^5], and this is part of the reason they are slower for
+this task.  Additionally, `{data.table}` has extra structure for multi-threading
+support that might add overhead, so it is at a disadvantage when we force single
+thread benchmarking on small groups.
 
-But `data.table`'s Gforce does not work on complex expressions such as the slope
+Let's look at what happens with more complex expressions, such as the slope
 of a bivariate regression:
 
-    mean <- mean.default   # Avoid S3 dispatch
-    system.time(dt[, sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2), g])
+    r2c_slope <- r2cq(sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2))
+    system.time(g.slp.r2c <- group_exec(r2c_slope, g, list(x, y), sorted=TRUE))
+    ##   user  system elapsed 
+    ##  0.273   0.001   0.275 
+
+`{r2c}` performance scales with the complexity of the operation, as one might
+expect.  But not so with `{data.table}`'s Gforce:
+
+    dt <- data.table(x, y, g)
+    setkey(dt, g)                  # pre-sort data
+    mean <- mean.default           # Avoid S3 dispatch
+    system.time(g.slope.dt <- dt[, sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2), g])
     ##   user  system elapsed 
     ## 11.397   0.062  11.519 
+    identical(unname(g.slp.r2c), g.slope.dt[['V1']])
 
-Whereas `r2c` keeps on going on:
+We can infer from base timings that `{data.table}` is essentially falling back
+to standard R evaluation[^2]:
 
-    r2c_slope <- r2cq(sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2))
-    ## ... compilation output omitted ...
-    system.time(group_exec(r2c_slope, g, list(x, y), sorted=TRUE))
+    y.split <- split(y, g)
+    slope <- \(x, y) sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2)
+    system.time(g.slp <- mapply(slope, x.split, y.split))
     ##   user  system elapsed 
-    ##  0.279   0.002   0.284 
+    ## 12.719   0.193  13.408 
+    identical(g.slp, g.slp.r2c)
+    ## [1] TRUE
 
-We can infer based on timings that `data.table` is falling back to standard R
-evaluation:
+`{collapse}` does better, but is slowed down by the need to re-expand
+intermediate statistics back to group size for subsequent calculations (here
+done with `rep` in `fsum2` and `fmean2`):
+
+    fmean2 <- function(x, cg) rep(fmean(x, cg, na.rm=FALSE), cg[['group.sizes']])
+    fsum2 <- function(x, cg) rep(fsum(x, cg, na.rm=FALSE), cg[['group.sizes']])
+    system.time(
+      g.slp.c <-
+        fsum((x - fmean2(x, cg)) * (y - fmean2(y, cg)), cg, na.rm=FALSE) /
+        fsum((x - fmean2(x, cg))^2, cg, na.rm=FALSE)
+    )
+    ##   user  system elapsed 
+    ##  1.737   0.035   1.776 
+
+`{Fastr}` also does reasonably well, but is afflicted by the warm-up cycles and
+even after them does not keep up with `{r2c}`.
 
 <!--
 ```
-Method <- c('slope(x)', 'vapply(..., slope)', 'data.table', 'r2c', 'graal')
+Method <- c(
+'slope(x)', 'vapply(..., slope)', 'data.table', 'collapse', 'r2c', 'fastR'
+)
 graal.slope.2 <- unique(cummin(graal.slope[['V3']]))
 dat <- data.frame(
   Method=factor(Method, levels=Method),
-  type=factor(c('Single Pass', rep('Group Wise', 4)), levels=types),
-  time=c(0.250, 12.570 , 11.519, 0.284, min(graal.slope.2))
+  type=factor(c('Single Pass', rep('Group Wise', 5)), levels=types),
+  time=c(0.250, 12.570 , 11.519, 1.776, 0.284, min(graal.slope.2))
 )
 dat.graal <- data.frame(
-  Method=factor('graal', levels=Method),
+  Method=factor('fastR', levels=Method),
   type=factor('Group Wise', levels=types),
   time=graal.slope.2
 )
@@ -215,18 +263,18 @@ dat.both <- rbind(
   cbind(dat, alpha=1)
 )
 dat.arrow <- data.frame(
-  Method=factor('graal', levels=Method),
+  Method=factor('fastR', levels=Method),
   time=rev(range(graal.slope.2)) + diff(range(graal.slope.2)) * c(-.01,.01),
   type=factor('Group Wise', levels=types)
 )
 (p <- ggplot(dat.both, aes(y=time)) +
   geom_col(aes(x=Method, alpha=I(alpha)), position='identity') +
   geom_line(
-    aes(x=I(rep(3.7, 2))),
+    aes(x=I(rep(4.7, 2))),
     data=dat.arrow, arrow=arrow(type='closed', length=unit(.1, "inches")),
   ) +
   geom_text(
-    x=3.75, y=mean(range(graal.slope.2)),
+    x=4.75, y=mean(range(graal.slope.2)),
     label=paste0(
       strwrap("GraalVM requires several iterations to \"warm\" up.", 16),
       collapse="\n"
@@ -234,6 +282,7 @@ dat.arrow <- data.frame(
     size=3,
     hjust=0
   ) +
+  geom_text(data=dat, aes(x=Method, label=round(time, 2)), vjust=-.2) +
   ggtitle("Group Slope (10MM Obs, ~1MM Groups)") +
   facet_grid(.~type, drop=TRUE, scales="free_x", space="free") +
   ylab("Time in Seconds") + xlab(NULL))
@@ -242,14 +291,10 @@ ggsave("extra/time_glope_all-vs.png", p)
 -->
 ![](https://github.com/brodieG/r2c/raw/initial/extra/time_glope_all-vs.png)
 
-`FastR` does better, but even after warm-up can't keep up with `r2c`.  `FastR`
-can do a lot more than `r2c`, but for this specific task `r2c` is better and
-does not carry the other significant compromises of `FastR`.
-
 ## Caveats - Of Course ...
 
 First is that `r2c` requires compilation.  I have not included that step in
-timings under the view that the compilation time will be amortized over many
+timings[^6] under the view that the compilation time will be amortized over many
 calculations.  The facilities for this don't exist yet, but the plan is to to
 have `r2c` maintain a local library of pre-compiled user-defined functions.
 
@@ -395,69 +440,15 @@ Benchmarks are under:
     Running under: macOS Big Sur/Monterey 10.16
 
 On an Intel(R) Core(TM) m5-6Y54 CPU @ 1.20GHz (early 2016 Macbook), using the
-average of 11 iterations run after one `gc()` call.
-
-    mean <- mean.default   # Avoid S3 dispatch for data.table
-    system.time(dt[, sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2), g])
-    ##   user  system elapsed 
-    ## 11.397   0.062  11.519 
-
-    r2c_slope <- r2cq(sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2))
-    ## ... compilation output omitted ...
-    system.time(group_exec(r2c_slope, g, list(x, y), sorted=TRUE))
-    ##   user  system elapsed 
-    ##  0.279   0.002   0.284 
-
-    identical(unname(g.slope.r2c), g.slope.dt)
-    ## [1] TRUE
-
-For reference, with `base`:
-
-    y.split <- split(y, g)
-    system.time(g.slope.base <- mapply(slope, x.split, y.split))
-    ##   user  system elapsed 
-    ## 11.895   0.079  12.168 
-    identical(g.slope.r2c, g.slope.base)
-    ## [1] TRUE
-
-This is in the same ballpark as `r2c`.  But look at what happens if we
-complicate things by computing `sum(x + y)` instead of `sum(x)`:
-
-    dt <- data.table(x, y, g)
-    setkey(dt, g)
-    system.time(g.sum.xy.dt <- dt[, sum(x + y), g][['V1']])
-    ##   user  system elapsed 
-    ##  1.645   0.015   1.672 
-
-    r2c_sum2 <- r2cq(sum(x + y))
-    system.time(g.sum.xy.r2c <- group_exec(r2c_sum2, g, list(x, y), sorted=TRUE))
-    ##   user  system elapsed 
-    ##  0.118   0.001   0.121 
-
-    identical(unname(g.sum.xy.r2c), g.sum.xy.dt)
-    ## [1] TRUE
-
-
-<!--
-library(ggplot2)
-Method <- c('sum(x)', 'vapply(x.split, sum, 0)', 'r2c_sum')
-dat <- data.frame(
-  Method=factor(Method, Method),
-  time=c(0.043, 0.747, 0.105)
-)
-p <- ggplot(dat) + geom_col(aes(Method, time)) +
-  ggtitle("Sum Benchmarks") +
-  ggtitle("Sum (10MM Obs, ~1MM Groups)") +
-  ylab("Time in Seconds") + xlab(NULL)
-ggsave("extra/time_sum_base-vs-r2c.png", p)
-![](https://github.com/brodieG/r2c/raw/initial/extra/time_sum_base-vs-r2c.png)
--->
+average of 11 iterations run after one `gc()` call, and -O2 optimization level.
+Different systems / compilers / settings may produce different results.
 
 [1]: https://github.com/Rdatatable
 [2]: https://github.com/oracle/fastr
 [3]: https://www.graalvm.org/
+[4]: https://github.com/SebKrantz/collapse
 
-[^1]: Depending on your compilation settings, there is likely some room for
+[^1]: Depending on your compilation settings and machine, there is room for
   improvement, but not enough that R stands out as being particularly slow at
   this task.
 [^2]: Gforce is available for simple expressions of the form `fun(var)` for
@@ -470,5 +461,19 @@ ggsave("extra/time_sum_base-vs-r2c.png", p)
   hiccup after the initial warm-up).  At this point it does not seem like a
   viable drop-in replacement to R.  It likely excels at running scalar
   operations in loops and similar, something that R itself struggles at.
-
+[^4]: `{collapse}` defaults to `na.rm=TRUE`, hence the need to switch for an
+  apples to apples comparison.  Notice that `fsum` with groups is faster than
+  even the straight up `sum` without groups, primarily because it handles the
+  `narm` as a dedicated branch instead of a conditional in the loop.
+  `fsum` also uses a plain double accumulator and not the long double used by
+  the other implementations so the results are not identical to the other
+  implementations that use long doubles (on systems that support them).
+  Curiously on my system summing long doubles is faster than summing doubles.
+[^5]: Knowing that a single operation is to be applied over a single vector
+  provides nice optimization opportunities.  Notwithstanding, `{r2c}` likely
+  could be optimized further as the primary focus has been simply to get it
+  working, but optimizations will be offset by the need to add interrupts and
+  similar which are currently omitted.
+[^6]: The first compilation can be quite slow as it requires loading the
+  compiler, etc.  Subsequent compilations run in the tenths of seconds.
 

@@ -1,9 +1,10 @@
 #include <stdlib.h>
 #include <stdio.h>
 
+const char * strarr[] = {"one", "two"};
+
 int main(int argc, char **argv) {
-  double x, z;
-  int y;
+  /*
   if(argc != 3) {
     printf("Wrong arg count %d\n", argc);
     exit(1);
@@ -11,13 +12,11 @@ int main(int argc, char **argv) {
   x = strtod(argv[1], NULL);
   y = atoi(argv[2]);
   z = 0;
+  */
 
-  for(int i = 0; i < y; ++i) {
-    z += x;
-  }
-  {
-    int private = 3;
-  }
-  printf("Result %f %d\n", z, private);
+  signed char x = 0xc5;
+  printf("x %d xff %d %d\n", (int) x, ((int)(x)) & 0xff, 0xc5);
+
+  // printf("Result %d %d %f\n", i, j, 0. & (double) (1 << 10));
   exit(0);
 }

@@ -59,6 +59,19 @@ res1 <- group_exec(obj, d2, g2, sort=FALSE)
 resb <-  base_grp_eval(d2, g2, call)
 identical(res1, resb)
 
+# Methods
+
+cg <- GRP(g)
+
+system.time(r2c:::test_0(x))
+system.time(r2c:::test_decc(x))
+system.time(r2c:::test_dbl(x))
+system.time(r2c:::test_short(x))
+system.time(r2c:::test_all(x))
+system.time(collapse::fsum(x, cg, na.rm=FALSE))
+system.time(collapse::fsum(x, na.rm=FALSE))
+system.time(sum(x))
+
 
     set.seed(1)
     n <- 1e7
@@ -144,12 +157,12 @@ all.equal(unname(collapse.x), base.x)
 
 
 
-    fmean2 <- function(x, gg) rep(fmean(x, gg), gg[['group.sizes']])
-    fsum2 <- function(x, gg) rep(fsum(x, gg), gg[['group.sizes']])
+    fmean2 <- function(x, cg) rep(fmean(x, cg, na.rm=FALSE), cg[['group.sizes']])
+    fsum2 <- function(x, cg) rep(fsum(x, cg, na.rm=FALSE), cg[['group.sizes']])
     system.time(
       clp.slope <-
-        fsum2((x - fmean2(x, gg)) * (y - fmean2(y, gg)), gg) /
-        fsum2((x - fmean2(x, gg))^2, gg)
+        fsum((x - fmean2(x, cg)) * (y - fmean2(y, cg)), cg, na.rm=FALSE) /
+        fsum((x - fmean2(x, cg))^2, cg, na.rm=FALSE)
     )
 
 

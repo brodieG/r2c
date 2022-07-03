@@ -1,29 +1,11 @@
 # r2c
 
-# Next
-
-Figure out how to report missing arguments in `alloc`
-
 # To Do / Questions
 
-* What should the environment of an "r2c_fun" be?
-* Is it possible for e.g. someone doing something like `sum(a, trim=1:3)` to
-  mismatch to the parameter name, or do dots handle it properly (thinking of
-  validation function).
-* Do we need to handle the issue of `envir` for `match.call` at allocation time
-  instead of at compile time?  Seems like the way this goes wrong is if the
-  expression being looked at itself contains dots, e.g. literally `sum(...)`
-  where the `...` need to be fetched.
+* Try to interfere with r2c funs.  Need to document exactly what environment
+  they are exposed to (base namespace).
 
-* How can we efficiently warn of "longer object length is not a multiple" in
-  vecrec?  We don't want a modulo for each group.  But we could check that the
-  shorter object has not hit its length at the end of the loop and set a global
-  variable?  Or use `flags` to communicate back?  When we compute each
-  interaction size, we do (or could know) the group sizes, including possibly
-  max and min group size.  But to be certain of a multiple you must be certain
-  that there are no groups of odd sizes...  So I think it has to be done at run
-  time, annoyingly.
-
+* Instructions for windows users about toolchain, etc?
 * Perhaps we got too lazy with POW, do we need to handle all the other cases
   arith handles?  Maybe, but if we do we'll likely need our own `pow` function,
   as it stands right now we're likely to get non-identical results in the case
@@ -99,7 +81,7 @@ Figure out how to report missing arguments in `alloc`
   two vectors), or do each row in full once?
 * Look into using R_GetCCallable (see WRE) instead of what we're doing now.  It
   seems though that to do so we'll need to generate a full package which will
-  further slow down the compilation.
+  further slow down the compilation.  What does `inline` do?
 * Check name isn't used already.
 * `?SHLIB` states some binary distributions don't include `R CMD SHLIB`.
 * Figure out how to call the current version of R (e.g. `RD CMD SHLIB`).
@@ -115,6 +97,51 @@ Figure out how to report missing arguments in `alloc`
 * Re-use repeated expressions.
 
 ## Done
+
+* Pass data around in environments for better deparse (can't do this because the
+  parameters might be unnamed via dots, or at least not easily, plus it only
+  matters for the naked call).
+* Add tests:
+    * For parenthesis removal in mechanics.
+    * For square tranform.
+* When we dropped the use of env to match the arguments, how did keep track of
+  the environment to look up functions in?  We don't, we just check function
+  validity at run time.
+* Emit warning/errors with the function call.
+* Can we come up with a better error message for the matching of arguments?  Do
+  we need our own matching instead of relying on `match.call`.
+* Check dots with names (i.e. names that don't match formas but are caught by
+  dots).  What should be done with these?  They probably should be unnamed.
+* Check dots with multiple sets of dots, trying to e.g. pass both to group
+  varying and flags/control params.
+* Can we truly support dots (I think so, see dots section).
+* Does arg order matching make sense?  We get: `function (y, x, ..., na.rm)` out
+  of `r2cq(y - sum(x, na.rm = na.rm, ...), check = TRUE)`, dots get moved up,
+  doesn't seem right.
+* Are we checking that the functions resolve correctly at run time (and not just
+  at compile time)? Yes, we check in `alloc`.
+* Test that dots still work after we changed the eval environment; almost
+  certainly won't so we have to think how to handle things that get matched to
+  e.g. `..1`, etc.
+* How can we efficiently warn of "longer object length is not a multiple" in
+  vecrec?  We don't want a modulo for each group.  But we could check that the
+  shorter object has not hit its length at the end of the loop and set a global
+  variable?  Or use `flags` to communicate back?  When we compute each
+  interaction size, we do (or could know) the group sizes, including possibly
+  max and min group size.  But to be certain of a multiple you must be certain
+  that there are no groups of odd sizes...  So I think it has to be done at run
+  time, annoyingly.
+* Do we need to handle the issue of `envir` for `match.call` at allocation time
+  instead of at compile time?  Seems like the way this goes wrong is if the
+  expression being looked at itself contains dots, e.g. literally `sum(...)`
+  where the `...` need to be fetched.
+
+    > (\(...) r2cq(sum(...)))(1, 2)
+    Error in match.call(definition = definition, call = call, envir = envir,  : 
+      ... used in a situation where it does not exist
+
+Right now preprocess is just using `parent.frame()` for match.call, which
+doesn't make any sense.
 
 * Check assumption that double will hold `R_xlen_t`?  Or that length is no
   longer that the allowable size?  A bit tricky; no way to know what double size
@@ -158,19 +185,125 @@ Figure out how to report missing arguments in `alloc`
   It could be auto-generated from all the unbound symbols like gsubfn does it.
 * Annotate code with the call that it corresponds to
 
-# Integer variables
+# Dots
 
-We wish to convert integer variables to real, but ideally we would return them
-as integer if possible (or NA if overflow) at the end of the computation.  The
-first part is relatively easy: if an object is integer, convert it to real.
-What if the object is used both as a control and non-control parameter?  I
-guess, too bad, it will be real.
+## Trying to Get Dots Working normally
 
-If all non-integer
+### Preprocess
 
-Functions will need to track whether they preserve integerness and under what
-conditions.  Presumably it should be if all non-control, non-flag parameters are
-integer, then the result is integer.
+Do we allow dots in `ctrl` and `flag`?  Maybe, they are not really used at all
+in preprocess.  The only thing we see is computing of length of dots to
+determine whether e.g. to use the multi-arg version of sum or not.  The only
+thing we seem to preserve is the name of the argument, and it's not clear that's
+actually used by alloc.
+
+One challenge is how do we distinguish between these two:
+
+    r2cq(sum(...))
+    r2cq(sum(x, y, z))
+
+In the former we want to literally match `...` against the dots argument,
+whereas in the latter we want the `x`, `y`, `z` to be expanded out.  In a more
+complex expression `...` might match more variables:
+
+    r2cq(sum(x, y, z) + sum(...))
+
+Produces:
+
+    function(x, y, z, ...)
+
+Consider for:
+
+    function(..., na.rm=TRUE)
+
+Things like:
+
+    f(..., x, na.rm=y)
+
+We need both dots and `x` to be matched to the actual dots.  So we need to
+replace `...` in the call with e.g. something like `.R2C.DOTS`, which will be
+recorded in the symbols as `...`.
+
+### Alloc / Run
+
+It seems here most of the work is done by the matching in `group_exec`.  Might
+just work?
+
+No, we need to expand out the dots in the linearized call and related data.
+Seems right now the fields that need to be expanded are call, argn, depth, and
+type, where we look for any `call` of type `leaf` that is `...`, and sub in as
+many leaves as there are elements.  One issue to figure out is if it's a problem
+that `argn` is just going to be "..." repeated.  Do we use this to match
+anyplace?  We must for allocation.
+
+`argn` is, what?  We're seeing:
+
+     $ argn     : chr [1:4] "..." "..." "na.rm" ""
+
+Not sure why there are two "...", although those do match to the `...` in the
+formals of `sum`.  So `argn` is the argument name in the original.  But why do
+we even use this in alloc?
+
+Strongly suggests that we just cannot allow "..." to be matched to control
+parameters?  Seems like we need to generate "..1", etc, to be orderly matched to
+the data proper, and that data derived from "..." should get those names (unless
+it already has names)?.
+
+## Previous Notes
+
+Do we allow dots in the call?  This could come up if there is an `r2c`
+construction inside of a function.  But it's a bit silly because if we don't do
+it inside a function we get a failure from dots not existing, but when we run
+elsewhere we might not be inside the function anymore.
+
+Let's say we allowed it, how would it play out?  Are we counting the args at
+compile time (probably).
+
+Should we disallow no free symbols?  Probably should be at least one, it
+complicates logic a bit if we don't as we need to know the size of the result.
+
+    f <- r2cq(sum(1, 2))
+    f
+
+Similarly, should this really work?
+
+    > f5 <- (function(...) r2cq(sum(...)))(1:10, 2)
+    > (function(...) f5(...))(1:10)  # okay
+    [1] 57
+    > sum(1:10
+    + )
+    [1] 55
+    > f5
+    function (..1)
+    {
+
+It's kind of an accident that we generate the `..1` symbol, and only because
+`1:10` is a call:
+
+    > (function(...) r2cq(sum(...)))(1, 2)
+    function () 
+    {
+
+So probably just need to figure out why the call version generates the `..1`
+parameter.  Has to do with the fact that for some reason dots generate `..1` for
+calls, but not for constants.  So there is a weirdness that something that seems
+like a constant (`1:10`) because R can't discern that it is and is in dots
+generates a free symbol.
+
+Maybe that's okay, and really what we need is a better error message when there
+are no data columns, or a better way to manage that scenario.  When there are no
+data columns all inputs are length 1 as that's the only way to truly generate a
+constant?  Can we use this or is that begging for trouble?
+
+We won't use that, we just require a free symbol.  There is the issue of
+"constants' like 1:10 generating free symbols
+
+Thinking about this a bit more on dots, all we need to do is make sure that the
+code gen functions are aware of dots, and have code that can handle dots.  We
+then need to make sure there are no issues of expanding or evaluating dots in
+the compile stage, that functions that support dots get told they are getting
+dots, and those that don't fail, and in the allocation stage the dots should
+match gracefully to the data and everything should be great.
 
 # Loop implementation
 
@@ -240,17 +373,17 @@ But they can't be computed within the `r2c` code.
 In this case mean did not get inlined, whereas the others did.  Addly subtract
 shows up three times, but still not inlined.
 
-# 3.01 s   10.2%	54.00 ms	                       run
-# 1.90 s    6.4%	1.75 s	 	                       mean
-# 153.00 ms    0.5%	37.00 ms                        R_finite
-# 166.00 ms    0.5%	166.00 ms                      multiply
-# 160.00 ms    0.5%	160.00 ms                      sum
-# 156.00 ms    0.5%	156.00 ms                      sum
-# 128.00 ms    0.4%	128.00 ms                      subtract
-# 125.00 ms    0.4%	125.00 ms                      subtract
-# 109.00 ms    0.3%	109.00 ms                      sqr
-# 105.00 ms    0.3%	105.00 ms                      subtract
-# 96.00 ms    0.3%	96.00 ms                       divide
+    # 3.01 s   10.2%	54.00 ms	                       run
+    # 1.90 s    6.4%	1.75 s	 	                       mean
+    # 153.00 ms    0.5%	37.00 ms                        R_finite
+    # 166.00 ms    0.5%	166.00 ms                      multiply
+    # 160.00 ms    0.5%	160.00 ms                      sum
+    # 156.00 ms    0.5%	156.00 ms                      sum
+    # 128.00 ms    0.4%	128.00 ms                      subtract
+    # 125.00 ms    0.4%	125.00 ms                      subtract
+    # 109.00 ms    0.3%	109.00 ms                      sqr
+    # 105.00 ms    0.3%	105.00 ms                      subtract
+    # 96.00 ms    0.3%	96.00 ms                       divide
 # 6.00 ms    0.0%	6.00 ms	 	                       DYLD-STUB$$R_finite
 
 We tried only having two calls to mean, but there is something preventing

@@ -16,8 +16,8 @@
 #' Fast Iterated Statistic Computation in R
 #'
 #' Compiles a selected subset of R into native instructions so that that
-#' expressions composed from that subset can be executed repeatedly on varying
-#' data without interpreter overhead.
+#' expressions composed with functions from that subset can be executed
+#' repeatedly on varying data without interpreter overhead.
 #'
 #' @docType package
 #' @name r2c-package
