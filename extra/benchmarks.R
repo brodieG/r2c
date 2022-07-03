@@ -1,77 +1,23 @@
-library(r2c)
-n <- 1e6
-gn <- n/1e3
-set.seed(1)
-g <- sample(gn, n, replace=TRUE)
-x <- runif(n)
-y <- runif(n)
-x[sample(n, 3)] <- NA
-data <- data.frame(x, y)
 
-o <- order(g)
-go <- g[o]
-do <- data[o,]
 
-# call <- quote(sum((x - mean(x)) ^ 2))
-# obj <- r2c(call)
-# res1 <- group_exec(obj, data, g)
-# resb <-  base_grp_eval(data, g, call)
-# identical(res1, resb)
-
-library(data.table)
-setDTthreads(threads = 1)
-dto <- setDT(cbind(do, go))
-setkey(dto, go)
-
-obj <- r2cq(sum(x))
-sys.time(res1 <- group_exec(obj, do, go, sort=FALSE))
-sys.time(res2 <- dto[, sum(x), go][['V1']])
-all.equal(res1, res2)
-
-obj <- r2cq(sum(x + y))
-sys.time(res1 <- group_exec(obj, do, go, sort=FALSE))
-sys.time(res2 <- dto[, sum(x + y), go][['V1']])
-all.equal(res1, res2)
-
-mean <- mean.default
-call <- quote(sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2))
-call2 <- quote(sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) * (x - mean(x))))
-obj <- r2c(call)
-sys.time(res1 <- group_exec(obj, do, go, sort=FALSE))
-system.time(
-  res2 <- dto[,
-    sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2), go
-  ][['V1']]
-)
-all.equal(res1, res2)
-identical(res1, res2)
-resb <-  base_grp_eval(do, go, call)
-identical(res1, resb)
-
-d2 <- do[go==152,]
-call <- quote(sum((x - mean(x)) * (y - mean(y))))
-call <- quote(sum((x - mean(x)) ^ 2))
-call2 <- quote(sum((x - mean(x)) * (x - mean(x))))
-# call <- quote(sum((x - mean(x)) ^ 3))
-obj <- r2c(call2)
-g2 <- rep(1L, nrow(d2))
-res1 <- group_exec(obj, d2, g2, sort=FALSE)
-resb <-  base_grp_eval(d2, g2, call)
-identical(res1, resb)
-
-# Methods
-
-cg <- GRP(g)
-
-system.time(r2c:::test_0(x))
-system.time(r2c:::test_decc(x))
-system.time(r2c:::test_dbl(x))
-system.time(r2c:::test_short(x))
-system.time(r2c:::test_all(x))
-system.time(collapse::fsum(x, cg, na.rm=FALSE))
-system.time(collapse::fsum(x, na.rm=FALSE))
-system.time(sum(x))
-
+system.time <- sys.time <- function(exp, reps=11) {
+  res <- matrix(0, reps, 5)
+  time.call <- quote(base::system.time({NULL}))
+  time.call[[2]][[2]] <- substitute(exp)
+  gc()
+  for(i in seq_len(reps)) {
+    res[i,] <- eval(time.call, parent.frame())
+  }
+  structure(res, class='proc_time2')
+}
+print.proc_time2 <- function(x, ...) {
+  print(
+    structure(
+      # x[order(x[,3]),][ceiling(nrow(x)/2),],
+      round(colMeans(x), 3),
+      names=c("user.self", "sys.self", "elapsed", "user.child", "sys.child"),
+      class='proc_time'
+) ) }
 
     set.seed(1)
     n <- 1e7
@@ -118,87 +64,24 @@ system.time(sum(x))
     library(collapse)
     cg <- collapse::GRP(g)
 
-    microbenchmark::microbenchmark(times=20,
-      dt.x <- dt[, sum(x), keyby=g],
-      collapse.x <- fsum(x, cg),
-      base.x <- colSums(mx)
-    )
-    all.equal(dt.x$V1, base.x)
-    all.equal(unname(collapse.x), base.x)
-
-set.seed(1)
-n <- 1e7
-x <- mx <- runif(n) * runif(n)       # full 64 bit precision randomness
-g <- rep(seq_len(n/10), each=10)     # pre-ordered groups
-
-dim(mx) <- c(10, n/10)
-library(data.table); setDTthreads(1) # One thread only for apples-apples
-dt <- setkey(data.table(x, g), g)    # mark as pre-ordered by group
-library(collapse)
-cg <- collapse::GRP(g)               # mark as pre-ordered by group
-
-microbenchmark::microbenchmark(times=20,
-  dt.x <- dt[, sum(x), keyby=g],
-  collapse.x <- fsum(x, cg),
-  base.x <- colSums(mx),
-  collap(x, cg, fsum)
-)
-## Unit: milliseconds
-##                             expr   min    lq  mean median    uq   max neval
-##  dt.x <- dt[, sum(x), keyby = g] 201.5 212.0 245.5  244.9 272.9 293.1    20
-##        collapse.x <- fsum(x, cg)  28.6  29.4  31.5   30.9  33.7  34.9    20
-##            base.x <- colSums(mx)  21.4  24.9  27.5   26.0  26.3  56.5    20
-all.equal(dt.x$V1, base.x)
-## [1] TRUE
-all.equal(unname(collapse.x), base.x)
-## [1] TRUE
-
-
-
-
-
     fmean2 <- function(x, cg) rep(fmean(x, cg, na.rm=FALSE), cg[['group.sizes']])
     fsum2 <- function(x, cg) rep(fsum(x, cg, na.rm=FALSE), cg[['group.sizes']])
     system.time(
-      clp.slope <-
+      g.slp.c <-
         fsum((x - fmean2(x, cg)) * (y - fmean2(y, cg)), cg, na.rm=FALSE) /
         fsum((x - fmean2(x, cg))^2, cg, na.rm=FALSE)
     )
-
-
-
-    x.split <- split(x, g)
-    y.split <- split(y, g)
-    mean <- mean.default
-
-    library(data.table)
-    dt <- data.table(x, y, g)
-    setkey(dt, g)
-
-
-
-    system.time(g.sum <- vapply(x.split, sum, 0))
-
-    system.time(g.sum <- vapply(x.split, sum, 0))
-
-    system.time(g.slope.base <- mapply(slope, x.split, y.split))
-    system.time(
-      g.slope.dt <- dt[,
-        sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2),
-        keyby=g
-    ] )
-
-
-
     system.time({
-      res <- numeric(length(x.split))
-      for(i in seq_along(x.split)) {
-        xi <- x.split[[i]]
-        yi <- y.split[[i]]
-        res[i] <-
-          sum((xi - mean(xi)) * (yi - mean(yi))) / sum((xi - mean(xi)) ^ 2)
-      }
+      g.mu.c <- fmean2(x, cg)
+      x_g.mu.c <- (x - g.mu.c)
+      g.slp.c <-
+        fsum(x_g.mu.c * (y - fmean2(y, cg)), cg, na.rm=FALSE) /
+        fsum(x_g.mu.c, cg, na.rm=FALSE)
     })
+    dtg <- data.frame(x, y, g) |> group_by(g)
+    system.time(g.sum.dply <- summarise(dtg, sum(x)))
+
+
 
 graal.slope <- read.table(
   text=grep(
