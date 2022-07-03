@@ -23,7 +23,7 @@ r2cq(
 }
 \arguments{
 \item{call}{an R expression, for \code{r2cq} it is captured unevaluated, for
-\code{r2c} it should be quoted with e.g. \code{\link{quote}}.}
+\code{r2c} it should be quoted with e.g. \code{\link{quote}}.  See details.}
 
 \item{dir}{NULL (default), or character(1L) name of a file system directory
 to store the shared object file in.  If NULL a temporary directory will be
@@ -77,30 +77,37 @@ Currently the following functions are supported in \code{call}:
 \item Statistics: \code{mean}, \code{sum}, \code{length}.
 }
 
-All calls present in \code{call} must be in the form \code{fun(...)} or for operators
-\verb{a fun b} where \code{fun} is the unquoted name of the function (i.e. not
-\code{"fun"(...)} or many of the other variations that R will normally allow for
-function invocation).
+\code{call} and all sub-calls it comprises must be in the form \code{fun(...)} or for
+operators \verb{a fun b} where \code{fun} is the unquoted name of the function (i.e.
+not \code{"fun"(...)} or many of the other variations that R will normally allow
+for function invocation).  Functions must be bound to their original
+symbols for them to be recognized.  Symbols used as parameters to \code{call}
+and its constituent sub-calls (e.g. the \code{x} and \code{y} in \code{sum(x) + y}) will
+become parameters to the "r2c_fun" function.  There must be at least one such
+symbol in \code{call}.  Symbol order in the "r2c_fun" parameter list is based on
+order of appearance in the call tree after everything is \code{\link{match.call}}ed.
+\code{.R2C.DOTS} and any symbols that match the regular expression
+"^\\.ARG\link{0-9}+$" are reserved for use by \code{r2c} and thus disallowed in \code{call}.
 
 Parameters used with "r2c_fun" supported functions are categorized into data
 parameters and control parameters.  For example, in \code{sum(x, na.rm=TRUE)}, \code{x}
 is considered a data parameter and \code{na.rm} a control parameter.  All data
 parameters must be attribute-less numeric vectors.  Integer vectors are
-supported, but they are coerced to numeric for all intermediate calculations.
-If all data inputs are integer and the R counterpart functions in \code{call}
-support integer output, the result will be returned as integer.  There are no
-general restrictions on control parameters, but each implemented function
-will only accept values for them that would make sense for the R
-counterparts.
+supported, but they are coerced to numeric (and thus copied) before use.  If
+all data inputs are integer and the R counterpart functions in \code{call} support
+integer output, the result will be returned as integer.  There are no general
+type restrictions on control parameters, but each implemented function will
+only accept values for them that would make sense for the R counterparts.
 
 In general \code{r2c} attempts to mimic the corresponding R function semantics to
 the \code{identical} level, but there may be corner cases that differ,
 particularly those involving missing or infinite values.
 
-\code{r2c} requires a C99 compatible implementation with infinity defined.
-Compiling with other implementations may produce undefined behavior, although
-such implementations should be rare and might not even be supported by R
-proper.
+\code{r2c} requires a C99 compatible implementation with floating point infinity
+defined and the \code{R_xlen_t} range representable without precision loss as
+double precision floating point.  It is unknown whether R supports C
+implementations that fail this requirement, and if it does they are probably
+rare.
 }
 \examples{
 r2c_sum_add <- r2cq(sum(x + y))
@@ -109,6 +116,6 @@ r2c_sum_add(1, runif(10))
 }
 \seealso{
 \code{\link{group_exec}} to iterate this function groupwise on data,
-\code{\link{get_c_code}} to retrieve the generate C code use to produce the native
-instructions.
+\code{\link{get_c_code}} for functions to retrieve meta data from the function,
+including the generated C code and the compiler output.
 }

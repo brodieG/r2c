@@ -5,7 +5,7 @@
 \alias{r2c-package}
 \title{Fast Iterated Statistic Computation in R}
 \description{
-Compiles a selected subset of R into native instructions so that that
-expressions composed from that subset can be executed repeatedly on varying
-data without interpreter overhead.
+Compiles a subset of R into machine code so that expressions composed with
+that subset can be applied repeatedly on varying data without interpreter
+overhead.
 }

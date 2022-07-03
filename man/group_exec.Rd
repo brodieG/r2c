@@ -18,10 +18,11 @@ group_exec(
 
 \item{groups}{an integer vector, or a list of equal-length integer vectors,
 the interaction of which defines individual groups to organize the vectors
-in \code{data} into.  If a list, the result of the calculation will be returned
-as a "data.frame", otherwise as a named vector.  Currently only one group
-vector is allowed, even when using list mode.  Support for multiple group
-vectors and non-integer vectors will be added in the future.}
+in \code{data} into.  NA values are considered one group. If a list, the result
+of the calculation will be returned as a "data.frame", otherwise as a named
+vector.  Currently only one group vector is allowed, even when using list
+mode.  Support for multiple group vectors and non-integer vectors will be
+added in the future.}
 
 \item{data}{a numeric vector, or a list of numeric vectors, each vector the
 same length as the vector(s) in \code{groups}.  If a named list, the vectors
