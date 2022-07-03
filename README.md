@@ -196,8 +196,8 @@ expect.  But not so with `{data.table}`'s Gforce:
     identical(unname(g.slp.r2c), g.slope.dt[['V1']])
     ## [1] TRUE
 
-We can infer comparing with  base timings that `{data.table}` is essentially
-falling back to standard R evaluation[^2]:
+We can infer comparing with base timings that `{data.table}` falls back to
+standard R evaluation[^2]:
 
     y.split <- split(y, g)
     slope <- \(x, y) sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2)
@@ -207,7 +207,7 @@ falling back to standard R evaluation[^2]:
     identical(g.slp, g.slp.r2c)
     ## [1] TRUE
 
-`{collapse}` can do better if we carefully compose the equivalent expression,
+`{collapse}` does better if we carefully compose the equivalent expression,
 but it is slowed down by the need to re-expand intermediate statistics back to
 group size.  We do that here with `rep` in `fsum2` and `fmean2`:
 
@@ -221,7 +221,7 @@ group size.  We do that here with `rep` in `fsum2` and `fmean2`:
     ##   user  system elapsed 
     ##  1.737   0.035   1.776 
 
-`{FastR}` also does reasonably well, but is warm-up cycles remain an issue, and
+`{FastR}` also does reasonably well, but warm-up cycles remain an issue, and
 even after them it does not keep up with `{r2c}`.
 
 <!--
@@ -275,8 +275,8 @@ ggsave("extra/time_glope_all-vs.png", p)
 
 To summarize:
 
-> `{r2c}` let's you create complex statistics from simple building blocks, using
-> R syntax and semantics, and let's you run them as fast as if you had written
+> `{r2c}` allows you to create complex statistics from simple building blocks
+> with R syntax and semantics, and to iterate them as fast as if you had written
 > them in a statically compiled language yourself.
 
 ## Interlude - On Sorting
@@ -307,11 +307,11 @@ and for packages to compile `{r2c}` functions at install-time.
 
 More importantly, we cannot compile and execute arbitrary R expressions:
 
-* Only `r2c` implemented counterpart functions may be used (currently: basic
+* Only `{r2c}` implemented counterpart functions may be used (currently: basic
   arithmetic operators and `sum`/`mean`)
 * Primary numeric inputs must be attribute-less (e.g. to avoid expectations of
   S3 method dispatch or attribute manipulation).
-* Future `r2c` counterparts will be limited to functions that return
+* Future `{r2c}` counterparts will be limited to functions that return
   attribute-less numeric vectors of constant size (e.g. `mean`), or of the size
   of one of their inputs (e.g. like `+`, or even `quantile`).
 
@@ -359,9 +359,9 @@ following should be straightforward to implement:
 * `[[`, `[`, and maybe `$`, likely with limitations on allowable index types.
 * Many others.
 
-More challenging due to code complexity, but otherwise compatible with `r2c`:
+More challenging due to code complexity, but otherwise compatible with `{r2c}`:
 
-* `quantile` and others.
+* `quantile`, and others.
 
 Some other useful functions will require more work:
 
@@ -404,16 +404,16 @@ there already exist similar implementations.  In particular Rich FitzJohn's
 #### API
 
 There are likely many applications that could benefit from the capabilities
-provided by {`r2c`}.  It should be possible to define an interface for use by
-external code.  Conceivably, {`data.table`} could be extended to run {`r2c`}
+provided by `{r2c}`.  It should be possible to define an interface for use by
+external code.  Conceivably, `{data.table}` could be extended to run `{r2c}`
 compiled expressions.
 
 Additionally, it should be possible to allow users to define their own C
-routines that integrated into the {`r2c`} framework.
+routines that integrated into the `{r2c}` framework.
 
 ### Re-using Compilation / Cleanup
 
-Ideally once an expression is compiled into an {`r2c`} function it would be
+Ideally once an expression is compiled into an `{r2c}` function it would be
 preserved for re-use in future R sessions.  Doing so within a package would be
 relatively straight-forward, but it should also be possible to create a local
 library to store such objects in.
