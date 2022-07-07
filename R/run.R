@@ -31,7 +31,7 @@ group_sizes <- function(go) .Call(R2C_group_sizes, go)
 #'
 #' @export
 #' @seealso [`r2c`] for more details on the behavior and constraints of
-#'   "r2c_fun" functions.
+#'   "r2c_fun" functions, [`base::eval`] for the semantics of `enclos`.
 #' @param fun an "r2c_fun" function as produced by [`r2c`].
 #' @param groups an integer vector, or a list of equal-length integer vectors,
 #'   the interaction of which defines individual groups to organize the vectors
@@ -50,6 +50,8 @@ group_sizes <- function(go) .Call(R2C_group_sizes, go)
 #'   are intended to remain constant group to group.  Matching of these objects
 #'   to `fun` parameters is the same as for `data`, with positional matching
 #'   occurring after the elements in `data` are matched.
+#' @param enclos environment to use as the `enclos` parameter when evaluating
+#'   expressions or matching calls.
 #' @param sorted TRUE or FALSE (default), whether the vectors in `data` and
 #'   `groups` are already sorted by `groups`.  If set to TRUE, the `data` will
 #'   not be sorted prior to computation. If the data is truly sorted this
@@ -114,7 +116,7 @@ group_sizes <- function(go) .Call(R2C_group_sizes, go)
 #' group_exec(r2c_mean, list(g), x, sorted=FALSE)
 
 group_exec <- function(
-  fun, groups, data, MoreArgs=list(), sorted=FALSE, env=parent.frame()
+  fun, groups, data, MoreArgs=list(), sorted=FALSE, enclos=parent.frame()
 ) {
   # FIXME: add validation for shlib
   vetr(
@@ -130,12 +132,12 @@ group_exec <- function(
   obj <- get_r2c_dat(fun)
   call <- sys.call()
   group_exec_int(
-    obj, formals=formals(fun), env=env, groups=groups, data=data,
+    obj, formals=formals(fun), enclos=enclos, groups=groups, data=data,
     MoreArgs=MoreArgs, sorted=sorted, call=call
   )
 }
 group_exec_int <- function(
-  obj, formals, env, groups, data, MoreArgs, sorted, call
+  obj, formals, enclos, groups, data, MoreArgs, sorted, call
 ) {
   preproc <- obj[['preproc']]
   shlib <- obj[['so']]
@@ -197,13 +199,15 @@ group_exec_int <- function(
   names(args.dummy) <- c(names(do), names(MoreArgs))
   call.dummy <- as.call(c(list(f.dummy), as.list(args.dummy)))
   call.dummy.m <- tryCatch(
-    as.list(match.call(f.dummy, call.dummy, envir=env, expand.dots=FALSE))[-1L] ,
+    as.list(
+      match.call(f.dummy, call.dummy, envir=enclos, expand.dots=FALSE)
+    )[-1L] ,
     error=function(e) {
       # Error produced by this is confusing because we're matching to positions,
       # so instead match against the actual data for better error message
       args <- c(data, MoreArgs)
       call.dummy <- as.call(c(list(f.dummy), args))
-      match.call(f.dummy, call.dummy, envir=env)
+      match.call(f.dummy, call.dummy, envir=enclos)
       # In case the above somehow doesn't produce an error; it always should
       stop("Internal Error: no param match error; contact maintainer.")
   } )
@@ -226,7 +230,7 @@ group_exec_int <- function(
 
   # Prepare temporary memory allocations
   alloc <- alloc(
-    x=preproc, data=do, gmax=group.dat[[3L]], par.env=env,
+    x=preproc, data=do, gmax=group.dat[[3L]], par.env=enclos,
     MoreArgs=MoreArgs, .CALL=call
   )
   stack <- alloc[['stack']]

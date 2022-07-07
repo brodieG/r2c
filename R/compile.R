@@ -78,7 +78,8 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' symbol in `call`.  Symbol order in the "r2c_fun" parameter list is based on
 #' order of appearance in the call tree after everything is [`match.call`]ed.
 #' `.R2C.DOTS` and any symbols that match the regular expression
-#' "^\\.ARG[0-9]+$" are reserved for use by `r2c` and thus disallowed in `call`.
+#' `"^\\.ARG[0-9]+$"` are reserved for use by `r2c` and thus disallowed in
+#' `call`.
 #'
 #' Parameters used with "r2c_fun" supported functions are categorized into data
 #' parameters and control parameters.  For example, in `sum(x, na.rm=TRUE)`, `x`
@@ -110,7 +111,6 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #'   capability to re-use generated shared objects across R sessions is not
 #'   formally supported, but can likely be arranged for by preserving the
 #'   directory.
-#' @param env environment to use as enclosure to function evaluation environment
 #' @param check TRUE or FALSE (default), if TRUE will evaluate the R expression
 #'   with the input data and compare that result to the one obtained from the
 #'   `r2c` C code evaluation, marking the result with attributes that indicate
@@ -122,6 +122,7 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #'   will only delete folders that have the same directory root as one generated
 #'   by `tempfile()` to avoid accidents.  If you manually provide `dir` you will
 #'   need to manually delete the directory yourself.
+#' @param quiet whether to suppress the compilation output.
 #' @return an "r2c_fun" function; this is an unusual function so please see
 #'   details.
 #' @seealso [`group_exec`] to iterate this function groupwise on data,
@@ -234,7 +235,7 @@ r2c <- function(
   GEXE <- quote(
     bquote(
       group_exec_int(
-        NULL, formals=.(.FRM), env=.(.ENV), groups=NULL,
+        NULL, formals=.(.FRM), enclos=.(.ENV), groups=NULL,
         # Pretend first argument is group-varying, even though it's not
         data=.(.DGRP), MoreArgs=.(.DAT[-1L]), sorted=TRUE,
         call=quote(.(.CALL))
