@@ -2,8 +2,17 @@
 
 # To Do / Questions
 
-* Try to interfere with r2c funs.  Need to document exactly what environment
-  they are exposed to (base namespace).
+* Don't use double for group sizes unless we have groups that are too large.
+  First level is simply to check input vector size, and if less than INT_MAX use
+  that, next step would be to switch from int to double if we do have a vector
+  that exceeds the size limit (but then we need to test for that...).  Does that
+  mean we need a limit to int?  Will be annoying to have logic for both.
+* Benchmarks:
+  * Randomly ordered groups?
+  * Larger group sizes?
+* Tests groups that aren't just 1:n or 0:n (I think we do this)?
+* What if compilation fails, do we have good error messages?
+* Rename `mean0` to `mean1`
 
 * Instructions for windows users about toolchain, etc?
 * Perhaps we got too lazy with POW, do we need to handle all the other cases
@@ -17,7 +26,8 @@
 * What is the implementation cost of allowing internal functions to advance the
   data pointers so they don't have to be manually moved after each function
   iteration?
-* Implement sum64 and mean64 to use double accumulator.
+* Implement sum64 and mean64 to use double accumulator (note we've tested that
+  double accumulators are slower).
 * We can no longer use `mean <- mean.default` and `r2c` at same time (this might
   be correct, but will make readme a bit more complicated).  Also, error message
   is very confusing in this case as `mean.default` is also from the base
@@ -98,6 +108,8 @@
 
 ## Done
 
+* Try to interfere with r2c funs.  Need to document exactly what environment
+  they are exposed to (base namespace).
 * Pass data around in environments for better deparse (can't do this because the
   parameters might be unnamed via dots, or at least not easily, plus it only
   matters for the naked call).
@@ -364,13 +376,295 @@ them inside loop is fine since):
 
 But they can't be computed within the `r2c` code.
 
+# Further Optimizations
+
+Thoughts to try to reduce the group overhead.
+
+* How much overhead is just from `run`?
+* Evaluate overhead from generating result labels.
+
+It's actually significant: out of ~.9 secs for 1e8, .2 is spent on label
+generation.  In this case we need to be careful due to hashing of labels.  We
+can reduce this dramatically for the case we know that group.res.sizes are all
+size one, and a little bit if we know they are all the same size.
+
+We're actually getting a bit of overhead from generating the labels, so should
+just generate them directly in C (and now we do).
+
+It doesn't seem like order affects collapse much.
+
+## Notes vs Collapse
+
+For a single stat like `sum(x)` collapse is more memory efficient because it
+does not reorder the data vectors.  Also, while generating the radix sort
+ordering vector is fast, the actual reordering of the vector is much slower.
+Would be interesting to figure out why that is (actually this untrue, I was
+remember the cases where we were hitting the memory limits with 1e8, it takes
+the same amount to order as it does to re-order with the order index).
+
+For multiple stats like in `slope(x)`, `r2c` is more efficient.
+
+For smaller group counts, the hash algorithm from collapse seems much faster.
+
+Idea: could we do something with only sorting the result at the end?  Seems like
+it should be terrible to access the data vectors in an unsorted order though.
+
+From analysis it looks like what's going on is that (unlike `GRP`), `fsum`
+defaults to the hash method.  There are many pathways in the hash code, but for
+our data it seems the most likely outcome is to end up in one where the hash
+table size is the size of our input vector.
+
+The hash function is just the value of the group index modulo the has table
+size.
+
+But for some reason this doesn't seem to have terrible corner cases.  Once we
+get to small group sizes, we start underperforming the radix sort, but not by
+massive amounts, and we're way faster for larger group sizes.
+
+On my system this is the cost of accessing the vectors at random (well, this
+includes the physical re-ordering):
+
+> system.time(x[io])       # ordered
+   user  system elapsed 
+  0.052   0.003   0.057 
+> system.time(x[ir])       # random
+   user  system elapsed 
+  0.286   0.007   0.311 
+
+And most of the cost is just accessing the vector (`order_sum` below adds each
+value to a single accumulator in the order specified by io).
+
+> n <- 1e7
+> x <- runif(n)
+> io <- seq_len(n) - 1L
+> ir <- sample(io)
+> system.time(order_sum(x, io))
+   user  system elapsed 
+  0.022   0.000   0.023 
+> system.time(order_sum(x, ir))
+   user  system elapsed 
+  0.210   0.006   0.230 
+
+The key to collapse speed is that it reads the large input vectors in order, but
+then writes to the small group vector out of order.
+
+> system.time(fsum(x, g4, na.rm=FALSE))
+   user  system elapsed 
+  0.081   0.004   0.087 
+
+This advantage falls apart as we grow the size of the group vector by increasing
+the number of repeats:
+
+> system.time(fsum(x, g6, na.rm=FALSE))
+   user  system elapsed 
+  0.865   0.017   0.910 
+
+But exactly what is happening is not 100% clear:
+
+    1e4 groups                             milliseconds
+    fsum ------------------------------ : 98.79 -  0.00
+        fsum.default ------------------ : 98.79 - 12.73
+            qF ------------------------ : 86.06 -  0.00
+                hashfact -------------- : 86.06 -  0.00
+                    groupfact_sorted -- : 86.06 - 70.91
+                        Csv ----------- : 15.15 - 15.15
+
+    1e6 groups                             milliseconds
+    fsum ------------------------------ : 872.0 -   0.0
+        fsum.default ------------------ : 872.0 - 103.5
+            qF ------------------------ : 768.5 -   0.0
+                hashfact -------------- : 768.5 -   0.0
+                    groupfact_sorted -- : 768.5 - 636.6
+                        forder.int ---- :  81.8 -  81.8
+                        Csv ----------- :  47.3 -  47.3
+
+The main incremental cost is in groupfact_sorted, and we can tell from the C
+trace that's almost all from `dupVecIndex` which is where each element of the
+group vector is given the order of appearance of its group (which can be used to
+map inputs to group positions, possibly even after re-ordering).
+
+We're actually possibly faster if we take up the whole hash space, which
+trounces the theory?  Eh, maybe not, we're still only loading 1e3 cache lines,
+which actually will fit in L1 cache.
+
+    all.range <- as.integer(seq(1, n, length.out=1e3L))
+    g4.ar <- sample(all.range, n, replace=TRUE)
+    treeprof::treeprof(fsum(x, g4.ar, na.rm=FALSE))
+                                           milliseconds
+    fsum ------------------------------ : 80.52 -  0.00
+        fsum.default ------------------ : 80.52 -  9.25
+            qF ------------------------ : 71.28 -  0.00
+                hashfact -------------- : 71.28 -  0.00
+                    groupfact_sorted -- : 71.28 - 54.77
+                        Csv ----------- : 16.50 - 16.50
+
+If this is true it should be the case that contiguous should remain fast at
+higher sizes.  Let
+
+    n <- 1e7; ng <- 1e3
+    all.range <- as.integer(seq(1, n, length.out=ng))
+    g.ar <- sample(all.range, n, replace=TRUE)
+    g <- sample(ng, n, replace=TRUE)
+    system.time(fsum(x, g.ar, na.rm=FALSE))
+    ##   user  system elapsed 
+    ##  0.069   0.003   0.072 
+    system.time(fsum(x, g, na.rm=FALSE))
+    ##   user  system elapsed 
+    ##  0.064   0.004   0.068 
+
+
+    n <- 1e7; ng <- 1e4
+    all.range <- as.integer(seq(1, n, length.out=ng))
+    g.ar <- sample(all.range, n, replace=TRUE)
+    g <- sample(ng, n, replace=TRUE)
+    system.time(fsum(x, g.ar, na.rm=FALSE))
+    ##   user  system elapsed 
+    ##  0.132   0.003   0.136 
+    system.time(fsum(x, g, na.rm=FALSE))
+    ##   user  system elapsed 
+    ##  0.077   0.003   0.080 
+
+Largest number of groups that will fit in L1 would be 16K, not enough to start
+evicting out of L2 for the all range one.  To do that we need 32K entries.  At
+64K entries we should still fit adjacent in L2.
+
+    n <- 1e7; ng <- 2^16
+    all.range <- as.integer(seq(1, n, length.out=ng))
+    g.ar <- sample(all.range, n, replace=TRUE)
+    g <- sample(ng, n, replace=TRUE)
+    system.time(fsum(x, g.ar, na.rm=FALSE))
+    ##    user  system elapsed 
+    ##   0.358   0.008   0.371 
+    system.time(fsum(x, g, na.rm=FALSE))
+    ##    user  system elapsed 
+    ##   0.136   0.004   0.140 
+
+This suggests a massive crash in performance as for all range half will have
+been done in L2, and half out.  We can go up to 500K entries contiguous before
+we start exhausting L2 cache, so let's try with 250K groups:
+
+    n <- 1e7; ng <- 2^18
+    all.range <- as.integer(seq(1, n, length.out=ng))
+    g.ar <- sample(all.range, n, replace=TRUE)
+    g <- sample(ng, n, replace=TRUE)
+    system.time(fsum(x, g.ar, na.rm=FALSE))
+    ##    user  system elapsed 
+    ##   0.599   0.010   0.616 
+    system.time(fsum(x, g, na.rm=FALSE))
+    ##    user  system elapsed 
+    ##   0.343   0.007   0.353 
+
+**We're assuming no hash collisions whatsoever**
+
+Hmm, not what I expected.  For this case we should be needing 16MB worth of
+cache lines in the ar case, but only 1MB of cache for the contiguous case,
+thinking about the hash alone.  But there are other memory accesses too:
+
+* Seq - `iid <- px[i]` read entire vector sequentially.
+* Rand - `hid <- h[iid]` read the hash per the input vector.
+* Rand - `px[hid-1]` read input per hash value for first obs of group.
+* Seq - `pans_i[i]` write
+
+Basically, how much of the hash table can we keep in cache given competing
+demands from the sequential reads and writes, and the random accesses.  So we
+need a measure of age of the oldest hash access as a function of the number of
+entries read?
+
+For the 1e3 groups case, let's say on average we hit every group every thousand
+reads (going to be more than that, but it's all probabilistic), then we're
+using:
+
+* 1000 x 2 x 4 (sequential integers, read and write).
+* 1000 x 64 (random integers, but focused on the front part of the input)
+* For the hash acces:
+    * 1000 x 64 for the spaced out case
+    * 1000 x 4 for the normal case
+
+Or:
+
+    x * 2 * 4 + x * 64 + x * 64  == x * (8 + 64 + 64) == 136 * x
+    x * 2 * 4 + x * 64 + x * 4   == x * (8 + 64 + 4)  ==  76 * x
+
+Second number is questionable, and also whether we can assume we're going to hit
+every group value after ng writes and thus avoid eviction.
+
+One conclusion from this is if we know the range and we know we won't have
+collisions in the hash, we can dramatically reduce our cache utilization by
+avoiding the random read back from the input vector to check whether the hash
+hit is a match or a collision.
+
+The most questionable number is the second one.  Not quite sure how to think
+about the fact we're only reading from the section that contains every first
+instance of a group, and at what point we start overlapping in cache lines.
+Probably not a factor at 1e3.
+
+So, per these numbers, in the contiguous case we would start thrashing L1 at 826
+groups, and L2 at 27.6K, vs 481 and 15.4K.
+
+    n <- 1e7; ng <- 1600000
+    all.range <- as.integer(seq(1, n, length.out=ng))
+    g.ar <- sample(all.range, n, replace=TRUE)
+    g <- sample(ng, n, replace=TRUE)
+    system.time(fsum(x, g.ar, na.rm=FALSE))
+    system.time(fsum(x, g, na.rm=FALSE))
+
+Empirical tests:
+
+     ng   all  cntg
+    480  .086  .076
+    826  .081  .074
+   1600  .088  .076
+   2400  .115  .072
+   4800  .151  .074
+   5200  .134  .081
+   7500  .143  .091
+  15000  .178  .097
+  25000  .195  .124
+  35000  .340  .148
+  50000  .393  .156
+  75000  .446  .192
+ 100000  .496  .200
+ 200000  .636  .349
+ 400000  .807  .549
+ 800000 1.040  .821
+1600000 1.208 1.081
+
+Empirical data suggests a 5-6x cache utilization advantage for contiguous.
+
+    x * 2 * 4 + x * 64 + x * 64  == x * (8 + 64 + 64) == 136 * x
+    x * 2 * 4 + x * 64 + x * 4   == x * (8 + 64 + 4)  ==  76 * x
+
+So if we drop the middle term:
+
+    x * 2 * 4 + x * 64  == x * (8 + 64) == 72 * x
+    x * 2 * 4 + x * 4   == x * (8 + 4)  == 12 * x
+
+We get very close, and also this matches the key break points, with 5.4K and 1K
+entries for L1, and 175K and 30K entries for L2.  This matches the timings very
+well.
+
+Tradeoffs are:
+
+* Only access ooo the smaller group vector (we would need to do this for every
+  input vector).
+* Only need to do the very slow stop once.
+
+What's still not clear is why the magnitude of the slowdown is so large for
+`groupfact_sorted` (`dupVecIndex`).  Most likely once the group vector gets
+large enough we start trashing cache.  E.g. at 1e6 group size, we're at 2x cache
+(4MB).  But that should affect both the generation of the hash as well as the
+writing to the group vector.  It does, in fact the writing to the group vector
+proportionately becomes much slower (assuming that's the unattributed time in
+`fsum.default`, we see  271:51 (5.3:1) vs 501:160 (3.13) from the trace, so
+increasingly the sum access becomes a bigger issue.
+
 # Benchmarks
 
 * 1e7 with group size 10, 1000.
 * Pre-sorted
 * sum(x), sum(x + y)
 
-In this case mean did not get inlined, whereas the others did.  Addly subtract
+In this case mean did not get inlined, whereas the others did.  Oddly subtract
 shows up three times, but still not inlined.
 
     # 3.01 s   10.2%	54.00 ms	                       run
@@ -384,7 +678,7 @@ shows up three times, but still not inlined.
     # 109.00 ms    0.3%	109.00 ms                      sqr
     # 105.00 ms    0.3%	105.00 ms                      subtract
     # 96.00 ms    0.3%	96.00 ms                       divide
-# 6.00 ms    0.0%	6.00 ms	 	                       DYLD-STUB$$R_finite
+    # 6.00 ms    0.0%	6.00 ms	 	                       DYLD-STUB$$R_finite
 
 We tried only having two calls to mean, but there is something preventing
 inlining, and non-inlining is expensive.  Maybe R_FINITE prevents inlining?
@@ -405,7 +699,8 @@ additions).
 
 It appears `fmean` runs a single pass.  Additionally both `fsum` and `fmean` use
 64 bit accumulators, which performance wise is not an advantage on my CPU
-(looking at timings at group size of 1000).
+(looking at timings at group size of 1000).  It's actually a small disadvantage.
+
 
 # Done / Answered
 

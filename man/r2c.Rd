@@ -39,14 +39,14 @@ with the input data and compare that result to the one obtained from the
 that the result was identical, and if not, also with an attribute with the
 result of an \code{all.equal} comparison.}
 
+\item{quiet}{whether to suppress the compilation output.}
+
 \item{clean}{TRUE or FALSE, whether to remove the \code{dir} folder containing the
 generated C code and the shared object file after the shared object is
 \code{\link{dyn.load}}ed.  Normally this is an auto-generated temporary folder.  This
 will only delete folders that have the same directory root as one generated
 by \code{tempfile()} to avoid accidents.  If you manually provide \code{dir} you will
 need to manually delete the directory yourself.}
-
-\item{env}{environment to use as enclosure to function evaluation environment}
 }
 \value{
 an "r2c_fun" function; this is an unusual function so please see
@@ -87,7 +87,8 @@ become parameters to the "r2c_fun" function.  There must be at least one such
 symbol in \code{call}.  Symbol order in the "r2c_fun" parameter list is based on
 order of appearance in the call tree after everything is \code{\link{match.call}}ed.
 \code{.R2C.DOTS} and any symbols that match the regular expression
-"^\\.ARG\link{0-9}+$" are reserved for use by \code{r2c} and thus disallowed in \code{call}.
+\code{"^\\\\.ARG[0-9]+$"} are reserved for use by \code{r2c} and thus disallowed in
+\code{call}.
 
 Parameters used with "r2c_fun" supported functions are categorized into data
 parameters and control parameters.  For example, in \code{sum(x, na.rm=TRUE)}, \code{x}

@@ -10,7 +10,7 @@ group_exec(
   data,
   MoreArgs = list(),
   sorted = FALSE,
-  env = parent.frame()
+  enclos = parent.frame()
 )
 }
 \arguments{
@@ -42,6 +42,9 @@ not be sorted prior to computation. If the data is truly sorted this
 produces the same results while avoiding the cost of sorting.  If the data
 is not sorted groups \code{g} will produce groups corresponding to equal-value
 runs it contains, which might be useful in some circumstances.}
+
+\item{enclos}{environment to use as the \code{enclos} parameter when evaluating
+expressions or matching calls.}
 }
 \value{
 If \code{groups} is an atomic vectors, a named numeric or
@@ -111,5 +114,5 @@ group_exec(r2c_mean, list(g), x, sorted=FALSE)
 }
 \seealso{
 \code{\link{r2c}} for more details on the behavior and constraints of
-"r2c_fun" functions.
+"r2c_fun" functions, \code{\link[base:eval]{base::eval}} for the semantics of \code{enclos}.
 }
