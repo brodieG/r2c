@@ -643,6 +643,46 @@ We get very close, and also this matches the key break points, with 5.4K and 1K
 entries for L1, and 175K and 30K entries for L2.  This matches the timings very
 well.
 
+Running some timings on a larger memory system:
+
+    set.seed(1)
+    n <- 1e8
+    ng <- n/10
+    system.time(res <- group_exec(f, g, x))
+    ##   user  system elapsed 
+    ##  7.421   0.477   7.919 
+    system.time(fsum(x, g, na.rm=FALSE))
+    ##   user  system elapsed 
+    ## 12.264   0.580  12.888 
+
+    ng <- n/100
+    system.time(res <- group_exec(f, g, x))
+    ##   user  system elapsed 
+    ##  7.174   0.571   7.766 
+    system.time(fsum(x, g, na.rm=FALSE))
+    ##   user  system elapsed 
+    ##  5.101   0.401   5.520 
+    ng <- n/1000
+    system.time(res <- group_exec(f, g, x))
+    ##   user  system elapsed 
+    ##  6.512   0.543   7.077 
+    system.time(fsum(x, g, na.rm=FALSE))
+    ##   user  system elapsed 
+    ##  1.280   0.184   1.471 
+
+    all.range <- as.integer(seq(1, n, length.out=ng))
+    g.ar <- sample(all.range, n, replace=TRUE)
+    system.time(fsum(x, g.ar, na.rm=FALSE))
+    ##   user  system elapsed 
+    ##  3.672   0.445   4.131 
+
+    ng <- n/100
+    all.range <- as.integer(seq(1, n, length.out=ng))
+    g.ar <- sample(all.range, n, replace=TRUE)
+    system.time(fsum(x, g.ar, na.rm=FALSE))
+    ##   user  system elapsed 
+    ##  6.877   0.590   7.566 
+
 Tradeoffs are:
 
 * Only access ooo the smaller group vector (we would need to do this for every
