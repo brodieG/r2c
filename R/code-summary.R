@@ -91,7 +91,7 @@ code_gen_summary <- function(fun, args.reg, args.ctrl, args.flag) {
     args.ctrl=list(),
     args.flag=list()
   )
-  multi <- length(args.reg) > 1L || "..." %in% names(args.reg)
+  multi <- length(args.reg) > 1L
   name <- paste0(fun, if(multi) "_n")
 
   code_res(

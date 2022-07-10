@@ -241,8 +241,10 @@ group_exec_int <- function(
 
   empty.res <- FALSE
   group.sizes <- group.dat[[1L]]
+  res.size.type <- "variable"
   if(!stack['group', 1L]) { # constant group size
     group.res.sizes <- rep(stack['size', 1L], length(group.dat[[1L]]))
+    res.size.type <- if(stack['size', 1L] == 1L) "scalar" else "constant"
   } else if (is.na(stack['size', 1L])) {
     group.res.sizes <- group.sizes
   } else if (stack['size', 1L]) {
@@ -275,7 +277,7 @@ group_exec_int <- function(
     dat_cols <- sum(alloc[['alloc']][['type']] == "grp")
     handle <- obj[['handle']]
 
-    if(!is.na(shlib) && !is.loaded("run", PACKAGE=handle)) {
+    if(!is.na(shlib) && !is.loaded("run", PACKAGE=handle[['name']])) {
       handle <- dyn.load(shlib)
     }
     if(!is.loaded("run", PACKAGE=handle[['name']]))
@@ -298,9 +300,14 @@ group_exec_int <- function(
   }
   if(alloc[['alloc']][['typeof']][res.i] == "integer") res <- as.integer(res)
 
-  # Generate and attach group labels
+  # Generate and attach group labels, small optimization for predictable groups
   if(mode != "ungrouped") {
-    g.lab <- rep(go[[1L]][group.dat[[2L]] + 1L], group.res.sizes)
+    g.lab.raw <- group.dat[[2L]]
+    g.lab <-
+      if(res.size.type == "scalar") g.lab.raw
+      else if(res.size.type == "constant")
+        rep(g.lab.raw, each=group.res.sizes[1L])
+      else rep(g.lab.raw, group.res.sizes)  # could optimize further
     # Attach group labels
     if(mode == 'list') {
       res <- data.frame(group=g.lab, V1=res)
@@ -311,8 +318,7 @@ group_exec_int <- function(
       warning(
         "longer object length is not a multiple of shorter object length ",
         sprintf("(first at group %.0f).", status)
-      )
-    }
+    ) }
   } else if(status) {
     warning("longer object length is not a multiple of shorter object length.")
   }
