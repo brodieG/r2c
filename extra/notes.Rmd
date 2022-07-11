@@ -646,8 +646,15 @@ well.
 Running some timings on a larger memory system:
 
     set.seed(1)
-    n <- 1e8
-    ng <- n/10
+    n <- 2e8
+    ng <- n/100
+    x <- runif(n) * runif(n)
+    g <- sample(ng, n, replace=TRUE)
+    library(r2c)
+    library(collapse)
+    f <- r2cq(sum(x))
+
+
     system.time(res <- group_exec(f, g, x))
     ##   user  system elapsed 
     ##  7.421   0.477   7.919 
@@ -682,6 +689,23 @@ Running some timings on a larger memory system:
     system.time(fsum(x, g.ar, na.rm=FALSE))
     ##   user  system elapsed 
     ##  6.877   0.590   7.566 
+
+    set.seed(1)
+    n <- 2e8
+    ng <- n/100
+    x <- runif(n) * runif(n)
+    g <- sample(ng, n, replace=TRUE)
+    ## system.time(res <- group_exec(f, g, x))
+    ##    user  system elapsed 
+    ##  18.133   1.306  19.516 
+    ## system.time(fsum(x, g, na.rm=FALSE))
+    ##    user  system elapsed 
+    ##  10.954   0.814  11.783 
+    all.range <- as.integer(seq(1, n, length.out=ng))
+    g.ar <- sample(all.range, n, replace=TRUE)
+    ## system.time(fsum(x, g.ar, na.rm=FALSE))
+    ##    user  system elapsed 
+    ##  17.222   1.158  18.458 
 
 Tradeoffs are:
 
