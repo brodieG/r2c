@@ -138,11 +138,11 @@ system.time(clp.res <- fsum(x, g, na.rm=FALSE))
 ## 1e8 randomized, 1e7 groups.  Interesting that order switches
 
 ## > system.time(r2c.res <- group_exec(r2c_sum, g, x))
-##    user  system elapsed 
-##  11.443   0.994  12.510 
+##    user  system elapsed
+##  11.443   0.994  12.510
 ## > system.time(clp.res <- fsum(x, g, na.rm=FALSE))
-##    user  system elapsed 
-##  18.118   0.951  19.227 
+##    user  system elapsed
+##  18.118   0.951  19.227
 ## > g <- sample(n/10, n, replace=TRUE)
 ## > bench::mark(group_exec(r2c_sum, g, x), fsum(x, g, na.rm=FALSE))
 ## # A tibble: 2 × 13
@@ -154,11 +154,11 @@ system.time(clp.res <- fsum(x, g, na.rm=FALSE))
 ## 1e8 randomized, 1e3 groups.
 
 ## > system.time(r2c.res <- group_exec(r2c_sum, g, x))
-##    user  system elapsed 
-##  10.180   0.974  11.214 
+##    user  system elapsed
+##  10.180   0.974  11.214
 ## > system.time(clp.res <- fsum(x, g, na.rm=FALSE))
-##    user  system elapsed 
-##   1.714   0.294   2.013 
+##    user  system elapsed
+##   1.714   0.294   2.013
 ##
 ## > bench::mark(group_exec(r2c_sum, g, x), fsum(x, g, na.rm=FALSE))
 ## # A tibble: 2 × 13
@@ -169,11 +169,11 @@ system.time(clp.res <- fsum(x, g, na.rm=FALSE))
 
 ## 1e8 randomized, only 10 groups.
 ## > system.time(r2c.res <- group_exec(r2c_sum, g, x))
-##    user  system elapsed 
-##   2.518   0.717   3.345 
+##    user  system elapsed
+##   2.518   0.717   3.345
 ## > system.time(clp.res <- fsum(x, g, na.rm=FALSE))
-##    user  system elapsed 
-##   0.707   0.243   0.958 
+##    user  system elapsed
+##   0.707   0.243   0.958
 
 ## Some non-randomized views with 1e7 for reference
 
@@ -228,7 +228,7 @@ system.time(clp.res <- fsum(x, g, na.rm=FALSE))
 ## Collapse with 1e5 groups (size ~1000)
 ##
 ## Ticks: 4159; Iterations: 2; Time Per: 2.645 seconds; Time Total: 5.290 seconds; Time Ticks: 4.159
-## 
+##
 ##                                      milliseconds
 ## fsum ------------------------------ : 2645 -    0
 ##     fsum.default ------------------ : 2645 -  167
@@ -254,7 +254,7 @@ system.time(clp.res <- fsum(x, g, na.rm=FALSE))
 ## # … with 6 more variables: n_gc <dbl>, total_time <bch:tm>, result <list>,
 ## #   memory <list>, time <list>, gc <list>
 ## Warning message:
-## Some expressions had a GC in every iteration; so filtering is disabled. 
+## Some expressions had a GC in every iteration; so filtering is disabled.
 ## > g <- sample(n/5, n, replace=TRUE)
 ## > bench::mark(fsum(x, g, na.rm=FALSE))
 ## # A tibble: 1 × 13
@@ -275,6 +275,9 @@ system.time(clp.res <- fsum(x, g, na.rm=FALSE))
 ## slowdowns with few groups that we're attributing to swapping for r2c.  So
 ## either the Calloc memory is not subject to the swapping problem (hard to see
 ## why), or we're misunderstanding the use of Calloc by collapse.
+##
+## FWIW trying on a 16GB system the problem goes away for `r2c`.  Haven't tied
+## out the memory usage issue.
 
 ## >  g <- sample(n/5, n, replace=TRUE)
 ## > bench::mark(group_exec(r2c_sum, g, x))
@@ -324,19 +327,19 @@ n <- 1e7
 x <- runif(n) * runif(n)  # full 64 bit precision randomness
 g <- sample(n/10, n, replace=TRUE)
 system.time(group_exec(r2c_sum, g, x))
-##   user  system elapsed 
-##  0.843   0.007   0.859 
+##   user  system elapsed
+##  0.843   0.007   0.859
 system.time(fsum(x, g, na.rm=FALSE))
-##   user  system elapsed 
-##  0.810   0.010   0.829 
+##   user  system elapsed
+##  0.810   0.010   0.829
 
 g <- sample(n/1e3, n, replace=TRUE)
 system.time(r0 <- group_exec(r2c_sum, g, x))
-##    user  system elapsed 
-##   0.706   0.008   0.720 
+##    user  system elapsed
+##   0.706   0.008   0.720
 system.time(r1 <- fsum(x, g, na.rm=FALSE))
-##    user  system elapsed 
-##   0.073   0.002   0.076 
+##    user  system elapsed
+##   0.073   0.002   0.076
 
 ## Hmm, this is not good.  Seems like the hash method is better up to some
 ## number of distinct entries, and then crashes:
@@ -348,12 +351,12 @@ bench::mark(
   GRP(g4, method='radix'), GRP(g4, method='hash'),
   check=FALSE
 )
-##   expression                     min   median `itr/sec` mem_alloc 
-##   <bch:expr>                <bch:tm> <bch:tm>     <dbl> <bch:byt> 
-## 1 GRP(g6, method = "radix")  425.3ms    438ms      2.28    91.6MB 
-## 2 GRP(g6, method = "hash")   698.8ms  698.8ms      1.43    49.6MB 
-## 3 GRP(g4, method = "radix")  332.1ms  332.8ms      3.00    76.4MB 
-## 4 GRP(g4, method = "hash")    87.5ms   87.8ms     10.7     38.3MB 
+##   expression                     min   median `itr/sec` mem_alloc
+##   <bch:expr>                <bch:tm> <bch:tm>     <dbl> <bch:byt>
+## 1 GRP(g6, method = "radix")  425.3ms    438ms      2.28    91.6MB
+## 2 GRP(g6, method = "hash")   698.8ms  698.8ms      1.43    49.6MB
+## 3 GRP(g4, method = "radix")  332.1ms  332.8ms      3.00    76.4MB
+## 4 GRP(g4, method = "hash")    87.5ms   87.8ms     10.7     38.3MB
 
 ## Seems to show hash is pretty fast so long as there are not too many groups.
 
@@ -361,20 +364,20 @@ system.time(r2 <- {
   cg <- GRP(g6)
   r2 <- fsum(x, cg, na.rm=FALSE)
 })
-##   user  system elapsed 
-##  0.512   0.005   0.524 
+##   user  system elapsed
+##  0.512   0.005   0.524
 system.time(r2 <- {
   cg <- GRP(g4)
   fsum(x, cg, na.rm=FALSE)
 })
-##   user  system elapsed 
-##  0.330   0.001   0.333 
+##   user  system elapsed
+##  0.330   0.001   0.333
 system.time(r2 <- {
   cg <- GRP(g4, method='hash')
   fsum(x, cg, na.rm=FALSE)
 })
-##    user  system elapsed 
-##   0.084   0.003   0.087 
+##    user  system elapsed
+##   0.084   0.003   0.087
 
 ## Let's try to mess with the hash
 
@@ -401,45 +404,6 @@ treeprof::treeprof(fsum(x, g4.ar, na.rm=FALSE))
 
 
 res <- fsum(x, g6, na.rm=FALSE)
-
-n <- 1e7
-x <- runif(n) * runif(n)
-g5 <- sample(n/5, n, replace=TRUE)
-g10 <- sample(n/10, n, replace=TRUE)
-g20 <- sample(n/20, n, replace=TRUE)
-g50 <- sample(n/50, n, replace=TRUE)
-g100 <- sample(n/1e2, n, replace=TRUE)
-
-system.time(fsum(x, g2, na.rm=FALSE))
-system.time(fsum(x, g5, na.rm=FALSE))
-system.time(fsum(x, g10, na.rm=FALSE))
-system.time(fsum(x, g20, na.rm=FALSE))
-system.time(fsum(x, g50, na.rm=FALSE))
-system.time(fsum(x, g100, na.rm=FALSE))
-
-system.time(GRP(g2,   method='hash'))
-system.time(GRP(g5,   method='hash'))
-system.time(GRP(g10,  method='hash'))
-system.time(GRP(g20,  method='hash'))
-system.time(GRP(g50,  method='hash'))
-system.time(GRP(g100, method='hash'))
-
-
-system.time(sort(g5, method='radix'))
-system.time(sort(g100, method='radix'))
-
-microbenchmark::microbenchmark(times=10,
-  fsum(x, g7, na.rm=FALSE),
-  fsum(x, g6, na.rm=FALSE),
-  fsum(x, g4, na.rm=FALSE)
-)
-
-n <- 1e7
-x <- runif(n)
-io <- seq_len(n) - 1L
-ir <- sample(io)
-system.time(order_sum(x, io))
-system.time(order_sum(x, ir))
 
 ## This is actually comparable, so doesn't seem to bother it much (maybe
 ## suggests some of the optimizations not necessary)?
@@ -483,33 +447,152 @@ bench::mark(
 set.seed(1)
 n <- 1e8
 x <- runif(n) * runif(n)  # full 64 bit precision randomness
-# g <- cumsum(sample(c(TRUE, rep(FALSE, 9)), n, replace=TRUE))
-g <- sample(n/10, n, replace=TRUE)
+gn <- 10
+ng <- n/gn
+g <- cumsum(sample(c(TRUE, rep(FALSE, (gn - 1))), n, replace=TRUE))
+# g <- sample(n/10, n, replace=TRUE)
 library(r2c)
-f <- r2cq(sum(x), dir="extra/tmp")
-# f <- r2cq(sum(x))
-gc()
+f <- r2cq(sum(x))
 system.time(res <- group_exec(f, g, x, sorted=TRUE))
-
+##   user  system elapsed
+##  0.859   0.025   0.918
 library(collapse)
-cg <- GRP(g)
-gc()
-system.time(fsum(x, cg, na.rm=FALSE))
+system.time(cg <- GRP(g))
+##   user  system elapsed
+##  1.192   0.404   1.723
+system.time(res.clp <- fsum(x, cg, na.rm=FALSE))
+##   user  system elapsed
+##  0.311   0.033   0.358
 
-graal.slope <- read.table(
-  text=grep(
-    "\\d+\\.\\d+", readLines('extra/benchmarks-graal-mapply.txt'),
-    value=TRUE
-) )
-graal.sum <- read.table(
-  text=grep(
-    "\\d+\\.\\d+", readLines('extra/benchmarks-graal-sum.txt'),
-    value=TRUE
-) )
+gn <- 1000
+ng <- n/gn
+g <- cumsum(sample(c(TRUE, rep(FALSE, (gn - 1))), n, replace=TRUE))
+system.time(res.r2c <- group_exec(f, g, x, sorted=TRUE))
+##   user  system elapsed
+##  0.361   0.002   0.364
+system.time(cg <- GRP(g))
+##   user  system elapsed
+##  0.465   0.212   0.679
+system.time(res.clp <- fsum(x, cg, na.rm=FALSE))
+##   user  system elapsed
+##  0.365   0.002   0.369
+
+# Fewer groups favor r2c, as expected, but the weird part is that this means the
+# underlying calculation is actually faster since more than half the time is
+# spent computing group meta data for r2c.
+
+##                           milliseconds
+## group_exec ----------- : 348.6 -   0.0
+##     group_exec_int --- : 348.6 -   0.0
+##         group_sizes -- : 201.6 - 201.6
+##         run_int ------ : 146.5 - 146.5
+
+# Suggests that without the group execution overhead, we are much faster,
+# possibly because we're writing sequentially to final result, whereas collapse
+# is not.
+
+# In terms of group computation, the interesting observation is that the first
+# pass is done in half the time of the second, even in the case where there are
+# few groups because the first pass can do xmm instructions to increment the
+# counter, but the second can't because there is more to do.  Maybe we can try
+# to restructure the group sizes in a way that is closer to the first loop so
+# that optimization will happen (will reduce overall cost by 1/3).  But the
+# problem is the double pass is a bit expensive.
+
+# - New Pre-sorted -------------------------------------------------------------
+
+set.seed(1)
+n <- 1e8
+x <- runif(n) * runif(n)  # full 64 bit precision randomness
+gn <- 10
+ng <- n/gn
+g <- cumsum(sample(c(TRUE, rep(FALSE, (gn - 1))), n, replace=TRUE))
+library(r2c)
+library(collapse)
+f <- r2cq(sum(x))
+system.time(g.r2c <- process_groups(g, sorted=TRUE))
+system.time(res.r2c <- group_exec(f, g.r2c, x))
+##   user  system elapsed
+##  0.426   0.007   0.436
+system.time(g.clp <- GRP(g))
+system.time(res.clp <- fsum(x, g.clp))
+##   user  system elapsed
+##  0.354   0.003   0.359
+all.equal(res.r2c, res.clp)
+
+gn <- 1000
+ng <- n/gn
+g <- cumsum(sample(c(TRUE, rep(FALSE, (gn - 1))), n, replace=TRUE))
+system.time(g.r2c <- process_groups(g, sorted=TRUE))
+system.time(res.r2c <- group_exec(f, g.r2c, x))
+##   user  system elapsed
+##  0.139   0.000   0.140
+system.time(g.clp <- GRP(g))
+system.time(res.clp <- fsum(x, g.clp))
+##   user  system elapsed
+##  0.503   0.002   0.507
+all.equal(res.r2c, res.clp)
+
+set.seed(1)
+n <- 1e7
+x <- runif(n) * runif(n)  # full 64 bit precision randomness
+gn <- 10
+ng <- n/gn
+g <- cumsum(sample(c(TRUE, rep(FALSE, (gn - 1))), n, replace=TRUE))
+f <- r2cq(sum(x))
+system.time(g.r2c <- process_groups(g, sorted=TRUE))
+system.time(res.r2c <- group_exec(f, g.r2c, x))
+##   user  system elapsed
+##  0.047   0.001   0.048
+system.time(g.clp <- GRP(g))
+system.time(res.clp <- fsum(x, g.clp))
+##   user  system elapsed
+##  0.037   0.000   0.038
+all.equal(res.r2c, res.clp)
+
+gn <- 1000
+ng <- n/gn
+g <- cumsum(sample(c(TRUE, rep(FALSE, (gn - 1))), n, replace=TRUE))
+system.time(g.r2c <- process_groups(g, sorted=TRUE))
+system.time(res.r2c <- group_exec(f, g.r2c, x))
+##   user  system elapsed
+##  0.016   0.000   0.016
+system.time(g.clp <- GRP(g))
+system.time(res.clp <- fsum(x, g.clp))
+##   user  system elapsed
+##  0.054   0.000   0.055
+all.equal(res.r2c, res.clp)
+
+
+# - Collapse Idiomatic ---------------------------------------------------------
+
+# Submitted by Sebastian, although in his case he used mutate.
+
+set.seed(1)
+n <- 1e7
+x <- runif(n) * runif(n)  # full 64 bit precision randomness
+y <- runif(n) * runif(n)
+g <- cumsum(sample(c(TRUE, rep(FALSE, 9)), n, replace=TRUE))
+library(data.table)
+dt <- data.table(x, y, g)
+dt <- dt |> fgroup_by(g)
+system.time(
+  res.clp <- dt |> fsummarise(
+    slope =
+      fsum(fwithin(x, na.rm = FALSE) * fwithin(y, na.rm = FALSE), na.rm=FALSE) %/=%
+      fsum(fwithin(x, na.rm = FALSE)^2, na.rm = FALSE)
+  )
+)
+##   user  system elapsed
+##  0.228   0.002   0.233
+r2c_slope0 <- r2cq(sum((x - mean0(x)) * (y - mean0(y))) / sum((x - mean0(x)) ^ 2))
+system.time(r2c.slope0 <- group_exec(r2c_slope0, g, list(x, y), sorted=TRUE))
+##   user  system elapsed
+##  0.185   0.002   0.190
 
 # In this case mean did not get inlined, whereas the others did.  Addly subtract
 # shows up three times, but still not inlined.
-# 
+#
 # 3.01 s   10.2%	54.00 ms	                       run
 # 1.90 s    6.4%	1.75 s	 	                       mean
 # 153.00 ms    0.5%	37.00 ms                        R_finite
@@ -522,3 +605,16 @@ graal.sum <- read.table(
 # 105.00 ms    0.3%	105.00 ms                      subtract
 # 96.00 ms    0.3%	96.00 ms                       divide
 # 6.00 ms    0.0%	6.00 ms	 	                       DYLD-STUB$$R_finite
+
+# - Graal Data -----------------------------------------------------------------
+
+graal.slope <- read.table(
+  text=grep(
+    "\\d+\\.\\d+", readLines('extra/benchmarks-graal-mapply.txt'),
+    value=TRUE
+) )
+graal.sum <- read.table(
+  text=grep(
+    "\\d+\\.\\d+", readLines('extra/benchmarks-graal-sum.txt'),
+    value=TRUE
+) )

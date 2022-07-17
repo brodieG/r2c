@@ -64,12 +64,16 @@ of with the standard R routines, and most importantly it is compatible with
 }
 \details{
 While "r2c_fun" functions can be called in the same way as normal R
-functions, there is limited value in doing so.  Instead, they are intended to
-be invoked indirectly with runners like \code{\link{group_exec}} (currently the only
-one implemented).  The structure of "r2c_fun" objects is subject to change
-without notice in future \code{r2c} releases.  The only supported uses of them
-are standard invocation with the \code{(} operator and use with \code{r2c} functions
-that accept them as inputs.
+functions, there is limited value in doing so.  "r2c_fun" functions are
+optimized to be invoked invoked indirectly with runners like \code{\link{group_exec}}
+(currently the only one implemented).  In many common cases it is likely that
+using an "r2c_fun" directly will be slower than evaluating the corresponding
+R expression.
+
+The structure of "r2c_fun" objects is subject to change without notice in
+future \code{r2c} releases.  The only supported uses of them are standard
+invocation with the \code{(} operator and use with \code{r2c} functions that accept
+them as inputs.
 
 Currently the following functions are supported in \code{call}:
 \itemize{

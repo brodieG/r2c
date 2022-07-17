@@ -4,14 +4,7 @@
 \alias{group_exec}
 \title{Execute r2c Function Iteratively on Groups in Data}
 \usage{
-group_exec(
-  fun,
-  groups,
-  data,
-  MoreArgs = list(),
-  sorted = FALSE,
-  enclos = parent.frame()
-)
+group_exec(fun, groups, data, MoreArgs = list(), enclos = parent.frame())
 }
 \arguments{
 \item{fun}{an "r2c_fun" function as produced by \code{\link{r2c}}.}
@@ -35,13 +28,6 @@ full to the native code for each group.  This is useful for arguments that
 are intended to remain constant group to group.  Matching of these objects
 to \code{fun} parameters is the same as for \code{data}, with positional matching
 occurring after the elements in \code{data} are matched.}
-
-\item{sorted}{TRUE or FALSE (default), whether the vectors in \code{data} and
-\code{groups} are already sorted by \code{groups}.  If set to TRUE, the \code{data} will
-not be sorted prior to computation. If the data is truly sorted this
-produces the same results while avoiding the cost of sorting.  If the data
-is not sorted groups \code{g} will produce groups corresponding to equal-value
-runs it contains, which might be useful in some circumstances.}
 
 \item{enclos}{environment to use as the \code{enclos} parameter when evaluating
 expressions or matching calls.}

@@ -2,14 +2,16 @@
 
 # To Do / Questions
 
+* Migrate to tapply structure.  More generally, explain interface?
+* Fill out acknowledgments.
 * Don't use double for group sizes unless we have groups that are too large.
-  First level is simply to check input vector size, and if less than INT_MAX use
-  that, next step would be to switch from int to double if we do have a vector
-  that exceeds the size limit (but then we need to test for that...).  Does that
-  mean we need a limit to int?  Will be annoying to have logic for both.
-* Benchmarks:
-  * Randomly ordered groups?
-  * Larger group sizes?
+  **probably not worth it** b/c the group sizes result is only as big as the
+  number of groups, so very small in the grand scheme of things.  First level is
+  simply to check input vector size, and if less than `INT_MAX` use that, next
+  step would be to switch from int to double if we do have a vector that exceeds
+  the size limit (but then we need to test for that...).  Does that mean we need
+  a limit to int?  Will be annoying to have logic for both.
+* Allow more then `INT_MAX` groups (labels are limiting right now)?
 * Tests groups that aren't just 1:n or 0:n (I think we do this)?
 * What if compilation fails, do we have good error messages?
 * Rename `mean0` to `mean1`
@@ -108,6 +110,9 @@
 
 ## Done
 
+* Benchmarks:
+  * Randomly ordered groups?
+  * Larger group sizes?
 * Try to interfere with r2c funs.  Need to document exactly what environment
   they are exposed to (base namespace).
 * Pass data around in environments for better deparse (can't do this because the
@@ -378,6 +383,8 @@ But they can't be computed within the `r2c` code.
 
 # Further Optimizations
 
+## Overview
+
 Thoughts to try to reduce the group overhead.
 
 * How much overhead is just from `run`?
@@ -392,6 +399,40 @@ We're actually getting a bit of overhead from generating the labels, so should
 just generate them directly in C (and now we do).
 
 It doesn't seem like order affects collapse much.
+
+## Group Sizes
+
+Group size computation is significant.  The need to do two pass is also not
+super (group count, vs recording group sizes).  Group count is actually quite
+fast because it can use vectorized instructions to increment the group counter
+without the need for branches.
+
+We also have the issue that we don't allow more than INT_MAX groups, and related
+that we do allow R_xlen_t max group sizes (the former needs to be decided on as
+a limitation, the latter needs to be decided on as a feature we want to keep).
+
+Big question is whether we want to change the logic to avoid doing two passes.
+We can do something that e.g. allocates 1/4 of the size (but it has to be for
+labels and for group sizes), but if it fails will need to go to 1/2 the size or
+larger.  Maybe start at 1/8.  There is an outer loop that checks if we hit the
+last value in the loop, and if we did triggers running the inner loop again
+after "growing" the vector (i.e. re-alloc, copying, unprotecting).
+
+The other thing we could do is an analysis of the first 1000 elements to
+estimate the group size, but this will fail miserably in the case where there is
+a single e.g. 1K initial group, but then much smaller group sizes after.  So it
+gets pretty complicated: you need to do that first 1K pass, assume e.g. smallest
+group, and if you fail, fall back to old method.  If you succeed you're still
+left with an over-allocated vector you likely need to subset or copy later
+(unclear whether we are allowed to use "true length" for this, or whether we
+want to manually generate the label vectors manually).
+
+The pattern we're looking for is "increment counter on condition", which we can
+use to increment a pointer.  But then we are going to need to write to write to
+memory every iteration, which is probably worse.  So likely the best we can do
+is reduce time by 1/3 by avoiding the initial group number counting, which seems
+like a lot of complexity and work.  Instead maybe we really should have a
+separate group computation.
 
 ## Notes vs Collapse
 
@@ -524,6 +565,59 @@ higher sizes.  Let
     ##   user  system elapsed 
     ##  0.077   0.003   0.080 
 
+Let's try with different types to see what happens:
+
+    n <- 1e7; ng <- 1e4
+    set.seed(1)
+    x <- runif(n) * runif(n)
+    all.range <- as.integer(seq(1, n, length.out=ng))
+    g <- sample(ng, n, replace=TRUE)
+    g.ar <- sample(all.range, n, replace=TRUE)
+    gt <- as.character(g)
+    system.time(fsum(x, gt, na.rm=FALSE))
+    ##   user  system elapsed 
+    ##  0.373   0.020   0.401 
+    gt <- as.character(g.ar)
+    system.time(fsum(x, gt, na.rm=FALSE))
+    ##   user  system elapsed 
+    ##  0.412   0.016   0.435 
+    gt <- g + 0
+    system.time(fsum(x, gt, na.rm=FALSE))
+    ##   user  system elapsed 
+    ##  0.621   0.030   0.668 
+    gt <- g.ar + 0
+    system.time(fsum(x, gt, na.rm=FALSE))
+    ##   user  system elapsed 
+    ##  0.693   0.027   0.730 
+    gt <- factor(as.character(g))
+    system.time(fsum(x, gt, na.rm=FALSE))
+    ##   user  system elapsed 
+    ##  0.032   0.000   0.033 
+    system.time(fsum(x, g, na.rm=FALSE))
+    ##   user  system elapsed 
+    ##  0.085   0.007   0.094 
+    system.time(res <- group_exec(f, g, x))
+    ##   user  system elapsed 
+    ##  0.763   0.020   0.802 
+    system.time(fsum(x, g.ar, na.rm=FALSE))
+    ##   user  system elapsed 
+    ##  0.142   0.016   0.160 
+
+Pretty much as expected.  Big benefit from factors.  So really the hashes work
+very well with sequential integers, whereas the sorting version should be about
+the same for everything?.
+
+    system.time(order(x))
+    ##   user  system elapsed 
+    ##  0.587   0.026   0.620 
+    system.time(order(g))
+    ##   user  system elapsed 
+    ##  0.201   0.005   0.208 
+    gt <- as.character(g)
+    system.time(order(gt, method='radix'))
+    ##   user  system elapsed 
+    ##  0.271   0.006   0.281 
+
 Largest number of groups that will fit in L1 would be 16K, not enough to start
 evicting out of L2 for the all range one.  To do that we need 32K entries.  At
 64K entries we should still fit adjacent in L2.
@@ -641,19 +735,47 @@ So if we drop the middle term:
 
 We get very close, and also this matches the key break points, with 5.4K and 1K
 entries for L1, and 175K and 30K entries for L2.  This matches the timings very
-well.
+well.  Don't understand why the reads back from the input vector (which should
+require whole cache line loads) don't seem to figure in this math.  Actually,
+it's likely because of things being concentrated in the beginning of the vector
+as speculated:
 
-Running some timings on a larger memory system:
+    > z <- 10000; sum(1:5000 %in% g[1:z])/z
+    [1] 0.4358
+    > z <- 10000; sum(1:5000 %in% g[1:z])/5000
+    [1] 0.8716
+
+So most initial group instances are going to be very concentrated, with only a
+few stragglers.
+
+Tradeoffs are:
+
+* Only access ooo the smaller group vector (we would need to do this for every
+  input vector).
+* Only need to do the very slow stop once.
+
+What's still not clear is why the magnitude of the slowdown is so large for
+`groupfact_sorted` (`dupVecIndex`).  Most likely once the group vector gets
+large enough we start trashing cache.  E.g. at 1e6 group size, we're at 2x cache
+(4MB).  But that should affect both the generation of the hash as well as the
+writing to the group vector.  It does, in fact the writing to the group vector
+proportionately becomes much slower (assuming that's the unattributed time in
+`fsum.default`, we see  271:51 (5.3:1) vs 501:160 (3.13) from the trace, so
+increasingly the sum access becomes a bigger issue.
+
+Running some timings on a larger memory system (16GB, 4MB of L3 cache).  Here
+we're dealing with group sizes that in the contiguous case just fit in cache at
+1e6 * 4 (n/100):
 
     set.seed(1)
-    n <- 2e8
-    ng <- n/100
+    n <- 1e8
     x <- runif(n) * runif(n)
     g <- sample(ng, n, replace=TRUE)
     library(r2c)
     library(collapse)
     f <- r2cq(sum(x))
 
+    ng <- n/10
 
     system.time(res <- group_exec(f, g, x))
     ##   user  system elapsed 
@@ -669,6 +791,7 @@ Running some timings on a larger memory system:
     system.time(fsum(x, g, na.rm=FALSE))
     ##   user  system elapsed 
     ##  5.101   0.401   5.520 
+
     ng <- n/1000
     system.time(res <- group_exec(f, g, x))
     ##   user  system elapsed 
@@ -683,12 +806,18 @@ Running some timings on a larger memory system:
     ##   user  system elapsed 
     ##  3.672   0.445   4.131 
 
+At n/1000 we're talking 400KB contiguous or 6.4MB, so for the latter just 50%
+overflowing L3 cache.
+
     ng <- n/100
     all.range <- as.integer(seq(1, n, length.out=ng))
     g.ar <- sample(all.range, n, replace=TRUE)
     system.time(fsum(x, g.ar, na.rm=FALSE))
     ##   user  system elapsed 
     ##  6.877   0.590   7.566 
+
+At 2n with n/100 we're 50% in cache for the contiguous case.  Maybe should try
+the n/10 case with g.ar?
 
     set.seed(1)
     n <- 2e8
@@ -707,20 +836,6 @@ Running some timings on a larger memory system:
     ##    user  system elapsed 
     ##  17.222   1.158  18.458 
 
-Tradeoffs are:
-
-* Only access ooo the smaller group vector (we would need to do this for every
-  input vector).
-* Only need to do the very slow stop once.
-
-What's still not clear is why the magnitude of the slowdown is so large for
-`groupfact_sorted` (`dupVecIndex`).  Most likely once the group vector gets
-large enough we start trashing cache.  E.g. at 1e6 group size, we're at 2x cache
-(4MB).  But that should affect both the generation of the hash as well as the
-writing to the group vector.  It does, in fact the writing to the group vector
-proportionately becomes much slower (assuming that's the unattributed time in
-`fsum.default`, we see  271:51 (5.3:1) vs 501:160 (3.13) from the trace, so
-increasingly the sum access becomes a bigger issue.
 
 # Benchmarks
 

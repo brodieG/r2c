@@ -13,13 +13,82 @@
 ##
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
-## Compute Group Meta Data
-##
-## @param go ordered integer vector of groups ids
-## @return list containing group sizes, group start offset (i.e. 0 for first
-##   group), and largest group size.
-##
-group_sizes <- function(go) .Call(R2C_group_sizes, go)
+
+r2c_group_obj <- function(sizes, order, group.o, sorted, mode) {
+  structure(
+    list(sizes=sizes, order=order, group.o=group.o, sorted=sorted, mode=mode),
+    class="r2c.groups"
+  )
+}
+group_sizes <- function(go) {
+  res <- .Call(R2C_group_sizes, go)
+  names(res) <- c('gsizes', 'glabs', 'gmax')
+  res
+}
+#' Compute Group Meta Data
+#'
+#' Use by [`group_exec`] to organize group data, and made available as an
+#' exported function for the case where multiple calculations use the same group
+#' set and thus there is an efficiency benefit in processing it once.
+#'
+#' @note The structure and content of the return value may change in the future.
+#' @inheritParams group_exec
+#' @seealso [`group_exec`]
+#' @export
+#' @param sorted TRUE or FALSE (default), whether the vectors in `groups` are
+#'   already sorted.  If set to TRUE, no sorting will be done on the groups, nor
+#'   later on the `data` by [`group_exec`]. If the data is truly sorted this
+#'   produces the same results while avoiding the cost of sorting.  If the data
+#'   is not sorted groups `g` will produce groups corresponding to equal-value
+#'   runs it contains, which might be useful in some circumstances.
+#' @return an "r2c.groups" object, which is a list containing group sizes,
+#'   labels, and group count, along with other meta data such as the group
+#'   ordering vector.  The contents and structure of this 
+#' @examples
+#' ## Use same group data for different but same length data.
+#' ## (alternatively, could use two functions on same data).
+#' g <- c(1L, 2L, 2L)
+#' x <- runif(3)
+#' y <- runif(3)
+#' g.r2c <- process_groups(g, sorted=TRUE)
+#' f <- r2cq(sum(x))
+#' group_exec(f, g.r2c, x)
+#' group_exec(f, g.r2c, y)
+
+process_groups <- function(groups, sorted=FALSE) {
+  vetr(
+    integer() || (list() && all(vapply(., is.integer, TRUE))),
+    LGL.1
+  )
+  mode <- "list"
+  if(is.integer(groups)) {
+    groups <- list(groups)
+    mode <- "vec"
+  }
+  if(length(unique(lengths(groups))) != 1L)
+    stop("All `groups` vectors must be the same length.")
+  if(length(groups) != 1L)
+    stop("Only one grouping variable supported at the moment.")
+  if(!sorted) {
+    o <- do.call(order, groups)
+    go <- lapply(groups, "[", o)
+  } else {
+    o <- seq_along(groups[[1L]])  # should be altrep
+    go <- groups
+  }
+
+  r2c_group_obj(
+    group_sizes(go[[1L]]), # UPDATE IF ALLOW MORE GROUP VECS
+    order=o, group.o=go, sorted=sorted, mode=mode
+  )
+}
+r2c_groups_template <- function() {
+  x <- process_groups(1:3)
+  x[['sizes']] <- lapply(x[['sizes']], "[", 0L)
+  x[['order']] <- x[['order']][0L]
+  x[['group.o']] <- x[['group.o']][0L]
+  x
+}
 
 #' Execute r2c Function Iteratively on Groups in Data
 #'
@@ -52,12 +121,6 @@ group_sizes <- function(go) .Call(R2C_group_sizes, go)
 #'   occurring after the elements in `data` are matched.
 #' @param enclos environment to use as the `enclos` parameter when evaluating
 #'   expressions or matching calls.
-#' @param sorted TRUE or FALSE (default), whether the vectors in `data` and
-#'   `groups` are already sorted by `groups`.  If set to TRUE, the `data` will
-#'   not be sorted prior to computation. If the data is truly sorted this
-#'   produces the same results while avoiding the cost of sorting.  If the data
-#'   is not sorted groups `g` will produce groups corresponding to equal-value
-#'   runs it contains, which might be useful in some circumstances.
 #' @return If `groups` is an atomic vectors, a named numeric or
 #'   integer vector with the results of executing `fun` on each group and the
 #'   names set to the groups.  Otherwise, a "data.frame" with the group vectors
@@ -116,67 +179,66 @@ group_sizes <- function(go) .Call(R2C_group_sizes, go)
 #' group_exec(r2c_mean, list(g), x, sorted=FALSE)
 
 group_exec <- function(
-  fun, groups, data, MoreArgs=list(), sorted=FALSE, enclos=parent.frame()
+  fun, groups, data, MoreArgs=list(), enclos=parent.frame()
 ) {
   # FIXME: add validation for shlib
   vetr(
     fun=is.function(.) && inherits(., 'r2c_fun'),
-    groups=integer() || (list() && all(vapply(., is.integer, TRUE))) || NULL,
+    groups=
+      # Simple group vector
+      integer() ||
+      # List of group vectors
+      (list() && all(vapply(., is.integer, TRUE))) ||
+      # An object produced by process_groups
+      r2c_groups_template(),
     data=(
       (numeric() || integer()) ||
       (list() && all(is.num_naked(.)) && length(.) > 0)
     ),
-    MoreArgs=list(),
-    sorted=LGL.1
+    MoreArgs=list()
   )
   obj <- get_r2c_dat(fun)
   call <- sys.call()
   group_exec_int(
     obj, formals=formals(fun), enclos=enclos, groups=groups, data=data,
-    MoreArgs=MoreArgs, sorted=sorted, call=call
+    MoreArgs=MoreArgs, call=call
   )
 }
 group_exec_int <- function(
-  obj, formals, enclos, groups, data, MoreArgs, sorted, call
+  obj, formals, enclos, groups, data, MoreArgs, call
 ) {
   preproc <- obj[['preproc']]
   shlib <- obj[['so']]
 
-  # - Prep and Check -----------------------------------------------------------
-  mode <- if(!is.list(groups)) "vec" else "list"
+  # - Handle Groups ------------------------------------------------------------
+
   if(!is.list(data)) data <- list(data)
   if(length(d.len <- unique(lengths(data))) > 1L)
     stop("All `data` vectors must be the same length.")
   if(!length(d.len)) d.len <- 0L  # No data
-  if(!is.null(groups)) {
-    if(!is.list(groups)) groups <- list(groups)
-    if(length(g.len <- unique(lengths(groups))) != 1L)
-      stop("All `groups` vectors must be the same length.")
-    if(length(groups) != 1L)
-      stop("Only one grouping variable supported at the moment.")
-    if(length(d.len) == 0 || !identical(d.len, g.len))
-      stop("`groups` vectors must be the same length as `data` vectors.")
-  } else {
-    mode <- "ungrouped"
-    # if(!length(data))
-    #   stop("NULL `groups` allowed only if `data` is non-empty.")
-  }
+  groups <- if(is.null(groups)) {
+    r2c_group_obj(
+      sizes=list(gsizes=as.numeric(d.len), glabs=0L, gmax=as.numeric(d.len)),
+      order=seq_len(d.len),
+      group.o=list(rep(1L, d.len)), # Not altrep as of 4.2.1, sadly
+      sorted=TRUE, mode="ungrouped"
+    )
+  } else if(!inherits(groups, "r2c.groups")) {
+    process_groups(groups)
+  } else groups
+
+  mode <- groups[['mode']]
+  if(length(d.len) == 0 || !identical(d.len, length(groups[['group.o']][[1L]])))
+    stop("`data` vectors must be the same length as `group` vectors.")
+
   if (mode != "ungrouped") {
-    if(!sorted) {
-      o <- do.call(order, groups)
-      go <- lapply(groups, "[", o)
-      do <- lapply(data, "[", o)
-    } else  {
-      go <- groups
-      do <- data
-    }
-    # return group lenghts, offsets, and max group size
-    group.dat <- group_sizes(go[[1L]])
+    if(!groups[['sorted']]) do <- lapply(data, "[", groups[['order']])
+    else do <- data
   } else {
-    # Fake a single group
     do <- data
-    group.dat <- list(as.numeric(d.len), 0, as.numeric(d.len))
   }
+  group.sizes <- groups[['sizes']]
+
   # - Match Data to Parameters -------------------------------------------------
 
   # Trick here is data is split across two parameters so we have to merge
@@ -230,7 +292,7 @@ group_exec_int <- function(
 
   # Prepare temporary memory allocations
   alloc <- alloc(
-    x=preproc, data=do, gmax=group.dat[[3L]], par.env=enclos,
+    x=preproc, data=do, gmax=group.sizes[['gmax']], par.env=enclos,
     MoreArgs=MoreArgs, .CALL=call
   )
   stack <- alloc[['stack']]
@@ -240,15 +302,15 @@ group_exec_int <- function(
     stop("Internal Error: unexpected stack state at exit.")
 
   empty.res <- FALSE
-  group.sizes <- group.dat[[1L]]
+  gsizes <- group.sizes[['gsizes']]
   res.size.type <- "variable"
   if(!stack['group', 1L]) { # constant group size
-    group.res.sizes <- rep(stack['size', 1L], length(group.dat[[1L]]))
+    group.res.sizes <- rep(stack['size', 1L], length(gsizes))
     res.size.type <- if(stack['size', 1L] == 1L) "scalar" else "constant"
   } else if (is.na(stack['size', 1L])) {
-    group.res.sizes <- group.sizes
+    group.res.sizes <- gsizes
   } else if (stack['size', 1L]) {
-    group.res.sizes <- group.sizes
+    group.res.sizes <- gsizes
     group.res.sizes[
       group.res.sizes < stack['size', 1L] & group.res.sizes != 0
     ] <- stack['size', 1L]
@@ -290,7 +352,7 @@ group_exec_int <- function(
       ids,
       flag,
       control,
-      group.sizes,
+      gsizes,
       group.res.sizes
     )
     # Result vector is modified by reference
@@ -302,7 +364,7 @@ group_exec_int <- function(
 
   # Generate and attach group labels, small optimization for predictable groups
   if(mode != "ungrouped") {
-    g.lab.raw <- group.dat[[2L]]
+    g.lab.raw <- group.sizes[['glabs']]
     g.lab <-
       if(res.size.type == "scalar") g.lab.raw
       else if(res.size.type == "constant")

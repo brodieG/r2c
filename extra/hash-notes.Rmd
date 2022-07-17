@@ -18,7 +18,7 @@ These we know are sequential.
 ## Integers
 
 Two scenarios, one where the vector is small or there are known values outside
-of the 0:length(x) (but only checking beginning, middle and end, such just
+of the 0:length(x) (but only checking beginning, middle and end, so just
 guessing) range.
 
 Scenario 1:
@@ -37,7 +37,7 @@ We `Calloc` M, and we `allocVector` length(x) as `ans_i`.  So for our case we
 `Calloc` length(x) and also `allocVector` length(x).
 
 Claims that tx=1000 is for cases like factor or logical where table size is
-known.  For our case this is likely the branch.
+known.  But this is not our branch.  Our branch just 
 
 ## Return
 
@@ -63,3 +63,5 @@ Would get 1->1, 2->3, 3->6
 
 What it's really doing is for each element in the input vector, what position in
 the output group vector it corresponds to.
+
+For our data case, 

@@ -449,6 +449,13 @@ optimization.
   trace of it in the most recent 1.1 candidate development versions (as of
   2022-07-03).
 
+## Acknowledgments
+
+* Usual acknowledgments
+* data.table for radix
+* collapse for idea to separate group computation (not the first source, but the
+  reason why I did this).
+
 ## Notes on Benchmarking
 
 Benchmarks are under:
