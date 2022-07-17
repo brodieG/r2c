@@ -536,10 +536,22 @@ all.equal(res.r2c, res.clp)
 set.seed(1)
 n <- 1e7
 x <- runif(n) * runif(n)  # full 64 bit precision randomness
+y <- runif(n) * runif(n)  # full 64 bit precision randomness
 gn <- 10
 ng <- n/gn
 g <- cumsum(sample(c(TRUE, rep(FALSE, (gn - 1))), n, replace=TRUE))
 f <- r2cq(sum(x))
+r2c_slope0 <- r2cq(
+  sum((x - mean0(x)) * (y - mean0(y))) /
+  sum((x - mean0(x)) ^ 2)
+)
+fmean2 <- function(x, g) fmean(x, g, na.rm=FALSE, TRA="replace_fill")
+clp_slope <- function(x, y, g) {
+  cg <- GRP(g)
+  fsum((x - fmean2(x, cg)) * (y - fmean2(y, cg)), cg, na.rm=FALSE) /
+  fsum((x - fmean2(x, cg))^2, cg, na.rm=FALSE)
+}
+
 system.time(g.r2c <- process_groups(g, sorted=TRUE))
 system.time(res.r2c <- group_exec(f, g.r2c, x))
 ##   user  system elapsed
@@ -550,18 +562,34 @@ system.time(res.clp <- fsum(x, g.clp))
 ##  0.037   0.000   0.038
 all.equal(res.r2c, res.clp)
 
+system.time(r2c.slp <- group_exec(r2c_slope0, g.r2c, list(x, y)))
+##   user  system elapsed 
+##  0.143   0.001   0.144 
+system.time(clp.slp <- clp_slope(x, y, g.clp))
+##   user  system elapsed 
+##  0.243   0.002   0.246 
+all.equal(r2c.slp, clp.slp)
+
 gn <- 1000
 ng <- n/gn
 g <- cumsum(sample(c(TRUE, rep(FALSE, (gn - 1))), n, replace=TRUE))
-system.time(g.r2c <- process_groups(g, sorted=TRUE))
+g.r2c <- process_groups(g, sorted=TRUE)
 system.time(res.r2c <- group_exec(f, g.r2c, x))
 ##   user  system elapsed
 ##  0.016   0.000   0.016
-system.time(g.clp <- GRP(g))
+g.clp <- GRP(g)
 system.time(res.clp <- fsum(x, g.clp))
 ##   user  system elapsed
 ##  0.054   0.000   0.055
 all.equal(res.r2c, res.clp)
+
+system.time(r2c.slp <- group_exec(r2c_slope0, g.r2c, list(x, y)))
+##   user  system elapsed 
+##  0.088   0.000   0.089 
+system.time(clp.slp <- clp_slope(x, y, g.clp))
+##   user  system elapsed 
+##  0.307   0.007   0.315 
+all.equal(r2c.slp, clp.slp)
 
 
 # - Collapse Idiomatic ---------------------------------------------------------

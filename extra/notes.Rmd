@@ -2,6 +2,8 @@
 
 # To Do / Questions
 
+* Errors in `match.call` that show the deparsed argument might deparse
+  differently on different systems (`group_sum` error tests).
 * Migrate to tapply structure.  More generally, explain interface?
 * Fill out acknowledgments.
 * Don't use double for group sizes unless we have groups that are too large.
@@ -201,6 +203,54 @@ doesn't make any sense.
 * Really need to figure out whether we want a formal interface to the functions.
   It could be auto-generated from all the unbound symbols like gsubfn does it.
 * Annotate code with the call that it corresponds to
+
+# Interface
+
+## apply
+
+Evaluating whether we should shift to `tapply`.
+
+    function (X, INDEX, FUN = NULL, ..., default = NA, simplify = TRUE)
+
+What would that do?
+
+    r2c_tapply(x, g.r2c, r2c_sum, ...)
+
+Is it okay to have `MoreArgs` as dots?  Probably, the issue being conflict with
+additional parameters, which in this case is just `enclos`.  In terms of
+implementation we would just capture them in a list and pass them on.
+
+Names?  We want to add window functions, so do we end up with:
+
+    r2cgapply
+    r2cwapply
+
+Or
+
+    gapply
+    g_apply    # makes it clear not base R
+    wapply
+    w_apply
+
+Another option
+
+    ctapply
+    c_tapply
+    cwapply
+    c_wapply
+
+Should the name communicate in some way that these only run with `r2c` funs, or
+do we wish to allow them to run with other functions?
+
+By extension we should probably do:
+
+    csum <- r2c(sum(x))
+
+The misleading thing for that one is `sum` is also essentially just C code.
+
+## NSE
+
+Things like 
 
 # Dots
 
