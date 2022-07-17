@@ -91,7 +91,9 @@ code_gen_summary <- function(fun, args.reg, args.ctrl, args.flag) {
     args.ctrl=list(),
     args.flag=list()
   )
-  multi <- length(args.reg) > 1L
+  multi <-
+    length(args.reg) > 1L ||
+    (length(args.reg) == 1L && identical(args.reg[[1L]], quote(.R2C.DOTS)))
   name <- paste0(fun, if(multi) "_n")
 
   code_res(
