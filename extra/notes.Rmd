@@ -119,6 +119,8 @@
 
 ## Done
 
+* Fill out acknowledgments.
+* Rename `mean0` to `mean1`
 * Benchmarks:
   * Randomly ordered groups?
   * Larger group sizes?

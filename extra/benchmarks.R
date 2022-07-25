@@ -67,7 +67,7 @@ r2c_slope <- r2cq(sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2))
 system.time(r2c.slope <- group_exec(r2c_slope, g.r2c, list(x, y)))
 ##   user  system elapsed 
 ##  0.227   0.001   0.229 
-r2c_slope0 <- r2cq(sum((x - mean0(x)) * (y - mean0(y))) / sum((x - mean0(x)) ^ 2))
+r2c_slope0 <- r2cq(sum((x - mean1(x)) * (y - mean1(y))) / sum((x - mean1(x)) ^ 2))
 system.time(r2c.slope0 <- group_exec(r2c_slope0, g.r2c, list(x, y)))
 ##   user  system elapsed 
 ##  0.148   0.001   0.150 
@@ -130,13 +130,13 @@ system.time(
 
 dt <- data.table(x, y, g)
 setkey(dt, g)
-mean <- mean0
+mean <- mean1
 system.time(
   dt[, sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2), keyby=g]
 )
 ##   user  system elapsed 
 ##  0.343   0.014   0.359 
-slope0 <- function(x, y) sum((x - mean0(x)) * (y - mean0(y))) / sum((x - mean0(x)) ^ 2)
+slope0 <- function(x, y) sum((x - mean1(x)) * (y - mean1(y))) / sum((x - mean1(x)) ^ 2)
 slope <- function(x, y) sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2)
 system.time(slope.base <- mapply(slope, x.split, y.split))
 ##   user  system elapsed 
@@ -199,8 +199,8 @@ system.time(g.slp.r2c <- group_exec(r2c_slope, g, list(x, y), sorted=TRUE))
 ##  0.282   0.001   0.284
 
 r2c_slope0 <- r2cq(
-  sum((x - mean0(x)) * (y - mean0(y))) /
-  sum((x - mean0(x)) ^ 2)
+  sum((x - mean1(x)) * (y - mean1(y))) /
+  sum((x - mean1(x)) ^ 2)
 )
 system.time(
   g.slp.r2c0 <- group_exec(r2c_slope0, g, list(x, y), sorted=TRUE)
@@ -511,8 +511,8 @@ res <- fsum(x, g6, na.rm=FALSE)
 # - Small Random Slope ---------------------------------------------------------
 
 r2c_slope0 <- r2cq(
-  sum((x - mean0(x)) * (y - mean0(y))) /
-  sum((x - mean0(x)) ^ 2)
+  sum((x - mean1(x)) * (y - mean1(y))) /
+  sum((x - mean1(x)) ^ 2)
 )
 
 fmean2 <- function(x, g) fmean(x, g, na.rm=FALSE, TRA="replace_fill")
@@ -638,8 +638,8 @@ ng <- n/gn
 g <- cumsum(sample(c(TRUE, rep(FALSE, (gn - 1))), n, replace=TRUE))
 f <- r2cq(sum(x))
 r2c_slope0 <- r2cq(
-  sum((x - mean0(x)) * (y - mean0(y))) /
-  sum((x - mean0(x)) ^ 2)
+  sum((x - mean1(x)) * (y - mean1(y))) /
+  sum((x - mean1(x)) ^ 2)
 )
 fmean2 <- function(x, g) fmean(x, g, na.rm=FALSE, TRA="replace_fill")
 clp_slope <- function(x, y, g) {
@@ -709,7 +709,7 @@ system.time(
 )
 ##   user  system elapsed
 ##  0.228   0.002   0.233
-r2c_slope0 <- r2cq(sum((x - mean0(x)) * (y - mean0(y))) / sum((x - mean0(x)) ^ 2))
+r2c_slope0 <- r2cq(sum((x - mean1(x)) * (y - mean1(y))) / sum((x - mean1(x)) ^ 2))
 system.time(r2c.slope0 <- group_exec(r2c_slope0, g, list(x, y), sorted=TRUE))
 ##   user  system elapsed
 ##  0.185   0.002   0.190
