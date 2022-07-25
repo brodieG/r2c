@@ -166,6 +166,21 @@ dt |>
   fsummarise(slope = fsum(fwithin(x) * fwithin(y)) / fsum(fwithin(x)^2))
 
 dt |>
+  fgroup_by(g) |>
+  fmutate(x_center = fwithin(x)) |>
+  fsummarise(slope = fsum(x_center * fwithin(y)) / fsum(x_center^2))
+
+dt |>
+  fgroup_by(g) |>
+  fmutate(x_center = fwithin(x)) |>
+  fsummarise(slope = fsum(fwithin(x, g) * fwithin(y, g)) / fsum(fwithin(x, g)^2))
+
+slope.clp.2 <- dt |>
+  fgroup_by(g) |>
+  fmutate(x_center = fwithin(x)) |>
+  fsummarise(slope = fsum(fwithin(x, g) * fwithin(y)) / fsum(fwithin(x, g)^2))
+
+dt |>
    fgroup_by(g) |>
    fmutate(x_center = fwithin(x, na.rm = FALSE)) |>
    fsummarise(
@@ -173,6 +188,66 @@ dt |>
      fsum(x_center, fwithin(y, na.rm = FALSE), na.rm = FALSE) %/=%
      fsum(x_center, na.rm = FALSE)^2
    )
+
+dt2 <- data.table(x=c(1,2,3,5), g=rep(1:2, each=2))
+
+d <- data.frame(x=c(1,2), g=rep(1L, each=2))
+d |> fgroup_by(g) |> fsummarise(res=fsum(fwithin(x) * fwithin(x)))
+d |> fgroup_by(g) |> fsummarise(res=fsum(fwithin(x) * fwithin(x)))
+d <- data.frame(x=c(3,5), g=rep(2L, each=2))
+
+a <- c(1, 2, 3, 4)
+b <- c(5, 2, 2, 0)
+c <- rep(1:2, each=2)
+fwithin(a)
+fwithin(b)
+fwithin(a, c)
+fwithin(b, c)
+fwithin(a, c) * fwithin(b, c)
+
+
+a <- c(1, 2, 3, 4)
+b <- c(5, 2, 2, 0)
+c <- rep(1:2, each=2)
+fsum(fwithin(a, c) * fwithin(b, c), c)
+fsum(fwithin(a, c) * fwithin(b), c)
+fsum(fwithin(a) * fwithin(b, c), c)
+fsum(fwithin(a) * fwithin(b), c)
+
+fwithin(a, c) * fwithin(b, c)
+fwithin(a, c) * fwithin(b)
+fwithin(a) * fwithin(b, c)
+
+fsum(fwithin(a, c) + fwithin(b, c), c)
+fsum(fwithin(a, c) + fwithin(b), c)
+fsum(fwithin(a) + fwithin(b), c)
+fsum(fwithin(a) + fwithin(b, c), c)
+
+
+
+fsum(fwithin(a) * fwithin(b), c)
+
+d <- data.frame(x=c(1,2,3,5), g=rep(1:2, each=2))
+d |> fgroup_by(g) |> fsummarise(res=fwithin(x))
+d |> fgroup_by(g) |> fsummarise(res=fsum(fwithin(x)))
+d |> fgroup_by(g) |> fsummarise(res=fsum(fwithin(x) * fwithin(x)))
+
+d <- data.frame(x=c(1,2,3,5), g=rep(1:2, each=2))
+d |> fgroup_by(g) |> fsummarise(res=fwithin(x))
+d |> fgroup_by(g) |> fsummarise(res=fsum(fwithin(x)))
+d |> fgroup_by(g) |> fsummarise(res=fsum(fwithin(x) * fwithin(x)))
+d |> fgroup_by(g) |>
+  fmutate(x_center=fwithin(x)) |> fsummarise(res=fsum(x_center * fwithin(x)))
+
+
+d <- data.frame(x=c(1,2,3,5), g=rep(1:2, each=2))
+d |> fgroup_by(g) |> fsummarise(res=fsum(fwithin(x) * fwithin(x)))
+setDT(d)[, .(res=sum(fwithin(x) * fwithin(x))), g]
+
+
+
+
+dt |> fgroup_by(g2) |> fsummarise(res=fsum(x))
 
 # - Older stuff ----------------------------------------------------------------
 

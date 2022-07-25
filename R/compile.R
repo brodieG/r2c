@@ -26,7 +26,7 @@ make_shlib <- function(x, dir, quiet) {
   dir.create(dir)
   file.base <- file.path(dir, sprintf('r2c-%s', rand_string(10)))
   file.src <- paste0(file.base, ".c")
-  file.obj <- paste0(file.base, ".so")
+  file.obj <- paste0(file.base, .Platform$dynlib.ext)
   if(file.exists(file.src))
     stop(
       "Randomly generated file name ", file.src, "' already exists. ",

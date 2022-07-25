@@ -2,17 +2,20 @@
 
 # To Do / Questions
 
+## Current
+
+* Test on windows.  Instructions for windows users about toolchain, etc?
 * Should sorted be "assume.sorted"?  Probably.  Could add check that it is (see
   next).
 * Process groups might be able to determine that things are sorted?  If things
   are always e.g. increasing, then it must be the case that they are sorted.
   Evaluate the overhead of this; should be low as it would just be done in the
-  second pass that stores the sizes?  Hmm, I think we still need to know ex-ante
-  whether it is sorted or not.
+  second pass that stores the sizes?  Something still needs to be declared as
+  sorted though.  It's relatively cheap to check that it is, but not so cheap
+  that we would always want to run that check.
 * Errors in `match.call` that show the deparsed argument might deparse
   differently on different systems (`group_sum` error tests).
 * Migrate to tapply structure.  More generally, explain interface?
-* Fill out acknowledgments.
 * Don't use double for group sizes unless we have groups that are too large.
   **probably not worth it** b/c the group sizes result is only as big as the
   number of groups, so very small in the grand scheme of things.  First level is
@@ -23,9 +26,14 @@
 * Allow more then `INT_MAX` groups (labels are limiting right now)?
 * Tests groups that aren't just 1:n or 0:n (I think we do this)?
 * What if compilation fails, do we have good error messages?
-* Rename `mean0` to `mean1`
 
-* Instructions for windows users about toolchain, etc?
+## For CRAN
+
+* Image links from README should be to raw github URLs.
+* Figure out why winbuilder doesn't work.
+
+## Other
+
 * Perhaps we got too lazy with POW, do we need to handle all the other cases
   arith handles?  Maybe, but if we do we'll likely need our own `pow` function,
   as it stands right now we're likely to get non-identical results in the case
