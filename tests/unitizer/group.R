@@ -16,7 +16,7 @@
 unitizer_sect("group sum", {
   identical(group_exec(r2c_sum, g, x), c(tapply(x, g, sum)))
   identical(
-    group_exec(r2c_sum, sort(g), x, sorted=TRUE),
+    group_exec(r2c_sum, process_groups(sort(g), sorted=TRUE), x),
     c(tapply(x, sort(g), sum))
   )
   group_exec(r2c_sum, list(g), x)

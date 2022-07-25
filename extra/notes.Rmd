@@ -2,6 +2,13 @@
 
 # To Do / Questions
 
+* Should sorted be "assume.sorted"?  Probably.  Could add check that it is (see
+  next).
+* Process groups might be able to determine that things are sorted?  If things
+  are always e.g. increasing, then it must be the case that they are sorted.
+  Evaluate the overhead of this; should be low as it would just be done in the
+  second pass that stores the sizes?  Hmm, I think we still need to know ex-ante
+  whether it is sorted or not.
 * Errors in `match.call` that show the deparsed argument might deparse
   differently on different systems (`group_sum` error tests).
 * Migrate to tapply structure.  More generally, explain interface?
@@ -246,11 +253,66 @@ By extension we should probably do:
 
     csum <- r2c(sum(x))
 
-The misleading thing for that one is `sum` is also essentially just C code.
+The misleading thing for that one is `sum` is also essentially just C code, but
+for the more complicated cases that makes more sense.
+
+## tapply
+
+Semantic incongruities:
+
+* We accept lists as the first parameter, so not based on "split" method.
+* Functions can accept multiple parameters, and they are matched into `X`.
+* Result is neither array nor list, always simplified into a vector or a
+  data.frame.
+
+`tmapply`?
+
+    tmapply(FUN, INDEX, ..., MoreArgs)
+
+Main issue here is what if we want to pass a data frame in ...?  This would
+require always specifying each element individually.  Additionally,
+if we have `MoreArgs` we're required to type it out.  We could use:
+
+    tmapply(FUN, INDEX, DATA, MoreArgs)
+
+This is pretty close.  Or maybe:
+
+    tmapply(FUN, INDEX, DATA, ...)
+
+Although same issue of wanting to pass a list in ..., and additionally name
+overlap with other parameters.
+
+    grapply(FUN, INDEX, DATA, MoreArgs)
+    grapply(FUN, INDEX, DATA, ...)
+    grapply(FUN, INDEX, X, ...)
+
+Dots are appealing, except for the potential for name collision.
+
+    grapply(FUN, INDEX, DATA, ...)
+    group_apply(fun, index, data, MoreArgs=list())
+
+    grexec(FUN, INDEX, DATA, ...)  # too close to gregexec?
+    group_exec(fun, groups, data, MoreArgs=list())
+
+    window_exec()
+    window_apply()
+    wapply()
+
+Do we need to provide `enclos`?  Probably not.
 
 ## NSE
 
-Things like 
+Things like:
+
+    tcapply(
+      iris[paste0('Sepal.', c('Width', 'Length'))],
+      iris[['Species']], csum
+    )
+
+Are annoying.  This okay enough?
+
+    with(iris, tcapply(list(Sepal.Width, Sepal.Length), Species, csum))
+    with(iris, tcapply(l(Sepal.Width, Sepal.Length), Species, csum))
 
 # Dots
 
@@ -886,6 +948,23 @@ the n/10 case with g.ar?
     ##    user  system elapsed 
     ##  17.222   1.158  18.458 
 
+## Notes vs data.table
+
+Not entirely sure what's going on with `data.table`.  For the 10e7 case we're
+seeing (run 10x and profiled with instruments, cleaned up):
+
+    2.87 s            0 s	  R_doDotCall
+    2.41 s      967.00 ms	   gforce
+    1.22 s            0 s	         R_doDotCall
+    1.22 s      302.00 ms	          gsum
+    908.00 ms   908.00 ms	           gather
+    11.00 ms     11.00 ms	           platform_bzero$VARIANT$Haswell
+    222.00 ms          0 s	    Rf_allocVector
+    354.00 ms   340.00 ms	   uniqlist
+    71.00 ms    20.00 ms	   uniqlengths
+    29.00 ms    29.00 ms	   DYLD-STUB$$INTEGER
+
+Only ~1/10th of the time seems to be spent within gsum itself.
 
 # Benchmarks
 

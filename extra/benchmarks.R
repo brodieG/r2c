@@ -21,68 +21,164 @@ print.proc_time2 <- function(x, ...) {
 
 # - In Order -------------------------------------------------------------------
 
+library(r2c)
+library(collapse)
+library(data.table); setDTthreads(1);
+
 set.seed(1)
 n <- 1e7
+gn <- 10
+ng <- n/gn
 x <- runif(n) * runif(n)  # full 64 bit precision randomness
 y <- runif(n) * runif(n)
-g <- cumsum(sample(c(TRUE, rep(FALSE, 9)), n, replace=TRUE))
+g <- cumsum(sample(c(TRUE, rep(FALSE, gn - 1)), n, replace=TRUE))
 # g <- cumsum(sample(c(TRUE, rep(FALSE, 1000)), n, replace=TRUE))
-library(r2c)
+g.r2c <- process_groups(g, sorted=TRUE)
+g.clp <- GRP(g)
+dt <- data.table(x, g)
+setkey(dt, g)
+
 r2c_sum <- r2cq(sum(x))
-r2c_mean <- r2cq(mean(x))
-system.time(g.sum.r2c <- group_exec(r2c_sum, g, x, sorted=TRUE))
-system.time(g.mean.r2c <- group_exec(r2c_mean, g, x, sorted=TRUE))
 
 x.split <- split(x, g)
 y.split <- split(y, g)
-mean <- mean.default
 system.time(g.sum <- vapply(x.split, sum, 0))
+##   user  system elapsed 
+##  0.701   0.008   0.713 
+system.time(g.sum.r2c <- group_exec(r2c_sum, g.r2c, x))
+##   user  system elapsed 
+##  0.054   0.001   0.056 
 identical(g.sum, g.sum.r2c)
-
-r2c_sum <- r2cq(sum(x))
-system.time(r2c.slope <- group_exec(r2c_sum, g, list(x, y), sorted=TRUE))
-r2c_sum <- r2cq(sum(x, na.rm=TRUE))
+## [1] TRUE
+system.time(g.sum.clp <- fsum(x, g.clp, na.rm=FALSE))
+##   user  system elapsed 
+##  0.030   0.000   0.031 
+all.equal(g.sum, g.sum.clp)
+## [1] TRUE
+system.time(g.sum.dt <- dt[, sum(x), keyby=g][['V1']])
+##   user  system elapsed 
+##  0.205   0.027   0.234 
+all.equal(unname(g.sum), g.sum.dt)
+## [1] TRUE
+identical(unname(g.sum), g.sum.dt)
+## [1] FALSE
 
 r2c_slope <- r2cq(sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2))
-
-system.time(r2c.slope <- group_exec(r2c_slope, g, list(x, y), sorted=TRUE))
-
+system.time(r2c.slope <- group_exec(r2c_slope, g.r2c, list(x, y)))
+##   user  system elapsed 
+##  0.227   0.001   0.229 
 r2c_slope0 <- r2cq(sum((x - mean0(x)) * (y - mean0(y))) / sum((x - mean0(x)) ^ 2))
-system.time(r2c.slope0 <- group_exec(r2c_slope0, g, list(x, y), sorted=TRUE))
-
-r2c_slope2 <- r2cq(
-  sum((x - mean0(x)) * (y - mean0(y))) /
-  sum((x - mean0(x)) ^ 2)
-)
-system.time(
-  g.slope.r2c2 <- group_exec(r2c_slope2, g, list(x, y), sorted=TRUE)
-)
-
-library(collapse)
-gg <- GRP(g)
-system.time(fsum(x, gg))
-options(digits=3)
-
-library(collapse)
-cg <- collapse::GRP(g)
-
-set.seed(1)
-n <- 1e7
-x <- runif(n) * runif(n)  # full 64 bit precision randomness
-y <- runif(n) * runif(n)
-g <- cumsum(sample(c(TRUE, rep(FALSE, 9)), n, replace=TRUE))
-library(collapse)
-library(r2c)
-cg <- GRP(g)
+system.time(r2c.slope0 <- group_exec(r2c_slope0, g.r2c, list(x, y)))
+##   user  system elapsed 
+##  0.148   0.001   0.150 
 
 fmean2 <- function(x, cg) fmean(x, cg, na.rm=FALSE, TRA="replace_fill")
 system.time(
   g.slp.c <-
-    fsum((x - fmean2(x, cg)) * (y - fmean2(y, cg)), cg, na.rm=FALSE) /
-    fsum((x - fmean2(x, cg))^2, cg, na.rm=FALSE)
+    fsum((x - fmean2(x, g.clp)) * (y - fmean2(y, g.clp)), g.clp, na.rm=FALSE) /
+    fsum((x - fmean2(x, g.clp))^2, g.clp, na.rm=FALSE)
 )
+##   user  system elapsed 
+##  0.245   0.001   0.247 
+
+
+set.seed(1)
+gn <- 1e3
+ng <- n/gn
+g <- cumsum(sample(c(TRUE, rep(FALSE, gn - 1)), n, replace=TRUE))
+
+x.split <- split(x, g)
+y.split <- split(y, g)
+g.r2c <- process_groups(g, sorted=TRUE)
+g.clp <- GRP(g)
+dt <- data.table(x, g)
+setkey(dt, g)
+
+system.time(g.sum <- vapply(x.split, sum, 0))
+##   user  system elapsed 
+##  0.041   0.000   0.041 
+system.time(g.sum.r2c <- group_exec(r2c_sum, g.r2c, x))
+##   user  system elapsed 
+##  0.017   0.000   0.017 
+identical(g.sum, g.sum.r2c)
+## [1] TRUE
+system.time(g.sum.clp <- fsum(x, g.clp, na.rm=FALSE))
+##   user  system elapsed 
+##  0.042   0.000   0.043 
+all.equal(g.sum, g.sum.clp)
+## [1] TRUE
+system.time(g.sum.dt <- dt[, sum(x), keyby=g][['V1']])
+##   user  system elapsed 
+##  0.178   0.026   0.205 
+all.equal(unname(g.sum), g.sum.dt)
+## [1] TRUE
+
+system.time(r2c.slope <- group_exec(r2c_slope, g.r2c, list(x, y)))
+##   user  system elapsed 
+##  0.118   0.001   0.119 
+system.time(r2c.slope0 <- group_exec(r2c_slope0, g.r2c, list(x, y)))
+##   user  system elapsed 
+##  0.092   0.000   0.093 
+
+system.time(
+  g.slp.c <-
+    fsum((x - fmean2(x, g.clp)) * (y - fmean2(y, g.clp)), g.clp, na.rm=FALSE) /
+    fsum((x - fmean2(x, g.clp))^2, g.clp, na.rm=FALSE)
+)
+##   user  system elapsed 
+##  0.310   0.007   0.319 
+
+dt <- data.table(x, y, g)
+setkey(dt, g)
+mean <- mean0
+system.time(
+  dt[, sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2), keyby=g]
+)
+##   user  system elapsed 
+##  0.343   0.014   0.359 
+slope0 <- function(x, y) sum((x - mean0(x)) * (y - mean0(y))) / sum((x - mean0(x)) ^ 2)
+slope <- function(x, y) sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2)
+system.time(slope.base <- mapply(slope, x.split, y.split))
+##   user  system elapsed 
+##  0.297   0.012   0.310 
+system.time(slope0.base <- mapply(slope0, x.split, y.split))
+system.time(slope0.single <- slope0(x, y))
+##   user  system elapsed 
+##  0.259   0.001   0.261 
+
+dtg <- dt |> fgroup_by(g);
+
+system.time(
+   g.slp.clp.2 <- fsummarise(
+     dtg,
+     slope =
+     fsum(fwithin(y, na.rm = FALSE), fwithin(y, na.rm = FALSE), na.rm = FALSE) %/=%
+     fsum(x_center^2, na.rm = FALSE)
+   )
+)
+dt |>
+  fgroup_by(g) |>
+  fsummarise(slope = fsum(fwithin(x) * fwithin(y)) / fsum(fwithin(x^2)))
+
+dt |>
+  fgroup_by(g) |>
+  fmutate(x_center = fwithin(x)) |>
+  fsummarise(slope = fsum(fwithin(x) * fwithin(y)) / fsum(fwithin(x)^2))
+
+dt |>
+   fgroup_by(g) |>
+   fmutate(x_center = fwithin(x, na.rm = FALSE)) |>
+   fsummarise(
+   slope =
+     fsum(x_center, fwithin(y, na.rm = FALSE), na.rm = FALSE) %/=%
+     fsum(x_center, na.rm = FALSE)^2
+   )
+
+# - Older stuff ----------------------------------------------------------------
+
 ##   user  system elapsed
 ##  0.244   0.001   0.246
+
 system.time(
   g.slp.cwithin <-
     fsum(
