@@ -289,11 +289,23 @@ optimization.
 
 ## Acknowledgments
 
-* Usual acknowledgments
-* data.table for radix
-* ggplot for the plots
-* collapse for idea to separate group computation (not the first source, but the
-  reason why I did this).
+* R Core for developing and maintaining such a wonderful language.
+* [Matt Dowle](https://github.com/mattdowle) and [Arun
+  Srinivasan](https://github.com/arunsrinivasan) for contributing the
+  `{data.table}`'s radix sort to R.
+* [Sebastian Krantz](https://github.com/SebKrantz) for the idea of pre-computing
+  group meta data for possible re-use (taken from `collapse::GRP`).
+* [Hadley Wickham](https://github.com/hadley/) and [Peter
+  Danenberg](https://github.com/klutometis) for
+  [roxygen2](https://cran.r-project.org/package=roxygen2).
+* [Tomas Kalibera](https://github.com/kalibera) for
+  [rchk](https://github.com/kalibera/rchk) and the accompanying vagrant image,
+  and rcnst to help detect errors in compiled code.
+* [Winston Chang](https://github.com/wch) for the
+  [r-debug](https://hub.docker.com/r/wch1/r-debug/) docker container, in
+  particular because of the valgrind level 2 instrumented version of R.
+* [Hadley Wickham](https://github.com/hadley/) et al. for
+  [ggplot2](https://ggplot2.tidyverse.org/).
 
 ## Notes on Benchmarking
 
