@@ -146,7 +146,11 @@ r2c <- function(
   )
   # Parse R expression and Generate the C code
   preproc <- preprocess(call)
+
+  # Generate directory, use dirname/basename to normalize it to same format as
+  # file.path
   if(is.null(dir)) dir <- tempfile()
+  dir <- file.path(dirname(dir), basename(dir))
 
   # Compile C code
   so <- make_shlib(preproc[['code']], dir=dir, quiet=quiet)
