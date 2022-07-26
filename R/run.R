@@ -168,15 +168,15 @@ r2c_groups_template <- function() {
 #' g <- cumsum(sample(c(TRUE, rep(FALSE, 99)), n, replace=TRUE))
 #' identical(g, sort(g))  # sorted already!
 #' system.time(res1 <- group_exec(r2c_mean, g, x))
-#' system.time(res2 <- group_exec(r2c_mean, g, x, sorted=TRUE))
+#' system.time(res2 <- group_exec(r2c_mean, process_groups(g, sorted=TRUE), x))
 #' identical(res1, res2)
 #'
 #' ## We can also group by runs with `sorted`
 #' x <- 1:8
 #' g <- rep(rep(1:2, each=2), 2)
 #' g
-#' group_exec(r2c_mean, list(g), x, sorted=TRUE)
-#' group_exec(r2c_mean, list(g), x, sorted=FALSE)
+#' group_exec(r2c_mean, list(g), x)
+#' group_exec(r2c_mean, process_groups(list(g), sorted=FALSE), x)
 
 group_exec <- function(
   fun, groups, data, MoreArgs=list(), enclos=parent.frame()
