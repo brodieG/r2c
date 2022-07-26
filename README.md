@@ -91,10 +91,9 @@ your normal R installation) and has other trade-offs, including warm-up cycles
 and compatibility limitations[^3].  But otherwise you type in what [you would
 have in normal R](#in-r) and see some impressive speed-ups.
 
-> The test is not entirely fair to `{data.table}` as there is no method to
-> pre-group the data for it (only pre-sort), and we disallow multi-threading,
-> thus I would not use the above timings to pick alternatives over
-> `{data.table}`.
+> The test is unfair to `{data.table}` as there is no method to pre-group the
+> data for it (only pre-sort), and we disallow multi-threading, thus I would not
+> use the above timings to pick alternatives over `{data.table}`.
 
 The key feature that `{r2c}` adds is the  ability to construct complex
 expressions from simple ones.  For example, the slope of a bivariate regression:
@@ -125,7 +124,7 @@ you would in [base R](#r2c-slope):
     )
     group_exec(r2c_slope, g.r2c, list(x, y))
 
-We'll run One last comparison on larger groups.  Here we try with average size
+We'll run one last comparison: large groups.  Here we try with average size
 of ~10,000 elements (vs 10 previously):
 
 <img src='extra/time_gslope_all_1e3-vs.png' />
@@ -134,6 +133,11 @@ In this case the per-group interpreter overhead is no longer noticeable and most
 implementations are competitive.  `{r2c}` likely performs better because it
 re-uses the memory required for intermediate results for every group.  The more
 complex expressions are, the more this benefit should manifest.
+
+To summarize:
+
+> `{r2c}` is fastest at calculating complex expressions group-wise, while also
+> retaining base R semantics for numeric inputs.
 
 ## Caveats - Of Course ...
 
@@ -148,7 +152,8 @@ More importantly, we cannot compile and execute arbitrary R expressions:
 * Only `{r2c}` implemented counterpart functions may be used (currently: basic
   arithmetic operators and `sum`/`mean`)
 * Primary numeric inputs must be attribute-less (e.g. to avoid expectations of
-  S3 method dispatch or attribute manipulation).
+  S3 method dispatch or attribute manipulation), and any `.numeric` methods
+  defined will be ignored[^10].
 * Future `{r2c}` counterparts will be limited to functions that return
   attribute-less numeric vectors of constant size (e.g. `mean`), or of the size
   of one of their inputs (e.g. like `+`, or even `quantile`).
@@ -286,6 +291,8 @@ optimization.
   [quietly dropped][6] and despite suggestions it might return for v1.1 I see no
   trace of it in the most recent 1.1 candidate development versions (as of
   2022-07-03).
+* The [Hydra Chronicles][9] series of posts on my blog examining group
+  statistics in R.
 
 ## Acknowledgments
 
@@ -327,6 +334,7 @@ Different systems / compilers / settings may produce different results.
 [6]: https://github.com/tidyverse/dplyr/issues/5017
 [7]: https://github.com/eddelbuettel/inline
 [8]: https://twitter.com/BrodieGaslam/status/1527829442374025219?s=20&t=rg6aybJlGxPEUwBsI0ii1Q
+[9]: https://www.brodieg.com/tags/hydra/
 
 [^1]: Depending on your compilation settings and machine, there is room for
   improvement, but not enough that R stands out as being particularly slow at
@@ -365,4 +373,6 @@ Different systems / compilers / settings may produce different results.
 [^9]: In order to make the benchmarks comparable, we use `r2c::mean1` instead of
   `base::mean`.  This is to ensure that all implementations are using a single
   pass mean calculation as that is what `fmean` does.
+[^10]: E.g. don't expect S3 dispatch to work if you define `mean.numeric`,
+  although why one would do that for functions covered by `{r2c}` is unclear.
 
