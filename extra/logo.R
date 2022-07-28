@@ -1,16 +1,14 @@
 
 library(jpeg)
 jpg <- readJPEG('~/Downloads/C-hirez.jpg')
-jpg <- readJPEG('~/Downloads/C-hirez-2.jpg')
-
-plot(as.raster(jpg[,,1]))
+plot(as.raster(jpg))
 hist(jpg[,,1])
 C <- (jpg[,,1] > .5) + 0
-writeJPEG(C, '~/Downloads/C-hirez-2.jpg')
-
+# writeJPEG(C, '~/Downloads/C-hirez-2.jpg')
+# C <- readJPEG('~/Downloads/C-hirez-2.jpg')
 plot(as.raster(C))
 rows <- lapply(split(C, row(C)), \(x) which(diff(x) != 0))
-cols <- lapply(split(C, col(C)), \(x) which(diff(x) != 0))
+wols <- lapply(split(C, col(C)), \(x) which(diff(x) != 0))
 
 # Keep only the transitions that are either first, last, or more than 100px from
 # prior transitions.
@@ -63,10 +61,12 @@ while(!all(picked)) {
   i <- i + 1
 }
 C.logo <- row.coords[picks,]
+plot(C.logo)
 polypath(C.logo, col='yellow', border=NA)
 
 # Now we have the coordinates, probably want to reduce to a similar number for
 # the transitions.
+library(svgchop)
 svg <- chop(R_logo(), steps=100)
 ext <- attr(svg, "extents")
 plot.new()
@@ -93,14 +93,14 @@ plot.new()
 plot.window(x.ext, rev(y.ext), asp=1)
 polypath(anim.s[[1]], col='black', border=NA)
 
-file.base <- "~/Downloads/anim-r2c/img-%04d.png"
-for(i in seq_along(anim.s)) {
-  png(sprintf(file.base, i), width=x.ext[2], height=y.ext[2])
-  plot.new()
-  plot.window(x.ext, rev(y.ext), asp=1)
-  polypath(anim.s[[i]], col='black', border=NA)
-  dev.off()
-}
+# file.base <- "~/Downloads/anim-r2c/img-%04d.png"
+# for(i in seq_along(anim.s)) {
+#   png(sprintf(file.base, i), width=x.ext[2], height=y.ext[2])
+#   plot.new()
+#   plot.window(x.ext, rev(y.ext), asp=1)
+#   polypath(anim.s[[i]], col='black', border=NA)
+#   dev.off()
+# }
 
 library(string2path)
 d <- string2path("2", "/System/Library/Fonts/Monaco.ttf")
