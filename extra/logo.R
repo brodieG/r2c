@@ -60,12 +60,53 @@ while(!all(picked)) {
   picks[i] <- pick
   i <- i + 1
 }
-C.logo <- row.coords[picks,]
+C.logo.tmp <- C.logo <- row.coords[picks,]
 plot(C.logo)
+points(C.logo[1,,drop=F], col='red')
 polypath(C.logo, col='yellow', border=NA)
+
+# Get rid of any points that do not deflect very much from the preceding or next
+# point.  In particular this is so we don't have anything in the connections
+# between the inside and outside part of the C.
+#
+# Compute angle between 1st and 2nd and 1st and 3rd
+# Use angle to compute perpendicular from 1st to 3rd to 2nd.
+# Iteratively remove things.
+
+repeat {
+  C.logo.2 <- C.logo.tmp[c(nrow(C.logo.tmp), seq_len(nrow(C.logo.tmp)), 1L),]
+  v1 <- C.logo.2[-(nrow(C.logo.2) - 1:0),]
+  v2 <- C.logo.2[-c(1, nrow(C.logo.2)),]
+  v3 <- C.logo.2[-(1:2),]
+  v21 <- v2 - v1
+  v23 <- v2 - v3
+  ang <-
+    pi -
+    acos(rowSums(v21 * v23) /
+    (sqrt(rowSums(v21^2)) * sqrt(rowSums(v23^2))))
+  ang0 <- acos(
+    rowSums((v2 - v1) * (v3 - v1)) /
+    (sqrt(rowSums((v2 - v1) ^ 2)) * sqrt(rowSums((v3 - v1)^2)))
+  )
+  dist <- sin(ang0) * sqrt(rowSums(v21^2))
+  drop <- (is.na(dist) | dist < 1) & ang < .1
+  drop.w <- which(drop)
+  if(!length(drop.w)) break
+  # We do not want to drop sequential points
+  C.logo.tmp <- C.logo.tmp[-drop.w[c(TRUE, diff(drop.w) > 1)],,drop=FALSE]
+}
+cat('\n')
+rng <- C.logo.tmp[,1] < 42
+cbind(C.logo.tmp, dist, ang, ang0, drop, v21, v23)[rng,]
+
+plot(C.logo.tmp[rng,])
+plot(C.logo.tmp)
+points(C.logo[drop, ], col='red')
+
 
 # Now we have the coordinates, probably want to reduce to a similar number for
 # the transitions.
+
 library(svgchop)
 svg <- chop(R_logo(), steps=100)
 ext <- attr(svg, "extents")
@@ -78,10 +119,30 @@ polypath(xy[[1]], col=fills[[1]], border=NA)
 polypath(xy[[2]], col=fills[[2]], border=NA)
 
 library(transformr)
-# Transformer expects coordiantes as data.table with ids for the pieces
+library(tweenr)
+# Transformer expects coordinates as data.table with ids for the pieces, and
+# holes encoded with NA rows.
 
 c.logo.dat <- data.frame(x=C.logo[,1], y=C.logo[,2], id=1)
-hoop.logo.dat <- data.frame(x=xy[[1]]$x, y=xy[[1]]$y, id=1)
+hoop.logo.dat.hole <- data.frame(x=xy[[1]]$x, y=xy[[1]]$y, id=1)
+
+# Let's try to connect the hoop outside to the inside, by taking the last point
+# of the outside, finding the closest point to the inside, re-ordering the
+# inside starting at that point.
+
+hole <- which(is.na(hoop.logo.dat.hole$x))
+hole.dat <- hoop.logo.dat.hole[seq_len(nrow(hoop.logo.dat.hole)) > hole, ]
+hole.dat.closest <- which.min(
+  colSums(
+    (rbind(hole.dat$x, hole.dat$y) - unlist(hoop.logo.dat.hole[hole - 1, 1:2]))^2
+) )
+hole.dat.reord <- hole.dat[
+  c(seq(hole.dat.closest, nrow(hole.dat)), seq_len(hole.dat.closest)),
+]
+hoop.logo.dat <- rbind(
+  hoop.logo.dat.hole[seq_len(hole - 1L),], hole.dat.reord
+)
+
 animation <- tween_polygon(
   c.logo.dat, hoop.logo.dat, 'cubic-in-out', 40, id
 ) |> keep_state(10)
@@ -92,15 +153,16 @@ y.ext <- range(animation[['y']], na.rm=TRUE)
 plot.new()
 plot.window(x.ext, rev(y.ext), asp=1)
 polypath(anim.s[[1]], col='black', border=NA)
+polypath(anim.s[[50]], col='grey', border=NA)
 
-# file.base <- "~/Downloads/anim-r2c/img-%04d.png"
-# for(i in seq_along(anim.s)) {
-#   png(sprintf(file.base, i), width=x.ext[2], height=y.ext[2])
-#   plot.new()
-#   plot.window(x.ext, rev(y.ext), asp=1)
-#   polypath(anim.s[[i]], col='black', border=NA)
-#   dev.off()
-# }
+file.base <- "~/Downloads/anim-r2c/img-%04d.png"
+for(i in seq_along(anim.s)) {
+  png(sprintf(file.base, i), width=x.ext[2], height=y.ext[2])
+  plot.new()
+  plot.window(x.ext, rev(y.ext), asp=1)
+  polypath(anim.s[[i]], col='black', border=NA)
+  dev.off()
+}
 
 library(string2path)
 d <- string2path("2", "/System/Library/Fonts/Monaco.ttf")
