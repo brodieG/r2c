@@ -63,6 +63,37 @@ while(!all(picked)) {
 C.logo.tmp <- C.logo <- row.coords[picks,]
 dropped <- logical(nrow(C.logo.tmp))
 kept <- seq_along(dropped)
+
+# We're going to cheat and drop things that are in the connections between the
+# inside and outside of the C.  To do this compute closest y distance to next
+# point, and anything further than threshold dropped.
+
+safe <- C.logo.tmp[,1] < 350 | C.logo.tmp[,1] > 630 | C.logo.tmp[,2] < 600
+C.logo.tmp <- C.logo.tmp[
+  safe |
+  (
+    c(TRUE, abs(C.logo.tmp[-1,2] - C.logo.tmp[-nrow(C.logo.tmp),2]) < 3) &
+    c(abs(C.logo.tmp[-1,2] - C.logo.tmp[-nrow(C.logo.tmp),2]) < 3, TRUE)
+  ),
+]
+end.cand.i <- unique(
+  which(abs(C.logo.tmp[-1,2] - C.logo.tmp[-nrow(C.logo.tmp),2]) > 20) + 1,
+  which(abs(C.logo.tmp[-1,2] - C.logo.tmp[-nrow(C.logo.tmp),2]) > 20)
+)
+end.cand <- end.cand.i[
+  C.logo.tmp[end.cand.i, 1] > 350 &  C.logo.tmp[end.cand.i, 1] < 650 &
+  C.logo.tmp[end.cand.i, 2] > 500
+]
+end.i <- rep(end.cand, each=2)-0:1
+
+C.inside <- C.logo.tmp[end.i[1]:end.i[3],]
+C.outside <- C.logo.tmp[-(end.i[1]:end.i[3]),]
+
+
+points(C.logo.tmp[rep(end.cand, each=2)-0:1,], col='red')
+
+
+
 # plot(C.logo)
 # points(C.logo[1,,drop=F], col='red')
 # polypath(C.logo, col='yellow', border=NA)
@@ -114,6 +145,7 @@ plot(C.logo.tmp[rng,])
 lines(C.logo.tmp[rng,])
 points(C.logo[dropped, ], col='red')
 
+# Ultimately we need 
 
 # Now we have the coordinates, probably want to reduce to a similar number for
 # the transitions.
@@ -135,7 +167,8 @@ library(tweenr)
 # holes encoded with NA rows.
 
 c.logo.dat <- data.frame(x=C.logo[,1], y=C.logo[,2], id=1)
-hoop.logo.dat.hole <- data.frame(x=xy[[1]]$x, y=xy[[1]]$y, id=1)
+
+hoop.logo.dat.hole <- data.frame(x=xy[[1]]$x, y=-xy[[1]]$y, id=1)
 
 # Let's try to connect the hoop outside to the inside, by taking the last point
 # of the outside, finding the closest point to the inside, re-ordering the
@@ -153,6 +186,11 @@ hole.dat.reord <- hole.dat[
 hoop.logo.dat <- rbind(
   hoop.logo.dat.hole[seq_len(hole - 1L),], hole.dat.reord
 )
+
+hoop.inside <- hole.dat.reord
+hoop.outside <- hoop.logo.dat.hole[seq_len(hole - 1L),]
+
+
 
 animation <- tween_polygon(
   c.logo.dat, hoop.logo.dat, 'cubic-in-out', 40, id
@@ -176,11 +214,43 @@ for(i in seq_along(anim.s)) {
 }
 
 library(string2path)
-d <- string2path("2", "/System/Library/Fonts/Monaco.ttf")
+d <- string2path("2", "/System/Library/Fonts/Monaco.ttf", tolerance=1e-5)
+stopifnot(nrow(d) == 306) # tol 1e-5
 par(mai=numeric(4))
 plot.new()
 plot.window(range(d$x), range(d$y), asp=1)
 fills <- get_fills(svg)
 polypath(d, col='black', border=NA)
 points(d, col='red')
+
+two.inner <- d[144:305,]
+two.outer <- d[c(306, 1:143),]
+
+
+# For each of the three shapes we want to animate between, we need to define the
+# two "sides", and make sure each has the same number of points.  So we need a
+# method of reducing to a given number of points rather than to a specific
+# tolerance.
+#
+# For the hoop that's easy as we create the break.  For the C we can cheat.  For
+# the 2 we probably need to cheat too.
+
+# * For the two:
+#   * TR: 144 (top) / 143 (below)
+#   * BL: 305 (top) / 306 (below)
+# * For the hoop:
+#   * Transition between inside and outside
+# * For the C:
+
+plot(hoop.logo.dat[1:2])
+points(hoop.inside[1:2][1:100,], col='green')
+points(hoop.outside[1:2][1:100,], col='red')
+
+plot(C.logo.tmp[,2:1])
+points(C.inside[,2:1][1:300,], col='green')
+points(C.outside[,2:1][1:300,], col='red')
+
+plot(d[1:2])
+points(two.outer[1:50,], col='red')
+points(two.inner[1:50,], col='green')
 
