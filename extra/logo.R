@@ -1,14 +1,55 @@
+# - Helper Functions -----------------------------------------------------------
+
+# Given an array of n x 2 array of coordinates, and the row marking the start,
+# reorder the array to start at that point and then order all remain rows in a
+# next-closest order
+
+reorder_nearest <- function(mx, i) {
+  mx <- t(mx)
+  point <- mx[, i]
+  res <- matrix(point)
+  mx <- mx[,-i]
+  while(ncol(mx)) {
+    i <- which.min(colSums((mx - point)^2))
+    res <- cbind(res, mx[,i])
+    point <- mx[, i]
+    mx <- mx[,-i, drop=FALSE]
+  }
+  t(res)
+}
+# Find the longest stretch and add points interpolating
+
+interpolate_longest <- function(x, n) {
+  a <- t(as.matrix(x[1:2]))
+  longest <- which.max(
+    colSums((a[, -ncol(a), drop=FALSE] - a[, -1, drop=FALSE])^2)
+  )
+  interp <- rbind(
+    seq(a[1, longest], a[1, longest + 1], length.out=n),
+    seq(a[2, longest], a[2, longest + 1], length.out=n)
+  )
+  tmp <- cbind(
+    a[,seq_len(longest - 1), drop=FALSE],
+    interp,
+    a[,seq(longest + 1, ncol(a)), drop=FALSE]
+  )
+  # x could be either data.frame or matrix
+  x[1] <- tmp[1, ]
+  x[2] <- tmp[2, ]
+  x
+}
+# - Helper Functions -----------------------------------------------------------
 
 library(jpeg)
 jpg <- readJPEG('~/Downloads/C-hirez.jpg')
-plot(as.raster(jpg))
+# plot(as.raster(jpg))
 hist(jpg[,,1])
 C <- (jpg[,,1] > .5) + 0
 # writeJPEG(C, '~/Downloads/C-hirez-2.jpg')
 # C <- readJPEG('~/Downloads/C-hirez-2.jpg')
-plot(as.raster(C))
+# plot(as.raster(C))
 rows <- lapply(split(C, row(C)), \(x) which(diff(x) != 0))
-wols <- lapply(split(C, col(C)), \(x) which(diff(x) != 0))
+cols <- lapply(split(C, col(C)), \(x) which(diff(x) != 0))
 
 # Keep only the transitions that are either first, last, or more than 100px from
 # prior transitions.
@@ -86,13 +127,8 @@ end.cand <- end.cand.i[
 ]
 end.i <- rep(end.cand, each=2)-0:1
 
-C.inside <- C.logo.tmp[end.i[1]:end.i[3],]
-C.outside <- C.logo.tmp[-(end.i[1]:end.i[3]),]
-
-
-points(C.logo.tmp[rep(end.cand, each=2)-0:1,], col='red')
-
-
+C.inside <- C.logo.tmp[end.i[1]:end.i[3],2:1]
+C.outside <- reorder_nearest(C.logo.tmp[-(end.i[1]:end.i[3]),2:1], 1367)
 
 # plot(C.logo)
 # points(C.logo[1,,drop=F], col='red')
@@ -108,44 +144,38 @@ points(C.logo.tmp[rep(end.cand, each=2)-0:1,], col='red')
 #
 # This is not entirely right, btw, but likely close enough it's okay
 
-repeat {
-  cat(nrow(C.logo.tmp), '')
-  C.logo.2 <- C.logo.tmp[c(nrow(C.logo.tmp), seq_len(nrow(C.logo.tmp)), 1L),]
-  v1 <- C.logo.2[-(nrow(C.logo.2) - 1:0),]
-  v2 <- C.logo.2[-c(1, nrow(C.logo.2)),]
-  v3 <- C.logo.2[-(1:2),]
-  v21 <- v2 - v1
-  v23 <- v2 - v3
-  ang <-
-    pi -
-    acos(rowSums(v21 * v23) /
-    (sqrt(rowSums(v21^2)) * sqrt(rowSums(v23^2))))
-  ang0 <- acos(
-    rowSums((v2 - v1) * (v3 - v1)) /
-    (sqrt(rowSums((v2 - v1) ^ 2)) * sqrt(rowSums((v3 - v1)^2)))
-  )
-  dist <- sin(ang0) * sqrt(rowSums(v21^2))
-  drop <- ((is.na(dist) | dist < 1) & ang < .1) |
-    (abs(sqrt(rowSums(v21^2))) <= sqrt(2) & sqrt(rowSums(v23^2)) <= sqrt(2))
-
-  drop.w <- which(drop)
-  if(!length(drop.w)) break
-  drop.w <- drop.w[c(TRUE, diff(drop.w) > 1)]
-  # We do not want to drop sequential points
-  C.logo.tmp <- C.logo.tmp[-drop.w,,drop=FALSE]
-  dropped[kept[drop.w]] <- TRUE
-  kept <- kept[-drop.w]
-}
-cat('\n')
-rng <- C.logo.tmp[,1] < 42
-rng <- C.logo.tmp[,2]>910 & C.logo.tmp[,1]>600
-cbind(C.logo.tmp, dist, ang, ang0, drop, v21, v23)[rng,]
-
-plot(C.logo.tmp[rng,])
-lines(C.logo.tmp[rng,])
-points(C.logo[dropped, ], col='red')
-
-# Ultimately we need 
+# repeat {
+#   cat(nrow(C.logo.tmp), '')
+#   C.logo.2 <- C.logo.tmp[c(nrow(C.logo.tmp), seq_len(nrow(C.logo.tmp)), 1L),]
+#   v1 <- C.logo.2[-(nrow(C.logo.2) - 1:0),]
+#   v2 <- C.logo.2[-c(1, nrow(C.logo.2)),]
+#   v3 <- C.logo.2[-(1:2),]
+#   v21 <- v2 - v1
+#   v23 <- v2 - v3
+#   ang <-
+#     pi -
+#     acos(rowSums(v21 * v23) /
+#     (sqrt(rowSums(v21^2)) * sqrt(rowSums(v23^2))))
+#   ang0 <- acos(
+#     rowSums((v2 - v1) * (v3 - v1)) /
+#     (sqrt(rowSums((v2 - v1) ^ 2)) * sqrt(rowSums((v3 - v1)^2)))
+#   )
+#   dist <- sin(ang0) * sqrt(rowSums(v21^2))
+#   drop <- ((is.na(dist) | dist < 1) & ang < .1) |
+#     (abs(sqrt(rowSums(v21^2))) <= sqrt(2) & sqrt(rowSums(v23^2)) <= sqrt(2))
+# 
+#   drop.w <- which(drop)
+#   if(!length(drop.w)) break
+#   drop.w <- drop.w[c(TRUE, diff(drop.w) > 1)]
+#   # We do not want to drop sequential points
+#   C.logo.tmp <- C.logo.tmp[-drop.w,,drop=FALSE]
+#   dropped[kept[drop.w]] <- TRUE
+#   kept <- kept[-drop.w]
+# }
+# cat('\n')
+# rng <- C.logo.tmp[,1] < 42
+# rng <- C.logo.tmp[,2]>910 & C.logo.tmp[,1]>600
+# cbind(C.logo.tmp, dist, ang, ang0, drop, v21, v23)[rng,]
 
 # Now we have the coordinates, probably want to reduce to a similar number for
 # the transitions.
@@ -190,28 +220,26 @@ hoop.logo.dat <- rbind(
 hoop.inside <- hole.dat.reord
 hoop.outside <- hoop.logo.dat.hole[seq_len(hole - 1L),]
 
-
-
-animation <- tween_polygon(
-  c.logo.dat, hoop.logo.dat, 'cubic-in-out', 40, id
-) |> keep_state(10)
-
-anim.s <- split(animation, animation$.frame)
-x.ext <- range(animation[['x']], na.rm=TRUE)
-y.ext <- range(animation[['y']], na.rm=TRUE)
-plot.new()
-plot.window(x.ext, rev(y.ext), asp=1)
-polypath(anim.s[[1]], col='black', border=NA)
-polypath(anim.s[[50]], col='grey', border=NA)
-
-file.base <- "~/Downloads/anim-r2c/img-%04d.png"
-for(i in seq_along(anim.s)) {
-  png(sprintf(file.base, i), width=x.ext[2], height=y.ext[2])
-  plot.new()
-  plot.window(x.ext, rev(y.ext), asp=1)
-  polypath(anim.s[[i]], col='black', border=NA)
-  dev.off()
-}
+# animation <- tween_polygon(
+#   c.logo.dat, hoop.logo.dat, 'cubic-in-out', 40, id
+# ) |> keep_state(10)
+# 
+# anim.s <- split(animation, animation$.frame)
+# x.ext <- range(animation[['x']], na.rm=TRUE)
+# y.ext <- range(animation[['y']], na.rm=TRUE)
+# plot.new()
+# plot.window(x.ext, rev(y.ext), asp=1)
+# polypath(anim.s[[1]], col='black', border=NA)
+# polypath(anim.s[[50]], col='grey', border=NA)
+# 
+# file.base <- "~/Downloads/anim-r2c/img-%04d.png"
+# for(i in seq_along(anim.s)) {
+#   png(sprintf(file.base, i), width=x.ext[2], height=y.ext[2])
+#   plot.new()
+#   plot.window(x.ext, rev(y.ext), asp=1)
+#   polypath(anim.s[[i]], col='black', border=NA)
+#   dev.off()
+# }
 
 library(string2path)
 d <- string2path("2", "/System/Library/Fonts/Monaco.ttf", tolerance=1e-5)
@@ -223,9 +251,11 @@ fills <- get_fills(svg)
 polypath(d, col='black', border=NA)
 points(d, col='red')
 
-two.inner <- d[144:305,]
-two.outer <- d[c(306, 1:143),]
+two.inner <- interpolate_longest(d[144:305,], 20)
+two.outer <- interpolate_longest(d[c(306, 1:143),], 20)
 
+
+# Fill in the long stretches
 
 # For each of the three shapes we want to animate between, we need to define the
 # two "sides", and make sure each has the same number of points.  So we need a
@@ -242,15 +272,16 @@ two.outer <- d[c(306, 1:143),]
 #   * Transition between inside and outside
 # * For the C:
 
-plot(hoop.logo.dat[1:2])
-points(hoop.inside[1:2][1:100,], col='green')
-points(hoop.outside[1:2][1:100,], col='red')
+dev.off()
+par(mfrow=c(1, 3))
+plot_in_out <- function(inside, outside) {
+  plot(rbind(inside, outside)[,1:2])
+  points(inside, col=hsv(.2, 1, seq(.5,1,length.out=nrow(inside))))
+  points(outside, col=hsv(.6, 1, seq(.5,1,length.out=nrow(outside))))
+}
+plot_in_out(hoop.inside, hoop.outside)
+plot_in_out(C.inside, C.outside)
+plot_in_out(two.outer, two.inner)
 
-plot(C.logo.tmp[,2:1])
-points(C.inside[,2:1][1:300,], col='green')
-points(C.outside[,2:1][1:300,], col='red')
-
-plot(d[1:2])
-points(two.outer[1:50,], col='red')
-points(two.inner[1:50,], col='green')
-
+# Fill in the two.
+# Same number of points.
