@@ -28,16 +28,38 @@ interpolate_longest <- function(x, n) {
     seq(a[1, longest], a[1, longest + 1], length.out=n),
     seq(a[2, longest], a[2, longest + 1], length.out=n)
   )
-  tmp <- cbind(
-    a[,seq_len(longest - 1), drop=FALSE],
-    interp,
-    a[,seq(longest + 1, ncol(a)), drop=FALSE]
-  )
-  # x could be either data.frame or matrix
-  x[1] <- tmp[1, ]
-  x[2] <- tmp[2, ]
+  t(
+    cbind(
+      a[,seq_len(longest - 1), drop=FALSE],
+      interp,
+      a[,seq(longest + 1, ncol(a)), drop=FALSE]
+  ) )
+}
+# Reduce observations to target obs count by iteratively removing the points
+# with least error from the line connecting the prior and next obs.  We're being
+# lazy and literally doing this one by one, taken the worst each time, with no
+# guarantee this will lead to the overall best reduction.
+
+reduce_points <- function(x, n) {
+  min.y <- min(x[,2]) # hack to prevent deletion of the bottom part of the two
+  while(nrow(x) > n) {
+    cat("\r     \r", nrow(x))
+    e <-  embed(seq_len(nrow(x)), 3)
+    v1 <- x[e[, 3],]
+    v2 <- x[e[, 2],]
+    v3 <- x[e[, 1],]
+    ang0 <- acos(
+      rowSums((v2 - v1) * (v3 - v1)) /
+      (sqrt(rowSums((v2 - v1) ^ 2)) * sqrt(rowSums((v3 - v1)^2)))
+    )
+    dist <- sin(ang0) * sqrt(rowSums((v2 - v1)^2))
+    dist[is.na(dist)] <- 0
+    dist[v2[,2] == min.y] <- Inf
+    x <- x[-(which.min(dist) + 1), ]
+  }
   x
 }
+
 # - Helper Functions -----------------------------------------------------------
 
 library(jpeg)
@@ -251,8 +273,8 @@ fills <- get_fills(svg)
 polypath(d, col='black', border=NA)
 points(d, col='red')
 
-two.inner <- interpolate_longest(d[144:305,], 20)
-two.outer <- interpolate_longest(d[c(306, 1:143),], 20)
+two.inner <- interpolate_longest(d[144:305, 1:2], 40)
+two.outer <- interpolate_longest(d[c(306, 1:143), 1:2], 40)
 
 
 # Fill in the long stretches
@@ -272,16 +294,25 @@ two.outer <- interpolate_longest(d[c(306, 1:143),], 20)
 #   * Transition between inside and outside
 # * For the C:
 
+
+objs <- list(
+  h.i=hoop.inside, h.o=hoop.outside,
+  c.i=C.inside, c.o=C.outside,
+  t.i=two.inner, t.o=two.outer
+)
+obs <- min(vapply( objs, nrow, 0))
+objs.r <- lapply(objs, reduce_points, n=obs)
+
 dev.off()
 par(mfrow=c(1, 3))
-plot_in_out <- function(inside, outside) {
+plot_in_out <- function(x) {
+  inside <- x[[1]]
+  outside <- x[[2]]
   plot(rbind(inside, outside)[,1:2])
   points(inside, col=hsv(.2, 1, seq(.5,1,length.out=nrow(inside))))
   points(outside, col=hsv(.6, 1, seq(.5,1,length.out=nrow(outside))))
 }
-plot_in_out(hoop.inside, hoop.outside)
-plot_in_out(C.inside, C.outside)
-plot_in_out(two.outer, two.inner)
+for(i in seq_len(length(objs.r)/2)) {
+  plot_in_out(objs.r[2 * i - 1:0])
+}
 
-# Fill in the two.
-# Same number of points.
