@@ -328,31 +328,37 @@ polys <- lapply(
     cbind(tmp, id=1L)
   }
 )
+# Need an intermediate bar to force clean transitions
+pc.x <- seq(.2, .8, length.out=obs) * scale
+palate.cleanser <- data.frame(
+  x=c(pc.x, rev(pc.x)),
+  y=rep(c(.4, .6), each=obs) * scale,
+  id=1L
+)
+anim.stages <- 2 * length(polys) + -1
+poly.all <- replicate(anim.stages, palate.cleanser, simplify=FALSE)
+poly.all[seq(1, anim.stages, length.out=length(polys))] <- polys
 
 file.base <- "~/Downloads/anim-r2c/img-%04d.png"
 x.ext <- y.ext <- 0:1 * scale
-animation <- tween_polygon(
-  polys[[1]], polys[[2]], 'cubic-in-out', 40, id
-) |> keep_state(3)
-anim.s <- split(animation, animation$.frame)
-for(i in seq_along(anim.s)) {
-  png(sprintf(file.base, i), width=x.ext[2], height=y.ext[2])
-  plot.new()
-  plot.window(x.ext, y.ext, asp=1)
-  polypath(anim.s[[i]], col='black', border=NA)
-  dev.off()
-}
-animation <- tween_polygon(
-  polys[[2]], polys[[3]], 'cubic-in-out', 40, id
-) |> keep_state(3)
-anim.s <- split(animation, animation$.frame)
 
-for(j in seq_along(anim.s) + i) {
-  png(sprintf(file.base, j), width=x.ext[2], height=y.ext[2])
-  plot.new()
-  plot.window(x.ext, y.ext, asp=1)
-  polypath(anim.s[[j]], col='black', border=NA)
-  dev.off()
-}
+k <- 0
+for(i in seq_len(length(poly.all) - 1)) {
+  start <- poly.all[[i]]
+  end <- poly.all[[i + 1]]
+  animation <- tween_polygon(
+    start, end, 'cubic-in-out', 25, id
+  ) |> keep_state(3)
+  anim.s <- split(animation, animation$.frame)
 
+  for(j in seq_along(anim.s)) {
+    cat(j + k, '')
+    png(sprintf(file.base, j + k), width=x.ext[2], height=y.ext[2])
+    plot.new()
+    plot.window(x.ext, y.ext, asp=1)
+    polypath(anim.s[[j]], col='black', border=NA)
+    dev.off()
+  }
+  k <- k + j
+}
 
