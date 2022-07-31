@@ -60,7 +60,7 @@ reduce_points <- function(x, n) {
   x
 }
 
-# - Helper Functions -----------------------------------------------------------
+# - Blob of Blurgh  ------------------------------------------------------------
 
 library(jpeg)
 jpg <- readJPEG('~/Downloads/C-hirez.jpg')
@@ -123,7 +123,11 @@ while(!all(picked)) {
   picks[i] <- pick
   i <- i + 1
 }
-C.logo.tmp <- C.logo <- row.coords[picks,]
+C.logo <- row.coords[picks,]
+C.logo[,1] <- (C.logo[,1] - min(C.logo[,1])) / diff(range(C.logo[,1]))
+C.logo[,2] <- (C.logo[,2] - min(C.logo[,2])) / diff(range(C.logo[,2]))
+C.logo.tmp <- C.logo
+
 dropped <- logical(nrow(C.logo.tmp))
 kept <- seq_along(dropped)
 
@@ -131,27 +135,27 @@ kept <- seq_along(dropped)
 # inside and outside of the C.  To do this compute closest y distance to next
 # point, and anything further than threshold dropped.
 
-safe <- C.logo.tmp[,1] < 350 | C.logo.tmp[,1] > 630 | C.logo.tmp[,2] < 600
+safe <- C.logo.tmp[,1] < .350 | C.logo.tmp[,1] > .630 | C.logo.tmp[,2] < .600
 C.logo.tmp <- C.logo.tmp[
   safe |
   (
-    c(TRUE, abs(C.logo.tmp[-1,2] - C.logo.tmp[-nrow(C.logo.tmp),2]) < 3) &
-    c(abs(C.logo.tmp[-1,2] - C.logo.tmp[-nrow(C.logo.tmp),2]) < 3, TRUE)
+    c(TRUE, abs(C.logo.tmp[-1,2] - C.logo.tmp[-nrow(C.logo.tmp),2]) < .003) &
+    c(abs(C.logo.tmp[-1,2] - C.logo.tmp[-nrow(C.logo.tmp),2]) < .003, TRUE)
   ),
 ]
 end.cand.i <- unique(
-  which(abs(C.logo.tmp[-1,2] - C.logo.tmp[-nrow(C.logo.tmp),2]) > 20) + 1,
-  which(abs(C.logo.tmp[-1,2] - C.logo.tmp[-nrow(C.logo.tmp),2]) > 20)
+  which(abs(C.logo.tmp[-1,2] - C.logo.tmp[-nrow(C.logo.tmp),2]) > .02) + 1,
+  which(abs(C.logo.tmp[-1,2] - C.logo.tmp[-nrow(C.logo.tmp),2]) > .02)
 )
 end.cand <- end.cand.i[
-  C.logo.tmp[end.cand.i, 1] > 350 &  C.logo.tmp[end.cand.i, 1] < 650 &
-  C.logo.tmp[end.cand.i, 2] > 500
+  C.logo.tmp[end.cand.i, 1] > .350 &  C.logo.tmp[end.cand.i, 1] < .650 &
+  C.logo.tmp[end.cand.i, 2] > .500
 ]
 end.i <- rep(end.cand, each=2)-0:1
 
-C.inside <- C.logo.tmp[end.i[1]:end.i[3],2:1]
+C.inside <- C.logo.tmp[end.i[1]:end.i[4],2:1]
 C.outside <- reorder_nearest(C.logo.tmp[-(end.i[1]:end.i[3]),2:1], 1367)
-
+# points(C.inside, col='red')
 # plot(C.logo)
 # points(C.logo[1,,drop=F], col='red')
 # polypath(C.logo, col='yellow', border=NA)
@@ -207,20 +211,26 @@ svg <- chop(R_logo(), steps=100)
 ext <- attr(svg, "extents")
 plot.new()
 plot.window(ext$x, rev(ext$y), asp=1)
+plot.window(0:1, 0:1, asp=1)
 
 xy <- get_xy_coords(svg)
+xy <- lapply(
+  xy, \(z)
+    with(z,
+      list(
+        x=(x - ext$x[1]) / diff(ext$x),
+        y=(ext$y[2] - y) / diff(ext$y)
+    )
+) )
+#lines(xy2[[1]])
+#lines(xy2[[2]])
+
 fills <- get_fills(svg)
-polypath(xy[[1]], col=fills[[1]], border=NA)
-polypath(xy[[2]], col=fills[[2]], border=NA)
+# polypath(xy[[1]], col=fills[[1]], border=NA)
+# polypath(xy[[2]], col=fills[[2]], border=NA)
 
-library(transformr)
-library(tweenr)
-# Transformer expects coordinates as data.table with ids for the pieces, and
-# holes encoded with NA rows.
 
-c.logo.dat <- data.frame(x=C.logo[,1], y=C.logo[,2], id=1)
-
-hoop.logo.dat.hole <- data.frame(x=xy[[1]]$x, y=-xy[[1]]$y, id=1)
+hoop.logo.dat.hole <- data.frame(x=xy[[1]]$x, y=xy[[1]]$y, id=1)
 
 # Let's try to connect the hoop outside to the inside, by taking the last point
 # of the outside, finding the closest point to the inside, re-ordering the
@@ -242,40 +252,21 @@ hoop.logo.dat <- rbind(
 hoop.inside <- hole.dat.reord
 hoop.outside <- hoop.logo.dat.hole[seq_len(hole - 1L),]
 
-# animation <- tween_polygon(
-#   c.logo.dat, hoop.logo.dat, 'cubic-in-out', 40, id
-# ) |> keep_state(10)
-# 
-# anim.s <- split(animation, animation$.frame)
-# x.ext <- range(animation[['x']], na.rm=TRUE)
-# y.ext <- range(animation[['y']], na.rm=TRUE)
-# plot.new()
-# plot.window(x.ext, rev(y.ext), asp=1)
-# polypath(anim.s[[1]], col='black', border=NA)
-# polypath(anim.s[[50]], col='grey', border=NA)
-# 
-# file.base <- "~/Downloads/anim-r2c/img-%04d.png"
-# for(i in seq_along(anim.s)) {
-#   png(sprintf(file.base, i), width=x.ext[2], height=y.ext[2])
-#   plot.new()
-#   plot.window(x.ext, rev(y.ext), asp=1)
-#   polypath(anim.s[[i]], col='black', border=NA)
-#   dev.off()
-# }
-
 library(string2path)
 d <- string2path("2", "/System/Library/Fonts/Monaco.ttf", tolerance=1e-5)
 stopifnot(nrow(d) == 306) # tol 1e-5
 par(mai=numeric(4))
-plot.new()
-plot.window(range(d$x), range(d$y), asp=1)
-fills <- get_fills(svg)
-polypath(d, col='black', border=NA)
-points(d, col='red')
+
+d[,1] <- (d[,1] - min(d[,1])) / diff(range(d[,1]))
+d[,2] <- (d[,2] - min(d[,2])) / diff(range(d[,2]))
+
+# plot.new()
+# plot.window(range(d$x), range(d$y), asp=1)
+# polypath(d, col='black', border=NA)
+# points(d, col='red')
 
 two.inner <- interpolate_longest(d[144:305, 1:2], 40)
 two.outer <- interpolate_longest(d[c(306, 1:143), 1:2], 40)
-
 
 # Fill in the long stretches
 
@@ -294,13 +285,12 @@ two.outer <- interpolate_longest(d[c(306, 1:143), 1:2], 40)
 #   * Transition between inside and outside
 # * For the C:
 
-
 objs <- list(
   h.i=hoop.inside, h.o=hoop.outside,
-  c.i=C.inside, c.o=C.outside,
-  t.i=two.inner, t.o=two.outer
+  t.i=two.inner, t.o=two.outer,
+  c.i=C.inside, c.o=C.outside
 )
-obs <- min(vapply( objs, nrow, 0))
+obs <- min(vapply(objs, nrow, 0))
 objs.r <- lapply(objs, reduce_points, n=obs)
 
 dev.off()
@@ -311,8 +301,58 @@ plot_in_out <- function(x) {
   plot(rbind(inside, outside)[,1:2])
   points(inside, col=hsv(.2, 1, seq(.5,1,length.out=nrow(inside))))
   points(outside, col=hsv(.6, 1, seq(.5,1,length.out=nrow(outside))))
+  inside <- inside[rev(seq_len(nrow(inside))), ]
+  points(
+    (inside[,1] + outside[,1])/2,
+    (inside[,2] + outside[,2])/2
+  )
 }
-for(i in seq_len(length(objs.r)/2)) {
-  plot_in_out(objs.r[2 * i - 1:0])
+for(i in seq_len(length(objs.r)/2)) plot_in_out(objs.r[2 * i - 1:0])
+
+# - Animate --------------------------------------------------------------------
+
+library(transformr)
+library(tweenr)
+# Transformer expects coordinates as data.table with ids for the pieces, and
+# holes encoded with NA rows.
+
+objs.r.xy <- lapply(objs.r, '[', ,1:2)
+scale <- 500
+polys <- lapply(
+  split(objs.r.xy, as.integer((seq_along(objs.r.xy) + 1) / 2)),
+  \(x) {
+    tmp <- do.call(rbind, x)
+    colnames(tmp) <- c('x', 'y')
+    tmp <- as.data.frame(tmp)
+    tmp[] <- lapply(tmp, \(x) x * scale)
+    cbind(tmp, id=1L)
+  }
+)
+
+file.base <- "~/Downloads/anim-r2c/img-%04d.png"
+x.ext <- y.ext <- 0:1 * scale
+animation <- tween_polygon(
+  polys[[1]], polys[[2]], 'cubic-in-out', 40, id
+) |> keep_state(3)
+anim.s <- split(animation, animation$.frame)
+for(i in seq_along(anim.s)) {
+  png(sprintf(file.base, i), width=x.ext[2], height=y.ext[2])
+  plot.new()
+  plot.window(x.ext, y.ext, asp=1)
+  polypath(anim.s[[i]], col='black', border=NA)
+  dev.off()
 }
+animation <- tween_polygon(
+  polys[[2]], polys[[3]], 'cubic-in-out', 40, id
+) |> keep_state(3)
+anim.s <- split(animation, animation$.frame)
+
+for(j in seq_along(anim.s) + i) {
+  png(sprintf(file.base, j), width=x.ext[2], height=y.ext[2])
+  plot.new()
+  plot.window(x.ext, y.ext, asp=1)
+  polypath(anim.s[[j]], col='black', border=NA)
+  dev.off()
+}
+
 
