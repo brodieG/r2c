@@ -170,6 +170,8 @@ C.outside <- reorder_nearest(C.logo.tmp[-(end.i[1]:end.i[3]),2:1], 1367)
 #
 # This is not entirely right, btw, but likely close enough it's okay
 
+if(a.x*b.y - a.y*b.x < 0)
+    angle = -angle;
 # repeat {
 #   cat(nrow(C.logo.tmp), '')
 #   C.logo.2 <- C.logo.tmp[c(nrow(C.logo.tmp), seq_len(nrow(C.logo.tmp)), 1L),]
@@ -243,11 +245,8 @@ hole.dat.closest <- which.min(
     (rbind(hole.dat$x, hole.dat$y) - unlist(hoop.logo.dat.hole[hole - 1, 1:2]))^2
 ) )
 hole.dat.reord <- hole.dat[
-  c(seq(hole.dat.closest, nrow(hole.dat)), seq_len(hole.dat.closest)),
+  c(seq(hole.dat.closest, nrow(hole.dat)), seq_len(hole.dat.closest - 1)),
 ]
-hoop.logo.dat <- rbind(
-  hoop.logo.dat.hole[seq_len(hole - 1L),], hole.dat.reord
-)
 
 hoop.inside <- hole.dat.reord
 hoop.outside <- hoop.logo.dat.hole[seq_len(hole - 1L),]
@@ -294,6 +293,7 @@ obs <- min(vapply(objs, nrow, 0))
 objs.r <- lapply(objs, reduce_points, n=obs)
 
 dev.off()
+dev.new()
 par(mfrow=c(1, 3))
 plot_in_out <- function(x) {
   inside <- x[[1]]
@@ -324,28 +324,44 @@ polys <- lapply(
     tmp <- do.call(rbind, x)
     colnames(tmp) <- c('x', 'y')
     tmp <- as.data.frame(tmp)
-    tmp[] <- lapply(tmp, \(x) x * scale)
     cbind(tmp, id=1L)
   }
 )
+lines <- lapply(
+  split(objs.r.xy, as.integer((seq_along(objs.r.xy) + 1) / 2)),
+  \(x) {
+    data.frame(
+      x=(x[[1]][,1] + rev(x[[2]][,1]))/2,
+      y=(x[[1]][,2] + rev(x[[2]][,2]))/2,
+      id=1L
+    )
+  }
+)
+plot(polys[[1]][,1:2])
+lines(lines[[1]][,1:2])
+
 # Need an intermediate bar to force clean transitions
-pc.x <- seq(.2, .8, length.out=obs) * scale
+pc.x <- seq(.2, .8, length.out=obs)
 palate.cleanser <- data.frame(
-  x=c(pc.x, rev(pc.x)),
-  y=rep(c(.4, .6), each=obs) * scale,
+  # x=c(pc.x, rev(pc.x)),
+  # y=rep(c(.6, .4), each=obs),
+  x=pc.x,
+  y=rep(c(.5), each=obs),
   id=1L
 )
 anim.stages <- 2 * length(polys) + -1
 poly.all <- replicate(anim.stages, palate.cleanser, simplify=FALSE)
-poly.all[seq(1, anim.stages, length.out=length(polys))] <- polys
+# poly.all[seq(1, anim.stages, length.out=length(polys))] <- polys
+poly.all[seq(1, anim.stages, length.out=length(polys))] <- lines
 
 file.base <- "~/Downloads/anim-r2c/img-%04d.png"
 x.ext <- y.ext <- 0:1 * scale
+poly.all.s <- lapply(poly.all, \(x) as.data.frame(lapply(x, "*", scale)))
 
 k <- 0
-for(i in seq_len(length(poly.all) - 1)) {
-  start <- poly.all[[i]]
-  end <- poly.all[[i + 1]]
+for(i in seq_len(length(poly.all.s) - 1)) {
+  start <- poly.all.s[[i]]
+  end <- poly.all.s[[i + 1]]
   animation <- tween_polygon(
     start, end, 'cubic-in-out', 25, id
   ) |> keep_state(3)
@@ -356,9 +372,123 @@ for(i in seq_len(length(poly.all) - 1)) {
     png(sprintf(file.base, j + k), width=x.ext[2], height=y.ext[2])
     plot.new()
     plot.window(x.ext, y.ext, asp=1)
-    polypath(anim.s[[j]], col='black', border=NA)
+    # polypath(anim.s[[j]], col='black', border=NA)
+    lines(anim.s[[j]], col='black')
     dev.off()
   }
   k <- k + j
 }
+# Take two:
+# Model the objects as skeletons.  Starting with the first point, everything is
+# modeled as a vector offset, and we're tweening the state of the vectors.
+# Separately we will twin the offset from start to end.
+# Hmm, in order to avoid crossing all things need to turn in the same direction.
+# So we need start angle, end angle, pick a direction, 
+
+steps <- 40
+sigend <- 8
+inc <- 1/(1 + exp(seq(sigend, -sigend, length.out=steps)))
+
+a <- t(as.matrix(lines[[1]][1:2]))
+b <- t(as.matrix(lines[[2]][1:2]))
+# b <- rbind(seq(1, 0, length.out=obs), seq(1, 0, length.out=obs))
+
+va <- a[,-1] - a[,-ncol(a)]
+vb <- b[,-1] - b[,-ncol(b)]
+vab <- vb - va
+
+base.coords <- lapply(inc, \(i) a[,1] + (b[,1] - a[,1]) * i)
+v.coords <- lapply(inc, \(i) va + vab * i)
+coords <- Map(
+  \(base, delta)
+    rbind(
+      cumsum(c(base[1], delta[1,])),
+      cumsum(c(base[2], delta[2,]))
+  ),
+  base.coords,
+  v.coords
+)
+file.base <- "~/Downloads/anim-r2c/img-%04d.png"
+x.ext <- y.ext <- 0:1 * scale
+coords.all <- lapply(coords, \(x) t(x * scale))
+k <- 0
+for(i in seq_along(coords.all)) {
+  png(sprintf(file.base, i), width=x.ext[2], height=y.ext[2])
+  plot.new()
+  plot.window(x.ext, y.ext, asp=1)
+  # polypath(anim.s[[j]], col='black', border=NA)
+  lines(coords.all[[i]], col='black')
+  dev.off()
+}
+# Take 3: record the angle from one vector to the next, and the length of the
+# vector, and converge such that the angle never crosses zero.
+# Start angle is straight up?
+# We are not handling the case where a vector goes from one side of turning
+# around completely (180) to the other, crossing the preceding segment, because
+# nothing is close to doing that.
+
+va0 <- cbind(c(0, 1), va[,-ncol(va)])
+ang.a <-
+  acos(colSums(va0 * va) / (sqrt(colSums(va0 ^ 2)) * sqrt(colSums(va^2)))) *
+  sign(va0[1,] * va[2,] - va0[2,] * va[1,])
+
+vb0 <- cbind(c(0, 1), vb[,-ncol(vb)])
+ang.b <-
+  acos(colSums(vb0 * vb) / (sqrt(colSums(vb0 ^ 2)) * sqrt(colSums(vb^2)))) *
+  sign(vb0[1,] * vb[2,] - vb0[2,] * vb[1,])
+
+plot(ang.a, ang.b, xlim=c(-.1,.1), ylim=c(-.1,.1))
+
+dist.a <- sqrt(colSums(va^2))
+dist.b <- sqrt(colSums(vb^2))
+
+# vector angles relative to previous vector
+angles <- lapply(inc, \(i, a, b) a + (b - a) * i, ang.a, ang.b)
+dists <- lapply(inc, \(i, a, b) a + (b - a) * i, dist.a, dist.b)
+
+coords <- Map(
+  \(a, d, base) {
+    v <- matrix(0:1)
+    vs <- matrix(NA, nrow=2, ncol=length(a))
+    # Rotate each vector relative to previous
+    for(i in seq_along(a)) {
+      R <- matrix(c(cos(a[i]), sin(a[i]), -sin(a[i]), cos(a[i])), 2)
+      v <- R %*% v
+      vs[,i] <- v
+    }
+    # Scale each vector by distance
+    vs <- vs * rep(d, each=2)
+    # Compute all the points
+    rbind(
+      cumsum(c(base[1], vs[1,])),
+      cumsum(c(base[2], vs[2,]))
+    )
+  },
+  angles,
+  dists,
+  base.coords
+)
+file.base <- "~/Downloads/anim-r2c/img-%04d.png"
+x.ext <- y.ext <- c(0,2) * scale
+coords.all <- lapply(coords, \(x) t(x * scale))
+k <- 0
+for(i in seq_along(coords.all)) {
+  png(sprintf(file.base, i), width=x.ext[2], height=y.ext[2])
+  plot.new()
+  plot.window(x.ext, y.ext, asp=1)
+  # polypath(anim.s[[j]], col='black', border=NA)
+  lines(coords.all[[i]], col='black')
+  dev.off()
+}
+
+plot(poly.all[[5]][1:2], xlim=0:1, ylim=0:1)
+points(poly.all[[5]][1,1:2], col='#FF0000', pch=19)
+points(poly.all[[5]][10,1:2], col='#CC0000', pch=19)
+points(poly.all[[5]][obs * 2,1:2], col='#440000', pch=17)
+points(poly.all[[5]][obs * 2 - 10,1:2], col='#990000', pch=17)
+
+points(poly.all[[2]][1,1:2], col='#00FF00', pch=19)
+points(poly.all[[2]][10,1:2], col='#00CC00', pch=19)
+points(poly.all[[2]][obs * 2,1:2], col='#004400', pch=17)
+points(poly.all[[2]][obs * 2 - 10,1:2], col='#009900', pch=17)
 
