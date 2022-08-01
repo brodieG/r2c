@@ -32,7 +32,7 @@ interpolate_longest <- function(x, n) {
     cbind(
       a[,seq_len(longest - 1), drop=FALSE],
       interp,
-      a[,seq(longest + 1, ncol(a)), drop=FALSE]
+      if(longest < ncol(a)) a[,seq(longest + 1, ncol(a)), drop=FALSE]
   ) )
 }
 # Reduce observations to target obs count by iteratively removing the points
@@ -170,8 +170,6 @@ C.outside <- reorder_nearest(C.logo.tmp[-(end.i[1]:end.i[3]),2:1], 1367)
 #
 # This is not entirely right, btw, but likely close enough it's okay
 
-if(a.x*b.y - a.y*b.x < 0)
-    angle = -angle;
 # repeat {
 #   cat(nrow(C.logo.tmp), '')
 #   C.logo.2 <- C.logo.tmp[c(nrow(C.logo.tmp), seq_len(nrow(C.logo.tmp)), 1L),]
@@ -231,7 +229,6 @@ fills <- get_fills(svg)
 # polypath(xy[[1]], col=fills[[1]], border=NA)
 # polypath(xy[[2]], col=fills[[2]], border=NA)
 
-
 hoop.logo.dat.hole <- data.frame(x=xy[[1]]$x, y=xy[[1]]$y, id=1)
 
 # Let's try to connect the hoop outside to the inside, by taking the last point
@@ -264,8 +261,9 @@ d[,2] <- (d[,2] - min(d[,2])) / diff(range(d[,2]))
 # polypath(d, col='black', border=NA)
 # points(d, col='red')
 
+# Closed path, so we drop last point to avoid math problems later
+two.outer <- interpolate_longest(d[c(306, 2:143), 1:2], 40)
 two.inner <- interpolate_longest(d[144:305, 1:2], 40)
-two.outer <- interpolate_longest(d[c(306, 1:143), 1:2], 40)
 
 # Fill in the long stretches
 
@@ -378,12 +376,12 @@ for(i in seq_len(length(poly.all.s) - 1)) {
   }
   k <- k + j
 }
-# Take two:
-# Model the objects as skeletons.  Starting with the first point, everything is
-# modeled as a vector offset, and we're tweening the state of the vectors.
-# Separately we will twin the offset from start to end.
-# Hmm, in order to avoid crossing all things need to turn in the same direction.
-# So we need start angle, end angle, pick a direction, 
+# Take 3: record the angle from one vector to the next, and the length of the
+# vector, and converge such that the angle never crosses zero.
+# Start angle is straight up?
+# We are not handling the case where a vector goes from one side of turning
+# around completely (180) to the other, crossing the preceding segment, because
+# nothing is close to doing that.
 
 steps <- 40
 sigend <- 8
@@ -391,41 +389,12 @@ inc <- 1/(1 + exp(seq(sigend, -sigend, length.out=steps)))
 
 a <- t(as.matrix(lines[[1]][1:2]))
 b <- t(as.matrix(lines[[2]][1:2]))
-# b <- rbind(seq(1, 0, length.out=obs), seq(1, 0, length.out=obs))
-
+a <- a[, rev(seq_len(ncol(a)))]
+b <- b[, rev(seq_len(ncol(b)))]
 va <- a[,-1] - a[,-ncol(a)]
 vb <- b[,-1] - b[,-ncol(b)]
-vab <- vb - va
 
 base.coords <- lapply(inc, \(i) a[,1] + (b[,1] - a[,1]) * i)
-v.coords <- lapply(inc, \(i) va + vab * i)
-coords <- Map(
-  \(base, delta)
-    rbind(
-      cumsum(c(base[1], delta[1,])),
-      cumsum(c(base[2], delta[2,]))
-  ),
-  base.coords,
-  v.coords
-)
-file.base <- "~/Downloads/anim-r2c/img-%04d.png"
-x.ext <- y.ext <- 0:1 * scale
-coords.all <- lapply(coords, \(x) t(x * scale))
-k <- 0
-for(i in seq_along(coords.all)) {
-  png(sprintf(file.base, i), width=x.ext[2], height=y.ext[2])
-  plot.new()
-  plot.window(x.ext, y.ext, asp=1)
-  # polypath(anim.s[[j]], col='black', border=NA)
-  lines(coords.all[[i]], col='black')
-  dev.off()
-}
-# Take 3: record the angle from one vector to the next, and the length of the
-# vector, and converge such that the angle never crosses zero.
-# Start angle is straight up?
-# We are not handling the case where a vector goes from one side of turning
-# around completely (180) to the other, crossing the preceding segment, because
-# nothing is close to doing that.
 
 va0 <- cbind(c(0, 1), va[,-ncol(va)])
 ang.a <-
@@ -436,8 +405,6 @@ vb0 <- cbind(c(0, 1), vb[,-ncol(vb)])
 ang.b <-
   acos(colSums(vb0 * vb) / (sqrt(colSums(vb0 ^ 2)) * sqrt(colSums(vb^2)))) *
   sign(vb0[1,] * vb[2,] - vb0[2,] * vb[1,])
-
-plot(ang.a, ang.b, xlim=c(-.1,.1), ylim=c(-.1,.1))
 
 dist.a <- sqrt(colSums(va^2))
 dist.b <- sqrt(colSums(vb^2))
@@ -480,15 +447,4 @@ for(i in seq_along(coords.all)) {
   lines(coords.all[[i]], col='black')
   dev.off()
 }
-
-plot(poly.all[[5]][1:2], xlim=0:1, ylim=0:1)
-points(poly.all[[5]][1,1:2], col='#FF0000', pch=19)
-points(poly.all[[5]][10,1:2], col='#CC0000', pch=19)
-points(poly.all[[5]][obs * 2,1:2], col='#440000', pch=17)
-points(poly.all[[5]][obs * 2 - 10,1:2], col='#990000', pch=17)
-
-points(poly.all[[2]][1,1:2], col='#00FF00', pch=19)
-points(poly.all[[2]][10,1:2], col='#00CC00', pch=19)
-points(poly.all[[2]][obs * 2,1:2], col='#004400', pch=17)
-points(poly.all[[2]][obs * 2 - 10,1:2], col='#009900', pch=17)
 
