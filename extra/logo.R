@@ -32,7 +32,7 @@ interpolate_longest <- function(x, n) {
     cbind(
       a[,seq_len(longest - 1), drop=FALSE],
       interp,
-      if(longest < ncol(a)) a[,seq(longest + 1, ncol(a)), drop=FALSE]
+      if(longest + 1 < ncol(a)) a[,seq(longest + 2, ncol(a)), drop=FALSE]
   ) )
 }
 # Reduce observations to target obs count by iteratively removing the points
@@ -245,8 +245,8 @@ hole.dat.reord <- hole.dat[
   c(seq(hole.dat.closest, nrow(hole.dat)), seq_len(hole.dat.closest - 1)),
 ]
 
-hoop.inside <- hole.dat.reord
-hoop.outside <- hoop.logo.dat.hole[seq_len(hole - 1L),]
+hoop.inside <- unique(hole.dat.reord)
+hoop.outside <- unique(hoop.logo.dat.hole[seq_len(hole - 1L),])
 
 library(string2path)
 d <- string2path("2", "/System/Library/Fonts/Monaco.ttf", tolerance=1e-5)
@@ -350,13 +350,14 @@ scale <- 500
 inc <- 1/(1 + exp(seq(sigend, -sigend, length.out=steps)))
 file.base <- "~/Downloads/anim-r2c/img-%04d.png"
 x.ext <- y.ext <- c(0,2) * scale
-k <- 0
 
-for(i in seq_len(length(lines) - 1)) {
-  start <- lines[[i]]
-  end <- lines[[i + 1]]
-  a <- t(as.matrix(start[1:2]))
-  b <- t(as.matrix(end[1:2]))
+anim <- polys
+k <- 0
+for(i in seq_len(length(anim) - 1)) {
+  start <- anim[[i]]
+  end <- anim[[i + 1]]
+  a <- t(as.matrix(start[,1:2]))
+  b <- t(as.matrix(end[,1:2]))
   a <- a[, rev(seq_len(ncol(a)))]
   b <- b[, rev(seq_len(ncol(b)))]
   va <- a[,-1] - a[,-ncol(a)]
@@ -368,11 +369,13 @@ for(i in seq_len(length(lines) - 1)) {
   ang.a <-
     acos(colSums(va0 * va) / (sqrt(colSums(va0 ^ 2)) * sqrt(colSums(va^2)))) *
     sign(va0[1,] * va[2,] - va0[2,] * va[1,])
+  ang.a[is.na(ang.a)] <- 0
 
   vb0 <- cbind(c(0, 1), vb[,-ncol(vb)])
   ang.b <-
     acos(colSums(vb0 * vb) / (sqrt(colSums(vb0 ^ 2)) * sqrt(colSums(vb^2)))) *
     sign(vb0[1,] * vb[2,] - vb0[2,] * vb[1,])
+  ang.b[is.na(ang.b)] <- 0
 
   dist.a <- sqrt(colSums(va^2))
   dist.b <- sqrt(colSums(vb^2))
@@ -401,12 +404,12 @@ for(i in seq_len(length(lines) - 1)) {
     base.coords
   )
   coords.all <- lapply(coords, \(x) t(x * scale))
-  for(j in seq_along(anim.s)) {
+  for(j in seq_along(coords.all)) {
     png(sprintf(file.base, j + k), width=x.ext[2], height=y.ext[2])
     plot.new()
     plot.window(x.ext, y.ext, asp=1)
     # polypath(anim.s[[j]], col='black', border=NA)
-    lines(coords.all[[i]], col='black')
+    lines(coords.all[[j]], col='black')
     dev.off()
   }
   k <- k + j
