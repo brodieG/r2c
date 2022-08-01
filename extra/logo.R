@@ -284,7 +284,7 @@ two.inner <- interpolate_longest(d[144:305, 1:2], 40)
 
 objs <- list(
   h.i=hoop.inside, h.o=hoop.outside,
-  t.i=two.inner, t.o=two.outer,
+  t.o=two.outer, t.i=two.inner,
   c.i=C.inside, c.o=C.outside
 )
 obs <- min(vapply(objs, nrow, 0))
@@ -334,8 +334,6 @@ lines <- lapply(
     )
   }
 )
-plot(polys[[1]][,1:2])
-lines(lines[[1]][,1:2])
 
 # Take 3: record the angle from one vector to the next, and the length of the
 # vector, and converge such that the angle never crosses zero.
