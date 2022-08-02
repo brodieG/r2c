@@ -247,6 +247,9 @@ hole.dat.reord <- hole.dat[
 
 hoop.inside <- unique(hole.dat.reord)
 hoop.outside <- unique(hoop.logo.dat.hole[seq_len(hole - 1L),])
+# Extend the hoop so that it closes explicitly visually
+hoop.outside <- hoop.outside[c(nrow(hoop.outside), seq_len(nrow(hoop.outside))),]
+hoop.inside <- hoop.inside[c(seq_len(nrow(hoop.inside)), 1L),]
 
 library(string2path)
 d <- string2path("2", "/System/Library/Fonts/Monaco.ttf", tolerance=1e-5)
@@ -296,7 +299,7 @@ par(mfrow=c(1, 3))
 plot_in_out <- function(x) {
   inside <- x[[1]]
   outside <- x[[2]]
-  plot(rbind(inside, outside)[,1:2])
+  plot(rbind(inside, outside)[,1:2], type='l')
   points(inside, col=hsv(.2, 1, seq(.5,1,length.out=nrow(inside))))
   points(outside, col=hsv(.6, 1, seq(.5,1,length.out=nrow(outside))))
   inside <- inside[rev(seq_len(nrow(inside))), ]
@@ -309,8 +312,6 @@ for(i in seq_len(length(objs.r)/2)) plot_in_out(objs.r[2 * i - 1:0])
 
 # - Animate --------------------------------------------------------------------
 
-library(transformr)
-library(tweenr)
 # Transformer expects coordinates as data.table with ids for the pieces, and
 # holes encoded with NA rows.
 
@@ -347,7 +348,8 @@ sigend <- 8
 scale <- 500
 inc <- 1/(1 + exp(seq(sigend, -sigend, length.out=steps)))
 file.base <- "~/Downloads/anim-r2c/img-%04d.png"
-x.ext <- y.ext <- c(0,2) * scale
+x.ext <- c(-.5, 1) * scale
+y.ext <- c(0,1.5) * scale
 
 anim <- polys
 k <- 0
@@ -406,8 +408,8 @@ for(i in seq_len(length(anim) - 1)) {
     png(sprintf(file.base, j + k), width=x.ext[2], height=y.ext[2])
     plot.new()
     plot.window(x.ext, y.ext, asp=1)
-    # polypath(anim.s[[j]], col='black', border=NA)
-    lines(coords.all[[j]], col='black')
+    polypath(coords.all[[j]], col='black', border=NA)
+    # lines(coords.all[[j]], col='black')
     dev.off()
   }
   k <- k + j
