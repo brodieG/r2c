@@ -348,11 +348,13 @@ sigend <- 8
 scale <- 500
 inc <- 1/(1 + exp(seq(sigend, -sigend, length.out=steps)))
 file.base <- "~/Downloads/anim-r2c/img-%04d.png"
-x.ext <- c(-.5, 1) * scale
-y.ext <- c(0,1.5) * scale
+x.ext <- c(0, 1) * scale
+y.ext <- c(0, 1) * scale
 
 anim <- polys
+
 k <- 0
+coords.all <- list()
 for(i in seq_len(length(anim) - 1)) {
   start <- anim[[i]]
   end <- anim[[i + 1]]
@@ -403,14 +405,26 @@ for(i in seq_len(length(anim) - 1)) {
     dists,
     base.coords
   )
-  coords.all <- lapply(coords, \(x) t(x * scale))
-  for(j in seq_along(coords.all)) {
-    png(sprintf(file.base, j + k), width=x.ext[2], height=y.ext[2])
-    plot.new()
-    plot.window(x.ext, y.ext, asp=1)
-    polypath(coords.all[[j]], col='black', border=NA)
-    # lines(coords.all[[j]], col='black')
-    dev.off()
-  }
-  k <- k + j
+  coords.all <- c(coords.all, lapply(
+    coords, \(x) {
+      r.x <- round(range(x[1,]), 3)
+      r.y <- round(range(x[2,]), 3)
+      browser()
+      if(r.x[1] < 0 || r.x[2] > 1 || r.y[1] < 0 || r.y[2] > 1) {
+        mult <- max(c(1, diff(r.x), diff(r.y)))
+        x[1,] <- (x[1,] - r.x[1])/ mult
+        x[2,] <- (x[2,] - r.y[1])/ mult
+      }
+      t(x * scale)
+    }
+  ) )
 }
+for(j in seq_along(coords.all)) {
+  png(sprintf(file.base, j), width=diff(x.ext), height=diff(y.ext))
+  plot.new()
+  plot.window(x.ext, y.ext, asp=1)
+  polypath(coords.all[[j]], col='black', border=NA)
+  # lines(coords.all[[j]], col='black')
+  dev.off()
+}
+# ffmpeg -pattern_type glob -i '*.png' -r 30 -pix_fmt yuv420p out.mp4
