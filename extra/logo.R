@@ -316,23 +316,14 @@ scale <- 500
 inc <- c(0, 1/(1 + exp(seq(sigend, -sigend, length.out=steps-2))), 1)
 file.base <- "~/Downloads/anim-r2c/img-%04d.png"
 tol <- .1
-x.ext <- c(0 - tol, 1 + tol) * scale
-y.ext <- c(0 - tol, 1 + tol) * scale
+x.ext <- y.ext <- (.5 + c(-1, 1) * sqrt(2)) * scale
 
 anim <- polys
 # Need to add tolerance
-scale_coords <- function(x, tol=.1) {
-  tol <- 1 + tol
-  dat <- x
-  min.x <- min(dat[1,])
-  min.y <- min(dat[2,])
-  dat[1,] <- dat[1,] - min.x
-  dat[2,] <- dat[2,] - min.y
-  scale <- max(c(1, diff(range(dat[1,])) / tol, diff(range(dat[2,])) / tol))
-  dat <- dat / scale
-  dat[1,] <- dat[1,] + (min.x / scale)
-  dat[2,] <- dat[2,] + (min.y / scale)
-  t(dat)
+scale_coords <- function(x) {
+  dat <- x - .5
+  size <- max(c(sqrt(colSums(dat^2) * 2), 1))
+  t(dat / size + .5)
 }
 for(i in seq_len(length(anim) - 1)) {
   if(i == 1) coords.all <- list()
@@ -386,7 +377,7 @@ for(i in seq_len(length(anim) - 1)) {
     base.coords
   )
   # scale coords so they don't exit the (0:1)*scale bounding box
-  coords.all <- c(coords.all, lapply(coords, scale_coords, tol=tol))
+  coords.all <- c(coords.all, lapply(coords, scale_coords))
 }
 
 coords.R <- coords.R.end <- do.call(cbind, R.xy)
@@ -395,12 +386,17 @@ coords.R.diff <- coords.R.end - coords.R
 coords.R.all <- replicate(n=length(coords.all), coords.R.end, simplify=FALSE)
 for(i in seq_along(inc)) coords.R.all[[i]] <- coords.R + coords.R.diff * inc[i]
 
+circ.degs <- seq(0, 2 * pi, length.out=100)
+circ <- (cbind(sin(circ.degs), cos(circ.degs)) / sqrt(2) + .5) * scale
+
 for(j in seq_along(coords.all)) {
   png(sprintf(file.base, j), width=diff(x.ext), height=diff(y.ext))
   plot.new()
   plot.window(x.ext, y.ext, asp=1)
   polypath(coords.all[[j]] * scale, col='black', border=NA)
   polypath(coords.R.all[[j]] * scale, col='grey', border=NA)
+  lines(matrix(c(0, 0, 1, 0, 1, 1, 0, 1, 0, 0) * scale, ncol=2, byrow=TRUE), col='red')
+  lines(circ, col='blue')
   # lines(coords.all[[j]], col='black')
   dev.off()
 }
