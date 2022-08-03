@@ -59,8 +59,57 @@ reduce_points <- function(x, n) {
   }
   x
 }
+# - R Logo Data ----------------------------------------------------------------
 
-# - Blob of Blurgh  ------------------------------------------------------------
+library(svgchop)
+svg <- chop(R_logo(), steps=100)
+ext <- attr(svg, "extents")
+plot.new()
+plot.window(ext$x, rev(ext$y), asp=1)
+plot.window(0:1, 0:1, asp=1)
+
+xy <- get_xy_coords(svg)
+xy <- lapply(
+  xy, \(z)
+    with(z,
+      list(
+        x=(x - ext$x[1]) / diff(ext$x),
+        y=(ext$y[2] - y) / diff(ext$y)
+    )
+) )
+R.starts <- which(is.na(xy[[2]]$x))
+R.xy <- lapply(xy[[2]], "[", -R.starts)
+
+#lines(xy2[[1]])
+#lines(xy2[[2]])
+
+fills <- get_fills(svg)
+# polypath(xy[[1]], col=fills[[1]], border=NA)
+# polypath(xy[[2]], col=fills[[2]], border=NA)
+
+hoop.logo.dat.hole <- data.frame(x=xy[[1]]$x, y=xy[[1]]$y, id=1)
+
+# Let's try to connect the hoop outside to the inside, by taking the last point
+# of the outside, finding the closest point to the inside, re-ordering the
+# inside starting at that point.
+
+hole <- which(is.na(hoop.logo.dat.hole$x))
+hole.dat <- hoop.logo.dat.hole[seq_len(nrow(hoop.logo.dat.hole)) > hole, ]
+hole.dat.closest <- which.min(
+  colSums(
+    (rbind(hole.dat$x, hole.dat$y) - unlist(hoop.logo.dat.hole[hole - 1, 1:2]))^2
+) )
+hole.dat.reord <- hole.dat[
+  c(seq(hole.dat.closest, nrow(hole.dat)), seq_len(hole.dat.closest - 1)),
+]
+
+hoop.inside <- unique(hole.dat.reord)
+hoop.outside <- unique(hoop.logo.dat.hole[seq_len(hole - 1L),])
+# Extend the hoop so that it closes explicitly visually
+hoop.outside <- hoop.outside[c(nrow(hoop.outside), seq_len(nrow(hoop.outside))),]
+hoop.inside <- hoop.inside[c(seq_len(nrow(hoop.inside)), 1L),]
+
+# - C Logo Data ----------------------------------------------------------------
 
 library(jpeg)
 jpg <- readJPEG('~/Downloads/C-hirez.jpg')
@@ -124,8 +173,9 @@ while(!all(picked)) {
   i <- i + 1
 }
 C.logo <- row.coords[picks,]
-C.logo[,1] <- (C.logo[,1] - min(C.logo[,1])) / diff(range(C.logo[,1]))
-C.logo[,2] <- (C.logo[,2] - min(C.logo[,2])) / diff(range(C.logo[,2]))
+C.scale <- max(c(diff(range(C.logo[,1])), diff(range(C.logo[,2]))))
+C.logo[,1] <- (C.logo[,1] - min(C.logo[,1])) / C.scale
+C.logo[,2] <- (C.logo[,2] - min(C.logo[,2])) / C.scale
 C.logo.tmp <- C.logo
 
 dropped <- logical(nrow(C.logo.tmp))
@@ -153,103 +203,18 @@ end.cand <- end.cand.i[
 ]
 end.i <- rep(end.cand, each=2)-0:1
 
+# Scale to R size and center on X
+
+C.logo.tmp <- C.logo.tmp * max(R.xy[['y']])
+C.logo.tmp[,2] <- C.logo.tmp[,2] + (1 - max(R.xy[['y']])) / 2
+
 C.inside <- C.logo.tmp[end.i[1]:end.i[4],2:1]
 C.outside <- reorder_nearest(C.logo.tmp[-(end.i[1]:end.i[3]),2:1], 1367)
-# points(C.inside, col='red')
-# plot(C.logo)
-# points(C.logo[1,,drop=F], col='red')
-# polypath(C.logo, col='yellow', border=NA)
 
-# Get rid of any points that do not deflect very much from the preceding or next
-# point.  In particular this is so we don't have anything in the connections
-# between the inside and outside part of the C.
-#
-# Compute angle between 1st and 2nd and 1st and 3rd
-# Use angle to compute perpendicular from 1st to 3rd to 2nd.
-# Iteratively remove things.
-#
-# This is not entirely right, btw, but likely close enough it's okay
-
-# repeat {
-#   cat(nrow(C.logo.tmp), '')
-#   C.logo.2 <- C.logo.tmp[c(nrow(C.logo.tmp), seq_len(nrow(C.logo.tmp)), 1L),]
-#   v1 <- C.logo.2[-(nrow(C.logo.2) - 1:0),]
-#   v2 <- C.logo.2[-c(1, nrow(C.logo.2)),]
-#   v3 <- C.logo.2[-(1:2),]
-#   v21 <- v2 - v1
-#   v23 <- v2 - v3
-#   ang <-
-#     pi -
-#     acos(rowSums(v21 * v23) /
-#     (sqrt(rowSums(v21^2)) * sqrt(rowSums(v23^2))))
-#   ang0 <- acos(
-#     rowSums((v2 - v1) * (v3 - v1)) /
-#     (sqrt(rowSums((v2 - v1) ^ 2)) * sqrt(rowSums((v3 - v1)^2)))
-#   )
-#   dist <- sin(ang0) * sqrt(rowSums(v21^2))
-#   drop <- ((is.na(dist) | dist < 1) & ang < .1) |
-#     (abs(sqrt(rowSums(v21^2))) <= sqrt(2) & sqrt(rowSums(v23^2)) <= sqrt(2))
-# 
-#   drop.w <- which(drop)
-#   if(!length(drop.w)) break
-#   drop.w <- drop.w[c(TRUE, diff(drop.w) > 1)]
-#   # We do not want to drop sequential points
-#   C.logo.tmp <- C.logo.tmp[-drop.w,,drop=FALSE]
-#   dropped[kept[drop.w]] <- TRUE
-#   kept <- kept[-drop.w]
-# }
-# cat('\n')
-# rng <- C.logo.tmp[,1] < 42
-# rng <- C.logo.tmp[,2]>910 & C.logo.tmp[,1]>600
-# cbind(C.logo.tmp, dist, ang, ang0, drop, v21, v23)[rng,]
+# - Number 2 -------------------------------------------------------------------
 
 # Now we have the coordinates, probably want to reduce to a similar number for
 # the transitions.
-
-library(svgchop)
-svg <- chop(R_logo(), steps=100)
-ext <- attr(svg, "extents")
-plot.new()
-plot.window(ext$x, rev(ext$y), asp=1)
-plot.window(0:1, 0:1, asp=1)
-
-xy <- get_xy_coords(svg)
-xy <- lapply(
-  xy, \(z)
-    with(z,
-      list(
-        x=(x - ext$x[1]) / diff(ext$x),
-        y=(ext$y[2] - y) / diff(ext$y)
-    )
-) )
-#lines(xy2[[1]])
-#lines(xy2[[2]])
-
-fills <- get_fills(svg)
-# polypath(xy[[1]], col=fills[[1]], border=NA)
-# polypath(xy[[2]], col=fills[[2]], border=NA)
-
-hoop.logo.dat.hole <- data.frame(x=xy[[1]]$x, y=xy[[1]]$y, id=1)
-
-# Let's try to connect the hoop outside to the inside, by taking the last point
-# of the outside, finding the closest point to the inside, re-ordering the
-# inside starting at that point.
-
-hole <- which(is.na(hoop.logo.dat.hole$x))
-hole.dat <- hoop.logo.dat.hole[seq_len(nrow(hoop.logo.dat.hole)) > hole, ]
-hole.dat.closest <- which.min(
-  colSums(
-    (rbind(hole.dat$x, hole.dat$y) - unlist(hoop.logo.dat.hole[hole - 1, 1:2]))^2
-) )
-hole.dat.reord <- hole.dat[
-  c(seq(hole.dat.closest, nrow(hole.dat)), seq_len(hole.dat.closest - 1)),
-]
-
-hoop.inside <- unique(hole.dat.reord)
-hoop.outside <- unique(hoop.logo.dat.hole[seq_len(hole - 1L),])
-# Extend the hoop so that it closes explicitly visually
-hoop.outside <- hoop.outside[c(nrow(hoop.outside), seq_len(nrow(hoop.outside))),]
-hoop.inside <- hoop.inside[c(seq_len(nrow(hoop.inside)), 1L),]
 
 library(string2path)
 d <- string2path("2", "/System/Library/Fonts/Monaco.ttf", tolerance=1e-5)
@@ -258,6 +223,8 @@ par(mai=numeric(4))
 
 d[,1] <- (d[,1] - min(d[,1])) / diff(range(d[,1]))
 d[,2] <- (d[,2] - min(d[,2])) / diff(range(d[,2]))
+d[,1] <- d[,1] * max(R.xy[['y']]) + (1 - max(R.xy[['y']])) / 2
+d[,2] <- d[,2] * max(R.xy[['y']])
 
 # plot.new()
 # plot.window(range(d$x), range(d$y), asp=1)
@@ -352,6 +319,16 @@ x.ext <- c(0, 1) * scale
 y.ext <- c(0, 1) * scale
 
 anim <- polys
+scale_coords <- function(x) {
+  r.x <- c(min(c(x[1,], 0)), max(x[1,], 1))
+  r.y <- c(min(c(x[2,], 0)), max(x[2,], 1))
+  mult <- max(c(1, diff(r.x), diff(r.y)))
+  x[1,] <- x[1,] / mult
+  x[2,] <- x[2,] / mult
+  if(any(x[1,] < 0 | x[1,] > 1)) x[1,] <- x[1,] - min(c(x[1,], 0))
+  if(any(x[2,] < 0 | x[2,] > 1)) x[2,] <- x[2,] - min(c(x[2,], 0))
+  t(x)
+}
 for(i in seq_len(length(anim) - 1)) {
   if(i == 1) coords.all <- list()
   start <- anim[[i]]
@@ -404,23 +381,8 @@ for(i in seq_len(length(anim) - 1)) {
     base.coords
   )
   # scale coords so they don't exit the (0:1)*scale bounding box
-  coords.all <- c(coords.all, lapply(
-    coords, \(x) {
-      r.x <- range(x[1,])
-      r.y <- range(x[2,])
-      tol <- .01
-      mult <- max(c(1, diff(r.x), diff(r.y)))
-      x[1,] <- (x[1,] - r.x[1]) / mult + r.x[1]
-      x[2,] <- (x[2,] - r.y[1]) / mult + r.y[1]
-      if(any(x[1,] < 0 | x[1,] > 1)) x[1,] - r.x[1]
-      if(any(x[2,] < 0 | x[2,] > 1)) x[2,] - r.y[1]
-      t(x)
-    }
-  ) )
+  coords.all <- c(coords.all, lapply(coords, scale_coords))
 }
-R.starts <- which(is.na(xy[[2]]$x))
-R.xy <- lapply(xy[[2]], "[", -R.starts)
-# R.xy[['y']] <- 1 - R.xy[['y']]
 
 coords.R <- coords.R.end <- do.call(cbind, R.xy)
 coords.R.end[,1] <- coords.R.end[,1] - 2
