@@ -315,19 +315,24 @@ sigend <- 8
 scale <- 500
 inc <- c(0, 1/(1 + exp(seq(sigend, -sigend, length.out=steps-2))), 1)
 file.base <- "~/Downloads/anim-r2c/img-%04d.png"
-x.ext <- c(0, 1) * scale
-y.ext <- c(0, 1) * scale
+tol <- .1
+x.ext <- c(0 - tol, 1 + tol) * scale
+y.ext <- c(0 - tol, 1 + tol) * scale
 
 anim <- polys
-scale_coords <- function(x) {
-  r.x <- c(min(c(x[1,], 0)), max(x[1,], 1))
-  r.y <- c(min(c(x[2,], 0)), max(x[2,], 1))
-  mult <- max(c(1, diff(r.x), diff(r.y)))
-  x[1,] <- x[1,] / mult
-  x[2,] <- x[2,] / mult
-  if(any(x[1,] < 0 | x[1,] > 1)) x[1,] <- x[1,] - min(c(x[1,], 0))
-  if(any(x[2,] < 0 | x[2,] > 1)) x[2,] <- x[2,] - min(c(x[2,], 0))
-  t(x)
+# Need to add tolerance
+scale_coords <- function(x, tol=.1) {
+  tol <- 1 + tol
+  dat <- x
+  min.x <- min(dat[1,])
+  min.y <- min(dat[2,])
+  dat[1,] <- dat[1,] - min.x
+  dat[2,] <- dat[2,] - min.y
+  scale <- max(c(1, diff(range(dat[1,])) / tol, diff(range(dat[2,])) / tol))
+  dat <- dat / scale
+  dat[1,] <- dat[1,] + (min.x / scale)
+  dat[2,] <- dat[2,] + (min.y / scale)
+  t(dat)
 }
 for(i in seq_len(length(anim) - 1)) {
   if(i == 1) coords.all <- list()
@@ -381,7 +386,7 @@ for(i in seq_len(length(anim) - 1)) {
     base.coords
   )
   # scale coords so they don't exit the (0:1)*scale bounding box
-  coords.all <- c(coords.all, lapply(coords, scale_coords))
+  coords.all <- c(coords.all, lapply(coords, scale_coords, tol=tol))
 }
 
 coords.R <- coords.R.end <- do.call(cbind, R.xy)
