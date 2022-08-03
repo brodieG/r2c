@@ -346,16 +346,14 @@ lines <- lapply(
 steps <- 40
 sigend <- 8
 scale <- 500
-inc <- 1/(1 + exp(seq(sigend, -sigend, length.out=steps)))
+inc <- c(0, 1/(1 + exp(seq(sigend, -sigend, length.out=steps-2))), 1)
 file.base <- "~/Downloads/anim-r2c/img-%04d.png"
 x.ext <- c(0, 1) * scale
 y.ext <- c(0, 1) * scale
 
 anim <- polys
-
-k <- 0
-coords.all <- list()
 for(i in seq_len(length(anim) - 1)) {
+  if(i == 1) coords.all <- list()
   start <- anim[[i]]
   end <- anim[[i + 1]]
   a <- t(as.matrix(start[,1:2]))
@@ -405,25 +403,37 @@ for(i in seq_len(length(anim) - 1)) {
     dists,
     base.coords
   )
+  # scale coords so they don't exit the (0:1)*scale bounding box
   coords.all <- c(coords.all, lapply(
     coords, \(x) {
-      r.x <- round(range(x[1,]), 3)
-      r.y <- round(range(x[2,]), 3)
-      browser()
-      if(r.x[1] < 0 || r.x[2] > 1 || r.y[1] < 0 || r.y[2] > 1) {
-        mult <- max(c(1, diff(r.x), diff(r.y)))
-        x[1,] <- (x[1,] - r.x[1])/ mult
-        x[2,] <- (x[2,] - r.y[1])/ mult
-      }
-      t(x * scale)
+      r.x <- range(x[1,])
+      r.y <- range(x[2,])
+      tol <- .01
+      mult <- max(c(1, diff(r.x), diff(r.y)))
+      x[1,] <- (x[1,] - r.x[1]) / mult + r.x[1]
+      x[2,] <- (x[2,] - r.y[1]) / mult + r.y[1]
+      if(any(x[1,] < 0 | x[1,] > 1)) x[1,] - r.x[1]
+      if(any(x[2,] < 0 | x[2,] > 1)) x[2,] - r.y[1]
+      t(x)
     }
   ) )
 }
+R.starts <- which(is.na(xy[[2]]$x))
+R.xy <- lapply(xy[[2]], "[", -R.starts)
+# R.xy[['y']] <- 1 - R.xy[['y']]
+
+coords.R <- coords.R.end <- do.call(cbind, R.xy)
+coords.R.end[,1] <- coords.R.end[,1] - 2
+coords.R.diff <- coords.R.end - coords.R
+coords.R.all <- replicate(n=length(coords.all), coords.R.end, simplify=FALSE)
+for(i in seq_along(inc)) coords.R.all[[i]] <- coords.R + coords.R.diff * inc[i]
+
 for(j in seq_along(coords.all)) {
   png(sprintf(file.base, j), width=diff(x.ext), height=diff(y.ext))
   plot.new()
   plot.window(x.ext, y.ext, asp=1)
-  polypath(coords.all[[j]], col='black', border=NA)
+  polypath(coords.all[[j]] * scale, col='black', border=NA)
+  polypath(coords.R.all[[j]] * scale, col='grey', border=NA)
   # lines(coords.all[[j]], col='black')
   dev.off()
 }
