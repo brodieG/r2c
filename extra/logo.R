@@ -316,14 +316,45 @@ scale <- 500
 inc <- c(0, 1/(1 + exp(seq(sigend, -sigend, length.out=steps-2))), 1)
 file.base <- "~/Downloads/anim-r2c/img-%04d.png"
 tol <- .1
-x.ext <- y.ext <- (.5 + c(-1, 1) * sqrt(2)) * scale
+x.ext <- y.ext <- (.5 + c(-1, 1) * 1/sqrt(2)) * scale
 
 anim <- polys
 # Need to add tolerance
+# Browse[2]> lim <- sqrt(2) * c(-1,1) / 2 + .5
+# Browse[2]> plot(t(x), xlim=lim, ylim=lim)
+#
+# Browse[2]> lines(circ, col='red')
+
+plot(cbind(sin(circ.degs), cos(circ.degs)), type='l')
+lines(cbind(sin(circ.degs), cos(circ.degs))/sqrt(2), type='l')
 scale_coords <- function(x) {
+  r <- sqrt(1/2)
   dat <- x - .5
+  # Keep shifting points from furthest towards center until either no more are
+  # outside radius, or we start generating new ones.  In the latter case, step
+  # back one and use scaling to make it fit
+  over <- (size <- sqrt(colSums(dat ^ 2))) > r
+  mult <- 1
+  max.size <- Inf
+  while(any(over)) {
+    over.prev <- over
+    max.size.prev <- max.size
+    dat.prev <- dat
+    max.point <- which.max(size)
+    max.size <- size[max.point]
+    max.shift <- dat[,max.point] * r / max.size - dat[,max.point]
+    dat <- dat + (max.shift * mult)
+    over <- (size <- sqrt(colSums(dat ^ 2))) > r
+    if(any(over & !over.prev)) mult <- mult / 2
+    if(max.size.prev <= max.size + .01) {
+      dat <- dat.prev
+      break
+    }
+  }
+  # Scale if still needed b/c shifting not enough
   size <- max(c(sqrt(colSums(dat^2) * 2), 1))
   t(dat / size + .5)
+  # t(dat + .5)
 }
 for(i in seq_len(length(anim) - 1)) {
   if(i == 1) coords.all <- list()
@@ -390,7 +421,10 @@ circ.degs <- seq(0, 2 * pi, length.out=100)
 circ <- (cbind(sin(circ.degs), cos(circ.degs)) / sqrt(2) + .5) * scale
 
 for(j in seq_along(coords.all)) {
-  png(sprintf(file.base, j), width=diff(x.ext), height=diff(y.ext))
+  png(
+    sprintf(file.base, j),
+    width=round(diff(x.ext)/2)*2, height=round(diff(y.ext)/2)*2
+  )
   plot.new()
   plot.window(x.ext, y.ext, asp=1)
   polypath(coords.all[[j]] * scale, col='black', border=NA)
