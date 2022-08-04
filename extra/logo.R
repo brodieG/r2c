@@ -35,34 +35,46 @@ interpolate_longest <- function(x, n) {
       if(longest + 1 < ncol(a)) a[,seq(longest + 2, ncol(a)), drop=FALSE]
   ) )
 }
-# Reduce observations to target obs count by iteratively removing the points
-# with least error from the line connecting the prior and next obs.  We're being
-# lazy and literally doing this one by one, taken the worst each time, with no
-# guarantee this will lead to the overall best reduction.
+# Reduce observations to target obs count by computing total distance of
+# original path (if path is detailed enough, first every second obs is removed
+# to smooth right angle pixel patterns) and interpolating along the path
+# splitting up by the total distance.  We run the algorithm twice to try to
+# smooth out the final spacing.
+#
+# @param crit vector of inidices of critical points in `x` that should be
+#   preserved.  Will be re-inserted at end, removing nearest point to each.
 
-reduce_points <- function(x, n) {
-  min.y <- min(x[,2]) # hack to prevent deletion of the bottom part of the two
-  while(nrow(x) > n) {
-    cat("\r     \r", nrow(x))
-    e <-  embed(seq_len(nrow(x)), 3)
-    v1 <- x[e[, 3],]
-    v2 <- x[e[, 2],]
-    v3 <- x[e[, 1],]
-    ang0 <- acos(
-      rowSums((v2 - v1) * (v3 - v1)) /
-      (sqrt(rowSums((v2 - v1) ^ 2)) * sqrt(rowSums((v3 - v1)^2)))
-    )
-    dist <- sin(ang0) * sqrt(rowSums((v2 - v1)^2))
-    dist[is.na(dist)] <- 0
-    dist[v2[,2] == min.y] <- Inf
-    x <- x[-(which.min(dist) + 1), ]
+reduce_points <- function(x, n, crit) {
+  x <- x0 <- as.matrix(x[,1:2])
+  stopifnot(nrow(x) > 3, nrow(x) >= n)
+  # drop every second point if we can afford it
+  if(nrow(x) > 2 * n) x <- x[seq(2L, nrow(x) - 1L, by=2L), ]
+
+  for(i in 1:2) {
+    xd <- x[-1,] - x[-nrow(x),]
+    dist <- c(0, sqrt(rowSums(xd^2)))
+    distc <- cumsum(dist)
+    targets <- seq(0, distc[length(distc)], length.out=n)
+    int <- findInterval(targets, distc)
+    y <- x[int,]
+    # Interpolate to get exact distance.  Can't do it for last point
+    int2 <- int[-length(int)]
+    targeti <- dist[int2 + 1]
+    targetd <- targets[-length(targets)] - distc[int2]
+    y[-nrow(y),] <- y[-nrow(y),] + targetd/targeti * xd[int2,,drop=FALSE]
+    x <- y
+  }
+  # re-introduce critical points
+  for(i in crit) {
+    xcrit <- x0[crit,]
+    x[which.min(colSums((t(x) - xcrit)^2)),] <- xcrit
   }
   x
 }
 # - R Logo Data ----------------------------------------------------------------
 
 library(svgchop)
-svg <- chop(R_logo(), steps=100)
+svg <- chop(R_logo(), steps=40)
 ext <- attr(svg, "extents")
 plot.new()
 plot.window(ext$x, rev(ext$y), asp=1)
@@ -108,6 +120,8 @@ hoop.outside <- unique(hoop.logo.dat.hole[seq_len(hole - 1L),])
 # Extend the hoop so that it closes explicitly visually
 hoop.outside <- hoop.outside[c(nrow(hoop.outside), seq_len(nrow(hoop.outside))),]
 hoop.inside <- hoop.inside[c(seq_len(nrow(hoop.inside)), 1L),]
+
+obs <- nrow(hoop.inside) # we know this is the smallest number of points
 
 # - C Logo Data ----------------------------------------------------------------
 
@@ -231,34 +245,35 @@ d[,2] <- d[,2] * max(R.xy[['y']])
 # polypath(d, col='black', border=NA)
 # points(d, col='red')
 
-# Closed path, so we drop last point to avoid math problems later
+# Closed path, so we drop last point to avoid math problems later.
+# * TR: 144 (top) / 143 (below)
+# * BL: 305 (top) / 306 (below)
+# Also interpolate the legs of the two
+
 two.outer <- interpolate_longest(d[c(306, 2:143), 1:2], 40)
 two.inner <- interpolate_longest(d[144:305, 1:2], 40)
 
-# Fill in the long stretches
-
-# For each of the three shapes we want to animate between, we need to define the
-# two "sides", and make sure each has the same number of points.  So we need a
-# method of reducing to a given number of points rather than to a specific
-# tolerance.
-#
-# For the hoop that's easy as we create the break.  For the C we can cheat.  For
-# the 2 we probably need to cheat too.
-
-# * For the two:
-#   * TR: 144 (top) / 143 (below)
-#   * BL: 305 (top) / 306 (below)
-# * For the hoop:
-#   * Transition between inside and outside
-# * For the C:
+two.outer <- d[2:143, 1:2]
+two.inner <- d[144:304, 1:2]
 
 objs <- list(
   h.i=hoop.inside, h.o=hoop.outside,
   t.o=two.outer, t.i=two.inner,
   c.i=C.inside, c.o=C.outside
 )
+objs.crit <- list(
+  integer(), integer(),
+  40L, 161L,
+  integer(), integer()
+)
+# we know the small obs come from the two
 obs <- min(vapply(objs, nrow, 0))
-objs.r <- lapply(objs, reduce_points, n=obs)
+objs.r <- Map(reduce_points, objs, objs.crit, n=obs)
+# We need to restore the sharp kink for two.inner as it might have been dropped
+two.inner.r <- objs.r[[4]]
+two.inner.r[which.min(colSums((t(two.inner.r) - two.inner[161,])^2)),] <-
+  two.inner[161,]
+objs.r[[4]] <- two.inner.r
 
 dev.off()
 dev.new()
@@ -310,7 +325,7 @@ lines <- lapply(
 # around completely (180) to the other, crossing the preceding segment, because
 # nothing is close to doing that.
 
-steps <- 40
+steps <- 60
 sigend <- 8
 scale <- 500
 inc <- c(0, 1/(1 + exp(seq(sigend, -sigend, length.out=steps-2))), 1)
@@ -325,8 +340,10 @@ anim <- polys
 #
 # Browse[2]> lines(circ, col='red')
 
-plot(cbind(sin(circ.degs), cos(circ.degs)), type='l')
-lines(cbind(sin(circ.degs), cos(circ.degs))/sqrt(2), type='l')
+circ.degs <- seq(0, 2 * pi, length.out=100)
+circ <- (cbind(sin(circ.degs), cos(circ.degs)) / sqrt(2) + .5) * scale
+# plot(cbind(sin(circ.degs), cos(circ.degs)), type='l')
+# lines(cbind(sin(circ.degs), cos(circ.degs))/sqrt(2), type='l')
 scale_coords <- function(x) {
   r <- sqrt(1/2)
   dat <- x - .5
@@ -353,8 +370,8 @@ scale_coords <- function(x) {
   }
   # Scale if still needed b/c shifting not enough
   size <- max(c(sqrt(colSums(dat^2) * 2), 1))
-  t(dat / size + .5)
-  # t(dat + .5)
+  # t(dat / size + .5)
+  t(dat + .5)
 }
 for(i in seq_len(length(anim) - 1)) {
   if(i == 1) coords.all <- list()
@@ -417,8 +434,6 @@ coords.R.diff <- coords.R.end - coords.R
 coords.R.all <- replicate(n=length(coords.all), coords.R.end, simplify=FALSE)
 for(i in seq_along(inc)) coords.R.all[[i]] <- coords.R + coords.R.diff * inc[i]
 
-circ.degs <- seq(0, 2 * pi, length.out=100)
-circ <- (cbind(sin(circ.degs), cos(circ.degs)) / sqrt(2) + .5) * scale
 
 for(j in seq_along(coords.all)) {
   png(
