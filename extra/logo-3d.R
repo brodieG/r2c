@@ -22,13 +22,18 @@ depths <- x * .5
 angles <- x * 90
 radii <- approxfun(0:1, c(1e3, 10))(x)
 # radii <- rep(1e3, 5)
-start <- Sys.time()
 fovs <- approxfun(0:1, c(11, 11))(x)
 svgs <- round(
   approxfun(c(0,1, 1), c(1, steps, steps))(seq(0, 1, length.out=frames))
 )
+depth <- .2
 
-for(i in seq_along(coords.all)[1]) {
+lf.start <- c(.5, 6, 1.5)
+la.start <- c(.5, 0, .5)
+
+start <- Sys.time()
+stop()
+for(i in seq(1, length(coords.all), by=1)) {
   cat(sprintf("\rFrame %03d ellapsed %f", i, Sys.time() - start))
   # depth <- depths[i]
   # angle <- angles[i]
@@ -39,11 +44,19 @@ for(i in seq_along(coords.all)[1]) {
   # hoop <- t(norm[[svgi]][[1]])
   # rrr <- t(norm[[svgi]][[2]])
 
-  ob <- extruded_polygon(
-    coords.all[[i]] / scale,
+  obj.xy  <- coords.all[[i]]
+  obj.xy[,2] <- 1 - obj.xy[,2]
+  obj <- extruded_polygon(
+    obj.xy,
     top=depth, bottom=0,
-    material=diffuse(),
-    holes=0
+    material=diffuse(color=colors.all[i])
+  )
+  r.xy <- coords.R.all[[i]]
+  r.xy[,2] <- 1 - r.xy[,2]
+  r3d <- extruded_polygon(
+    r.xy, top=depth * 1.1, bottom=0,
+    material=diffuse(color=R.color),
+    holes=R.starts
   )
   # wall.xz <- xz_rect(
   #   xwidth=10, zwidth=10, material=diffuse(),
@@ -66,32 +79,33 @@ for(i in seq_along(coords.all)[1]) {
   #   pivot_point=c(0, bottom, 0)
   # )
   # light <- sphere(x=5, y=5, z=5, material=light(intensity=100))
-  light <- group_objects(
-    sphere(x=0, y=0, z=sqrt(75), material=light(intensity=80)),
-    group_angle=c(angle * .7, angle * .3, 0),
-    pivot_point=numeric(3)
-  )
+  light <- sphere(x=0, y=0, z=sqrt(75), material=light(intensity=80))
 
   scene <- dplyr::bind_rows(
     obj,
+    r3d,
     # ray.logo,
     # walls,
-    light,
+    # light,
     # cube(x=.4, y=.4, xwidth=.1, ywidth=.1)
   )
   out <- next_file('~/Downloads/anim-r2c-3d/img-000.png')
   if(TRUE) {
     render_preview(
-      scene, fov=fov,
+      scene, 
+      # fov=fov,
+      fov=15,
       width=600, height=600,
       # width=1200, height=1200,
-      lookfrom=c(0, .5, 6),
+      lookfrom=lf.start,
+      lookat=la.start,
       # lookfrom=c(-3, 0, .2),
       # lookat=c(0, -.38, 0),
-      light_direction=c(0, -1, -.25),
+      light_direction=c(0, -1, -3),
       filename=out
     )
-  } else {
+  }
+  else {
     render_scene(
       scene,
       fov=fov,
@@ -106,3 +120,17 @@ for(i in seq_along(coords.all)[1]) {
   }
 }
 cat(paste0(c("\r", rep(" ", getOption('width')), "\r"), collapse=""))
+out <- next_file('~/Downloads/anim-r2c-3d/img-000.png')
+render_preview(
+  scene, 
+  # fov=fov,
+  fov=30,
+  width=600, height=600,
+  # width=1200, height=1200,
+  lookfrom=lf.start - c(1, 0, 0),
+  lookat=la.start - c(1, 0, 0),
+  # lookfrom=c(-3, 0, .2),
+  # lookat=c(0, -.38, 0),
+  light_direction=c(0, -1, -3),
+  filename=out
+)

@@ -315,13 +315,15 @@ lines <- lapply(
 # around completely (180) to the other, crossing the preceding segment, because
 # nothing is close to doing that.
 
-steps <- 60
+steps <- 40
 sigend <- 8
 scale <- 500
 inc <- c(0, 1/(1 + exp(seq(sigend, -sigend, length.out=steps-2))), 1)
 file.base <- "~/Downloads/anim-r2c/img-%04d.png"
 tol <- .1
 x.ext <- y.ext <- (.5 + c(-1, 1) * 1/sqrt(2)) * scale
+hoop.colors <- c("#A8A8A8", "#A8A8A8", "#7DB3DC")
+R.color <- "#1E64B6"
 
 anim <- polys
 # Need to add tolerance
@@ -364,7 +366,10 @@ scale_coords <- function(x) {
   t(dat + .5)
 }
 for(i in seq_len(length(anim) - 1)) {
-  if(i == 1) coords.all <- list()
+  if(i == 1) {
+    coords.all <- list()
+    colors.all <- character()
+  }
   start <- anim[[i]]
   end <- anim[[i + 1]]
   a <- t(as.matrix(start[,1:2]))
@@ -414,6 +419,9 @@ for(i in seq_len(length(anim) - 1)) {
     dists,
     base.coords
   )
+  colors.all <- c(
+    colors.all, rgb(colorRamp(hoop.colors[i + 0:1])(inc), maxColorValue=255)
+  )
   # scale coords so they don't exit the (0:1)*scale bounding box
   coords.all <- c(coords.all, lapply(coords, scale_coords))
 }
@@ -432,8 +440,8 @@ for(j in seq_along(coords.all)) {
   )
   plot.new()
   plot.window(x.ext, y.ext, asp=1)
-  polypath(coords.all[[j]] * scale, col='black', border=NA)
-  polypath(coords.R.all[[j]] * scale, col='grey', border=NA)
+  polypath(coords.all[[j]] * scale, col=colors.all[j], border=NA)
+  polypath(coords.R.all[[j]] * scale, col=R.color, border=NA)
   lines(matrix(c(0, 0, 1, 0, 1, 1, 0, 1, 0, 0) * scale, ncol=2, byrow=TRUE), col='red')
   lines(circ, col='blue')
   # lines(coords.all[[j]], col='black')
