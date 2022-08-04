@@ -20,7 +20,7 @@ reorder_nearest <- function(mx, i) {
 # Find the longest stretch and add points interpolating
 
 interpolate_longest <- function(x, n) {
-  a <- t(as.matrix(x[1:2]))
+  a <- t(as.matrix(x[,1:2]))
   longest <- which.max(
     colSums((a[, -ncol(a), drop=FALSE] - a[, -1, drop=FALSE])^2)
   )
@@ -40,11 +40,8 @@ interpolate_longest <- function(x, n) {
 # to smooth right angle pixel patterns) and interpolating along the path
 # splitting up by the total distance.  We run the algorithm twice to try to
 # smooth out the final spacing.
-#
-# @param crit vector of inidices of critical points in `x` that should be
-#   preserved.  Will be re-inserted at end, removing nearest point to each.
 
-reduce_points <- function(x, n, crit) {
+reduce_points <- function(x, n) {
   x <- x0 <- as.matrix(x[,1:2])
   stopifnot(nrow(x) > 3, nrow(x) >= n)
   # drop every second point if we can afford it
@@ -63,11 +60,6 @@ reduce_points <- function(x, n, crit) {
     targetd <- targets[-length(targets)] - distc[int2]
     y[-nrow(y),] <- y[-nrow(y),] + targetd/targeti * xd[int2,,drop=FALSE]
     x <- y
-  }
-  # re-introduce critical points
-  for(i in crit) {
-    xcrit <- x0[crit,]
-    x[which.min(colSums((t(x) - xcrit)^2)),] <- xcrit
   }
   x
 }
@@ -253,27 +245,25 @@ d[,2] <- d[,2] * max(R.xy[['y']])
 two.outer <- interpolate_longest(d[c(306, 2:143), 1:2], 40)
 two.inner <- interpolate_longest(d[144:305, 1:2], 40)
 
-two.outer <- d[2:143, 1:2]
-two.inner <- d[144:304, 1:2]
+# First reduce both smooth parts of the twos
+two.interp.points <- 40
+two.outer.r <- reduce_points(d[2:143, 1:2], obs - (two.interp.points - 1))
+two.inner.r <- reduce_points(d[144:304, 1:2], obs - (two.interp.points - 1))
 
-objs <- list(
-  h.i=hoop.inside, h.o=hoop.outside,
-  t.o=two.outer, t.i=two.inner,
-  c.i=C.inside, c.o=C.outside
+# add back the legs and interpolate points on them
+two.outer.ri <- interpolate_longest(
+  rbind(as.matrix(d[306, 1:2]), two.outer.r), two.interp.points
 )
-objs.crit <- list(
-  integer(), integer(),
-  40L, 161L,
-  integer(), integer()
+two.inner.ri <- interpolate_longest(
+  rbind(two.inner.r, as.matrix(d[305, 1:2])), two.interp.points
 )
-# we know the small obs come from the two
-obs <- min(vapply(objs, nrow, 0))
-objs.r <- Map(reduce_points, objs, objs.crit, n=obs)
-# We need to restore the sharp kink for two.inner as it might have been dropped
-two.inner.r <- objs.r[[4]]
-two.inner.r[which.min(colSums((t(two.inner.r) - two.inner[161,])^2)),] <-
-  two.inner[161,]
-objs.r[[4]] <- two.inner.r
+# - Assemble Objects -----------------------------------------------------------
+
+objs.r <- list(
+  h.i=reduce_points(hoop.inside, obs), h.o=reduce_points(hoop.outside, obs),
+  t.o=two.outer.ri, t.i=two.inner.ri,
+  c.i=reduce_points(C.inside, obs), c.o=reduce_points(C.outside, obs)
+)
 
 dev.off()
 dev.new()
