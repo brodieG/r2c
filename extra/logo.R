@@ -223,8 +223,11 @@ C.outside <- reorder_nearest(C.logo.tmp[-(end.i[1]:end.i[3]),2:1], 1367)
 # the transitions.
 
 library(string2path)
+# For Monaco, end points are 350:351, and 165:166
 d <- string2path("2", "/System/Library/Fonts/Monaco.ttf", tolerance=1e-5)
-stopifnot(nrow(d) == 306) # tol 1e-5
+# d <- string2path("2", "Menlo", "bold", tolerance=1e-5)
+# stopifnot(nrow(d) == 290) # tol 1e-5
+stopifnot(nrow(d) == 351) # tol 1e-5
 par(mai=numeric(4))
 
 d[,1] <- (d[,1] - min(d[,1])) / diff(range(d[,1]))
@@ -242,21 +245,27 @@ d[,2] <- d[,2] * max(R.xy[['y']])
 # * BL: 305 (top) / 306 (below)
 # Also interpolate the legs of the two
 
-two.outer <- interpolate_longest(d[c(306, 2:143), 1:2], 40)
-two.inner <- interpolate_longest(d[144:305, 1:2], 40)
-
 # First reduce both smooth parts of the twos
 two.interp.points <- 40
-two.outer.r <- reduce_points(d[2:143, 1:2], obs - (two.interp.points - 1))
-two.inner.r <- reduce_points(d[144:304, 1:2], obs - (two.interp.points - 1))
+two.outer.r <- reduce_points(d[2:165, 1:2], obs - (two.interp.points - 1))
+two.inner.r <- reduce_points(d[166:349, 1:2], obs - (two.interp.points - 1))
+# two.outer.r <- reduce_points(d[3:133, 1:2], obs - (two.interp.points - 1))
+# two.inner.r <- reduce_points(d[c(134:290, 1), 1:2], obs - (two.interp.points - 1))
 
 # add back the legs and interpolate points on them
+# two.outer.ri <- interpolate_longest(
+#   rbind(as.matrix(d[3, 1:2]), two.outer.r), two.interp.points
+# )
+# two.inner.ri <- interpolate_longest(
+#   rbind(two.inner.r, as.matrix(d[2, 1:2])), two.interp.points
+# )
 two.outer.ri <- interpolate_longest(
-  rbind(as.matrix(d[306, 1:2]), two.outer.r), two.interp.points
+  rbind(as.matrix(d[351, 1:2]), two.outer.r), two.interp.points
 )
 two.inner.ri <- interpolate_longest(
-  rbind(two.inner.r, as.matrix(d[305, 1:2])), two.interp.points
+  rbind(two.inner.r, as.matrix(d[350, 1:2])), two.interp.points
 )
+
 # - Assemble Objects -----------------------------------------------------------
 
 objs.r <- list(
@@ -425,13 +434,15 @@ for(i in seq_len(length(anim) - 1)) {
   # scale coords so they don't exit the (0:1)*scale bounding box
   coords.all <- c(coords.all, lapply(coords, scale_coords))
 }
-
+# R isn't centered to begin with
 coords.R <- coords.R.end <- do.call(cbind, R.xy)
-coords.R.end[,1] <- coords.R.end[,1] - 2
+R.x.r <- range(coords.R[,1])
+R.x.off <- (1 - diff(R.x.r)) / 2
+coords.R.end[,1] <- coords.R[,1] - R.x.r[1] + R.x.off - 1 -.55
 coords.R.diff <- coords.R.end - coords.R
 coords.R.all <- replicate(n=length(coords.all), coords.R.end, simplify=FALSE)
 for(i in seq_along(inc)) coords.R.all[[i]] <- coords.R + coords.R.diff * inc[i]
-
+two.off <- .8
 
 for(j in seq_along(coords.all)) {
   png(
@@ -448,3 +459,8 @@ for(j in seq_along(coords.all)) {
   dev.off()
 }
 # ffmpeg -pattern_type glob -i '*.png' -r 30 -pix_fmt yuv420p out.mp4
+
+# plot(t(t(coords.R.end) - c(.55,0)), type='l', asp=1, xlim=c(-1.5,1))
+# lines(t(t(coords.all[[40]]) - c(.80, 0)), col='purple')
+# lines(t(t(coords.all[[80]]) - c(0, 0)), col='yellow')
+
