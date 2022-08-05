@@ -32,7 +32,7 @@ lf.start <- c(.5, 6, .5)
 la.start <- c(.5, 0, .6)
 lf.off <- c(0, 0, -2)
 fov <- 15
-file.base <- '~/Downloads/anim-r2c-3d-2/img-000.png'
+file.base <- '~/Downloads/anim-r2c-3d/img-000.png'
 skip <- 1
 start <- Sys.time()
 render <- function(scene, lf, la, out, width=400, height=400, samples=100) {
@@ -106,7 +106,7 @@ for(i in seq(1, length(coords.all), by=skip)) {
   light <- sphere(x=5, y=5, z=-5, material=light(intensity=100))
   # light <- sphere(x=0, y=0, z=sqrt(75), material=light(intensity=80))
 
-  scene <- dplyr::bind_rows(
+  scene <- rbind(
     obj,
     r3d,
     # ray.logo,
@@ -114,9 +114,10 @@ for(i in seq(1, length(coords.all), by=skip)) {
     light,
     studio,
     # cube(x=.4, y=.4, xwidth=.1, ywidth=.1)
+    NULL
   )
   out <- next_file(file.base)
-  render(scene, lf=lf.start, la=la.start, out=out)
+  # render(scene, lf=lf.start, la=la.start, out=out)
 }
 cat(paste0(c("\r", rep(" ", getOption('width')), "\r"), collapse=""))
 
@@ -135,9 +136,9 @@ start <- Sys.time()
 for(i in seq(1, steps2, by=skip)) {
   cat(sprintf("\rFrame %03d ellapsed %f", i, Sys.time() - start))
   out <- next_file(file.base)
-  render(
-    scene, lf=lf.start + inc2[i] * lf.d, la=la.start + inc2[i] * la.d, out=out
-  )
+  # render(
+  #   scene, lf=lf.start + inc2[i] * lf.d, la=la.start + inc2[i] * la.d, out=out
+  # )
 }
 cat(paste0(c("\r", rep(" ", getOption('width')), "\r"), collapse=""))
 
@@ -149,13 +150,14 @@ two3d <- extruded_polygon(
   top=depth, bottom=0,
   material=diffuse(color=colors.all[40])
 )
-scene <- dplyr::bind_rows(
+scene <- rbind(
   obj,
   r3d,
   two3d,
   studio,
   light,
   # cube(x=.4, y=.4, xwidth=.1, ywidth=.1)
+  NULL
 )
 for(i in 1) {
   out <- next_file(file.base)

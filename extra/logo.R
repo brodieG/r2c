@@ -118,7 +118,7 @@ obs <- nrow(hoop.inside) # we know this is the smallest number of points
 # - C Logo Data ----------------------------------------------------------------
 
 library(jpeg)
-jpg <- readJPEG('~/Downloads/C-hirez.jpg')
+jpg <- readJPEG('extra/C-hirez.jpg')
 # plot(as.raster(jpg))
 hist(jpg[,,1])
 C <- (jpg[,,1] > .5) + 0
