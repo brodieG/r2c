@@ -28,12 +28,37 @@ svgs <- round(
 )
 depth <- .2
 
-lf.start <- c(.5, 6, 1.5)
-la.start <- c(.5, 0, .5)
+lf.start <- c(.5, 6, .5)
+la.start <- c(.5, 0, .6)
+lf.off <- c(0, 0, -2)
 fov <- 15
-
+file.base <- '~/Downloads/anim-r2c-3d-2/img-000.png'
+skip <- 1
 start <- Sys.time()
-for(i in seq(1, length(coords.all), by=1)) {
+render <- function(scene, lf, la, out, width=400, height=400, samples=100) {
+  render_scene(
+    scene,
+    fov=fov,
+    width=width, height=height, samples=samples,
+    lookfrom=lf + lf.off,
+    lookat=la,
+    camera_up=c(0, 0, -1),
+    filename=out,
+    clamp_value=5,
+    preview=FALSE
+  )
+}
+studio <- group_objects(
+  generate_studio(
+    distance=-1, 
+    material=diffuse(),
+    # material=diffuse(checkercolor='green', checkerperiod=.5),
+    depth=-1,
+    width=4, height=2, curvature=1
+  ),
+  angle=c(-90, 0, 0)
+)
+for(i in seq(1, length(coords.all), by=skip)) {
   cat(sprintf("\rFrame %03d ellapsed %f", i, Sys.time() - start))
   # depth <- depths[i]
   # angle <- angles[i]
@@ -78,46 +103,20 @@ for(i in seq(1, length(coords.all), by=1)) {
   #   # pivot_point=c(0, bottom, -depth / 2)
   #   pivot_point=c(0, bottom, 0)
   # )
-  # light <- sphere(x=5, y=5, z=5, material=light(intensity=100))
-  light <- sphere(x=0, y=0, z=sqrt(75), material=light(intensity=80))
+  light <- sphere(x=5, y=5, z=-5, material=light(intensity=100))
+  # light <- sphere(x=0, y=0, z=sqrt(75), material=light(intensity=80))
 
   scene <- dplyr::bind_rows(
     obj,
     r3d,
     # ray.logo,
     # walls,
-    # light,
+    light,
+    studio,
     # cube(x=.4, y=.4, xwidth=.1, ywidth=.1)
   )
-  out <- next_file('~/Downloads/anim-r2c-3d/img-000.png')
-  if(TRUE) {
-    render_preview(
-      scene, 
-      # fov=fov,
-      fov=15,
-      width=600, height=600,
-      # width=1200, height=1200,
-      lookfrom=lf.start,
-      lookat=la.start,
-      # lookfrom=c(-3, 0, .2),
-      # lookat=c(0, -.38, 0),
-      light_direction=c(0, -1, -3),
-      filename=out
-    )
-  }
-  else {
-    render_scene(
-      scene,
-      fov=fov,
-      # fov=11,
-      width=720, height=400, samples=500,
-      lookfrom=c(0, .5, 6),
-      lookat=c(0, 0, 0),
-      filename=out,
-      clamp_value=5,
-      # debug_channel="normals"
-    )
-  }
+  out <- next_file(file.base)
+  render(scene, lf=lf.start, la=la.start, out=out)
 }
 cat(paste0(c("\r", rep(" ", getOption('width')), "\r"), collapse=""))
 
@@ -126,48 +125,21 @@ steps2 <- 20
 sigend2 <- 4
 inc2 <- c(0, 1/(1 + exp(seq(sigend2, -sigend2, length.out=steps2-2))), 1)
 
-lf.end <- (lf.start - c(two.off, 0, 0)) * c(1, 1.5, 1.5)
+lf.shift <- two.off + .0
+lf.end <- (lf.start - c(lf.shift, 0, 0)) * c(1, 1.5, 1.5)
 lf.d <- lf.end - lf.start
-la.end <- la.start - c(two.off, 0, 0)
+la.end <- la.start - c(lf.shift, 0, 0)
 la.d <- la.end - la.start
 start <- Sys.time()
 
-for(i in seq_len(steps2)) {
+for(i in seq(1, steps2, by=skip)) {
   cat(sprintf("\rFrame %03d ellapsed %f", i, Sys.time() - start))
-  out <- next_file('~/Downloads/anim-r2c-3d/img-000.png')
-  if(TRUE) {
-    render_preview(
-      scene,
-      # fov=fov,
-      fov=15,
-      width=600, height=600,
-      # width=1200, height=1200,
-      lookfrom=lf.start + inc2[i] * lf.d,
-      lookat=la.start + inc2[i] * la.d,
-      # lookfrom=c(-3, 0, .2),
-      # lookat=c(0, -.38, 0),
-      light_direction=c(0, -1, -3),
-      filename=out
-    )
-  }
-  else {
-    render_scene(
-      scene,
-      fov=fov,
-      # fov=11,
-      width=720, height=400, samples=500,
-      lookfrom=c(0, .5, 6),
-      lookat=c(0, 0, 0),
-      filename=out,
-      clamp_value=5,
-      # debug_channel="normals"
-    )
-  }
+  out <- next_file(file.base)
+  render(
+    scene, lf=lf.start + inc2[i] * lf.d, la=la.start + inc2[i] * la.d, out=out
+  )
 }
 cat(paste0(c("\r", rep(" ", getOption('width')), "\r"), collapse=""))
-stop('done anim')
-
-out <- next_file('~/Downloads/anim-r2c-3d/img-000.png')
 
 two.xy  <- anim[[2]]
 two.xy[,2] <- 1 - two.xy[,2]
@@ -177,24 +149,15 @@ two3d <- extruded_polygon(
   top=depth, bottom=0,
   material=diffuse(color=colors.all[40])
 )
-
 scene <- dplyr::bind_rows(
   obj,
   r3d,
   two3d,
+  studio,
+  light,
   # cube(x=.4, y=.4, xwidth=.1, ywidth=.1)
 )
-
-render_preview(
-  scene, 
-  fov=fov,
-  # fov=22,
-  width=600, height=600,
-  # width=1200, height=1200,
-  lookfrom=(lf.start - c(two.off, 0, 0)) * c(1, 1.5, 1.5),
-  lookat=la.start - c(two.off, 0, 0),
-  # lookfrom=c(-3, 0, .2),
-  # lookat=c(0, -.38, 0),
-  light_direction=c(0, -1, -3),
-  filename=out
-)
+for(i in 1) {
+  out <- next_file(file.base)
+  render(scene, lf=lf.end, la=la.end, out=out)
+}
