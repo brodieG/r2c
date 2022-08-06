@@ -209,10 +209,11 @@ end.cand <- end.cand.i[
 ]
 end.i <- rep(end.cand, each=2)-0:1
 
-# Scale to R size and center on X
-
+# Scale to R size and center on X (note x/y flipped still)
 C.logo.tmp <- C.logo.tmp * max(R.xy[['y']])
-C.logo.tmp[,2] <- C.logo.tmp[,2] + (1 - max(R.xy[['y']])) / 2
+# C.logo.tmp[,2] <- C.logo.tmp[,2] + (1 - max(R.xy[['x']])) / 2
+C.logo.tmp[,2] <-
+  C.logo.tmp[,2] - min(C.logo.tmp[,2]) + (1 - diff(range(C.logo.tmp[,2]))) / 2
 
 C.inside <- C.logo.tmp[end.i[1]:end.i[4],2:1]
 C.outside <- reorder_nearest(C.logo.tmp[-(end.i[1]:end.i[3]),2:1], 1367)
@@ -331,8 +332,14 @@ inc <- c(0, 1/(1 + exp(seq(sigend, -sigend, length.out=steps-2))), 1)
 file.base <- "~/Downloads/anim-r2c/img-%04d.png"
 tol <- .1
 x.ext <- y.ext <- (.5 + c(-1, 1) * 1/sqrt(2)) * scale
-hoop.colors <- c("#A8A8A8", "#A8A8A8", "#7DB3DC")
+col.adjust <- .8 * c(.5, .75, 1) # darker
+C.color <-  "#7DB3DC"
+C.color <- rgb(t(col2rgb(C.color) * col.adjust), maxColorValue=255)
+hoop.color <- "#A8A8A8"
+hoop.color <- rgb(t(col2rgb(hoop.color) * .7), maxColorValue=255)
+hoop.colors <- c(hoop.color, hoop.color, C.color)
 R.color <- "#1E64B6"
+R.color <- rgb(t(col2rgb("#1E64B6") * col.adjust), maxColorValue=255)
 
 anim <- polys
 # Need to add tolerance

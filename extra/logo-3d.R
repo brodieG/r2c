@@ -29,13 +29,13 @@ svgs <- round(
 depth <- .2
 
 lf.start <- c(.5, 6, .5)
-la.start <- c(.5, 0, .6)
+la.start <- c(.5, 0, .5)
 lf.off <- c(0, 0, -2)
 fov <- 15
 file.base <- '~/Downloads/anim-r2c-3d/img-000.png'
 skip <- 1
 start <- Sys.time()
-render <- function(scene, lf, la, out, width=400, height=400, samples=100) {
+render <- function(scene, lf, la, out, width=400, height=400, samples=20, fov=15) {
   render_scene(
     scene,
     fov=fov,
@@ -53,21 +53,14 @@ studio <- group_objects(
     distance=-1, 
     material=diffuse(),
     # material=diffuse(checkercolor='green', checkerperiod=.5),
-    depth=-1,
+    depth=-1.001,
     width=4, height=2, curvature=1
   ),
   angle=c(-90, 0, 0)
 )
 for(i in seq(1, length(coords.all), by=skip)) {
-  cat(sprintf("\rFrame %03d ellapsed %f", i, Sys.time() - start))
-  # depth <- depths[i]
-  # angle <- angles[i]
-  # radius <- radii[i]
-  # fov <- fovs[i]
-  # nudge <- 1e-3
-  # svgi <- svgs[i]
-  # hoop <- t(norm[[svgi]][[1]])
-  # rrr <- t(norm[[svgi]][[2]])
+# for(i in length(coords.all)) {
+  writeLines(sprintf("\rFrame %03d ellapsed %f", i, Sys.time() - start))
 
   obj.xy  <- coords.all[[i]]
   obj.xy[,2] <- 1 - obj.xy[,2]
@@ -83,41 +76,17 @@ for(i in seq(1, length(coords.all), by=skip)) {
     material=diffuse(color=R.color),
     holes=R.starts
   )
-  # wall.xz <- xz_rect(
-  #   xwidth=10, zwidth=10, material=diffuse(),
-  #   y=bottom,
-  # )
-  # wall.xy <- xy_rect(
-  #   xwidth=3, ywidth=3, material=diffuse(), z=-depth / 2
-  # )
-  # floor <- sphere(
-  #   z=-radius, radius=radius
-  # )
-  # walls <- group_objects(
-  #   dplyr::bind_rows(
-  #     floor
-  #     # wall.xz,
-  #     # wall.xy
-  #   ),
-  #   group_angle=c(angle, 0, 0),
-  #   # pivot_point=c(0, bottom, -depth / 2)
-  #   pivot_point=c(0, bottom, 0)
-  # )
-  light <- sphere(x=5, y=5, z=-5, material=light(intensity=100))
-  # light <- sphere(x=0, y=0, z=sqrt(75), material=light(intensity=80))
+  light <- sphere(x=2, y=5, z=-7, material=light(intensity=90))
 
   scene <- rbind(
     obj,
     r3d,
-    # ray.logo,
-    # walls,
     light,
     studio,
-    # cube(x=.4, y=.4, xwidth=.1, ywidth=.1)
     NULL
   )
   out <- next_file(file.base)
-  # render(scene, lf=lf.start, la=la.start, out=out)
+  render(scene, lf=lf.start, la=la.start, out=out)
 }
 cat(paste0(c("\r", rep(" ", getOption('width')), "\r"), collapse=""))
 
@@ -127,29 +96,41 @@ sigend2 <- 4
 inc2 <- c(0, 1/(1 + exp(seq(sigend2, -sigend2, length.out=steps2-2))), 1)
 
 lf.shift <- two.off + .0
-lf.end <- (lf.start - c(lf.shift, 0, 0)) * c(1, 1.5, 1.5)
+lf.end <- (lf.start - c(lf.shift, 0, 0)) * c(1, 1.65, 1.65)
 lf.d <- lf.end - lf.start
 la.end <- la.start - c(lf.shift, 0, 0)
 la.d <- la.end - la.start
 start <- Sys.time()
 
-for(i in seq(1, steps2, by=skip)) {
-  cat(sprintf("\rFrame %03d ellapsed %f", i, Sys.time() - start))
-  out <- next_file(file.base)
-  # render(
-  #   scene, lf=lf.start + inc2[i] * lf.d, la=la.start + inc2[i] * la.d, out=out
-  # )
-}
-cat(paste0(c("\r", rep(" ", getOption('width')), "\r"), collapse=""))
-
 two.xy  <- anim[[2]]
 two.xy[,2] <- 1 - two.xy[,2]
 two.xy[,1] <- two.xy[,1] - two.off
-two3d <- extruded_polygon(
-  two.xy,
-  top=depth, bottom=0,
-  material=diffuse(color=colors.all[40])
-)
+two.y.start <- 1
+
+for(i in seq(1, steps2, by=skip)) {
+# for(i in steps2) {
+  writeLines(sprintf("\rFrame %03d ellapsed %f (zoom)", i, Sys.time() - start))
+  out <- next_file(file.base)
+  two3d <- extruded_polygon(
+    two.xy,
+    top=depth, bottom=0, z=two.y.start - inc2[i],
+    material=diffuse(color=colors.all[40])
+  )
+  scene <- rbind(
+    obj,
+    r3d,
+    two3d,
+    studio,
+    light,
+    # cube(x=.4, y=.4, xwidth=.1, ywidth=.1)
+    NULL
+  )
+  render(
+    scene, lf=lf.start + inc2[i] * lf.d, la=la.start + inc2[i] * la.d, out=out
+  )
+}
+cat(paste0(c("\r", rep(" ", getOption('width')), "\r"), collapse=""))
+
 scene <- rbind(
   obj,
   r3d,
@@ -161,5 +142,5 @@ scene <- rbind(
 )
 for(i in 1) {
   out <- next_file(file.base)
-  render(scene, lf=lf.end, la=la.end, out=out)
+  render(scene, lf=lf.end+c(0, -1, 4), la=la.end+c(-.5,0,.5), out=out, fov=5)
 }
