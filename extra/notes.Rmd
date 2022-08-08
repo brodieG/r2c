@@ -6,7 +6,6 @@
 
 * Migrate to tapply structure.  More generally, explain interface?
 * Allow more then `INT_MAX` groups (labels are limiting right now)?
-* Tests groups that aren't just 1:n or 0:n (I think we do this)?
 * What if compilation fails, do we have good error messages?
 
 ## For CRAN
@@ -126,6 +125,7 @@
 
 ## Done
 
+* Tests groups that aren't just 1:n or 0:n (I think we do this)?
 * Test on windows.  Instructions for windows users about toolchain, etc?
 * Fill out acknowledgments.
 * Rename `mean0` to `mean1`

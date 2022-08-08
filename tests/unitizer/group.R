@@ -71,4 +71,13 @@ unitizer_sect("group_slope", {
     bsac(slope, g, list(y=y), list(x=1:110))
   )
 })
+unitizer_sect('weird groups', {
+  # Testing non sequential groups
+  g2 <- g
+  g2[g2 == 1L] <- 501L
+  g2[g2 == 8L] <- 50L
+  identical(group_exec(r2c_sum, g2, x), c(tapply(x, g2, sum)))
+})
+
+
 
