@@ -265,7 +265,7 @@ r2c <- function(
         res0 <- eval(.(call), envir=.ENV),
         res1 <- eval(.(GEXE), envir=getNamespace('r2c'))
       )
-      test.ae <- if(!test.i) all.equal(res0, re1)
+      test.ae <- if(!test.i) all.equal(res0, res1)
       attr(res1, 'r2c.check.identical') <- test.i
       attr(res1, 'r2c.check.all.equal') <- test.ae
       res1
