@@ -54,7 +54,7 @@ f_mean1 <- sprintf(
   f_summary_base,
   "R_xlen_t na_n = 0;\n  ",
   make_loop_base(count.na=TRUE),
-  "\n  tmp /= (len_n - na_n);\n"
+  "\n  tmp = (double)tmp / (len_n - na_n); // (double) to match R version\n"
 )
 f_sum_1 <- sprintf(f_summary_base, "", make_loop_base(count.na=FALSE), "")
 f_sum_n_base <- '
