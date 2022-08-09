@@ -74,8 +74,7 @@ groups and the larger result.
 
 We compare `{r2c}` to various alternatives using pre-sorted and pre-grouped (or
 split) data set as previously.  Pre-sorting and pre-grouping allows us to focus
-timings on the statistic computation as the sorting and grouping steps will be
-similar across most implementations.  Notwithstanding, fast group statistic
+timings on the statistic computation[^11].  Notwithstanding, fast group statistic
 calculation benefits from fast sorting, and this is possible in R thanks to
 [`{data.table}`][1] contributing their fast radix sort starting with R 3.3.0.
 
@@ -378,4 +377,13 @@ Code used for benchm
   pass mean calculation as that is what `fmean` does.
 [^10]: E.g. don't expect S3 dispatch to work if you define `mean.numeric`,
   although why one would do that for functions covered by `{r2c}` is unclear.
+[^11]: Pre-grouping in this case means primarily computing group-offsets in
+  data already sorted by group.  Depending on the data, sorting and grouping can
+  be a significant part of the computational cost, although it is similar for
+  all all implementations tested here.  `{r2c}`, `{data.table}`, `{collapse}`
+  all use radix sort, although `{collapse}` also has a hash-based grouping
+  algorithm that is particularly effective for integer groups in which the
+  grouped result fits in CPU cache.  Benchmarking the grouping is out of scope
+  of this document for the time being, but it is an important part of group
+  statistic computation.
 
