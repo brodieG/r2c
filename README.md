@@ -326,6 +326,8 @@ On an Intel(R) Core(TM) m5-6Y54 CPU @ 1.20GHz (early 2016 Macbook), using the
 average of 11 iterations run after one `gc()` call, and -O2 optimization level.
 Different systems / compilers / settings may produce different results.
 
+Code used for benchm
+
 [1]: https://github.com/Rdatatable
 [2]: https://github.com/oracle/fastr
 [3]: https://www.graalvm.org/
@@ -335,6 +337,7 @@ Different systems / compilers / settings may produce different results.
 [7]: https://github.com/eddelbuettel/inline
 [8]: https://twitter.com/BrodieGaslam/status/1527829442374025219?s=20&t=rg6aybJlGxPEUwBsI0ii1Q
 [9]: https://www.brodieg.com/tags/hydra/
+[10]: 
 
 [^1]: Depending on your compilation settings and machine, there is room for
   improvement, but not enough that R stands out as being particularly slow at
