@@ -366,7 +366,7 @@ Different systems / compilers / settings may produce different results.
   re-using the result, but at that point the comparison is not apples to apples
   anymore.
 [^6]: The first compilation can be quite slow as it requires loading the
-  compiler, etc.  Subsequent compilations run in the tenths of seconds.
+  compiler, etc.  Subsequent compilations run in tenths of seconds.
 [^7]: For this very specific task R also provides `rowsum`, but as it is limited
   to sums and we cannot separate the splitting and summing steps for timing we
   will not discuss it further.
