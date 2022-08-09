@@ -138,6 +138,9 @@ To summarize:
 > `{r2c}` is fastest at calculating complex expressions group-wise, while also
 > retaining base R semantics for numeric inputs.
 
+[Code and notes on benchmarking](#notes-on-benchmarking) available at end of
+document.
+
 ## Caveats - Of Course ...
 
 First is that `r2c` requires compilation.  I have not included that step in
@@ -315,17 +318,16 @@ optimization.
 
 ## Notes on Benchmarking
 
-Benchmarks are under:
+[Benchmarks][10] are under:
 
-    R version 4.2.0 (2022-04-22)
+    R version 4.2.1 (2022-06-23)
     Platform: x86_64-apple-darwin17.0 (64-bit)
-    Running under: macOS Big Sur/Monterey 10.16
+    Running under: macOS Big Sur ... 10.16
 
 On an Intel(R) Core(TM) m5-6Y54 CPU @ 1.20GHz (early 2016 Macbook), using the
 average of 11 iterations run after one `gc()` call, and -O2 optimization level.
 Different systems / compilers / settings may produce different results.
 
-Code used for benchm
 
 [1]: https://github.com/Rdatatable
 [2]: https://github.com/oracle/fastr
@@ -336,7 +338,7 @@ Code used for benchm
 [7]: https://github.com/eddelbuettel/inline
 [8]: https://twitter.com/BrodieGaslam/status/1527829442374025219?s=20&t=rg6aybJlGxPEUwBsI0ii1Q
 [9]: https://www.brodieg.com/tags/hydra/
-[10]: 
+[10]: https://github.com/brodieG/r2c/blob/logo-old-method/extra/benchmarks-public.Rmd
 
 [^1]: Depending on your compilation settings and machine, there is room for
   improvement, but not enough that R stands out as being particularly slow at

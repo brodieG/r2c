@@ -47,6 +47,9 @@ y.split <- split(y, g)    # for later
 system.time(sum.base <- vapply(x.split, sum, 0))
 ```
 
+`{FastR}` uses the same code, but needs to be run under the `{FastR}`
+implementation of R.
+
 ### r2c
 
 ```{r}
@@ -94,6 +97,9 @@ mean1 <- function(x) sum(x) / length(x)
 slope <- function(x, y) sum((x - mean1(x)) * (y - mean1(y))) / sum((x - mean1(x)) ^ 2)
 system.time(slope.base <- mapply(slope, x.split, y.split))
 ```
+
+`{FastR}` uses the same code, but needs to be run under the `{FastR}`
+implementation of R.
 
 ### r2c
 
