@@ -1,0 +1,67 @@
+# dupVecIndex
+
+Depending on type of input creates a hash table.
+
+## Non-Integers
+
+For x, Use a hash table of
+
+    size M = 2^K such that 2^K >= 2 * length(x).
+
+## Factors (or inherits("qG"))
+
+These we know are sequential.
+
+    size M = group count + 2
+    tx = 1000; (positive integer starting at 0 or 1)
+
+## Integers
+
+Two scenarios, one where the vector is small or there are known values outside
+of the 0:length(x) (but only checking beginning, middle and end, so just
+guessing) range.
+
+Scenario 1:
+
+    size M = range(x) + 2.
+    tx = 1000 if x starts at 0 or 1.
+    x_max = NA_INTEGER if not.
+
+Scenario 2:
+
+    size M = length(x);
+
+## Then...
+
+We `Calloc` M, and we `allocVector` length(x) as `ans_i`.  So for our case we
+`Calloc` length(x) and also `allocVector` length(x).
+
+Claims that tx=1000 is for cases like factor or logical where table size is
+known.  But this is not our branch.  Our branch just 
+
+## Return
+
+A vector of same size as input, with each entry renumbered by order of
+appearance.
+
+# groupAtVec
+
+First use `dupVecIndex` to number each entry sequentially by order of appearance
+(possibly unnecessary for factors - missing levels?), and also tells us the
+number of groups.
+
+Then alloc a vector with as many elements as groups to record group start
+positions?.  Then for each entry in the group id vector, we record the position
+of the first instance of that group.
+
+Now, perhaps I'm missing something, but we also need to know the position of all
+the other elements in the group.
+
+1, 1, 2, 1, 2, 3, 3, 1, 3
+
+Would get 1->1, 2->3, 3->6
+
+What it's really doing is for each element in the input vector, what position in
+the output group vector it corresponds to.
+
+For our data case, 

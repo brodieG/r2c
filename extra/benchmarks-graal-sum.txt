@@ -1,0 +1,84 @@
+>     set.seed(1)
+>     n <- 1e7
+>     x <- runif(n)
+>     y <- runif(n)
+>     g <- cumsum(sample(c(TRUE, rep(FALSE, 9)), n, replace=TRUE))
+>     x.split <- split(x, g)
+>     y.split <- split(y, g)
+>     system.time(g.sum <- vapply(x.split, sum, 0))
+> 
+   user  system elapsed 
+  3.789   0.088   4.325 
+>     system.time(g.sum <- vapply(x.split, sum, 0))
+> 
+   user  system elapsed 
+  2.355   0.046   2.641 
+>     system.time(g.sum <- vapply(x.split, sum, 0))
+> 
+   user  system elapsed 
+  0.269   0.002   0.351 
+>     system.time(g.sum <- vapply(x.split, sum, 0))
+> 
+   user  system elapsed 
+  0.255   0.001   0.296 
+>     system.time(g.sum <- vapply(x.split, sum, 0))
+> 
+   user  system elapsed 
+  0.270   0.001   0.371 
+>     system.time(g.sum <- vapply(x.split, sum, 0))
+> 
+   user  system elapsed 
+  1.483   0.005   1.672 
+>     system.time(g.sum <- vapply(x.split, sum, 0))
+> 
+   user  system elapsed 
+  1.807   0.006   2.004 
+>     system.time(g.sum <- vapply(x.split, sum, 0))
+> 
+   user  system elapsed 
+  1.393   0.005   1.605 
+>     system.time(g.sum <- vapply(x.split, sum, 0))
+> 
+   user  system elapsed 
+  0.255   0.001   0.258 
+>     system.time(g.sum <- vapply(x.split, sum, 0))
+> 
+   user  system elapsed 
+  0.278   0.001   0.353 
+>     system.time(g.sum <- vapply(x.split, sum, 0))
+> 
+   user  system elapsed 
+  0.266   0.001   0.273 
+>     system.time(g.sum <- vapply(x.split, sum, 0))
+> 
+   user  system elapsed 
+  0.133   0.001   0.206 
+>     system.time(g.sum <- vapply(x.split, sum, 0))
+> 
+   user  system elapsed 
+  0.154   0.000   0.172 
+>     system.time(g.sum <- vapply(x.split, sum, 0))
+> 
+   user  system elapsed 
+  0.135   0.000   0.210 
+>     system.time(g.sum <- vapply(x.split, sum, 0))
+> 
+   user  system elapsed 
+  0.134   0.001   0.135 
+>     system.time(g.sum <- vapply(x.split, sum, 0))
+> 
+   user  system elapsed 
+  0.133   0.000   0.204 
+>     system.time(g.sum <- vapply(x.split, sum, 0))
+> 
+   user  system elapsed 
+  0.133   0.001   0.144 
+>     system.time(g.sum <- vapply(x.split, sum, 0))
+> 
+   user  system elapsed 
+  0.129   0.001   0.198 
+>     system.time(g.sum <- vapply(x.split, sum, 0))
+> 
+   user  system elapsed 
+  0.132   0.000   0.134 
+>     system.time(g.sum <- vapply(x.split, sum, 0))

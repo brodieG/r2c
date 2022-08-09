@@ -1,0 +1,267 @@
+>     set.seed(1)
+>     n <- 1e7
+>     x <- runif(n)
+>     y <- runif(n)
+>     g <- cumsum(sample(c(TRUE, rep(FALSE, 9)), n, replace=TRUE))
+>     x.split <- split(x, g)
+>     y.split <- split(y, g)
+>     mean <- mean.default
+> 
+>     system.time(
+>       g.slope.base <- mapply(
+>         function(x, y)
+>           sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2),
+>           x.split, y.split
+>     ) )
+> 
+   user  system elapsed 
+ 11.502   0.290  16.980 
+>     system.time(
+>       g.slope.base <- mapply(
+>         function(x, y)
+>           sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2),
+>           x.split, y.split
+>     ) )
+> 
+   user  system elapsed 
+  4.741   0.027   5.710 
+>     system.time(
+>       g.slope.base <- mapply(
+>         function(x, y)
+>           sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2),
+>           x.split, y.split
+>     ) )
+> 
+   user  system elapsed 
+  3.278   0.025   3.798 
+>     system.time(
+>       g.slope.base <- mapply(
+>         function(x, y)
+>           sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2),
+>           x.split, y.split
+>     ) )
+> 
+   user  system elapsed 
+  3.479   0.039   4.155 
+>     system.time(
+>       g.slope.base <- mapply(
+>         function(x, y)
+>           sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2),
+>           x.split, y.split
+>     ) )
+> 
+   user  system elapsed 
+  3.038   0.011   3.476 
+>     system.time(
+>       g.slope.base <- mapply(
+>         function(x, y)
+>           sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2),
+>           x.split, y.split
+>     ) )
+> 
+   user  system elapsed 
+  2.928   0.012   3.321 
+>     system.time(
+>       g.slope.base <- mapply(
+>         function(x, y)
+>           sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2),
+>           x.split, y.split
+>     ) )
+> 
+   user  system elapsed 
+  2.943   0.019   3.370 
+>     system.time(
+>       g.slope.base <- mapply(
+>         function(x, y)
+>           sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2),
+>           x.split, y.split
+>     ) )
+> 
+   user  system elapsed 
+  3.100   0.020   3.552 
+>     system.time(
+>       g.slope.base <- mapply(
+>         function(x, y)
+>           sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2),
+>           x.split, y.split
+>     ) )
+> 
+   user  system elapsed 
+  3.033   0.035   3.461 
+>     system.time(
+>       g.slope.base <- mapply(
+>         function(x, y)
+>           sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2),
+>           x.split, y.split
+>     ) )
+> 
+   user  system elapsed 
+  3.115   0.019   3.572 
+>     system.time(
+>       g.slope.base <- mapply(
+>         function(x, y)
+>           sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2),
+>           x.split, y.split
+>     ) )
+> 
+   user  system elapsed 
+  2.964   0.016   3.363 
+>     system.time(
+>       g.slope.base <- mapply(
+>         function(x, y)
+>           sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2),
+>           x.split, y.split
+>     ) )
+> 
+   user  system elapsed 
+  3.143   0.029   3.631 
+>     system.time(
+>       g.slope.base <- mapply(
+>         function(x, y)
+>           sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2),
+>           x.split, y.split
+>     ) )
+> 
+   user  system elapsed 
+  2.970   0.019   3.418 
+>     system.time(
+>       g.slope.base <- mapply(
+>         function(x, y)
+>           sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2),
+>           x.split, y.split
+>     ) )
+> 
+   user  system elapsed 
+  2.974   0.018   3.365 
+>     system.time(
+>       g.slope.base <- mapply(
+>         function(x, y)
+>           sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2),
+>           x.split, y.split
+>     ) )
+> 
+   user  system elapsed 
+  3.051   0.026   3.549 
+>     system.time(
+>       g.slope.base <- mapply(
+>         function(x, y)
+>           sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2),
+>           x.split, y.split
+>     ) )
+> 
+   user  system elapsed 
+  3.024   0.020   3.381 
+>     system.time(
+>       g.slope.base <- mapply(
+>         function(x, y)
+>           sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2),
+>           x.split, y.split
+>     ) )
+> 
+   user  system elapsed 
+  2.893   0.015   3.372 
+>     system.time(
+>       g.slope.base <- mapply(
+>         function(x, y)
+>           sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2),
+>           x.split, y.split
+>     ) )
+> 
+   user  system elapsed 
+  2.916   0.015   3.348 
+>     system.time(
+>       g.slope.base <- mapply(
+>         function(x, y)
+>           sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2),
+>           x.split, y.split
+>     ) )
+> 
+   user  system elapsed 
+  3.027   0.019   3.426 
+>     system.time(
+>       g.slope.base <- mapply(
+>         function(x, y)
+>           sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2),
+>           x.split, y.split
+>     ) )
+> 
+   user  system elapsed 
+  3.074   0.023   3.492 
+>     system.time(
+>       g.slope.base <- mapply(
+>         function(x, y)
+>           sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2),
+>           x.split, y.split
+>     ) )
+> 
+   user  system elapsed 
+  3.211   0.016   3.719 
+>     system.time(
+>       g.slope.base <- mapply(
+>         function(x, y)
+>           sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2),
+>           x.split, y.split
+>     ) )
+> 
+   user  system elapsed 
+  2.969   0.011   3.353 
+>     system.time(
+>       g.slope.base <- mapply(
+>         function(x, y)
+>           sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2),
+>           x.split, y.split
+>     ) )
+> 
+   user  system elapsed 
+  3.228   0.019   3.646 
+>     system.time(
+>       g.slope.base <- mapply(
+>         function(x, y)
+>           sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2),
+>           x.split, y.split
+>     ) )
+> 
+   user  system elapsed 
+  3.000   0.011   3.449 
+>     system.time(
+>       g.slope.base <- mapply(
+>         function(x, y)
+>           sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2),
+>           x.split, y.split
+>     ) )
+> 
+   user  system elapsed 
+  4.137   0.023   4.691 
+>     system.time(
+>       g.slope.base <- mapply(
+>         function(x, y)
+>           sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2),
+>           x.split, y.split
+>     ) )
+> 
+   user  system elapsed 
+  1.332   0.011   1.723 
+>     system.time(
+>       g.slope.base <- mapply(
+>         function(x, y)
+>           sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2),
+>           x.split, y.split
+>     ) )
+> 
+   user  system elapsed 
+  0.952   0.003   1.218 
+>     system.time(
+>       g.slope.base <- mapply(
+>         function(x, y)
+>           sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2),
+>           x.split, y.split
+>     ) )
+> 
+   user  system elapsed 
+  0.909   0.003   1.146 
+>     system.time(
+>       g.slope.base <- mapply(
+>         function(x, y)
+>           sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2),
+>           x.split, y.split
+>     ) )
