@@ -87,5 +87,5 @@ unitizer_sect("Forwarded Dots", {
 })
 unitizer_sect("Self Check", {
   sum_check <- r2cq(sum(x), check=TRUE)
-  sum(x)
+  sum_check(x)
 })
