@@ -21,16 +21,15 @@
 #' purely for testing against r2c calculations.
 #'
 #' @export
-#' @param data a data frame with numeric columns
-#' @param call quoted R call to evaluate
-#' @param env environment to use as enclosure
+#' @inheritParams group_exec
+#' @param call quoted R call to apply to each group.
 #' @return numeric vector
 
-bsac <- function(call, g, data, MoreArgs=list(), env=parent.frame()) {
+bsac <- function(call, groups, data, MoreArgs=list(), enclos=parent.frame()) {
   data <- if(!is.data.frame(data)) as.data.frame(data) else data
-  d.s <- split(data, g)
+  d.s <- split(data, groups)
 
-  more <- list2env(MoreArgs, parent=env)
+  more <- list2env(MoreArgs, parent=enclos)
   res <- lapply(
     d.s,
     function(x, call) eval(call, envir=x, enclos=more), call=call

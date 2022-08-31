@@ -183,7 +183,7 @@ VALID_FUNS <- list(
   ),
   # - r2c funs -----------------------------------------------------------------
   fap_fun(
-    "mean0", fun=mean0, defn=mean0,
+    "mean1", fun=mean1, defn=mean1,
     flag.params="na.rm",
     type=list("constant", 1L),
     code.gen=code_gen_summary,

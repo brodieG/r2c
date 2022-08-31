@@ -372,12 +372,8 @@ check_fun <- function(x, env) {
       else environment(tar.fun)
     stop(
       "Symbol `", x, "` does not resolve to the expected function from ",
-      capture.output(print(env.fun)),
-      if(is.function(got.fun))
-      paste0(
-        " (resolves to one from ", capture.output(print(environment(got.fun))), ")"
-      )
-    )
-  }
-}
+      format(env.fun),
+      if(is.function(got.fun) && !identical(env.fun,  environment(got.fun)))
+        paste0(" (resolves to one from ", format(environment(got.fun)), ")")
+) } }
 

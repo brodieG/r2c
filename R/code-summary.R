@@ -50,11 +50,11 @@ make_loop_base <- function(count.na=FALSE, pad=2) {
   )
 }
 
-f_mean0 <- sprintf(
+f_mean1 <- sprintf(
   f_summary_base,
   "R_xlen_t na_n = 0;\n  ",
   make_loop_base(count.na=TRUE),
-  "\n  tmp /= (len_n - na_n);\n"
+  "\n  tmp = (double)tmp / (len_n - na_n); // (double) to match R version\n"
 )
 f_sum_1 <- sprintf(f_summary_base, "", make_loop_base(count.na=FALSE), "")
 f_sum_n_base <- '
@@ -81,7 +81,7 @@ f_sum_n <- sprintf(f_sum_n_base, make_loop_base(count.na=FALSE, pad=4))
 f_summary <- list(
   sum=f_sum_1,
   sum_n=f_sum_n,
-  mean0=f_mean0,   # single pass implementation, no infinity check
+  mean1=f_mean1,   # single pass implementation, no infinity check
   mean=f_mean      # R implementation
 )
 code_gen_summary <- function(fun, args.reg, args.ctrl, args.flag) {
@@ -91,7 +91,9 @@ code_gen_summary <- function(fun, args.reg, args.ctrl, args.flag) {
     args.ctrl=list(),
     args.flag=list()
   )
-  multi <- length(args.reg) > 1L || "..." %in% names(args.reg)
+  multi <-
+    length(args.reg) > 1L ||
+    (length(args.reg) == 1L && identical(args.reg[[1L]], quote(.R2C.DOTS)))
   name <- paste0(fun, if(multi) "_n")
 
   code_res(
@@ -131,17 +133,17 @@ ctrl_val_summary <- function(ctrl, flag, call) {
 #' @export
 #' @return scalar numeric
 #' @examples
-#' mean0(runif(10))
+#' mean1(runif(10))
 #'
 #' ## Overflow even 80 bit long double:
-#' mean0(rep(.Machine$double.xmax, 2^4))
+#' mean1(rep(.Machine$double.xmax, 2^4))
 #' mean(rep(.Machine$double.xmax, 2^4))
 #'
 #' ## Reduced precision
 #' x <- runif(10) ^ 2
-#' mean(x) - mean0(x)
+#' mean(x) - mean1(x)
 
-mean0 <- function(x, na.rm=FALSE)
+mean1 <- function(x, na.rm=FALSE)
   sum(x, na.rm=na.rm) /
     if(na.rm) sum(!is.na(x)) else length(x)
 

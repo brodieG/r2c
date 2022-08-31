@@ -1,0 +1,189 @@
+# r2c Benchmark Code
+
+## system.time
+
+Modified here to run 11 times after an initial gc, and display mean run time.
+
+```{r}
+system.time <- sys.time <- function(exp, reps=11) {
+  res <- matrix(0, reps, 5)
+  time.call <- quote(base::system.time({NULL}))
+  time.call[[2]][[2]] <- substitute(exp)
+  gc()
+  for(i in seq_len(reps)) {
+    res[i,] <- eval(time.call, parent.frame())
+  }
+  structure(res, class='proc_time2')
+}
+print.proc_time2 <- function(x, ...) {
+  print(
+    structure(
+      # x[order(x[,3]),][ceiling(nrow(x)/2),],
+      round(colMeans(x), 3),
+      names=c("user.self", "sys.self", "elapsed", "user.child", "sys.child"),
+      class='proc_time'
+) ) }
+```
+
+## Data
+
+```{r}
+set.seed(1)
+n <- 1e7
+gn <- 10
+ng <- n/gn
+x <- runif(n) * runif(n)  # full 64 bit precision randomness
+y <- runif(n) * runif(n)  # for later
+g <- cumsum(sample(c(TRUE, rep(FALSE, gn - 1)), n, replace=TRUE))
+```
+
+## Sum
+
+### Base R and FastR
+
+```{r}
+x.split <- split(x, g)
+y.split <- split(y, g)    # for later
+system.time(sum.base <- vapply(x.split, sum, 0))
+```
+
+`{FastR}` uses the same code, but needs to be run under the `{FastR}`
+implementation of R.
+
+### r2c
+
+```{r}
+g.r2c <- process_groups(g, sorted=TRUE)
+r2c_sum <- r2cq(sum(x))
+system.time(sum.r2c <- group_exec(r2c_sum, g.r2c, x))
+identical(sum.r2c, sum.base)
+```
+
+### data.table
+
+```{r}
+library(data.table); setDTthreads(1)
+dt <- data.table(x, g)
+setkey(dt, g)
+system.time(sum.dt <- dt[, sum(x), keyby=g][['V1']])
+identical(sum.dt, unname(sum.base))
+all.equal(sum.dt, unname(sum.base))
+```
+
+### collapse
+
+```{r}
+library(collapse)
+g.clp <- GRP(g)
+system.time(sum.clp <- fsum(x, g.clp, na.rm=FALSE))
+identical(sum.clp, sum.base)
+all.equal(sum.clp, sum.base)
+```
+
+## Slope
+
+For apples to apples comparison, we use `mean1` instead of `mean` as `mean`
+uses a two-pass calculation for precision, but `{collapse}` uses a single pass
+mean.
+
+<!-- we're slightly lying here because we can't redefine `mean1` without r2c
+complaining about it, but it's a white lie -->
+```{r eval=FALSE}
+mean1 <- function(x) sum(x) / length(x)
+```
+### Base R and FastR
+
+```{r}
+slope <- function(x, y) sum((x - mean1(x)) * (y - mean1(y))) / sum((x - mean1(x)) ^ 2)
+system.time(slope.base <- mapply(slope, x.split, y.split))
+```
+
+`{FastR}` uses the same code, but needs to be run under the `{FastR}`
+implementation of R.
+
+### r2c
+
+```{r}
+r2c_slope <- r2cq(sum((x - mean1(x)) * (y - mean1(y))) / sum((x - mean1(x)) ^ 2))
+system.time(slope.r2c <- group_exec(r2c_slope, g.r2c, list(x, y)))
+identical(slope.r2c, slope.base)
+```
+
+### data.table
+
+```{r}
+dt <- data.table(x, y, g)
+setkey(dt, g)
+mean <- mean1  # so name change alone doesn't break Gforce
+system.time(
+  slope.dt <- dt[,
+    sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2), keyby=g
+  ][["V1"]]
+)
+identical(slope.dt, unname(slope.base))
+all.equal(slope.dt, unname(slope.base))
+```
+
+In this case using `mean1` alone would break Gforce, but it's moot as the
+complex expression would too.
+
+### collapse
+
+```{r}
+fmean2 <- function(x, cg) fmean(x, cg, na.rm=FALSE, TRA="replace_fill")
+system.time(
+  slope.clp <-
+    fsum((x - fmean2(x, g.clp)) * (y - fmean2(y, g.clp)), g.clp, na.rm=FALSE) /
+    fsum((x - fmean2(x, g.clp))^2, g.clp, na.rm=FALSE)
+)
+identical(slope.clp, slope.base)
+all.equal(slope.clp, slope.base)
+```
+
+Alternatively and with similar performance
+
+```{r}
+system.time(
+  slope.clp.2 <-
+    fsum(fwithin(x, g.clp, na.rm=FALSE) * fwithin(y, g.clp, na.rm=FALSE), g.clp, na.rm=FALSE) /
+    fsum(fwithin(x, g.clp, na.rm=FALSE)^2, g.clp, na.rm=FALSE)
+)
+all.equal(slope.clp.2, slope.clp)
+```
+
+Or in more `{collapse}` semantic form (and a little faster because we allow
+re-use of `x - mean(x)`, which we don't use for comparison since that's no longer
+apples to apples)`:
+
+
+```{r}
+slope.clp.3 <-
+  dt |>
+   fgroup_by(g) |>
+   fmutate(x_center = fwithin(x, na.rm = FALSE)) |>
+   fsummarise(
+     slope =
+       fsum(x_center, fwithin(y, na.rm = FALSE), na.rm = FALSE) %/=%
+       fsum(x_center, na.rm = FALSE)^2
+   )
+all.equal(slope.clp.3[['slope']], unname(slope.clp.2))
+```
+
+Thanks to Sebastian Krantz for pointing out the `TRA="replace_fill"`
+functionality, and for the alternate formulations.
+
+## Bigger Groups
+
+```{r}
+set.seed(1)
+gn <- 1e3
+ng <- n/gn
+g <- cumsum(sample(c(TRUE, rep(FALSE, gn - 1)), n, replace=TRUE))
+
+x.split <- split(x, g)
+y.split <- split(y, g)    # for later
+g.r2c <- process_groups(g, sorted=TRUE)
+g.clp <- GRP(g)
+```
+
+And repeat above code

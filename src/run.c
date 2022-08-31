@@ -48,28 +48,39 @@ SEXP R2C_group_sizes(SEXP g) {
   R_xlen_t gn = 1;  // At least one group, possibly zero sized
 
   if (glen > 1) {
-    for(R_xlen_t gi = 1; gi < glen; ++gi)
-      if(*(g_int + gi) != *(g_int + gi - 1)) ++gn;
-  }
+    int g_int_val = *g_int;
+    for(R_xlen_t gi = 1; gi < glen; ++gi) {
+      int g_int_prev_val = g_int_val;
+      g_int_val = *(++g_int);
+      if(g_int_val != g_int_prev_val) ++gn;
+  } }
   SEXP gsize_sxp = PROTECT(Rf_allocVector(REALSXP, gn)); ++prt;
-  SEXP goff_sxp = PROTECT(Rf_allocVector(REALSXP, gn)); ++prt;
+  SEXP glabs_sxp = PROTECT(Rf_allocVector(INTSXP, gn)); ++prt;
+  g_int = INTEGER(g);
 
   double *gsize = REAL(gsize_sxp);
-  double *goff = REAL(goff_sxp);
+  int *glabs = INTEGER(glabs_sxp);
   double gmax = 0;
-  *goff = 0;
-  if(glen == 1) *gsize = (double) glen;
-  else if (glen > 1) {
+
+  if(glen == 0) {
+    glabs[0] = 0;
+    *gsize = 0.;
+  } else if(glen == 1) {
+    *gsize = (double) glen;
+    *glabs = *g_int;
+  } else if (glen > 1) {
     double gsize_i = 0;
-    R_xlen_t gi;
-    for(gi = 1; gi < glen; ++gi) {
+    int g_int_val = *g_int;
+    *(glabs++) = g_int_val;
+    for(R_xlen_t gi = 1; gi < glen; ++gi) {
+      int g_int_prev_val = g_int_val;
+      g_int_val = *(++g_int);
       ++gsize_i;
       // Group changed, record prior group size (recall we start one lagged)
-      if(*(g_int + gi) != *(g_int + gi - 1)) {
+      if(g_int_val != g_int_prev_val) {
         *(gsize++) = gsize_i;
         if(gsize_i > gmax) gmax = gsize_i;
-        goff++;
-        *goff = *(goff - 1) + gsize_i;
+        *(glabs++) = g_int_val;
         gsize_i = 0;
       }
     }
@@ -80,7 +91,7 @@ SEXP R2C_group_sizes(SEXP g) {
   SEXP res = PROTECT(Rf_allocVector(VECSXP, 3)); ++prt;
   SEXP gmax_sxp = PROTECT(Rf_ScalarReal(gmax)); ++prt;
   SET_VECTOR_ELT(res, 0, gsize_sxp);
-  SET_VECTOR_ELT(res, 1, goff_sxp);
+  SET_VECTOR_ELT(res, 1, glabs_sxp);
   SET_VECTOR_ELT(res, 2, gmax_sxp);
   UNPROTECT(prt);
   return res;

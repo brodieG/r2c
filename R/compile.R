@@ -26,7 +26,7 @@ make_shlib <- function(x, dir, quiet) {
   dir.create(dir)
   file.base <- file.path(dir, sprintf('r2c-%s', rand_string(10)))
   file.src <- paste0(file.base, ".c")
-  file.obj <- paste0(file.base, ".so")
+  file.obj <- paste0(file.base, .Platform$dynlib.ext)
   if(file.exists(file.src))
     stop(
       "Randomly generated file name ", file.src, "' already exists. ",
@@ -56,12 +56,16 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' `r2c` runner functions like [`group_exec`].
 #'
 #' While "r2c_fun" functions can be called in the same way as normal R
-#' functions, there is limited value in doing so.  Instead, they are intended to
-#' be invoked indirectly with runners like [`group_exec`] (currently the only
-#' one implemented).  The structure of "r2c_fun" objects is subject to change
-#' without notice in future `r2c` releases.  The only supported uses of them
-#' are standard invocation with the `(` operator and use with `r2c` functions
-#' that accept them as inputs.
+#' functions, there is limited value in doing so.  "r2c_fun" functions are
+#' optimized to be invoked invoked indirectly with runners like [`group_exec`]
+#' (currently the only one implemented).  In many common cases it is likely that
+#' using an "r2c_fun" directly will be slower than evaluating the corresponding
+#' R expression.
+#'
+#' The structure of "r2c_fun" objects is subject to change without notice in
+#' future `r2c` releases.  The only supported uses of them are standard
+#' invocation with the `(` operator and use with `r2c` functions that accept
+#' them as inputs.
 #'
 #' Currently the following functions are supported in `call`:
 #'
@@ -78,7 +82,8 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' symbol in `call`.  Symbol order in the "r2c_fun" parameter list is based on
 #' order of appearance in the call tree after everything is [`match.call`]ed.
 #' `.R2C.DOTS` and any symbols that match the regular expression
-#' "^\\.ARG[0-9]+$" are reserved for use by `r2c` and thus disallowed in `call`.
+#' `"^\\.ARG[0-9]+$"` are reserved for use by `r2c` and thus disallowed in
+#' `call`.
 #'
 #' Parameters used with "r2c_fun" supported functions are categorized into data
 #' parameters and control parameters.  For example, in `sum(x, na.rm=TRUE)`, `x`
@@ -110,7 +115,6 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #'   capability to re-use generated shared objects across R sessions is not
 #'   formally supported, but can likely be arranged for by preserving the
 #'   directory.
-#' @param env environment to use as enclosure to function evaluation environment
 #' @param check TRUE or FALSE (default), if TRUE will evaluate the R expression
 #'   with the input data and compare that result to the one obtained from the
 #'   `r2c` C code evaluation, marking the result with attributes that indicate
@@ -122,6 +126,7 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #'   will only delete folders that have the same directory root as one generated
 #'   by `tempfile()` to avoid accidents.  If you manually provide `dir` you will
 #'   need to manually delete the directory yourself.
+#' @param quiet whether to suppress the compilation output.
 #' @return an "r2c_fun" function; this is an unusual function so please see
 #'   details.
 #' @seealso [`group_exec`] to iterate this function groupwise on data,
@@ -141,7 +146,11 @@ r2c <- function(
   )
   # Parse R expression and Generate the C code
   preproc <- preprocess(call)
+
+  # Generate directory, use dirname/basename to normalize it to same format as
+  # file.path
   if(is.null(dir)) dir <- tempfile()
+  dir <- file.path(dirname(dir), basename(dir))
 
   # Compile C code
   so <- make_shlib(preproc[['code']], dir=dir, quiet=quiet)
@@ -234,10 +243,9 @@ r2c <- function(
   GEXE <- quote(
     bquote(
       group_exec_int(
-        NULL, formals=.(.FRM), env=.(.ENV), groups=NULL,
+        NULL, formals=.(.FRM), enclos=.(.ENV), groups=NULL,
         # Pretend first argument is group-varying, even though it's not
-        data=.(.DGRP), MoreArgs=.(.DAT[-1L]), sorted=TRUE,
-        call=quote(.(.CALL))
+        data=.(.DGRP), MoreArgs=.(.DAT[-1L]), call=quote(.(.CALL))
   ) ) )
   GEXE[[c(2L, 2L)]] <- OBJ  # embed object directly in call (replaces 1st NULL)
 
@@ -257,7 +265,7 @@ r2c <- function(
         res0 <- eval(.(call), envir=.ENV),
         res1 <- eval(.(GEXE), envir=getNamespace('r2c'))
       )
-      test.ae <- if(!test.i) all.equal(res0, re1)
+      test.ae <- if(!test.i) all.equal(res0, res1)
       attr(res1, 'r2c.check.identical') <- test.i
       attr(res1, 'r2c.check.all.equal') <- test.ae
       res1

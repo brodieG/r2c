@@ -16,7 +16,7 @@
 unitizer_sect("group sum", {
   identical(group_exec(r2c_sum, g, x), c(tapply(x, g, sum)))
   identical(
-    group_exec(r2c_sum, sort(g), x, sorted=TRUE),
+    group_exec(r2c_sum, process_groups(sort(g), sorted=TRUE), x),
     c(tapply(x, sort(g), sum))
   )
   group_exec(r2c_sum, list(g), x)
@@ -71,4 +71,13 @@ unitizer_sect("group_slope", {
     bsac(slope, g, list(y=y), list(x=1:110))
   )
 })
+unitizer_sect('weird groups', {
+  # Testing non sequential groups
+  g2 <- g
+  g2[g2 == 1L] <- 501L
+  g2[g2 == 8L] <- 50L
+  identical(group_exec(r2c_sum, g2, x), c(tapply(x, g2, sum)))
+})
+
+
 

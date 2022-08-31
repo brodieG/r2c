@@ -22,6 +22,9 @@
 #' @docType package
 #' @name r2c-package
 #' @import vetr
+#' @importFrom utils globalVariables
 #' @useDynLib r2c, .registration=TRUE, .fixes="R2C_"
 
 NULL
+
+utils::globalVariables(".")  # for vetr .

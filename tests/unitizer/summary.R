@@ -78,18 +78,18 @@ unitizer_sect('mean', {
   identical(r2c_mean_trim_0(x), mean(x))
   identical(r2c_mean_trim_0_na(x.na, na.rm=TRUE), mean(x.na, na.rm=TRUE))
 })
-unitizer_sect('mean0', {
-  r2c_mean0 <- r2cq(mean0(x))
-  r2c_mean0_na <- r2cq(mean0(x, na.rm=na.rm))
+unitizer_sect('mean1', {
+  r2c_mean1 <- r2cq(mean1(x))
+  r2c_mean1_na <- r2cq(mean1(x, na.rm=na.rm))
 
-  identical(r2c_mean0(x), mean0(x))
-  identical(r2c_mean0(y), mean0(y))
-  identical(r2c_mean0(x), mean0(x))
-  identical(r2c_mean0(x.inf), mean0(x.inf))
-  identical(r2c_mean0(x.na), mean0(x.na))
-  identical(r2c_mean0(x.weird), mean0(x.weird))
+  identical(r2c_mean1(x), mean1(x))
+  identical(r2c_mean1(y), mean1(y))
+  identical(r2c_mean1(x), mean1(x))
+  identical(r2c_mean1(x.inf), mean1(x.inf))
+  identical(r2c_mean1(x.na), mean1(x.na))
+  identical(r2c_mean1(x.weird), mean1(x.weird))
 
-  identical(r2c_mean0_na(x.na, na.rm=TRUE), mean0(x.na, na.rm=TRUE))
+  identical(r2c_mean1_na(x.na, na.rm=TRUE), mean1(x.na, na.rm=TRUE))
 })
 unitizer_sect('length', {
   r2c_len <- r2cq(length(x))
