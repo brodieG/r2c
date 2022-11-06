@@ -24,6 +24,126 @@ group_sizes <- function(go) {
   names(res) <- c('gsizes', 'glabs', 'gmax')
   res
 }
+group_exec_int <- function(
+  obj, formals, enclos, groups, data, MoreArgs, call
+) {
+  preproc <- obj[['preproc']]
+  shlib <- obj[['so']]
+
+  # - Handle Groups ------------------------------------------------------------
+
+  if(!is.list(data)) data <- list(data)
+  if(length(d.len <- unique(lengths(data))) > 1L)
+    stop("All `data` vectors must be the same length.")
+  if(!length(d.len)) d.len <- 0L  # No data
+  groups <- if(is.null(groups)) {
+    r2c_group_obj(
+      sizes=list(gsizes=as.numeric(d.len), glabs=0L, gmax=as.numeric(d.len)),
+      order=seq_len(d.len),
+      group.o=list(rep(1L, d.len)), # Not altrep as of 4.2.1, sadly
+      sorted=TRUE, mode="ungrouped"
+    )
+  } else if(!inherits(groups, "r2c.groups")) {
+    process_groups(groups)
+  } else groups
+
+  mode <- groups[['mode']]
+  if(length(d.len) == 0 || !identical(d.len, length(groups[['group.o']][[1L]])))
+    stop("`data` vectors must be the same length as `group` vectors.")
+
+  if (mode != "ungrouped") {
+    if(!groups[['sorted']]) do <- lapply(data, "[", groups[['order']])
+    else do <- data
+  } else {
+    do <- data
+  }
+  group.sizes <- groups[['sizes']]
+  gmax <- group.sizes[['gmax']]
+
+  # - Match Data to Parameters and Allocate ------------------------------------
+
+  alloc <- match_and_alloc(
+    do=do, MoreArgs=MoreArgs, preproc=preproc, formals=formals,
+    enclos=enclos, gmax=gmax, call=call
+  )
+  stack <- alloc[['stack']]
+
+  # Compute result size
+  if(ncol(stack) != 1L)
+    stop("Internal Error: unexpected stack state at exit.")
+
+  empty.res <- FALSE
+  gsizes <- group.sizes[['gsizes']]
+  res.size.type <- "variable"
+  if(!stack['group', 1L]) { # constant group size
+    group.res.sizes <- rep(stack['size', 1L], length(gsizes))
+    res.size.type <- if(stack['size', 1L] == 1L) "scalar" else "constant"
+  } else if (is.na(stack['size', 1L])) {
+    group.res.sizes <- gsizes
+  } else if (stack['size', 1L]) {
+    group.res.sizes <- gsizes
+    group.res.sizes[
+      group.res.sizes < stack['size', 1L] & group.res.sizes != 0
+    ] <- stack['size', 1L]
+  } else {
+    group.res.sizes <- numeric()
+  }
+  # - Run ----------------------------------------------------------------------
+
+  status <- numeric(1)
+  res.i <- which(alloc[['alloc']][['type']] == "res")
+  res <- if(length(group.res.sizes)) {
+    handle <- obj[['handle']]
+    if(!is.na(shlib) && !is.loaded("run", PACKAGE=handle[['name']])) {
+      handle <- dyn.load(shlib)
+    }
+    if(!is.loaded("run", PACKAGE=handle[['name']]))
+      stop("Could not load native code.")
+
+    alp <- prep_alloc(alloc, sum(group.res.sizes))
+
+    status <- run_group_int(
+      handle[['name']],
+      alp[['dat']],
+      alp[['dat_cols']],
+      alp[['ids']],
+      alp[['flag']],
+      alp[['control']],
+      gsizes,
+      group.res.sizes
+    )
+    # Result vector is modified by reference
+    alp[['dat']][[res.i]]
+  } else {
+    numeric()
+  }
+  if(alloc[['alloc']][['typeof']][res.i] == "integer") res <- as.integer(res)
+
+  # Generate and attach group labels, small optimization for predictable groups
+  if(mode != "ungrouped") {
+    g.lab.raw <- group.sizes[['glabs']]
+    g.lab <-
+      if(res.size.type == "scalar") g.lab.raw
+      else if(res.size.type == "constant")
+        rep(g.lab.raw, each=group.res.sizes[1L])
+      else rep(g.lab.raw, group.res.sizes)  # could optimize further
+    # Attach group labels
+    if(mode == 'list') {
+      res <- data.frame(group=g.lab, V1=res)
+    } else if (mode == 'vec') {
+      names(res) <- g.lab
+    } else stop("Unknown return format mode")
+    if(status) {
+      warning(
+        "longer object length is not a multiple of shorter object length ",
+        sprintf("(first at group %.0f).", status)
+    ) }
+  } else if(status) {
+    warning("longer object length is not a multiple of shorter object length.")
+  }
+  res
+}
+
 #' Compute Group Meta Data
 #'
 #' Use by [`group_exec`] to organize group data, and made available as an

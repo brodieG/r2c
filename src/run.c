@@ -195,15 +195,29 @@ SEXP R2C_run_group(
   return Rf_ScalarReal((double) grp_recycle_warn);
 }
 /*
+ * Initial implementation requires size 1 output
+ */
+/*
 SEXP run_window(
-  double ** data,  // updated by ref
-  R_xlen_t * lens, // updated by ref
+  SEXP so,
+  SEXP dat,
+  SEXP dat_cols,
+  SEXP ids,
+  SEXP flag,
+  SEXP ctrl,
   SEXP grp_lens,
   SEXP res_lens,
   SEXP off_lens,
   SEXP align,
-  SEXP partial,
+  SEXP partial
 ) {
+  if(TYPEOF(grp_lens) != REALSXP)
+    Rf_error("Argument `grp_lens` should be a real vector.");
+  if(TYPEOF(res_lens) != REALSXP || XLENGTH(grp_lens) != XLENGTH(res_lens))
+    Rf_error("Argument `res_lens` should REALSXP and same length as `grp_lens`.");
+
+  struct R2C_dat datp = prep_data(dat, dat_cols, ids, flag, ctrl, so);
+
   if(TYPEOF(grp_lens) != REALSXP)
     Rf_error("Argument `grp_lens` should be a real vector.");
   if(TYPEOF(res_lens) != REALSXP || XLENGTH(grp_lens) != XLENGTH(res_lens))
@@ -291,101 +305,3 @@ SEXP run_window(
 */
 
 
-/*
-SEXP R2C_run_internal(
-  SEXP so,
-  // starts with the status vector, followed by the result vector, then followed
-  // by the group varying data, and finally any collected external references
-  // afterwards.
-  SEXP dat,
-  // How many of the columns of `dat` are of the group varying type.
-  SEXP dat_cols,
-  SEXP ids,
-  SEXP flag,
-  SEXP ctrl,
-  // Size of each window / group
-  SEXP grp_lens,
-  SEXP res_lens,
-  // For group_exec, same as grp_lens, but different for window_exec.
-  // How much to offset the data window between each iteration.
-  SEXP off_lens
-) {
-  if(TYPEOF(so) != STRSXP || XLENGTH(so) != 1)
-    Rf_error("Argument `so` should be a scalar string.");
-  if(TYPEOF(dat_cols) != INTSXP)
-    Rf_error("Argument `dat_cols` should be scalar integer.");
-  if(TYPEOF(grp_lens))
-    Rf_error("Argument `grp_lens` should REALSXP.");
-  if(TYPEOF(off_lens) != REALSXP || XLENGTH(grp_lens) != XLENGTH(off_lens))
-    Rf_error("Argument `off_lens` should REALSXP and same length as `grp_lens`.");
-  if(TYPEOF(dat) != VECSXP)
-    Rf_error("Argument `data` should be a list.");
-  if(TYPEOF(ids) != VECSXP)
-    Rf_error("Argument `ids` should be a list.");
-  if(TYPEOF(ctrl) != VECSXP)
-    Rf_error("Argument `ctrl` should be a list.");
-  if(TYPEOF(flag) != INTSXP)
-    Rf_error("Argument `flag` should be an integer vector.");
-  if(XLENGTH(ids) != XLENGTH(ctrl))
-    Rf_error("Argument `ids` and `ctrl` should be the same length.");
-  if(XLENGTH(flag) != XLENGTH(ctrl))
-    Rf_error("Argument `flag` and `ctrl` should be the same length.");
-
-  const char * fun_char = "run";
-  const char * dll_char = CHAR(STRING_ELT(so, 0));
-  struct Rf_RegisteredNativeSymbol * symbol = NULL;
-  DL_FUNC fun = R_FindSymbol(fun_char, dll_char, symbol);
-  int dat_count = Rf_asInteger(dat_cols);
-  double * g_lens = REAL(grp_lens);
-  double * r_lens = REAL(res_lens);
-  double * o_lens = REAL(off_lens);
-
-  // Not a foolproof check, but we need at least group varying cols + I_GRP data
-  // (note, I_GRP added later, so not 100% sure it's the right constant).
-  if(dat_count < 0 || dat_count > XLENGTH(dat) - I_GRP)
-    Rf_error("Internal Error: bad data col count.");
-
-  // Retructure data to be seakable without overhead of VECTOR_ELT
-  // R_alloc not guaranteed to align to pointers, blergh. FIXME.
-  double ** data = (double **) R_alloc(XLENGTH(dat), sizeof(double*));
-  R_xlen_t * lens = (R_xlen_t *) R_alloc(XLENGTH(dat), sizeof(R_xlen_t));
-  for(R_xlen_t i = 0; i < XLENGTH(dat); ++i) {
-    SEXP elt = VECTOR_ELT(dat, i);
-    if(TYPEOF(elt) != REALSXP)
-      Rf_error(
-        "Internal Error: non-real data at %jd (%s).\n",
-        (intmax_t) i, Rf_type2char(TYPEOF(elt))
-      );
-    *(data + i) = REAL(elt);
-    *(lens + i) = XLENGTH(elt);
-  }
-  // Indices into data, should be as many as there are calls in the code
-  int ** datai = (int **) R_alloc(XLENGTH(ids), sizeof(int*));
-  int * narg = (int *) R_alloc(XLENGTH(ids), sizeof(int));
-  R_xlen_t call_count = XLENGTH(ids);
-  for(R_xlen_t i = 0; i < call_count; ++i) {
-    SEXP elt = VECTOR_ELT(ids, i);
-    if(TYPEOF(elt) != INTSXP)
-      Rf_error(
-        "Internal Error: non-integer data at %jd (%s).\n",
-        (intmax_t) i, Rf_type2char(TYPEOF(elt))
-      );
-    // Each call accesses some numbers of elements from data, where the last
-    // accessed element receives the result of the call (by convention)
-    *(datai + i) = INTEGER(elt);
-    *(narg + i) = (int) XLENGTH(elt) - 1;
-  }
-  // Integer flags representing TRUE/FALSE control parameters
-  int * flag_int = INTEGER(flag);
-  int dat_start = I_GRP;
-  int dat_end = I_GRP + dat_count - 1;
-  R_xlen_t grp_recycle_warn = 0;  // these will be stored 1-index
-
-  if(<rungroup>) run_group(...);
-  else if(<runwindow>) run_window(...);
-
-  // Return the recycle status flag; if we add more in the future we'll need to
-  // adapt the logic a little for multiple flags
-  return Rf_ScalarReal((double) grp_recycle_warn);
-}
-*/

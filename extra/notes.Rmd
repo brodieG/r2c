@@ -2,6 +2,10 @@
 
 # To Do / Questions
 
+* `DYNLOAD` warnings around `run()`; maybe that function doesn't need to be of
+  the type DYNLOAD?  We know what the interface of it is, so we just need to
+  check whether that's compatible with R's compilation mechanism.
+
 
 ## For CRAN
 
@@ -260,6 +264,15 @@ our size calculations would be wrong anyway).
 What if we allow non-scalar results?  Probably immediate complication is that we
 can't just go straight to "NA" result when windows are OOB.  If we do resolve
 that, we need to do a first pass pre-computing the result vector size.
+
+For now focus on developing the scalar step and scalar window size, and
+recognize the possibility for:
+
+* Vector of steps.
+* Vector of window sizes.
+* A location vector to allow data to have different positions than their rank
+  in the input vector.
+
 
 ## Others
 

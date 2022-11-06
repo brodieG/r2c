@@ -13,46 +13,26 @@
 ##
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
-group_exec_int <- function(
-  obj, formals, enclos, groups, data, MoreArgs, call
+## Match Data to r2c Fun Parameters
+##
+## Data is spread between group-varying (`data`) and non-group varying
+## (`MoreArgs`).
+##
+## @param do data, ordered, group varying
+## @param MoreArgs (same as for the user facing funs)
+## @param preproc compile-time preprocessed meta data retrieved from the `r2c`
+##   function
+## @param formals the formals of the r2c fun
+## @param enclos environment to use as enclosure for data
+## @param gmax scalar largest group size
+## @param call original call
+
+match_and_alloc <- function(
+  do, MoreArgs, preproc, formals, enclos, gmax, call
 ) {
-  preproc <- obj[['preproc']]
-  shlib <- obj[['so']]
-
-  # - Handle Groups ------------------------------------------------------------
-
-  if(!is.list(data)) data <- list(data)
-  if(length(d.len <- unique(lengths(data))) > 1L)
-    stop("All `data` vectors must be the same length.")
-  if(!length(d.len)) d.len <- 0L  # No data
-  groups <- if(is.null(groups)) {
-    r2c_group_obj(
-      sizes=list(gsizes=as.numeric(d.len), glabs=0L, gmax=as.numeric(d.len)),
-      order=seq_len(d.len),
-      group.o=list(rep(1L, d.len)), # Not altrep as of 4.2.1, sadly
-      sorted=TRUE, mode="ungrouped"
-    )
-  } else if(!inherits(groups, "r2c.groups")) {
-    process_groups(groups)
-  } else groups
-
-  mode <- groups[['mode']]
-  if(length(d.len) == 0 || !identical(d.len, length(groups[['group.o']][[1L]])))
-    stop("`data` vectors must be the same length as `group` vectors.")
-
-  if (mode != "ungrouped") {
-    if(!groups[['sorted']]) do <- lapply(data, "[", groups[['order']])
-    else do <- data
-  } else {
-    do <- data
-  }
-  group.sizes <- groups[['sizes']]
-
-  # - Match Data to Parameters -------------------------------------------------
-
-  # Trick here is data is split across two parameters so we have to merge
-  # together to match, but then split the data back into the two parameters.
-
+  # Trick here is data is split across `data` and `MoreArgs` so we have to merge
+  # together to match, but then split the data back into the two parameters
+  # since they have different usage semantics.
   if(any(grepl(RX.ARG, names(do))))
     stop("`data` names may not match regular expression \"", RX.ARG, "\".")
   if(any(grepl(RX.ARG, names(MoreArgs))))
@@ -75,8 +55,8 @@ group_exec_int <- function(
     )[-1L] ,
     error=function(e) {
       # Error produced by this is confusing because we're matching to positions,
-      # so instead match against the actual data for better error message
-      args <- c(data, MoreArgs)
+      # so instead re-match against the actual data for better error message
+      args <- c(do, MoreArgs)
       call.dummy <- as.call(c(list(f.dummy), args))
       match.call(f.dummy, call.dummy, envir=enclos)
       # In case the above somehow doesn't produce an error; it always should
@@ -90,7 +70,7 @@ group_exec_int <- function(
     names(dots) <- sprintf(".ARG.%d", seq_along(dots))
     call.dummy.m <- append(call.dummy.m[-dots.pos], dots, after=dots.pos - 1L)
   }
-  # Split back into group varying vs not
+  # Split back into group varying (data) vs not (MoreArgs)
   dat.match <- unlist(call.dummy.m[call.dummy.m <= length(do)])
   names(do)[dat.match] <- names(dat.match)
   more.match <- unlist(call.dummy.m[call.dummy.m > length(do)])
@@ -101,99 +81,33 @@ group_exec_int <- function(
 
   # Prepare temporary memory allocations
   alloc <- alloc(
-    x=preproc, data=do, gmax=group.sizes[['gmax']], par.env=enclos,
+    x=preproc, data=do, gmax=gmax, par.env=enclos,
     MoreArgs=MoreArgs, .CALL=call
   )
-  stack <- alloc[['stack']]
+  alloc
+}
+## Reorganize the allocation data for running
+##
+## @param res.size the final result vector size
 
-  # Compute result size
-  if(ncol(stack) != 1L)
-    stop("Internal Error: unexpected stack state at exit.")
+prep_alloc <- function(alloc, res.size) {
+  # Allocate result vector, this will be modified by reference
+  if(length(alloc[['alloc']][['dat']][[alloc[['alloc']][['i']]]]))
+    stop("Internal Error: result should be zero length when uninitialized.")
+  alloc[['alloc']][['dat']][[alloc[['alloc']][['i']]]] <- numeric(res.size)
 
-  empty.res <- FALSE
-  gsizes <- group.sizes[['gsizes']]
-  res.size.type <- "variable"
-  if(!stack['group', 1L]) { # constant group size
-    group.res.sizes <- rep(stack['size', 1L], length(gsizes))
-    res.size.type <- if(stack['size', 1L] == 1L) "scalar" else "constant"
-  } else if (is.na(stack['size', 1L])) {
-    group.res.sizes <- gsizes
-  } else if (stack['size', 1L]) {
-    group.res.sizes <- gsizes
-    group.res.sizes[
-      group.res.sizes < stack['size', 1L] & group.res.sizes != 0
-    ] <- stack['size', 1L]
-  } else {
-    group.res.sizes <- numeric()
-  }
-  status <- numeric(1)
-  res.i <- which(alloc[['alloc']][['type']] == "res")
-  res <- if(length(group.res.sizes)) {
-    # Allocate result vector, this will be modified by reference
-    if(length(alloc[['alloc']][['dat']][[alloc[['alloc']][['i']]]]))
-      stop("Internal Error: result should be zero length when uninitialized.")
-    alloc[['alloc']][['dat']][[alloc[['alloc']][['i']]]] <-
-      numeric(sum(group.res.sizes))
+  # Extract control parameters, and run sanity checks (not fool proof)
+  dat <- alloc[['alloc']][['dat']]
+  control <- lapply(alloc[['call.dat']], "[[", "ctrl")
+  flag <- vapply(alloc[['call.dat']], "[[", 0L, "flag")
+  # Ids into call.dat, last one will be the result
+  ids <- lapply(alloc[['call.dat']], "[[", "ids")
+  if(!all(unlist(ids) %in% seq_along(dat)))
+    stop("Internal Error: Invalid data indices.")
+  ids <- lapply(ids, "-", 1L) # 0-index for C
 
-    # Extract control parameters, and run sanity checks (not fool proof)
-    dat <- alloc[['alloc']][['dat']]
-    control <- lapply(alloc[['call.dat']], "[[", "ctrl")
-    flag <- vapply(alloc[['call.dat']], "[[", 0L, "flag")
-    # Ids into call.dat, last one will be the result
-    ids <- lapply(alloc[['call.dat']], "[[", "ids")
-    if(!all(unlist(ids) %in% seq_along(dat)))
-      stop("Internal Error: Invalid data indices.")
-    ids <- lapply(ids, "-", 1L) # 0-index for C
-
-    dat_cols <- sum(alloc[['alloc']][['type']] == "grp")
-    handle <- obj[['handle']]
-
-    if(!is.na(shlib) && !is.loaded("run", PACKAGE=handle[['name']])) {
-      handle <- dyn.load(shlib)
-    }
-    if(!is.loaded("run", PACKAGE=handle[['name']]))
-      stop("Could not load native code.")
-
-    status <- run_group_int(
-      handle[['name']],
-      dat,
-      dat_cols,
-      ids,
-      flag,
-      control,
-      gsizes,
-      group.res.sizes
-    )
-    # Result vector is modified by reference
-    dat[[res.i]]
-  } else {
-    numeric()
-  }
-  if(alloc[['alloc']][['typeof']][res.i] == "integer") res <- as.integer(res)
-
-  # Generate and attach group labels, small optimization for predictable groups
-  if(mode != "ungrouped") {
-    g.lab.raw <- group.sizes[['glabs']]
-    g.lab <-
-      if(res.size.type == "scalar") g.lab.raw
-      else if(res.size.type == "constant")
-        rep(g.lab.raw, each=group.res.sizes[1L])
-      else rep(g.lab.raw, group.res.sizes)  # could optimize further
-    # Attach group labels
-    if(mode == 'list') {
-      res <- data.frame(group=g.lab, V1=res)
-    } else if (mode == 'vec') {
-      names(res) <- g.lab
-    } else stop("Unknown return format mode")
-    if(status) {
-      warning(
-        "longer object length is not a multiple of shorter object length ",
-        sprintf("(first at group %.0f).", status)
-    ) }
-  } else if(status) {
-    warning("longer object length is not a multiple of shorter object length.")
-  }
-  res
+  dat_cols <- sum(alloc[['alloc']][['type']] == "grp")
+  list(dat=dat, dat_cols=dat_cols, ids=ids, control=control, flag=flag)
 }
 
 run_group_int <- function(
