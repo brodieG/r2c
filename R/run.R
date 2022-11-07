@@ -26,12 +26,11 @@
 ## @param enclos environment to use as enclosure for data
 ## @param gmax scalar largest group size
 ## @param call original call
-## @param dat.args the data represented as symbols if e.g. someone used
-##   `list(x=y)` as the `data` parameter, otherwise just the data.  Used for
-##   producing better error messages.
+## @param fun function this is being called by, e.g. `group_exec` (maybe could
+##   extract from `call`, but don't bother to).
 
 match_and_alloc <- function(
-  do, MoreArgs, preproc, formals, enclos, gmax, call, dat.args
+  do, MoreArgs, preproc, formals, enclos, gmax, call, fun
 ) {
   # Trick here is data is split across `data` and `MoreArgs` so we have to merge
   # together to match, but then split the data back into the two parameters
@@ -58,11 +57,21 @@ match_and_alloc <- function(
     )[-1L] ,
     error=function(e) {
       # Error produced by this is confusing because we're matching to positions,
-      # so instead re-match against the actual data for better error message.
-      # For the case where the call to e.g. `group_exec` contains something like
-      # list(x = y), it would be better to show the name instead of the object,
-      # but in many cases list(x = y) is just a data.frame.
-      args <- c(dat.args, MoreArgs)
+      # so instead re-match against for better error message.
+      #
+      # Additional convoluation for the case where the call to e.g. `group_exec`
+      # contains something like list(x = y), where we want to report the
+      # unevaluated expression an not e.g. the value of `y`.
+
+      call.m <- match.call(fun, call, expand.dots=FALSE, envir=enclos)
+      data.2 <-
+        if(is.call(call.m[['data']])) as.list(call.m[['data']])[-1L]
+        else do  # note this is not in original order
+      moreargs.2 <-
+        if(is.call(call.m[['MoreArgs']])) as.list(call.m[['MoreArgs']])[-1L]
+        else MoreArgs
+
+      args <- c(data.2, moreargs.2)
       call.dummy <- as.call(c(list(f.dummy), args))
       tryCatch(
         match.call(f.dummy, call.dummy, envir=enclos),

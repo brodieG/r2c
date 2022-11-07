@@ -62,14 +62,9 @@ group_exec_int <- function(
 
   # - Match Data to Parameters and Allocate ------------------------------------
 
-  call.m <- match.call(r2c::group_exec, call, expand.dots=FALSE, envir=enclos)
-  dat.args <-
-    if(is.call(call.m[['data']])) as.list(call.m[['data']])[-1L]
-    else data
-
   alloc <- match_and_alloc(
     do=do, MoreArgs=MoreArgs, preproc=preproc, formals=formals,
-    enclos=enclos, gmax=gmax, call=call, dat.args=dat.args
+    enclos=enclos, gmax=gmax, call=call, fun=r2c::group_exec
   )
   stack <- alloc[['stack']]
 
