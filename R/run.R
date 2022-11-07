@@ -26,9 +26,12 @@
 ## @param enclos environment to use as enclosure for data
 ## @param gmax scalar largest group size
 ## @param call original call
+## @param dat.args the data represented as symbols if e.g. someone used
+##   `list(x=y)` as the `data` parameter, otherwise just the data.  Used for
+##   producing better error messages.
 
 match_and_alloc <- function(
-  do, MoreArgs, preproc, formals, enclos, gmax, call
+  do, MoreArgs, preproc, formals, enclos, gmax, call, dat.args
 ) {
   # Trick here is data is split across `data` and `MoreArgs` so we have to merge
   # together to match, but then split the data back into the two parameters
@@ -55,10 +58,16 @@ match_and_alloc <- function(
     )[-1L] ,
     error=function(e) {
       # Error produced by this is confusing because we're matching to positions,
-      # so instead re-match against the actual data for better error message
-      args <- c(do, MoreArgs)
+      # so instead re-match against the actual data for better error message.
+      # For the case where the call to e.g. `group_exec` contains something like
+      # list(x = y), it would be better to show the name instead of the object,
+      # but in many cases list(x = y) is just a data.frame.
+      args <- c(dat.args, MoreArgs)
       call.dummy <- as.call(c(list(f.dummy), args))
-      match.call(f.dummy, call.dummy, envir=enclos)
+      tryCatch(
+        match.call(f.dummy, call.dummy, envir=enclos),
+        error=function(e) stop(simpleError(conditionMessage(e), call=call))
+      )
       # In case the above somehow doesn't produce an error; it always should
       stop("Internal Error: no param match error; contact maintainer.")
   } )
