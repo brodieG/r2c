@@ -28,6 +28,7 @@ NULL
 alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
   # - Initialize ---------------------------------------------------------------
   env <- list2env(MoreArgs, parent=par.env)
+  call.outer <- x[['call']][[length(x[['call']])]]
 
   # Status control placeholder.
   alloc <- append_dat(
@@ -141,7 +142,7 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
       # Need to eval parameter
       tryCatch(
         arg.e <- eval(call, envir=data, enclos=env),
-        error=function(e) stop(simpleError(conditionMessage(e), .CALL))
+        error=function(e) stop(simpleError(conditionMessage(e), call.outer))
       )
       # Validate external args after eval
       if(type == "leaf" && !is.num_naked(list(arg.e))) {
