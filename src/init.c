@@ -23,6 +23,7 @@ static const
 R_CallMethodDef callMethods[] = {
   {"group_sizes", (DL_FUNC) &R2C_group_sizes, 1},
   {"run_group", (DL_FUNC) &R2C_run_group, 8},
+  {"run_window", (DL_FUNC) &R2C_run_window, 9},
   {"assumptions", (DL_FUNC) &R2C_assumptions, 0},
   {"constants", (DL_FUNC) &R2C_constants, 0},
 

@@ -23,7 +23,7 @@ results when accounting for the other parameters used by this function.}
 \item{width}{integer vector of positive, non-NA values interpreted
 as window widths of values to supply to \code{fun} from the \code{data}
 vectors.  Recycled together with \code{by} to match the length of the \code{data}
-vectors.}
+vectors.  WARNING: CURRENTLY ONLY SUPPORTS SCALARS.}
 
 \item{data}{a numeric vector, or a list of numeric vectors, each vector the
 same length as the vector(s) in \code{groups}.  If a named list, the vectors
@@ -47,7 +47,7 @@ with \code{width} to match the length of the \code{data} vectors.}
 partial windows. If \code{FALSE}, incomplete windows will be NA.  If \code{TRUE}
 vectors passed to \code{fun} may have lengths shorter than the corresponding
 window sizes when the windows are partially out of bounds at the end of the
-\code{data} vectors.}
+\code{data} vectors. WARNING: CURRENTLY ONLY SUPPORTS SCALARS.}
 
 \item{align}{vector of one of "center" (default), "left", "right", or a
 positive integer representing what part of the window aligns with the base
@@ -56,8 +56,8 @@ first element of the vector.  Integer values represent the left-wards
 offset of the "left" end of the window relative to the base index, where
 \code{0L} is equivalent to "left" and \code{width - 1L} equivalent to "right".  For
 even length windows, the window will have one more element to the right
-than to the left of the base index.  It is not possible to j
-See details.}
+than to the left of the base index.
+See details.  WARNING: CURRENTLY ONLY SUPPORTS SCALARS.}
 
 \item{enclos}{environment to use as the \code{enclos} parameter to
 \code{\link[base:eval]{base::eval}} when evaluating expressions or matching calls (see \code{data}).}
@@ -68,9 +68,11 @@ a numeric vector the same length as the first vector in \code{data}.
 \description{
 Calls the native code associated with \code{fun} on sequential windows along the
 \code{data} vectors.  The windows are aligned relative to a base index that starts
-at the first row (or first vector element when \code{data} is a numeric vector)
-of \code{data} and increments with the stride specified in \code{by}.  Window widths,
-alignments, and strides can be specified as varying vectors.
+at the first "element" of \code{data} (where "element" is a row if \code{data} is
+"data.frame" or similar, or simply an element if it is a vector) and
+increments with the stride specified in \code{by}.  Window widths,
+alignments, and strides can be specified as varying vectors (CURRENTLY ONLY
+SCALARS ARE SUPPORTED).
 }
 \details{
 There are no special optimizations beyond the use of \code{{r2c}} functions
@@ -98,6 +100,13 @@ iteration of function application, with \code{by=1L} and \code{width=4}:
      + - - +      align = 1L
    + - - +        align = 2L
 }\if{html}{\out{</div>}}
+}
+\examples{
+r2c_mean <- r2cq(mean(x))
+with(
+  mtcars,
+  window_exec(r2c_mean, hp, width=5)
+)
 }
 \seealso{
 \code{\link{r2c}} for more details on the behavior and constraints of

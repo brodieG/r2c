@@ -5,6 +5,15 @@
 * `DYNLOAD` warnings around `run()`; maybe that function doesn't need to be of
   the type DYNLOAD?  We know what the interface of it is, so we just need to
   check whether that's compatible with R's compilation mechanism.
+* Test that everything works if there is no group varying data (i.e. everything
+  fed through MoreArgs).  Not completely trivial to test as we need a function
+  that allows us to specify a `data` parameter, but then uses it as a control
+  instead of data (at least for `group_exec`).  We just need the group varying
+  data to be referenced somewhere in the call, which 
+* Recycle warning for windows, does it make sense?  It might with the partial
+  windows, but for the main section we should only need to check once?
+* Be sure to test a window that is wider than the data to see that partial
+  windows are computed correctly on both sides?  Should be okay.
 
 
 ## For CRAN

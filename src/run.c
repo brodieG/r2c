@@ -36,7 +36,7 @@ struct Rf_RegisteredNativeSymbol {
  *
  * Shared by group and window functions.  Uses a small amount of R_alloc memory.
  */
-static struct R2C_dat prep_data(
+struct R2C_dat prep_data(
   SEXP dat, SEXP dat_cols, SEXP ids, SEXP flag, SEXP ctrl, SEXP so
 ) {
   if(TYPEOF(so) != STRSXP || XLENGTH(so) != 1)

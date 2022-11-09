@@ -17,9 +17,11 @@
 #'
 #' Calls the native code associated with `fun` on sequential windows along the
 #' `data` vectors.  The windows are aligned relative to a base index that starts
-#' at the first row (or first vector element when `data` is a numeric vector)
-#' of `data` and increments with the stride specified in `by`.  Window widths,
-#' alignments, and strides can be specified as varying vectors.
+#' at the first "element" of `data` (where "element" is a row if `data` is
+#' "data.frame" or similar, or simply an element if it is a vector) and
+#' increments with the stride specified in `by`.  Window widths,
+#' alignments, and strides can be specified as varying vectors (CURRENTLY ONLY
+#' SCALARS ARE SUPPORTED).
 #'
 #' There are no special optimizations beyond the use of `{r2c}` functions
 #' over regular R functions.  For wide windows there are more efficient
@@ -58,7 +60,7 @@
 #' @param width integer vector of positive, non-NA values interpreted
 #'   as window widths of values to supply to `fun` from the `data`
 #'   vectors.  Recycled together with `by` to match the length of the `data`
-#'   vectors.
+#'   vectors.  WARNING: CURRENTLY ONLY SUPPORTS SCALARS.
 #' @param by integer vector of positive, non-NA values interpreted as the stride
 #'   to increment the base index after each `fun` application  Recycled together
 #'   with `width` to match the length of the `data` vectors.
@@ -66,7 +68,7 @@
 #'   partial windows. If `FALSE`, incomplete windows will be NA.  If `TRUE`
 #'   vectors passed to `fun` may have lengths shorter than the corresponding
 #'   window sizes when the windows are partially out of bounds at the end of the
-#'   `data` vectors.
+#'   `data` vectors. WARNING: CURRENTLY ONLY SUPPORTS SCALARS.
 #' @param align vector of one of "center" (default), "left", "right", or a
 #'   positive integer representing what part of the window aligns with the base
 #'   index on the vector, where "left" is the part of the window nearest the
@@ -74,10 +76,15 @@
 #'   offset of the "left" end of the window relative to the base index, where
 #'   `0L` is equivalent to "left" and `width - 1L` equivalent to "right".  For
 #'   even length windows, the window will have one more element to the right
-#'   than to the left of the base index.  It is not possible to j
-#'   See details.
+#'   than to the left of the base index.
+#'   See details.  WARNING: CURRENTLY ONLY SUPPORTS SCALARS.
 #' @return a numeric vector the same length as the first vector in `data`.
 #' @examples
+#' r2c_mean <- r2cq(mean(x))
+#' with(
+#'   mtcars,
+#'   window_exec(r2c_mean, hp, width=5)
+#' )
 
 window_exec <- function(
   fun, width, data, MoreArgs=list(), by=1L, partial=FALSE,
@@ -86,24 +93,104 @@ window_exec <- function(
   # FIXME: add validation for shlib
   vetr(
     fun=is.function(.) && inherits(., 'r2c_fun'),
-    width=INT.POS && length(.) > 0,
+    width=INT.1.POS,
     data=(
       (numeric() || integer()) ||
       (list() && all(is.num_naked(.)) && length(.) > 0)
     ),
-    by=INT.POS && length(.) > 0,
+    by=INT.1.POS,
     partial=LGL.1,
-    align=CHR.1 && . %in% c('center', 'left', 'right'),
+    align=CHR.1 && . %in% c('center', 'left', 'right') || INT.1.POS,
     MoreArgs=list(),
     enclos=is.environment(.)
   )
+  if(is.character(align)) {
+    offset <- integer(length(align))
+    offset[align == 'center'] <- as.integer(width/2)
+    offset[align == 'right'] <- width - 1L
+  } else offset <- align
+
+  if(any(offset >= width)) {
+    # Bad check, doesn't account for recycling
+    stop(
+      "All `align` integer values must be less than the corresponding ",
+      "width value."
+  ) }
+
   obj <- get_r2c_dat(fun)
   call <- sys.call()
   window_exec_int(
-    obj, formals=formals(fun), enclos=enclos, groups=groups, data=data,
-    MoreArgs=MoreArgs, call=call
+    obj, formals=formals(fun), enclos=enclos, width=width, data=data,
+    MoreArgs=MoreArgs, by=by,
+    offset=offset, partial=partial,
+    call=call
   )
 }
+window_exec_int <- function(
+  obj, formals, enclos, width, data, MoreArgs, by, partial, offset, call
+) {
+  preproc <- obj[['preproc']]
+  shlib <- obj[['so']]
+
+  if(!is.list(data)) data <- list(data)
+  if(length(d.len <- unique(lengths(data))) > 1L)
+    stop("All `data` vectors must be the same length.")
+  if(!length(d.len)) stop("`data` may not be empty.")
+
+  # - Match Data to Parameters and Allocate ------------------------------------
+
+  alloc <- match_and_alloc(
+    do=data, MoreArgs=MoreArgs, preproc=preproc, formals=formals,
+    enclos=enclos, gmax=1L, call=call, fun=r2c::window_exec
+  )
+  stack <- alloc[['stack']]
+
+  if(ncol(stack) != 1L) stop("Internal Error: unexpected stack state at exit.")
+  if(!stack['size', 1L] == 1L) stop("`fun` must return scalar values only.")
+
+  empty.res <- FALSE
+
+  # - Run ----------------------------------------------------------------------
+
+  status <- numeric(1)
+  res.i <- which(alloc[['alloc']][['type']] == "res")
+
+  res <- if(d.len) {
+    handle <- obj[['handle']]
+    if(!is.na(shlib) && !is.loaded("run", PACKAGE=handle[['name']])) {
+      handle <- dyn.load(shlib)
+    }
+    if(!is.loaded("run", PACKAGE=handle[['name']]))
+      stop("Could not load native code.")
+
+    alp <- prep_alloc(alloc, d.len)
+
+    status <- run_window_int(
+      handle=handle[['name']],
+      dat=alp[['dat']],
+      dat_cols=alp[['dat_cols']],
+      ids=alp[['ids']],
+      flag=alp[['flag']],
+      control=alp[['control']],
+      width=width,
+      offset=offset,
+      by=by,
+      partial=partial
+    )
+    # Result vector is modified by reference
+    alp[['dat']][[res.i]]
+  } else {
+    numeric()
+  }
+  if(alloc[['alloc']][['typeof']][res.i] == "integer") res <- as.integer(res)
+
+  if(status) {
+    warning("longer object length is not a multiple of shorter object length.")
+  }
+  res
+}
+
+
 
 ## Should we be able for indices to specify a starting point for the index that
 ## is independent of the data?  Really it should be a start and end point
@@ -113,5 +200,23 @@ window_i_exec <- function(
   partial=FALSE, align='center', enclos=parent.frame()
 ) {
   NULL
+}
+
+run_window_int <- function(
+  handle, dat, dat_cols, ids, flag, control, width, offset, by, partial
+) {
+  .Call(
+    R2C_run_window,
+    handle,
+    dat,
+    dat_cols,
+    ids,
+    flag,
+    control,
+    width,
+    offset,
+    by,
+    partial
+  )
 }
 
