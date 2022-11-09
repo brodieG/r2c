@@ -325,4 +325,19 @@ group_exec <- function(
   )
 }
 
+run_group_int <- function(
+  handle, dat, dat_cols, ids, flag, control, group.sizes, group.res.sizes
+) {
+  .Call(
+    R2C_run_group,
+    handle,
+    dat,
+    dat_cols,
+    ids,
+    flag,
+    control,
+    group.sizes,
+    group.res.sizes
+  )
+}
 
