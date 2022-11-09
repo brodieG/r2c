@@ -46,4 +46,39 @@ SEXP R2C_run_group(
 
 struct const_dat {const char * name; const int value;};
 
+typedef SEXP (*r2c_dl_fun) (
+  double ** data, R_xlen_t * lens, int ** di, int * narg, int * flag, SEXP ctrl
+);
+/*
+ * Structure containing the varying data in a format for faster access
+ */
+struct R2C_dat {
+  double ** data;  // Full data (see next for details)
+  // `data` contains some meta data columns first, result vector, followed by
+  // the iterations varying data, followed by "static" data (same for every
+  // call), see I_* above for precise indices.
+  int dat_start;   // First "iteration varying" data column
+  int dat_end;     // Last "iteration varying" data column
+  int dat_count;   // dat_end - dat_start + 1 (convenience)
+  int ** datai;    // For each sub-fun, which indices in data are relevant
+  int * narg;      // For each sub-fun, how many arguments it takes
+  int * flags;     // Flag (T/F) control parameters, one for each sub-fun
+  SEXP ctrl;       // Non data, non-flag parameters
+  R_xlen_t * lens; // Length of each of the data vectors
+  r2c_dl_fun fun;  // function to apply
+};
+
+struct R2C_dat prep_data(
+  SEXP dat, SEXP dat_cols, SEXP ids, SEXP flag, SEXP ctrl, SEXP so
+);
+
+SEXP R2C_run_window(
+  SEXP so, SEXP dat, SEXP dat_cols, SEXP ids, SEXP flag,
+  SEXP ctrl, SEXP width, SEXP offset, SEXP by, SEXP partial
+);
+SEXP R2C_run_group(
+  SEXP so, SEXP dat, SEXP dat_cols, SEXP ids, SEXP flag,
+  SEXP ctrl, SEXP grp_lens, SEXP res_lens
+);
+
 #endif  /* R2C_H */

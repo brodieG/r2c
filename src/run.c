@@ -32,23 +32,6 @@ struct Rf_RegisteredNativeSymbol {
     int dummy;
 };
 /*
- * Structure containing the varying data in a format for faster access
- */
-struct R2C_dat {
-  double ** data;  // Full data (see next for details)
-  // data contains some meta data columns first, result vector, followed by the
-  // iterations varying data, followed by "static" data (same for every call)
-  int dat_start;   // First "iteration varying" data column
-  int dat_end;     // Last "iteration varying" data column
-  int dat_count;   // Number "iteration varying" data columns
-  int ** datai;    // For each sub-fun, which indices in data are relevant
-  int * narg;      // For each sub-fun, how many arguments it takes
-  int * flags;     // Flag (T/F) control parameters, one for each sub-fun
-  SEXP ctrl;       // Non data, non-flag parameters
-  R_xlen_t * lens; // Length of each of the data vectors
-  DL_FUNC fun;     // function to apply
-};
-/*
  * Common Data Restructure Steps
  *
  * Shared by group and window functions.  Uses a small amount of R_alloc memory.
@@ -76,7 +59,7 @@ static struct R2C_dat prep_data(
   const char * fun_char = "run";
   const char * dll_char = CHAR(STRING_ELT(so, 0));
   struct Rf_RegisteredNativeSymbol * symbol = NULL;
-  DL_FUNC fun = R_FindSymbol(fun_char, dll_char, symbol);
+  r2c_dl_fun fun = (r2c_dl_fun) R_FindSymbol(fun_char, dll_char, symbol);
   int dat_count = Rf_asInteger(dat_cols);
 
   // Not a foolproof check, but we need at least group varying cols + I_GRP data
