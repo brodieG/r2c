@@ -44,11 +44,17 @@ SEXP R2C_run_window(
   if(TYPEOF(partial) != LGLSXP || XLENGTH(partial) != 1L)
     Rf_error("Argument `partial` should be scalar logical.");
 
-  // This should be validated R level, but bad if wrong
   int w_int = Rf_asInteger(width);
   int o_int = Rf_asInteger(offset);
-  int b_int = Rf_asInteger(by);
+  int by_int = Rf_asInteger(by);
   int part_int = Rf_asInteger(partial);
+  Rprintf("w %d o %d b %d\n", w_int, o_int, by_int);
+
+  // This should be validated R level, but bad if wrong
+  if(w_int < 0 || o_int < 0 || o_int >= w_int || by_int < 1)
+    Rf_error(
+      "Internal Error: bad window values w %d o %d b %d.", w_int, o_int, by_int
+    );
 
   struct R2C_dat dp = prep_data(dat, dat_cols, ids, flag, ctrl, so);
 
@@ -66,57 +72,65 @@ SEXP R2C_run_window(
   // each line is doing.
   //
   // Incomplete windows are NA unless `partial` (part_int) is TRUE.
+  //
+  // We assume branch prediction / compiler will do right thing for(if())
+
 
   // - Partial Left Stub -------------------------------------------------------
 
   int wleft_int = w_int - o_int;
-  if(part_int) {
-    for(i = 0; wleft_int < w_int; ++i, ++wleft_int) {
+  Rprintf("w %d imax %d wl %d\n", w_int, i_max, wleft_int);
+  for(i = 0; wleft_int < w_int; i += by_int, wleft_int += by_int) {
+    if(part_int) {
       for(int j = dp.dat_start; j <= dp.dat_end; ++j) dp.lens[j] = wleft_int;
       (*(dp.fun))(dp.data, dp.lens, dp.datai, dp.narg, dp.flags, dp.ctrl);
       if(dp.data[I_STAT][STAT_RECYCLE] && !recycle_warn)
         recycle_warn = i + 1;
-      for(int j = dp.dat_start; j <= dp.dat_end; ++j) *(dp.data + j) += 1;
+      for(int j = dp.dat_start; j <= dp.dat_end; ++j) *(dp.data + j) += by_int;
       if(dp.lens[I_RES] != 1)
         Rf_error("Window result size is not 1 (is %jd).", dp.lens[I_RES]);
-      (*(dp.data + I_RES))++;
+    } else {
+      res[i] = NA_REAL;
     }
-  } else {
-    for(i = 0; wleft_int < w_int; ++i, ++wleft_int) res[i] = NA_REAL;
+    ++(*(dp.data + I_RES));
   }
   // - Complete Windows --------------------------------------------------------
 
   R_xlen_t i_max_main = i_max;
-  if(o_int < w_int - 1) i_max_main = i_max - (w_int - o_int);
+  if(o_int < w_int - 1) i_max_main = i_max - (w_int - o_int - 1);
+  Rprintf("w %d imax_main %d i %d\n", w_int, i_max_main, i);
 
-  // Window size always teh same, so set this once
+  // Window size always the same, so set this once
   for(int j = dp.dat_start; j <= dp.dat_end; ++j) dp.lens[j] = w_int;
 
-  for(; i < i_max_main; ++i) {
+  for(; i < i_max_main; i += by_int) {
     (*(dp.fun))(dp.data, dp.lens, dp.datai, dp.narg, dp.flags, dp.ctrl);
     if(dp.data[I_STAT][STAT_RECYCLE] && !recycle_warn)
       recycle_warn = i + 1; // g_count < R_XLEN_T_MAX
-    for(int j = dp.dat_start; j <= dp.dat_end; ++j) *(dp.data + j) += 1;
+    for(int j = dp.dat_start; j <= dp.dat_end; ++j) *(dp.data + j) += by_int;
     if(dp.lens[I_RES] != 1)
       Rf_error("Window result size is not 1 (is %jd).", dp.lens[I_RES]);
-    (*(dp.data + I_RES))++;
+    ++(*(dp.data + I_RES));
   }
   // - Partial Right Stub ------------------------------------------------------
 
+  // NEED TO FIGURE OUT WHY THE RIGHT STUB IS STARTING TOO LATE.
+
   int wright_int = w_int - o_int;
-  if(part_int) {
-    for(; i < i_max; ++i, --wright_int) {
+  Rprintf("w %d imax_main %d i %d right %d\n", w_int, i_max_main, i, wright_int);
+  for(; i < i_max; ++i, wright_int -= by_int) {
+    if(part_int) {
       for(int j = dp.dat_start; j <= dp.dat_end; ++j) dp.lens[j] = wright_int;
       (*(dp.fun))(dp.data, dp.lens, dp.datai, dp.narg, dp.flags, dp.ctrl);
       if(dp.data[I_STAT][STAT_RECYCLE] && !recycle_warn)
         recycle_warn = i + 1;
-      for(int j = dp.dat_start; j <= dp.dat_end; ++j) *(dp.data + j) += 1;
+      for(int j = dp.dat_start; j <= dp.dat_end; ++j) *(dp.data + j) += by_int;
       if(dp.lens[I_RES] != 1)
         Rf_error("Window result size is not 1 (is %jd).", dp.lens[I_RES]);
-      (*(dp.data + I_RES))++;
+    } else {
+      res[i] = NA_REAL;
     }
-  } else {
-    for(; i < i_max; ++i, --wright_int) res[i] = NA_REAL;
+    ++(*(dp.data + I_RES));
   }
 
   return Rf_ScalarReal((double) recycle_warn);

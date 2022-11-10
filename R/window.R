@@ -93,17 +93,21 @@ window_exec <- function(
   # FIXME: add validation for shlib
   vetr(
     fun=is.function(.) && inherits(., 'r2c_fun'),
-    width=INT.1.POS,
+    width=INT.1.POS && . < .Machine[['integer.max']],
     data=(
       (numeric() || integer()) ||
       (list() && all(is.num_naked(.)) && length(.) > 0)
     ),
-    by=INT.1.POS,
+    by=INT.1.POS && . < .Machine[['integer.max']],
     partial=LGL.1,
-    align=CHR.1 && . %in% c('center', 'left', 'right') || INT.1.POS,
+    align=
+      (CHR.1 && . %in% c('center', 'left', 'right')) ||
+      (INT.1.POS && . < .Machine[['integer.max']]),
     MoreArgs=list(),
     enclos=is.environment(.)
   )
+  width <- as.integer(width)
+  by <- as.integer(by)
   if(is.character(align)) {
     offset <- integer(length(align))
     offset[align == 'center'] <- as.integer(width/2)
@@ -120,7 +124,8 @@ window_exec <- function(
   obj <- get_r2c_dat(fun)
   call <- sys.call()
   window_exec_int(
-    obj, formals=formals(fun), enclos=enclos, width=width, data=data,
+    obj, formals=formals(fun), enclos=enclos,
+    width=width, data=data,
     MoreArgs=MoreArgs, by=by,
     offset=offset, partial=partial,
     call=call
@@ -163,7 +168,8 @@ window_exec_int <- function(
     if(!is.loaded("run", PACKAGE=handle[['name']]))
       stop("Could not load native code.")
 
-    alp <- prep_alloc(alloc, d.len)
+    # Size calc complicated with variable by
+    alp <- prep_alloc(alloc, d.len %/% by)
 
     status <- run_window_int(
       handle=handle[['name']],
