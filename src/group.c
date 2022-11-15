@@ -111,7 +111,8 @@ SEXP R2C_run_group(
   double * g_lens = REAL(grp_lens);
   double * r_lens = REAL(res_lens);
   R_xlen_t g_count = XLENGTH(grp_lens);
-  R_xlen_t recycle_warn = 0;  // these will be stored 1-index
+  // these will be stored 1-index, so double (see assumptions.c)
+  double recycle_warn = 0;
 
   if(g_count >= R_XLEN_T_MAX)
     Rf_error("Maximum allowed group count of %jd exceeded.", R_XLEN_T_MAX - 1);
@@ -128,9 +129,10 @@ SEXP R2C_run_group(
 
     // Showtime.  This runs the compiled version of `get_c_code` output:
     (*(dp.fun))(dp.data, dp.lens, dp.datai, dp.narg, dp.flags, dp.ctrl);
-    // Record recycling error if any
+    // Record recycling error if any, g_count < R_XLEN_T_MAX, so could use
+    // R_xlen_t here, but being safe in case code changes in future
     if(dp.data[I_STAT][STAT_RECYCLE] && !recycle_warn)
-      recycle_warn = i + 1; // g_count < R_XLEN_T_MAX
+      recycle_warn = (double)i + 1;
 
     // Increment the data pointers by group size; the last increment will be
     // one past end of data, but it will not be dereferenced so okay.
