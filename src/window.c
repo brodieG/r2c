@@ -58,80 +58,111 @@ SEXP R2C_run_window(
 
   struct R2C_dat dp = prep_data(dat, dat_cols, ids, flag, ctrl, so);
 
-  double *res = dp.data[I_RES];
+  // Varying data index (not result index).  This always references the first
+  // element of the window in-bounds of the data, so if `o_int` is 0
+  // (align="left"), then this is also the base index of the window.
+  R_xlen_t i = 0;
+  R_xlen_t i_max = dp.lens[I_RES] * by_int; // `* by` to convert to data index
 
-  R_xlen_t i_max = dp.lens[I_RES];
-  R_xlen_t i;
-  R_xlen_t recycle_warn = 0;  // these will be stored 1-index
+  // these will be stored 1-index, so double (see assumptions.c)
+  double recycle_warn = 0;
 
-  if(w_int > i_max) w_int = i_max;  // Window larger than data
+  if(w_int > i_max) w_int = i_max;         // Window larger than data
+  if(o_int > w_int - 1) o_int = w_int - 1; // Offset larger than data
 
-  // We process first incomplete windows at the beginning (left) of the data,
-  // then complete windows, and finally incomplete windows on the end (right).
-  // The loop code is copied from group.c, look there for comments as to what
-  // each line is doing.
-  //
-  // Incomplete windows are NA unless `partial` (part_int) is TRUE.
-  //
-  // We assume branch prediction / compiler will do right thing for(if())
+  // Process incomplete windows on left, then complete, windows, then incomplete
+  // on the right.  Hope branch pred / compiler will do right thing for(if())
 
+  // ***************************************************************
+  // ** LOOK AT group.c FOR MORE COMMENTS ON WHAT'S GOING ON HERE **
+  // ***************************************************************
 
   // - Partial Left Stub -------------------------------------------------------
 
-  int wleft_int = w_int - o_int;
-  Rprintf("w %d imax %d wl %d\n", w_int, i_max, wleft_int);
-  for(i = 0; wleft_int < w_int; i += by_int, wleft_int += by_int) {
+  // Index always at zero, and adjust varying vector length as more of the
+  // window comes into range.
+
+  double * dat_base = *(dp.data + I_RES);
+  int w_left = w_int - o_int;
+  Rprintf("w %d imax %d wl %d\n", w_int, i_max, w_left);
+  Rprintf("  Data at %d\n", *(dp.data + I_RES) - dat_base);
+  for(; w_left < w_int; i += by_int, w_left += by_int) {
     if(part_int) {
-      for(int j = dp.dat_start; j <= dp.dat_end; ++j) dp.lens[j] = wleft_int;
+      for(int j = dp.dat_start; j <= dp.dat_end; ++j) dp.lens[j] = w_left;
       (*(dp.fun))(dp.data, dp.lens, dp.datai, dp.narg, dp.flags, dp.ctrl);
       if(dp.data[I_STAT][STAT_RECYCLE] && !recycle_warn)
-        recycle_warn = i + 1;
-      for(int j = dp.dat_start; j <= dp.dat_end; ++j) *(dp.data + j) += by_int;
+        recycle_warn = (double)i + 1;
       if(dp.lens[I_RES] != 1)
         Rf_error("Window result size is not 1 (is %jd).", dp.lens[I_RES]);
     } else {
-      res[i] = NA_REAL;
+      **(dp.data + I_RES) = NA_REAL;
     }
     ++(*(dp.data + I_RES));
   }
+  Rprintf(
+    "  Data at %d ds %d de %d ires %d\n", *(dp.data + I_RES) - dat_base,
+    dp.dat_start, dp.dat_end, I_RES
+  );
   // - Complete Windows --------------------------------------------------------
-
-  R_xlen_t i_max_main = i_max;
-  if(o_int < w_int - 1) i_max_main = i_max - (w_int - o_int - 1);
-  Rprintf("w %d imax_main %d i %d\n", w_int, i_max_main, i);
 
   // Window size always the same, so set this once
   for(int j = dp.dat_start; j <= dp.dat_end; ++j) dp.lens[j] = w_int;
+  // Possibly skipped some initial indices b/c of `by`
+  int complete_start = w_left - w_int;
+  for(int j = dp.dat_start; j <= dp.dat_end; ++j)
+    *(dp.data + j) += complete_start;
+  // Find limit of complete windows
+  R_xlen_t i_max_main = i_max - (w_int - o_int - 1);
 
+  Rprintf("w %d imax_main %d i %d\n", w_int, i_max_main, i);
+
+  Rprintf("  Data at %d\n", *(dp.data + I_RES) - dat_base);
   for(; i < i_max_main; i += by_int) {
     (*(dp.fun))(dp.data, dp.lens, dp.datai, dp.narg, dp.flags, dp.ctrl);
     if(dp.data[I_STAT][STAT_RECYCLE] && !recycle_warn)
-      recycle_warn = i + 1; // g_count < R_XLEN_T_MAX
-    for(int j = dp.dat_start; j <= dp.dat_end; ++j) *(dp.data + j) += by_int;
+      recycle_warn = (double)i + 1;
+    // For `by` == 1, we don't need this check since we don't dereference past
+    // the end, but if `by > 1`, we end up beyond +1 of end so need to check
+    if(i + by_int <= i_max)
+      for(int j = dp.dat_start; j <= dp.dat_end; ++j) *(dp.data + j) += by_int;
     if(dp.lens[I_RES] != 1)
       Rf_error("Window result size is not 1 (is %jd).", dp.lens[I_RES]);
     ++(*(dp.data + I_RES));
   }
+  Rprintf("  Data at %d\n", *(dp.data + I_RES) - dat_base);
+
   // - Partial Right Stub ------------------------------------------------------
 
-  // NEED TO FIGURE OUT WHY THE RIGHT STUB IS STARTING TOO LATE.
+  // Index shifting, reduce window size
 
-  int wright_int = w_int - o_int;
-  Rprintf("w %d imax_main %d i %d right %d\n", w_int, i_max_main, i, wright_int);
-  for(; i < i_max; ++i, wright_int -= by_int) {
+  int w_right = i_max - i + o_int;  // in-bounds window shrinks
+
+  Rprintf(
+    "w %d imax %d imax_main %d i %d w_right %d\n", w_int, i_max, i_max_main, i,
+    w_right
+  );
+  for(; i < i_max; i += by_int, w_right -= by_int) {
     if(part_int) {
-      for(int j = dp.dat_start; j <= dp.dat_end; ++j) dp.lens[j] = wright_int;
+      for(int j = dp.dat_start; j <= dp.dat_end; ++j) dp.lens[j] = w_right;
+      Rprintf(
+        "Woohoo len %d res %f\n", dp.lens[dp.dat_start], *(dp.data[I_RES])
+      );
       (*(dp.fun))(dp.data, dp.lens, dp.datai, dp.narg, dp.flags, dp.ctrl);
+      Rprintf(
+        "Woohoo len %d res %f\n", dp.lens[dp.dat_start], *(dp.data[I_RES])
+      );
       if(dp.data[I_STAT][STAT_RECYCLE] && !recycle_warn)
-        recycle_warn = i + 1;
-      for(int j = dp.dat_start; j <= dp.dat_end; ++j) *(dp.data + j) += by_int;
+        recycle_warn = (double)i + 1;
+      if(i + by_int <= i_max)
+        for(int j = dp.dat_start; j <= dp.dat_end; ++j) *(dp.data + j) += by_int;
       if(dp.lens[I_RES] != 1)
         Rf_error("Window result size is not 1 (is %jd).", dp.lens[I_RES]);
     } else {
-      res[i] = NA_REAL;
+      **(dp.data + I_RES) = NA_REAL;
     }
     ++(*(dp.data + I_RES));
   }
+  Rprintf("Data at %d\n", *(dp.data + I_RES) - dat_base);
 
   return Rf_ScalarReal((double) recycle_warn);
 }

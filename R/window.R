@@ -38,9 +38,11 @@
 #' iteration of function application, with `by=1L` and `width=4`:
 #'
 #' ```
-#'        +--------- Base index = 4
+#' ## Window size == 4
+#'
+#'        +--------- On the 4th iteration, base index is [4]
 #'        v
-#'  1 2 3 4 5 6 7    seq_along(x)  # `x` represents 1st vector in `data`
+#'  1 2 3 4 5 6 7    seq_along(x)  # `x` represents a vector in `data`
 #'        + - - +    align = "left"
 #'        + - - +    align = 0L
 #'  + - - +          align = "right"
@@ -49,6 +51,10 @@
 #'      + - - +      align = 1L
 #'    + - - +        align = 2L
 #' ```
+#'
+#' If `align = "left"`, on the 4th iteration elements `[4:7]` will be in the
+#' window, which is also true with `align = 0L`.  If `align = "center"` (or
+#' `align = 1L`), then elements `[3:6]` will be in the window.
 #'
 #' @export
 #' @inheritParams group_exec
@@ -74,10 +80,10 @@
 #'   index on the vector, where "left" is the part of the window nearest the
 #'   first element of the vector.  Integer values represent the left-wards
 #'   offset of the "left" end of the window relative to the base index, where
-#'   `0L` is equivalent to "left" and `width - 1L` equivalent to "right".  For
-#'   even length windows, the window will have one more element to the right
-#'   than to the left of the base index.
-#'   See details.  WARNING: CURRENTLY ONLY SUPPORTS SCALARS.
+#'   `0L` is equivalent to "left" and `width - 1L` and greater equivalent to
+#'   "right".  For even length windows, the window will have one more element to
+#'   the right than to the left of the base index.  See details.  WARNING:
+#'   CURRENTLY ONLY SUPPORTS SCALARS.
 #' @return a numeric vector the same length as the first vector in `data`.
 #' @examples
 #' r2c_mean <- r2cq(mean(x))
@@ -85,6 +91,11 @@
 #'   mtcars,
 #'   window_exec(r2c_mean, hp, width=5)
 #' )
+#' r2c_len <- r2cq(length(x))
+#'
+#' window_exec(r2c_len, rep(1, 5), width=5, align='left', partial=TRUE)
+#' window_exec(r2c_len, rep(1, 5), width=5, align='center', partial=TRUE)
+#' window_exec(r2c_len, rep(1, 5), width=5, align='right', partial=TRUE)
 
 window_exec <- function(
   fun, width, data, MoreArgs=list(), by=1L, partial=FALSE,
@@ -93,16 +104,16 @@ window_exec <- function(
   # FIXME: add validation for shlib
   vetr(
     fun=is.function(.) && inherits(., 'r2c_fun'),
-    width=INT.1.POS && . < .Machine[['integer.max']],
+    width=INT.1.POS.STR && . <= .Machine[['integer.max']],
     data=(
       (numeric() || integer()) ||
       (list() && all(is.num_naked(.)) && length(.) > 0)
     ),
-    by=INT.1.POS && . < .Machine[['integer.max']],
+    by=INT.1.POS && . <= .Machine[['integer.max']],
     partial=LGL.1,
     align=
       (CHR.1 && . %in% c('center', 'left', 'right')) ||
-      (INT.1.POS && . < .Machine[['integer.max']]),
+      (INT.1.POS && . <= .Machine[['integer.max']]),
     MoreArgs=list(),
     enclos=is.environment(.)
   )
@@ -110,12 +121,12 @@ window_exec <- function(
   by <- as.integer(by)
   if(is.character(align)) {
     offset <- integer(length(align))
-    offset[align == 'center'] <- as.integer(width/2)
+    offset[align == 'center'] <- as.integer((width - 1)/2)
     offset[align == 'right'] <- width - 1L
   } else offset <- align
 
   if(any(offset >= width)) {
-    # Bad check, doesn't account for recycling
+    # Bad check, doesn't account for recycling (ok for scalar)
     stop(
       "All `align` integer values must be less than the corresponding ",
       "width value."
