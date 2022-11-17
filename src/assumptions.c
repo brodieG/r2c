@@ -46,6 +46,12 @@ SEXP R2C_assumptions() {
   )
     Rf_error("Double cannot hold R_LEN_T_MAX without precision loss.");
 
+  // For window application, we want to remap the window starts and ends to an
+  // all-positive domain.  With a max window size of int we can definitely use
+  // R_xlen_t for that (in the positive range).  But what if we want to
+  // ultimately allow R_xlen_t window sizes?  That will never make sense except
+  // for very large `by` values.
+
   return Rf_ScalarLogical(1);
 }
 
