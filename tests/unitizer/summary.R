@@ -92,7 +92,6 @@ unitizer_sect('mean1', {
   identical(r2c_mean1_na(x.na, na.rm=TRUE), mean1(x.na, na.rm=TRUE))
 })
 unitizer_sect('length', {
-  r2c_len <- r2cq(length(x))
   r2c_len(numeric())
   r2c_len(integer())
   r2c_len(x)

@@ -20,7 +20,9 @@ added in the future.}
 \item{data}{a numeric vector, or a list of numeric vectors, each vector the
 same length as the vector(s) in \code{groups}.  If a named list, the vectors
 will be matched to \code{fun} parameters by those names.  Elements without names
-are matched positionally.  If a list must contain at least one element.}
+are matched positionally.  If a list must contain at least one element.
+Conceptually, this parameter is used similarly to \code{envir} parameter to
+\code{\link[base:eval]{base::eval}} when that is a list (see \code{enclos}).}
 
 \item{MoreArgs}{a list of R objects to pass on as group-invariant arguments
 to \code{fun}.  Unlike with \code{data}, each of the objects therein are passed in
@@ -29,8 +31,8 @@ are intended to remain constant group to group.  Matching of these objects
 to \code{fun} parameters is the same as for \code{data}, with positional matching
 occurring after the elements in \code{data} are matched.}
 
-\item{enclos}{environment to use as the \code{enclos} parameter when evaluating
-expressions or matching calls.}
+\item{enclos}{environment to use as the \code{enclos} parameter to
+\code{\link[base:eval]{base::eval}} when evaluating expressions or matching calls (see \code{data}).}
 }
 \value{
 numeric vector

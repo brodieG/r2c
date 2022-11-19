@@ -2,11 +2,19 @@
 
 # To Do / Questions
 
-## Current
+* `DYNLOAD` warnings around `run()`; maybe that function doesn't need to be of
+  the type DYNLOAD?  We know what the interface of it is, so we just need to
+  check whether that's compatible with R's compilation mechanism.
+* Test that everything works if there is no group varying data (i.e. everything
+  fed through MoreArgs).  Not completely trivial to test as we need a function
+  that allows us to specify a `data` parameter, but then uses it as a control
+  instead of data (at least for `group_exec`).  We just need the group varying
+  data to be referenced somewhere in the call, which 
+* Recycle warning for windows, does it make sense?  It might with the partial
+  windows, but for the main section we should only need to check once?
+* Be sure to test a window that is wider than the data to see that partial
+  windows are computed correctly on both sides?  Should be okay.
 
-* Migrate to tapply structure.  More generally, explain interface?
-* Allow more then `INT_MAX` groups (labels are limiting right now)?
-* What if compilation fails, do we have good error messages?
 
 ## For CRAN
 
@@ -14,9 +22,16 @@
 * Figure out why winbuilder doesn't work.
 * Errors in `match.call` that show the deparsed argument might deparse
   differently on different systems (`group_sum` error tests).
+* Add iterator breaks?
 
 ## Other
 
+* Special case of constant result lengths could be an optimization for group
+  where we don't have to generate the vector, although there should always be
+  few groups relative to vector elements, so complexity not worth it?
+* Migrate to tapply structure.  More generally, explain interface?
+* Allow more then `INT_MAX` groups (labels are limiting right now)?
+* What if compilation fails, do we have good error messages?
 * Don't use double for group sizes unless we have groups that are too large.
   **probably not worth it** b/c the group sizes result is only as big as the
   number of groups, so very small in the grand scheme of things.  First level is
@@ -220,6 +235,129 @@ doesn't make any sense.
 * Really need to figure out whether we want a formal interface to the functions.
   It could be auto-generated from all the unbound symbols like gsubfn does it.
 * Annotate code with the call that it corresponds to
+
+# Window Implementation
+
+## r2c
+
+Advance: group size -> by
+Length: group size -> window
+
+Additionally, need to handle cases where the window overflows and fill it.
+
+Currently we advance the data pointer by group size, but instead we want to
+advance by 'by'.
+
+So we need to split the `grp_lens` into those two different things, that are the
+same for the group mode.
+
+Additionally, we need to add support for the recycling of the indices.  For
+simplicity we could start by recycling them in R?  Not ideal as it creates big
+vectors that are completely unnecessary for the default case of scalar offset
+and scalar window.  And these vectors are large.
+
+Need to ensure that we have nothing in the offset vector that causes a problem.
+
+Likely want a special branch for the scalar-scalar default case.
+
+Currently the code assumes that `g_lens` is equal in size to the number of
+offsets, which certainly won't be the case if we're recycling.  This also means
+that the looping is completely different because for the window case we're
+recycling offset and group size until the time we run out of data.  So we're
+going to have a double nested loop with a break.
+
+We need a check that the final result is scalar as it's not guaranteed ex-ante?
+We could guarantee it ex-ante, but that's dangerous if we're wrong (but then all
+our size calculations would be wrong anyway).
+
+What if we allow non-scalar results?  Probably immediate complication is that we
+can't just go straight to "NA" result when windows are OOB.  If we do resolve
+that, we need to do a first pass pre-computing the result vector size.
+
+For now focus on developing the scalar step and scalar window size, and
+recognize the possibility for:
+
+* Vector of steps.
+* Vector of window sizes.
+* A location vector to allow data to have different positions than their rank
+  in the input vector.
+
+## For Benchmarks
+
+* slider
+* data.table
+* zoo rollapply
+
+
+## Others
+
+### data.table
+
+#### Key Points
+
+* Slow and fast algorithm
+* Adaptive width
+
+#### Details
+
+https://github.com/Rdatatable/data.table/pull/5441#issuecomment-1236104263
+
+### Slider
+
+#### Key Points
+
+* Irregular series can still be windowed when providing an index.
+* Uses segment trees for the fast calculations to reduce cost from O(n^2) to
+  O(nlogn)
+* Uses before/after instead of left/center/right for more flexible window
+  computation.
+
+#### Details
+
+Interesting mention of "segment trees".  This allows to partially cache sums by
+pre-aggregating the vector in a binary fashion, and then re-using the aggregates
+when possible.
+
+Also interesting that instead of using "left", "right", etc., it uses before and
+after.
+
+Would it work with variance?  What does it generalize to?
+
+    sum((x - mean(x))^2)
+
+Default is to return a list.
+
+Concept of index column for irregular series.
+
+Referenced paper also has a few other interesting topics:
+
+* Partitions, where you compute the sliding function within each partition
+  independently.
+* Variable size windows, where you cannot easily deal with removal/addition
+  window because you don't know how much you need to remove/add and doing so
+  could require scanning the entire thing again.
+
+We can compute the variance of two buckets from the individual stats according
+to "Maintaining variance and k-medians over data stream windows." (referenced in
+[1])
+
+    n<i,j> = n<i> + n<j>
+    u<i,j> = (n<i>*u<i> + n<j>*u<j>) / (n<i> + n<j>)
+    V<i,j> = V<i> + V<j> + (n<i>*n<j> / n<i,j>) * (u<i> - u<j>)^2
+
+So it should be possible to derive the equivalent formulas for most statistics
+for combining buckets, but there might not be an automatic way of doing so given
+a function (hard to believe there would be looking at the above).  Once we have
+the statistics we can use segment trees to govern how we combine things.
+
+So ultimately this business comes down to how much it costs in common use cases
+to re-run the entire function.
+
+[1]: https://www.researchgate.net/publication/221559611_Variance_estimation_over_sliding_windows/link/56a2194208ae2afab885c5ba/download
+
+### runner
+
+Doesn't seem to add too much interesting.
 
 # Interface
 
@@ -1029,12 +1167,29 @@ Yes, we only append the numeric data.
 
 # Other Implementations
 
+## ast2ast
+
+https://github.com/Konrad1991/ast2ast/
+
+## sph-sc
+
+Scheme to C via @wdkrnls (Kyle Andrews).
+
+## armacmp
+
+https://github.com/dirkschumacher/armacmp
+
+## nCompiler
+
+https://github.com/nimble-dev/nCompiler
+
 ## Graal
 
 Main question here is how limiting the R-C boundary is.  Is it the case that
 code such as `data.table` is not any faster?  Does that even run?  How many of
 the packages actually work?  What stuff does not work?  Seems like there should
 be a bit of stuff that doesn't per TK.
+
 
 ## Renjin
 

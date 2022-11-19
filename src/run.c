@@ -31,94 +31,18 @@ extern int CONST_N;
 struct Rf_RegisteredNativeSymbol {
     int dummy;
 };
-
 /*
- * Compute Group Data
+ * Common Data Restructure Steps
  *
- * @param g sorted group indices
+ * Shared by group and window functions.  Uses a small amount of R_alloc memory.
  */
-
-SEXP R2C_group_sizes(SEXP g) {
-  if(TYPEOF(g) != INTSXP)
-    Rf_error("Argument `g` should be an integer vector.");
-
-  int prt = 0;
-  int *g_int = INTEGER(g);
-  R_xlen_t glen = XLENGTH(g);
-  R_xlen_t gn = 1;  // At least one group, possibly zero sized
-
-  if (glen > 1) {
-    int g_int_val = *g_int;
-    for(R_xlen_t gi = 1; gi < glen; ++gi) {
-      int g_int_prev_val = g_int_val;
-      g_int_val = *(++g_int);
-      if(g_int_val != g_int_prev_val) ++gn;
-  } }
-  SEXP gsize_sxp = PROTECT(Rf_allocVector(REALSXP, gn)); ++prt;
-  SEXP glabs_sxp = PROTECT(Rf_allocVector(INTSXP, gn)); ++prt;
-  g_int = INTEGER(g);
-
-  double *gsize = REAL(gsize_sxp);
-  int *glabs = INTEGER(glabs_sxp);
-  double gmax = 0;
-
-  if(glen == 0) {
-    glabs[0] = 0;
-    *gsize = 0.;
-  } else if(glen == 1) {
-    *gsize = (double) glen;
-    *glabs = *g_int;
-  } else if (glen > 1) {
-    double gsize_i = 0;
-    int g_int_val = *g_int;
-    *(glabs++) = g_int_val;
-    for(R_xlen_t gi = 1; gi < glen; ++gi) {
-      int g_int_prev_val = g_int_val;
-      g_int_val = *(++g_int);
-      ++gsize_i;
-      // Group changed, record prior group size (recall we start one lagged)
-      if(g_int_val != g_int_prev_val) {
-        *(gsize++) = gsize_i;
-        if(gsize_i > gmax) gmax = gsize_i;
-        *(glabs++) = g_int_val;
-        gsize_i = 0;
-      }
-    }
-    // One extra item in the trailing group we will not have counted
-    *gsize = gsize_i + 1;
-    if(*gsize > gmax) gmax = *gsize;
-  }
-  SEXP res = PROTECT(Rf_allocVector(VECSXP, 3)); ++prt;
-  SEXP gmax_sxp = PROTECT(Rf_ScalarReal(gmax)); ++prt;
-  SET_VECTOR_ELT(res, 0, gsize_sxp);
-  SET_VECTOR_ELT(res, 1, glabs_sxp);
-  SET_VECTOR_ELT(res, 2, gmax_sxp);
-  UNPROTECT(prt);
-  return res;
-}
-
-SEXP R2C_run_internal(
-  SEXP so,
-  // starts with the status vector, followed by the result vector, then followed
-  // by the group varying data, and finally any collected external references
-  // afterwards.
-  SEXP dat,
-  // How many of the columns of `dat` are of the group varying type.
-  SEXP dat_cols,
-  SEXP ids,
-  SEXP flag,
-  SEXP ctrl,
-  SEXP grp_lens,
-  SEXP res_lens
+struct R2C_dat prep_data(
+  SEXP dat, SEXP dat_cols, SEXP ids, SEXP flag, SEXP ctrl, SEXP so
 ) {
   if(TYPEOF(so) != STRSXP || XLENGTH(so) != 1)
     Rf_error("Argument `so` should be a scalar string.");
-  if(TYPEOF(dat_cols) != INTSXP)
+  if(TYPEOF(dat_cols) != INTSXP && XLENGTH(dat_cols) != 1)
     Rf_error("Argument `dat_cols` should be scalar integer.");
-  if(TYPEOF(grp_lens) != REALSXP)
-    Rf_error("Argument `grp_lens` should be a real vector.");
-  if(TYPEOF(res_lens) != REALSXP || XLENGTH(grp_lens) != XLENGTH(res_lens))
-    Rf_error("Argument `res_lens` should REALSXP and same length as `grp_lens`.");
   if(TYPEOF(dat) != VECSXP)
     Rf_error("Argument `data` should be a list.");
   if(TYPEOF(ids) != VECSXP)
@@ -135,16 +59,11 @@ SEXP R2C_run_internal(
   const char * fun_char = "run";
   const char * dll_char = CHAR(STRING_ELT(so, 0));
   struct Rf_RegisteredNativeSymbol * symbol = NULL;
-  DL_FUNC fun = R_FindSymbol(fun_char, dll_char, symbol);
+  r2c_dl_fun fun = (r2c_dl_fun) R_FindSymbol(fun_char, dll_char, symbol);
   int dat_count = Rf_asInteger(dat_cols);
-  R_xlen_t g_count = XLENGTH(grp_lens);
-  if(g_count >= R_XLEN_T_MAX)
-    Rf_error("Maximum allowed group count of %jd exceeded.", R_XLEN_T_MAX - 1);
-  double * g_lens = REAL(grp_lens);
-  double * r_lens = REAL(res_lens);
 
-  // Not a foolproof check, but we need at least group varying cols + 2 data
-  if(dat_count < 0 || dat_count > XLENGTH(dat) - 2)
+  // Not a foolproof check, but we need at least group varying cols + I_GRP data
+  if(dat_count < 0 || dat_count > XLENGTH(dat) - I_GRP)
     Rf_error("Internal Error: bad data col count.");
 
   // Retructure data to be seakable without overhead of VECTOR_ELT
@@ -172,46 +91,22 @@ SEXP R2C_run_internal(
         "Internal Error: non-integer data at %jd (%s).\n",
         (intmax_t) i, Rf_type2char(TYPEOF(elt))
       );
-    // Each call accesses some numbers of elements from data, where the last one
-    // is the result of evaluating the call (by convention)
+    // Each call accesses some numbers of elements from data, where the last
+    // accessed element receives the result of the call (by convention)
     *(datai + i) = INTEGER(elt);
     *(narg + i) = (int) XLENGTH(elt) - 1;
   }
-  // Integer flags representing TRUE/FALSE control parameters
-  int * flag_int = INTEGER(flag);
-  int dat_start = I_GRP;
-  int dat_end = I_GRP + dat_count - 1;
-  R_xlen_t grp_recycle_warn = 0;  // these will be stored 1-index
-
-  // Compute.  Result will be in `data[I_RES]` and is updated by reference
-  for(R_xlen_t i = 0; i < g_count; ++i) {
-    R_xlen_t g_len = (R_xlen_t) g_lens[i];  // rows in current group
-    R_xlen_t r_len = (R_xlen_t) r_lens[i];  // group result size
-
-    // Update group length and result length; note: `lens` should be updated by
-    // the C functions to reflect the size of the intermediate results
-    for(int j = dat_start; j <= dat_end; ++j) lens[j] = g_len;
-
-    (*fun)(data, lens, datai, narg, flag_int, ctrl);
-
-    // Record recycling error if any
-    if(data[I_STAT][STAT_RECYCLE] && !grp_recycle_warn)
-      grp_recycle_warn = i + 1; // g_count < R_XLEN_T_MAX
-
-    // Increment the data pointers by group size; the last increment will be
-    // one past end of data, but it will not be dereferenced so okay.
-    for(int j = dat_start; j <= dat_end; ++j) *(data + j) += g_len;
-    if(lens[I_RES] != r_len)
-      Rf_error(
-        "Group result size does not match expected (%jd vs expected %jd).",
-        lens[I_RES], r_len
-      );
-
-    // Increment to the next result slot; the last increment will be
-    // one past end of data, but it will not be dereferenced so okay.
-    *(data + I_RES) += r_len;
-  }
-  // Return the recycle status flag; if we add more in the future we'll need to
-  // adapt the logic a little for multiple flags
-  return Rf_ScalarReal((double) grp_recycle_warn);
+  struct R2C_dat res = {
+    .data = data,
+    .datai = datai,
+    .dat_start = I_GRP,
+    .dat_end = I_GRP + dat_count - 1,
+    .dat_count = dat_count,
+    .narg = narg,
+    .lens = lens,
+    .flags = INTEGER(flag),
+    .ctrl = ctrl,
+    .fun = fun
+  };
+  return res;
 }
