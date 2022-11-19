@@ -48,7 +48,6 @@ SEXP R2C_run_window(
   int o_int = Rf_asInteger(offset);
   int by_int = Rf_asInteger(by);
   int part_int = Rf_asInteger(partial);
-  Rprintf("w %d o %d b %d\n", w_int, o_int, by_int);
 
   // This should be validated R level, but bad if wrong
   if(w_int < 0 || o_int < 0 || o_int >= w_int || by_int < 1)
@@ -61,18 +60,9 @@ SEXP R2C_run_window(
   // these will be stored 1-index, so double (see assumptions.c)
   double recycle_warn = 0;
 
-  // There are (at least) two possible solutions for dealing with the window
-  // being OOB on either side of the data.  Either we handle each of the four
-  // possibilities (1 - both ends OOB, 2,3 - one end OOB, 4 - neither), or we
-  // remap the ends into a domain that is all inbounds, and for each loop
-  // iteration remap back to the data domain.
-  //
-  // We chose the first approach so we don't have to worry about overflows and
-  // data type conversions / compatibility, etc.  This comes at the cost of code
-  // repeated four times and all the drawbacks that has.
-  //
-  // Remap width to end point.  Offset (o_int) then represents how many window
-  // elements are oob to the "left" of the data in the first iteration.
+  // Make a copy of the base data pointers
+  double ** dat_base = (double **) R_alloc(dp.dat_end, sizeof(double *));
+  for(int j = dp.dat_start; j <= dp.dat_end; ++j) dat_base[j] = dp.data[j];
 
   // ***************************************************************
   // ** LOOK AT group.c FOR MORE COMMENTS ON WHAT'S GOING ON HERE **
@@ -82,118 +72,40 @@ SEXP R2C_run_window(
   // from there, and it is documented there.
 
   R_xlen_t d_size = dp.lens[dp.dat_start];
-  R_xlen_t end = w_int - o_int;
-  R_xlen_t start = 0;
-  R_xlen_t len = 0;
-  R_xlen_t i = 0;
+  R_xlen_t start = 0; // start of window, reset to 0 if OOB based on offset
+  R_xlen_t len = 0;   // length of window, trim data if OOB based on start
+  R_xlen_t i = 0;     // base index, will scan through the data vector(s)
 
-  // Adjust initial value of the window and offset to fit data
-  if(end >= d_size) end = d_size - 1;
-  if(o_int >= d_size) o_int = d_size - 1;
+  // This is not super optimized.  There are common special cases (e.g. window
+  // fully in bounds) that require less work than those partially out of bounds,
+  // so we could split the loop.  In testing though there does not seem to be
+  // that much overhead, as it's only a significant portion of the work with big
+  // windows, and if windows are big, the actual function evaluation will be
+  // slow relative to the bookkeeping of the start/len variables.
 
-  Rprintf(
-    "d_size %d o_int %d start %d end %d len %d\n",
-    d_size, o_int, start, end, len
-  );
-  // At most three of the sections will execute for any given window/offset/data
-  // combination (e.g. you can't have a combo that will be Both OOB and Both IB)
-  // We have not spent much time trying to optimize what follows.  Hope compiler
-  // and branch prediction are good with all the nested business.
-
-  // - Left OOB Right IB -------------------------------------------------------
-
-  Rprintf("L-OOB R-IB\n");
-  cond1 = (d_size - len) / by_int;
-  cond2 = o_int / by_int;
-
-
-  len = end + 1;
-  for(; o_int > 0 && len <= d_size; o_int -= by_int, len += by_int) {
-    Rprintf("  o %d start %d end %d len %d\n", o_int, start, end, len);
-    if(part_int) {
-      for(int j = dp.dat_start; j <= dp.dat_end; ++j) dp.lens[j] = len;
-      (*(dp.fun))(dp.data, dp.lens, dp.datai, dp.narg, dp.flags, dp.ctrl);
-      if(dp.data[I_STAT][STAT_RECYCLE] && !recycle_warn)
-        recycle_warn = (double)start + 1;
-      if(dp.lens[I_RES] != 1)
-        Rf_error("Window result size is not 1 (is %jd).", dp.lens[I_RES]);
-    } else {
-      **(dp.data + I_RES) = NA_REAL;
+  for(i = 0; i < d_size; i += by_int) {
+    int incomplete = 0;
+    start = i - o_int;
+    len = w_int;
+    if(start < 0) {             // OOB due to offset
+      len += start;
+      start = 0;
+      incomplete = 1;
     }
-    ++(*(dp.data + I_RES));
-  }
-  if(len > d_size) len = d_size;
-  end = len - 1;
-  i = 
-
-  // - Both OOB ----------------------------------------------------------------
-
-  // PROBLEM WITH CURRENT APPROACH IS WE'RE NOT TRACKING HOW FAR THROUGH THE
-  // DATA OUR INDEX HAS MOVED, SO WE DON'T KNOW WHEN TO STOP.  THIS IS REALLY A
-  // HUGE MESS, SERIOUSLY RECONSIDER WHETHER WE NEED TO RECAST EVERYTHING INTO A
-  // SPACE WE CAN SAFELY ITERATE AND JUST RECOMPUTE THE ENDS AT EACH
-  // ITERATION...  Otherwise we have to carefully pre-compute how many steps we
-  // need to do at each point, and keep track of the base index, and know when
-  // to stop.
-
-  Rprintf("BOTH-OOB\n");
-  // len constant of *data* size, either all NA, or all the same number
-  for(int j = dp.dat_start; j <= dp.dat_end; ++j) dp.lens[j] = d_size;
-  if(o_int > 0) {
-    Rprintf("  o %d start %d end %d len %d\n", o_int, start, end, len);
-    if(part_int) {
-      (*(dp.fun))(dp.data, dp.lens, dp.datai, dp.narg, dp.flags, dp.ctrl);
-      if(dp.data[I_STAT][STAT_RECYCLE] && !recycle_warn)
-        recycle_warn = (double)start + 1;
-      if(dp.lens[I_RES] != 1)
-        Rf_error("Window result size is not 1 (is %jd).", dp.lens[I_RES]);
-    } else {
-      **(dp.data + I_RES) = NA_REAL;
+    if(len + start > d_size) {  // OOB due to start/width/offset
+      len = d_size - start;
+      incomplete = 1;
     }
-    double res_val = **(dp.data + I_RES);
-    ++(*(dp.data + I_RES));
-    o_int -= by_int;
-
-    // Copy result into whole result vector (use memcpy?)
-    for(; o_int > 0; o_int -= by_int, ++(*(dp.data + I_RES)))
-      **(dp.data + I_RES) = res_val;
-
-    if(o_int > 0 || o_int <= -by_int)
-      Rf_error("Internal Error: bad window start calc 1 (offset %d).", o_int);
-  }
-  // - Both IB -----------------------------------------------------------------
-
-  Rprintf("BOTH-IB\n");
-  start = -o_int;  // o_int <= 0; by could have caused skipping some values
-  R_xlen_t end_max = d_size - 1;
-  // Window fully in bounds, len constant *window* size
-  for(int j = dp.dat_start; j <= dp.dat_end; ++j) dp.lens[j] = w_int;
-  for(; end < end_max; end += by_int, start += by_int) {
-    Rprintf("  o %d start %d end %d len %d\n", o_int, start, end, len);
-    (*(dp.fun))(dp.data, dp.lens, dp.datai, dp.narg, dp.flags, dp.ctrl);
-    if(dp.data[I_STAT][STAT_RECYCLE] && !recycle_warn)
-      recycle_warn = (double)start + 1;
-    // For `by` == 1, we don't need this check since we don't dereference past
-    // the end, but if `by > 1`, we end up beyond +1 of end so need to check
-    if(start + by_int <= d_size)
-      for(int j = dp.dat_start; j <= dp.dat_end; ++j) *(dp.data + j) += by_int;
-    if(dp.lens[I_RES] != 1)
-      Rf_error("Window result size is not 1 (is %jd).", dp.lens[I_RES]);
-    ++(*(dp.data + I_RES));
-  }
-  // - Right OOB Left IB -------------------------------------------------------
-
-  Rprintf("R-OOB L-IB\n");
-  len = d_size - start;
-  for(; start < d_size; start += by_int, len -= by_int) {
-    Rprintf("  o %d start %d end %d len %d\n", o_int, start, end, len);
-    if(part_int) {
-      for(int j = dp.dat_start; j <= dp.dat_end; ++j) dp.lens[j] = len;
+    if(part_int || !incomplete) {
+      for(int j = dp.dat_start; j <= dp.dat_end; ++j) {
+        dp.data[j] = dat_base[j] + start;
+        dp.lens[j] = len;
+      }
       (*(dp.fun))(dp.data, dp.lens, dp.datai, dp.narg, dp.flags, dp.ctrl);
+      // Unlike with groups, either none or all would warn, so we shouldn't have
+      // to check every single step.
       if(dp.data[I_STAT][STAT_RECYCLE] && !recycle_warn)
         recycle_warn = (double)start + 1;
-      if(start + by_int <= d_size)
-        for(int j = dp.dat_start; j <= dp.dat_end; ++j) *(dp.data + j) += by_int;
       if(dp.lens[I_RES] != 1)
         Rf_error("Window result size is not 1 (is %jd).", dp.lens[I_RES]);
     } else {

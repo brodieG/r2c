@@ -179,7 +179,8 @@ window_exec_int <- function(
     if(!is.loaded("run", PACKAGE=handle[['name']]))
       stop("Could not load native code.")
 
-    # Size calc complicated with variable by
+    # Result size must account for the `by` step-size, will be complicated if
+    # not scalar is allowed
     alp <- prep_alloc(alloc, d.len %/% by)
 
     status <- run_window_int(
