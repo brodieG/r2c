@@ -123,7 +123,7 @@ window_exec <- function(
     offset <- integer(length(align))
     offset[align == 'center'] <- as.integer((width - 1)/2)
     offset[align == 'right'] <- width - 1L
-  } else offset <- align
+  } else offset <- as.integer(align)
 
   if(any(offset >= width)) {
     # Bad check, doesn't account for recycling (ok for scalar)
