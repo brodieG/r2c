@@ -282,6 +282,12 @@ recognize the possibility for:
 * A location vector to allow data to have different positions than their rank
   in the input vector.
 
+## For Benchmarks
+
+* slider
+* data.table
+* zoo rollapply
+
 
 ## Others
 

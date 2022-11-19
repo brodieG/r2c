@@ -1,0 +1,77 @@
+
+
+    library(r2c)
+    conv <- r2cq(sum(x * y))
+    n <- 1e7
+    w <- 100
+    before <- as.integer((w - 1)/2)
+    after <- w - before - 1
+    x <- runif(n) * runif(n)
+    y <- rep(1, w)
+
+    system.time(res0 <- window_exec(conv, x, width=w, align='center'))
+    ##    user  system elapsed
+    ##   1.573   0.007   1.593
+    system.time(res1 <- filter(x, y))
+    ##    user  system elapsed
+    ##   4.961   0.089   5.099
+    range(res0 - res1, na.rm=TRUE)
+    ## [1] -3.552714e-14  3.907985e-14
+
+    library(slider)
+    r2c_sum <- r2cq(sum(x))
+    system.time(res.s <- slide_sum(x, before=before, after=after, complete=TRUE))
+    ##    user  system elapsed
+    ##   0.938   0.012   0.960
+
+    system.time(res.r <- window_exec(r2c_sum, x, width=w, align='center'))
+    ##    user  system elapsed
+    ##   0.889   0.004   0.898
+    all.equal(res.s, res.r)
+    range(res.s - res.r, na.rm=TRUE)
+    ## [1] -7.105427e-15  3.552714e-15
+
+    library(RcppRoll)
+    system.time(res.cpp <- roll_sum(x, w, align='center', fill=NA))
+    ##    user  system elapsed
+    ##   0.882   0.003   0.890
+    all.equal(res.cpp, res.r)
+    range(res.cpp - res.r, na.rm=TRUE)
+    ## [1] -3.552714e-14  3.552714e-14
+
+    library(zoo)
+    system.time(res.zoo <- rollsum(x, w, align='center', fill=NA))
+    ##    user  system elapsed
+    ##   5.387   0.569   6.262
+
+
+Pretty volatile timings here, probably need to gc first always.
+
+    library(data.table)
+    system.time(res.dt <- frollsum(x, w, align='center'))
+    ##   user  system elapsed
+    ##  0.082   0.097   0.234
+    ##  0.064   0.034   0.165
+    ##  0.045   0.000   0.047
+    ##  0.045   0.000   0.046
+    ##  0.046   0.000   0.047
+    ##  0.060   0.029   0.090
+    all.equal(res.r, res.dt)
+    ## [1] TRUE
+    range(res.r - res.dt, na.rm=TRUE)
+    ## [1] -7.105427e-15  7.105427e-15
+
+For the faster times, it's impressive how close to just summing 1e7 values that
+gets:
+
+    system.time(res.r <- sum(x))
+    ##  user  system elapsed
+    ## 0.039   0.000   0.040
+
+Scaling of online algo?  Will need to test with `sys.time`.
+
+    system.time(res.r <- window_exec(r2c_sum, x, width=1, align='center'))
+    ##   user  system elapsed
+    ##  0.163   0.000   0.165
+
+There is not that much overhead.
