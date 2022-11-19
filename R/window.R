@@ -181,7 +181,8 @@ window_exec_int <- function(
 
     # Result size must account for the `by` step-size, will be complicated if
     # not scalar is allowed
-    alp <- prep_alloc(alloc, d.len %/% by)
+    r.len <- (d.len - 1L) %/% by + 1L
+    alp <- prep_alloc(alloc, r.len)
 
     status <- run_window_int(
       handle=handle[['name']],
