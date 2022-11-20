@@ -2,6 +2,7 @@
 
 # To Do / Questions
 
+* Test that 
 * `DYNLOAD` warnings around `run()`; maybe that function doesn't need to be of
   the type DYNLOAD?  We know what the interface of it is, so we just need to
   check whether that's compatible with R's compilation mechanism.
@@ -14,6 +15,12 @@
   windows, but for the main section we should only need to check once?
 * Be sure to test a window that is wider than the data to see that partial
   windows are computed correctly on both sides?  Should be okay.
+* What happens with `by` == `width` for `window_i_exec`.  It will cause values
+  on the boundary to be included in two adjacent windows.  Is that bad?  It's
+  the opposite of `window_exec` where they are not.  If we change it to be
+  closed(?) on the right though then what is the meaning of `align='right'`?
+  Right now we define that as `width`.  Do we allow ourselves to say that with
+  `align='right'` the base index is not actually included in the window?
 
 
 ## For CRAN

@@ -26,15 +26,6 @@
 #include <Rversion.h>
 #include <stdint.h>
 
-SEXP R2C_assumptions(void);
-SEXP R2C_constants(void);
-SEXP R2C_group_sizes(SEXP g);
-SEXP R2C_run_group(
-  SEXP so, SEXP dat, SEXP dat_cols,
-  SEXP ids, SEXP flag, SEXP ctrl,
-  SEXP grp_lens, SEXP res_lens
-);
-
 // Important indices in the alloc data (0-base)
 #define I_STAT      0   // status flags
 #define I_RES       1   // final call result
@@ -68,6 +59,10 @@ struct R2C_dat {
   r2c_dl_fun fun;  // function to apply
 };
 
+SEXP R2C_assumptions(void);
+SEXP R2C_constants(void);
+SEXP R2C_group_sizes(SEXP g);
+
 struct R2C_dat prep_data(
   SEXP dat, SEXP dat_cols, SEXP ids, SEXP flag, SEXP ctrl, SEXP so
 );
@@ -79,6 +74,11 @@ SEXP R2C_run_window(
 SEXP R2C_run_group(
   SEXP so, SEXP dat, SEXP dat_cols, SEXP ids, SEXP flag,
   SEXP ctrl, SEXP grp_lens, SEXP res_lens
+);
+SEXP R2C_run_window_i(
+  SEXP so, SEXP dat, SEXP dat_cols, SEXP ids, SEXP flag,
+  SEXP ctrl, SEXP width, SEXP offset,
+  SEXP by_sxp, SEXP index_sxp, SEXP start_sxp, SEXP end_sxp
 );
 
 #endif  /* R2C_H */

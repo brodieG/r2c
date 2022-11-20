@@ -306,6 +306,8 @@ optimization.
   group meta data for possible re-use (taken from `collapse::GRP`).
 * [Achim Zeileis][11] et al. for `rollapply` in [`{zoo}`][12] from the design of
   which `window_exec` borrows elements.
+* [David Vaughan][13] for ideas on window functions, including the index concept
+  used in `window_i_exec`, borrowed from [`{slider}`].
 * [Hadley Wickham](https://github.com/hadley/) and [Peter
   Danenberg](https://github.com/klutometis) for
   [roxygen2](https://cran.r-project.org/package=roxygen2).
@@ -343,6 +345,8 @@ Different systems / compilers / settings may produce different results.
 [10]: https://github.com/brodieG/r2c/blob/logo-old-method/extra/benchmarks-public.Rmd
 [11]: https://www.zeileis.org/
 [12]: https://cran.r-project.org/package=zoo
+[13]: https://github.com/DavisVaughan
+[14]: https://github.com/r-lib/slider
 
 [^1]: Depending on your compilation settings and machine, there is room for
   improvement, but not enough that R stands out as being particularly slow at
