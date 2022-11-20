@@ -162,7 +162,8 @@ window_exec_int <- function(
   stack <- alloc[['stack']]
 
   if(ncol(stack) != 1L) stop("Internal Error: unexpected stack state at exit.")
-  if(!stack['size', 1L] == 1L) stop("`fun` must return scalar values only.")
+  if(stack['size', 1L] != 1L || stack['group', 1L] != 0L)
+    stop("`fun` must return scalar values only.")
 
   empty.res <- FALSE
 
