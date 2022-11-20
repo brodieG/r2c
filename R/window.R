@@ -16,19 +16,16 @@
 #' Execute r2c Function on Sliding Windows in Data
 #'
 #' Calls the native code associated with `fun` on sequential windows along the
-#' `data` vectors.  The windows are aligned relative to a base index that starts
-#' at the first "element" of `data` (where "element" is a row if `data` is
-#' "data.frame" or similar, or simply an element if it is a vector) and
-#' increments with the stride specified in `by`.  `window_exec` treats each
-#' "element" of data as being 1 unit apart, whereas `window_i_exec` lets you
-#' specify absolute positions for each "element" via the `index` vector.
+#' `data` vectors.  The windows are aligned relative to a base index that is
+#' stepped through the data range using a stride specified with `by`.
 #'
 #' For `window_exec` windows are always sized `width` elements except in the
 #' cases where the window overflows the beginning or end of the data and
-#' `partial=TRUE`.  The `align` parameter can be used to change how the window
-#' is shifted from the base index.  A visual illustration of the effect of the
-#' `align` parameter on the fourth iteration of function application, with
-#' `by=1L` and `width=4L`:
+#' `partial=TRUE`.  The first base index corresponds to the first element in the
+#' data.  The `align` parameter can be used to change how the window is shifted
+#' from the base index.  A visual illustration of the effect of the `align`
+#' parameter on the fourth iteration of function application, with `by=1L` and
+#' `width=4L`:
 #'
 #' ```
 #' ## window_exec(..., width=4L)
@@ -53,13 +50,17 @@
 #' number of elements included in any given window is a function of how many of
 #' the values in `index` fall between the beginning and the end of each window
 #' (inclusive).  It is thus possible to end up with empty windows depending on
-#' the spacing of values in `index`.
+#' the spacing of values in `index`.  The initial base index defaults to the
+#' first value in `index`, but can be changed with `start`.  Similarly, the last
+#' base index defaults to the last value in `index`, but can be changed with
+#' `end`.
 #'
 #' Because `window_exec` windows are defined in terms of a count of elements,
 #' but in `window_i_exec` they are defined in terms of position along the real
 #' line, the meaning of numeric `align` values is different for each.  In
-#' particular, for `window_exec`, `align="right"` is equivalent to `align=width
-#' - 1L`, whereas for `window_i_exec` it is equivalent to `align=width`.
+#' particular, for `window_exec`, `align="right"` is equivalent to
+#' `align=width - 1L`, whereas for `window_i_exec` it is equivalent to
+#' `align=width`.
 #'
 #' The semantics of these function are **loosely** modelled on those of
 #' `zoo::rollapply`, with additional modifications based on
@@ -109,7 +110,8 @@
 #'   effect of align for `window_exec` vs `window_i_exec`.
 #' @param start numeric(1) first base index for windows for `window_i_exec`.
 #'   The range defined by `start` and `end` should intersect with values in
-#'   `index` otherwise you will compute on a series of empty windows.
+#'   `index` otherwise you will compute on a series of empty windows.  See
+#'   "Details".
 #' @param end numeric(1) last base index for windows for `window_i_exec`.  See
 #'   `start`.
 #' @return a numeric vector, the length of which is determined by the length of
@@ -175,6 +177,9 @@ window_exec <- function(
     call=call
   )
 }
+#' @rdname window_exec
+#' @export
+
 window_i_exec <- function(
   fun, width, index, data, MoreArgs=list(), by=1L,
   align='center', start=index[1L], end=index[length(index)],
