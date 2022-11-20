@@ -136,7 +136,7 @@ SEXP R2C_run_window_i(
   if(TYPEOF(offset) != REALSXP || XLENGTH(offset) != 1L)
     Rf_error("Argument `offset` should be scalar integer.");
   if(TYPEOF(by_sxp) != REALSXP || XLENGTH(by_sxp) != 1L)
-    Rf_error("Argument `by` should be scalar integer.");
+    Rf_error("Argument `by` should be scalar numeric.");
   if(TYPEOF(index_sxp) != REALSXP)
     Rf_error("Argument `index` should be numeric.");
 

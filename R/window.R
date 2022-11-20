@@ -188,14 +188,13 @@ window_i_exec <- function(
   # FIXME: add validation for shlib
   vetr(
     fun=is.function(.) && inherits(., 'r2c_fun'),
-    width=NUM.1.POS.STR,
+    width=NUM.1.POS && . > 0,
     index=NUM || INT,
     data=(
       (numeric() || integer()) ||
       (list() && all(is.num_naked(.)) && length(.) > 0)
     ),
     by=NUM.1.POS,
-    partial=LGL.1,
     align=
       (CHR.1 && . %in% c('center', 'left', 'right')) ||
       (NUM.1.POS),
@@ -205,7 +204,7 @@ window_i_exec <- function(
     end=NUM.1 && . >= start
   )
   width <- as.numeric(width)
-  by <- as.integer(by)
+  by <- as.numeric(by)
   if(is.character(align)) {
     offset <- integer(length(align))
     offset[align == 'center'] <- width /2
@@ -228,9 +227,7 @@ window_i_exec <- function(
     offset=offset, partial=FALSE,
     call=call, start=start, end=end
   )
-
 }
-
 
 window_exec_int <- function(
   obj, formals, enclos, width, index, data, MoreArgs, by, partial, offset,
