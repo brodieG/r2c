@@ -56,6 +56,8 @@ SEXP R2C_run_window(
     );
 
   struct R2C_dat dp = prep_data(dat, dat_cols, ids, flag, ctrl, so);
+  R_xlen_t rlen = dp.lens[I_RES];
+  double * r_base = dp.data[I_RES];
 
   // these will be stored 1-index, so double (see assumptions.c)
   double recycle_warn = 0;
@@ -111,6 +113,7 @@ SEXP R2C_run_window(
     } else {
       **(dp.data + I_RES) = NA_REAL;
     }
+    if(dp.data[I_RES] - r_base >= rlen) Rf_error("Exceeded result vector size.");
     ++(*(dp.data + I_RES));
   }
   return Rf_ScalarReal((double) recycle_warn);
@@ -171,6 +174,8 @@ SEXP R2C_run_window_i(
   struct R2C_dat dp = prep_data(dat, dat_cols, ids, flag, ctrl, so);
   double * index = REAL(index_sxp);
   R_xlen_t ilen = XLENGTH(index_sxp);
+  R_xlen_t rlen = dp.lens[I_RES];
+  double * r_base = dp.data[I_RES];
 
   // these will be stored 1-index, so double (see assumptions.c)
   double recycle_warn = 0;
@@ -195,9 +200,21 @@ SEXP R2C_run_window_i(
 
   for(left = start; left <= end; left += by) {
     while(ileft < ilen && index[ileft] < left) ++ileft;
-    iright = ileft;
-    right = left + w;
-    while(iright < ilen && index[iright] < right) ++iright;
+    if(ileft >= ilen) {
+      ileft = iright = ilen - 1;
+    } else {
+      right = left + w;
+      iright = ileft;
+      // Keep going until overshoot, then step back
+      while(iright < ilen && index[iright] <= right) ++iright;
+      --iright;
+    }
+    // Rprintf(
+    //   "left %0.3f right %0.3f ileftv %0.3f irightv %0.3f il %d ir %d end %0.3f\n",
+    //   left, right,
+    //   index[ileft], index[iright],
+    //   ileft, iright, end
+    // );
 
     if(index[ileft] > right || index[iright] < left) {
       // Could have long periods when this is true, could have separate loops
@@ -214,8 +231,16 @@ SEXP R2C_run_window_i(
     // to check every single step.
     if(dp.data[I_STAT][STAT_RECYCLE] && !recycle_warn)
       recycle_warn = (double)start + 1;
+
+    // Next two checks should not be necessary if all the calcs are right
     if(dp.lens[I_RES] != 1)
       Rf_error("Window result size is not 1 (is %jd).", dp.lens[I_RES]);
+    if(dp.data[I_RES] - r_base >= rlen)
+      Rf_error(
+        "Exceeded result vector size (%jd vs %jd).",
+        (intmax_t)(dp.data[I_RES] - r_base) + 1, rlen
+      );
+
     ++(*(dp.data + I_RES));
   }
   return Rf_ScalarReal((double) recycle_warn);
