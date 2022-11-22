@@ -46,14 +46,13 @@
 #' window, which is also true with `align = 0L`.  If `align = "center"` (or
 #' `align = 1L`), then elements `[3:6]` will be in the window.
 #'
-#' For `window_i_exec` the ends of the window are always `width` apart, but  the
-#' number of elements included in any given window is a function of how many of
+#' For `window_i_exec` the ends of the window are always `width` apart, but the
+#' number of elements included in any given window are determined by how many of
 #' the values in `index` fall between the beginning and the end of each window
-#' (inclusive).  It is thus possible to end up with empty windows depending on
-#' the spacing of values in `index`.  The initial base index defaults to the
-#' first value in `index`, but can be changed with `start`.  Similarly, the last
-#' base index defaults to the last value in `index`, but can be changed with
-#' `end`.
+#' (inclusive).  It is thus possible to end up with empty windows.  The initial
+#' base index is specified with `start`, which defaults to the first value in
+#' `index`.  The base index will be incremented in steps of size `by` so long as
+#' its value is strictly less than `end`.
 #'
 #' Because `window_exec` windows are defined in terms of a count of elements,
 #' but in `window_i_exec` they are defined in terms of position along the real
@@ -75,6 +74,14 @@
 #'
 #' @note Window widths, alignments, and strides must be scalars (this may change
 #'   in the future).
+#' @note The `window_i_exec` algorithm iterates over the values in the `index`
+#'   vector until they come in range of the window as determined by LT and LTE
+#'   relational operators in C.  As such, out of order or NA indices may cause
+#'   values to end up in a window they do not belong to, or values to be
+#'   excluded from windows they belong to.  The exact behavior of NAs with
+#'   respect to relational operators in C is not strictly defined, so the
+#'   results of `index` vectors containing NAs might vary depending on the C
+#'   implementation used to compile this package.
 #'
 #' @export
 #' @inheritParams group_exec
@@ -88,10 +95,11 @@
 #'   in a window (`window_exec`) or the width of the window (`window_i_exec`).
 #'   For the latter values at both ends of the window are considered part of the
 #'   window.
-#' @param index a numeric vector of finite non-NA increasing (non-strictly)
-#'   values to slide the window against.  Integer vectors will be coerced to
-#'   numeric.  Data entries that correspond to index values within a window will
-#'   be used in the calculation associated with that window.
+#' @param index a numeric vector of finite, non-NA, monotonically increasing
+#'   values to slide the window against.  It is the user's responsibility to
+#'   ensure these requirements are met (see notes).  Data entries that
+#'   correspond to index values within a window will be used in the calculation
+#'   associated with that window.
 #' @param by integer (`window_exec`) or numeric (`window_i_exec`)
 #'   positive, finite, non-NA scalar value interpreted as the stride to
 #'   increment the base index after each `fun` application.
@@ -129,8 +137,8 @@
 #' window_exec(r2c_len, rep(1, 5), width=5, align='center', partial=TRUE)
 #' window_exec(r2c_len, rep(1, 5), width=5, align='right', partial=TRUE)
 #'
-#' index <- seq(0, 1, length.out=100) ^ 1/3
-#' window_i_exec(r2c_len, width=20, by=20, index=index, data=numeric(100))
+#' index <- seq(0, 1, length.out=100) ^ (1/3)
+#' window_i_exec(r2c_len, width=.2, by=.2, index=index, data=numeric(100))
 
 window_exec <- function(
   fun, width, data, MoreArgs=list(), by=1L, partial=FALSE,
@@ -181,7 +189,7 @@ window_exec <- function(
 #' @export
 
 window_i_exec <- function(
-  fun, width, index, data, MoreArgs=list(), by=1L,
+  fun, width, index, data, MoreArgs=list(), by,
   align='center', start=index[1L], end=index[length(index)],
   enclos=parent.frame()
 ) {
@@ -205,9 +213,12 @@ window_i_exec <- function(
   )
   width <- as.numeric(width)
   by <- as.numeric(by)
+  start <- as.numeric(start)  # could be e.g. POSIXct
+  end <- as.numeric(end)
+
   if(is.character(align)) {
-    offset <- integer(length(align))
-    offset[align == 'center'] <- width /2
+    offset <- numeric(length(align))
+    offset[align == 'center'] <- width / 2
     offset[align == 'right'] <- width
   } else offset <- width
 
@@ -271,7 +282,7 @@ window_exec_int <- function(
   # Result size must account for the `by` step-size, will be complicated if
   # not scalar is allowed
   r.len <-
-    if(is.numeric(index)) (end - start) / by + 1
+    if(is.numeric(index)) floor((end - start) / by) + 1
     else (d.len - 1L) %/% by + 1L
   if(r.len > 2^48)  # See R_ints 12.1
     stop("Result length exceeds allowed 2^48 (would be ", r.len, ")")
