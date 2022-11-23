@@ -76,10 +76,11 @@ effect of align for \code{window_exec} vs \code{window_i_exec}.}
 \item{enclos}{environment to use as the \code{enclos} parameter to
 \code{\link[base:eval]{base::eval}} when evaluating expressions or matching calls (see \code{data}).}
 
-\item{index}{a numeric vector of finite non-NA increasing (non-strictly)
-values to slide the window against.  Integer vectors will be coerced to
-numeric.  Data entries that correspond to index values within a window will
-be used in the calculation associated with that window.}
+\item{index}{a numeric vector of finite, non-NA, monotonically increasing
+values to slide the window against.  It is the user's responsibility to
+ensure these requirements are met (see notes).  Data entries that
+correspond to index values within a window will be used in the calculation
+associated with that window.}
 
 \item{start}{numeric(1) first base index for windows for \code{window_i_exec}.
 The range defined by \code{start} and \code{end} should intersect with values in
@@ -156,6 +157,15 @@ performance and precision trade-offs.
 \note{
 Window widths, alignments, and strides must be scalars (this may change
 in the future).
+
+The \code{window_i_exec} algorithm iterates over the values in the \code{index}
+vector until they come in range of the window as determined by LT and LTE
+relational operators in C.  As such, out of order or NA indices may cause
+values to end up in a window they do not belong to, or values to be
+excluded from windows they belong to.  The exact behavior of NAs with
+respect to relational operators in C is not strictly defined, so the
+results of \code{index} vectors containing NAs might vary depending on the C
+implementation used to compile this package.
 }
 \examples{
 r2c_mean <- r2cq(mean(x))
@@ -169,8 +179,8 @@ window_exec(r2c_len, rep(1, 5), width=5, align='left', partial=TRUE)
 window_exec(r2c_len, rep(1, 5), width=5, align='center', partial=TRUE)
 window_exec(r2c_len, rep(1, 5), width=5, align='right', partial=TRUE)
 
-index <- seq(0, 1, length.out=100) ^ 1/3
-window_i_exec(r2c_len, width=20, by=20, index=index, data=numeric(100))
+index <- seq(0, 1, length.out=100) ^ (1/3)
+window_i_exec(r2c_len, width=.2, by=.2, index=index, data=numeric(100))
 }
 \seealso{
 \code{\link{r2c}} for more details on the behavior and constraints of

@@ -57,7 +57,6 @@ SEXP R2C_run_window(
 
   struct R2C_dat dp = prep_data(dat, dat_cols, ids, flag, ctrl, so);
   R_xlen_t rlen = dp.lens[I_RES];
-  double * r_base = dp.data[I_RES];
 
   // these will be stored 1-index, so double (see assumptions.c)
   double recycle_warn = 0;
@@ -85,7 +84,7 @@ SEXP R2C_run_window(
   // windows, and if windows are big, the actual function evaluation will be
   // slow relative to the bookkeeping of the start/len variables.
 
-  for(i = 0; i < d_size; i += by_int) {
+  for(i = 0; i < d_size && rlen > 0; i += by_int, --rlen) {
     int incomplete = 0;
     start = i - o_int;
     len = w_int;
@@ -113,9 +112,13 @@ SEXP R2C_run_window(
     } else {
       **(dp.data + I_RES) = NA_REAL;
     }
-    if(dp.data[I_RES] - r_base >= rlen) Rf_error("Exceeded result vector size.");
     ++(*(dp.data + I_RES));
   }
+  if(i < d_size || rlen > 0)
+    Rf_error(
+      "Internal error: input/by/output size mismatch %jd %jd %jd.",
+      d_size, i, rlen
+    );
   return Rf_ScalarReal((double) recycle_warn);
 }
 
@@ -162,7 +165,7 @@ SEXP R2C_run_window_i(
       w, o, by, start, end
     );
 
-  // Shift start/end by offset, should be equivalent
+  // Shift start/end by o, so we can treat window start as the base index
   start = start - o;
   end = end - o;
   if(!isfinite(start))
@@ -175,7 +178,10 @@ SEXP R2C_run_window_i(
   double * index = REAL(index_sxp);
   R_xlen_t ilen = XLENGTH(index_sxp);
   R_xlen_t rlen = dp.lens[I_RES];
-  double * r_base = dp.data[I_RES];
+  Rprintf(
+    "w %0.3f o %0.3f by %0.3f rlen %d start %0.3f end %0.3f\n",
+    w, o, by, rlen
+  );
 
   // these will be stored 1-index, so double (see assumptions.c)
   double recycle_warn = 0;
@@ -188,35 +194,40 @@ SEXP R2C_run_window_i(
   // ** LOOK AT window_exec FOR MORE COMMENTS ON WHAT'S GOING ON HERE **
   // *******************************************************************
 
-  R_xlen_t ileft = 0; // base index, will scan through the data vector(s)
-  R_xlen_t iright = 0;// base index, will scan through the data vector(s)
+  // This is not optimized, e.g. take advantage of ordered input, explicitly
+  // handle empty windows at ends, etc.  But because not optimized, it is
+  // simpler and won' behave badly if input is not actually ordered.
 
-  // This is not optimized:
-  // * Ordered nature of the index should allow binary search
-  // * Could have many empty windows at start and end that should be handled in
-  //   different loops.
+  // Because of potential precision issues, we do not test left < end despite
+  // that being the more natural condition.  We also have the precision problem
+  // with e.g. index[ileft] < left, but there it won't cause us to write one too
+  // many or too few values into our result vector, so we ignore it.
 
+  R_xlen_t ileft = 0; // index of left end of window
+  R_xlen_t iright = 0;// index of right end of window
   double left, right;
+  left = start;
 
-  for(left = start; left <= end; left += by) {
+  // `+ by * i` instead of `+= by` for precision
+  for(R_xlen_t i = 0; i < rlen; ++i, left = start + by * i) {
     while(ileft < ilen && index[ileft] < left) ++ileft;
     if(ileft >= ilen) {
       ileft = iright = ilen - 1;
     } else {
       right = left + w;
-      iright = ileft;
+      iright = ileft + 1;
       // Keep going until overshoot, then step back
-      while(iright < ilen && index[iright] <= right) ++iright;
+      while(iright < ilen && index[iright] < right) ++iright;
       --iright;
     }
-    // Rprintf(
-    //   "left %0.3f right %0.3f ileftv %0.3f irightv %0.3f il %d ir %d end %0.3f\n",
-    //   left, right,
-    //   index[ileft], index[iright],
-    //   ileft, iright, end
-    // );
+    Rprintf(
+      "left %0.3f right %0.3f ileftv %0.3f irightv %0.3f il %d ir %d end %0.3f\n",
+      left, right,
+      index[ileft], index[iright],
+      ileft, iright, end
+    );
 
-    if(index[ileft] > right || index[iright] < left) {
+    if(index[ileft] >= right || index[iright] < left) {
       // Could have long periods when this is true, could have separate loops
       // for those at the beginning and end
       for(int j = dp.dat_start; j <= dp.dat_end; ++j) dp.lens[j] = 0;
@@ -235,11 +246,6 @@ SEXP R2C_run_window_i(
     // Next two checks should not be necessary if all the calcs are right
     if(dp.lens[I_RES] != 1)
       Rf_error("Window result size is not 1 (is %jd).", dp.lens[I_RES]);
-    if(dp.data[I_RES] - r_base >= rlen)
-      Rf_error(
-        "Exceeded result vector size (%jd vs %jd).",
-        (intmax_t)(dp.data[I_RES] - r_base) + 1, rlen
-      );
 
     ++(*(dp.data + I_RES));
   }

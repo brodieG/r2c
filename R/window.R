@@ -20,7 +20,7 @@
 #' stepped through the data range using a stride specified with `by`.
 #'
 #' For `window_exec` windows are always sized `width` elements except in the
-#' cases where the window overflows the beginning or end of the data and
+#' cases where the window overflows on either end of the data and
 #' `partial=TRUE`.  The first base index corresponds to the first element in the
 #' data.  The `align` parameter can be used to change how the window is shifted
 #' from the base index.  A visual illustration of the effect of the `align`
@@ -48,11 +48,13 @@
 #'
 #' For `window_i_exec` the ends of the window are always `width` apart, but the
 #' number of elements included in any given window are determined by how many of
-#' the values in `index` fall between the beginning and the end of each window
-#' (inclusive).  It is thus possible to end up with empty windows.  The initial
-#' base index is specified with `start`, which defaults to the first value in
-#' `index`.  The base index will be incremented in steps of size `by` so long as
-#' its value is strictly less than `end`.
+#' the values in `index` fall between the ends of each window, where the "left"
+#' end is treated as closed, and the "right" as open.  The initial base index is
+#' specified with `start`, which defaults to the first value in `index`.  The
+#' base index will be incremented in steps of size `by` so long as its value is
+#' no greater than `end`, which defaults to the last value in `index`.  There is
+#' no requirement that the size of the output be the same as that of `index`,
+#' nor is there one that windows contain values.
 #'
 #' Because `window_exec` windows are defined in terms of a count of elements,
 #' but in `window_i_exec` they are defined in terms of position along the real
@@ -72,6 +74,10 @@
 #' algorithm and `{slider}` the "segment tree" algorithm, each with different
 #' performance and precision trade-offs.
 #'
+#' @note For the purposes of this documentation, the first value in a set or the
+#'   lowest value in a range are considered to be the "leftmost" values.  Thus
+#'   we think of vectors as starting on the "left" and ending on the "right", and of
+#'   the real line as having negative infinity to the "left" of positive infinity.
 #' @note Window widths, alignments, and strides must be scalars (this may change
 #'   in the future).
 #' @note The `window_i_exec` algorithm iterates over the values in the `index`
@@ -81,7 +87,8 @@
 #'   excluded from windows they belong to.  The exact behavior of NAs with
 #'   respect to relational operators in C is not strictly defined, so the
 #'   results of `index` vectors containing NAs might vary depending on the C
-#'   implementation used to compile this package.
+#'   implementation used to compile this package.  Future versions may check for
+#'   and disallow disordered or NA values in `index`.
 #'
 #' @export
 #' @inheritParams group_exec
@@ -95,11 +102,12 @@
 #'   in a window (`window_exec`) or the width of the window (`window_i_exec`).
 #'   For the latter values at both ends of the window are considered part of the
 #'   window.
-#' @param index a numeric vector of finite, non-NA, monotonically increasing
-#'   values to slide the window against.  It is the user's responsibility to
-#'   ensure these requirements are met (see notes).  Data entries that
-#'   correspond to index values within a window will be used in the calculation
-#'   associated with that window.
+#' @param index a numeric vector with as many elements as `data`, containing
+#'   finite, non-NA, monotonically increasing values to slide the window
+#'   against.  It is the user's responsibility to ensure these requirements are
+#'   met (see notes).  Data entries that correspond to index values within a
+#'   window will be used in the calculation associated with that window.
+#'   Windows are closed at their beginning and open at their end.
 #' @param by integer (`window_exec`) or numeric (`window_i_exec`)
 #'   positive, finite, non-NA scalar value interpreted as the stride to
 #'   increment the base index after each `fun` application.
@@ -111,11 +119,10 @@
 #' @param align vector of one of "center" (default), "left", "right", or a
 #'   positive finite non-NA integer (`window_exec`) or numeric (`window_i_exec`)
 #'   scalar value representing what part of the window aligns with the base
-#'   index on the vector, where "left" is the part of the window nearest the
-#'   first element of the vector.  Numeric values represent the left-wards
-#'   offset of the "left" end of the window relative to the base index, where
-#'   `0` is equivalent to "left".  See "Details" for some subtleties about the
-#'   effect of align for `window_exec` vs `window_i_exec`.
+#'   index on the vector.  Numeric values represent the leftwards offset of the
+#'   "left" end of the window relative to the base index, where `0` is
+#'   equivalent to "left".  See "Details" for some subtleties about the effect
+#'   of align for `window_exec` vs `window_i_exec`.
 #' @param start numeric(1) first base index for windows for `window_i_exec`.
 #'   The range defined by `start` and `end` should intersect with values in
 #'   `index` otherwise you will compute on a series of empty windows.  See
@@ -124,7 +131,7 @@
 #'   `start`.
 #' @return a numeric vector, the length of which is determined by the length of
 #'   the data and the value of `by` (`window_exec`), or by
-#'   `(end - start) / by + 1` (`window_i_exec`).
+#'   `floor(end - start) / by + 1` (`window_i_exec`).
 #' @examples
 #' r2c_mean <- r2cq(mean(x))
 #' with(
@@ -220,7 +227,7 @@ window_i_exec <- function(
     offset <- numeric(length(align))
     offset[align == 'center'] <- width / 2
     offset[align == 'right'] <- width
-  } else offset <- width
+  } else offset <- as.numeric(align)
 
   if(any(offset > width)) {
     # Bad check, doesn't account for recycling (ok for scalar)
@@ -251,7 +258,6 @@ window_exec_int <- function(
   if(length(d.len <- unique(lengths(data))) > 1L)
     stop("All `data` vectors must be the same length.")
   if(!length(d.len)) stop("`data` may not be empty.")
-
   if(!is.null(index) && length(index) != d.len)
     stop(
       "`index` must be the same length as data (is ",
