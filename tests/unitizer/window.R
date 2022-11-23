@@ -16,14 +16,10 @@
 ## We'll add up whole powers of two so that we can tell by the bit-components of
 ## things that all the correct window elements were added.
 
-show_bits <- function(x, n=as.integer(max(log2(x))) + 1L) {
-  raw <- vapply(x, intToBits, raw(32))
-  res <- as.integer(raw)
-  dim(res) <- dim(raw)
-  res[seq_len(n),,drop=FALSE]
-}
 we_p_sum <- function(x, width, align='left', by=1L)
   window_exec(r2c_sum, x, width=width, partial=TRUE, align=align, by=by)
+we_sum <- function(x, width, align='left', by=1L)
+  window_exec(r2c_sum, x, width=width, partial=FALSE, align=align, by=by)
 wvec <- 2^(0:4)
 
 unitizer_sect("window partial", {
@@ -56,6 +52,10 @@ unitizer_sect("window partial", {
   show_bits(we_p_sum(wvec, width=5, align=0))
   show_bits(we_p_sum(wvec, width=5, align=4))
   show_bits(we_p_sum(wvec, width=5, align=2))
+
+  show_bits(we_p_sum(wvec, width=5, align=-1))
+  show_bits(we_p_sum(wvec, width=5, align=5))
+
 })
 unitizer_sect("by", {
   show_bits(we_p_sum(wvec, width=1, by=2))
@@ -81,18 +81,15 @@ unitizer_sect("by", {
 
 unitizer_sect("errors", {
   we_p_sum(wvec, width=0, align='left')
-  we_p_sum(wvec, width=-1, align='left')
   we_p_sum(wvec, width=.Machine[['integer.max']] + 1, align='left')
 
-  we_p_sum(wvec, width=1, align=-1)
   we_p_sum(wvec, width=1, align=1)
-
   we_p_sum(wvec, width=1, by=-1)
 
   we_p_sum(numeric(), width=1)
-
 })
 
-
-
+unitizer_sect("complete", {
+  show_bits(we_sum(wvec, width=3, align='center'))
+})
 

@@ -1,9 +1,9 @@
 library(r2c)
 
 
-wiexe_len <- function(i, x, w, by, align)
+wiexe_len <- function(i, x, w, by, align='center')
   window_i_exec(r2c_len, width=w, by=by, align=align, data=x, index=i)
-wiexe_sum <- function(i, x, w, by, align)
+wiexe_sum <- function(i, x, w, by, align='center')
   window_i_exec(r2c_sum, width=w, by=by, align=align, data=x, index=i)
 
 unitizer_sect("base index boundaries", {
@@ -46,26 +46,12 @@ unitizer_sect("Numeric Align", {
   wiexe_len(i=0:1, x=0:1, w=1, by=1, align=0)
   wiexe_len(i=0:1, x=0:1, w=1, by=1, align=0.5)
   wiexe_len(i=0:1, x=0:1, w=1, by=1, align=1)
+
+  show_bits(wiexe_sum(i=0:1, x=1:2, w=1, by=1, align=-1))
+  show_bits(wiexe_sum(i=0:1, x=1:2, w=1, by=1, align=1.5))
+  show_bits(wiexe_sum(i=0:1, x=1:2, w=1, by=1, align=2))
 })
 
-unitizer_sect("non-overlapping", {
-  index <- 0:2
-  val <- rep(1, length(index))
-  window_i_exec(r2c_len, width=1, by=1, align='left', data=val, index=index)
-  window_i_exec(r2c_len, width=.99, by=1, align='left', data=val, index=index)
-  window_i_exec(r2c_len, width=1.01, by=1, align='left', data=val, index=index)
-
-  window_i_exec(r2c_len, width=1, by=1, align='right', data=val, index=index)
-  window_i_exec(r2c_len, width=.99, by=1, align='right', data=val, index=index)
-  window_i_exec(r2c_len, width=1.01, by=1, align='right', data=val, index=index)
-
-  window_i_exec(r2c_len, width=1, by=1, align='center', data=val, index=index)
-
-  window_i_exec(r2c_len, width=.5, by=.5, data=val, index=index)
-  window_i_exec(
-    r2c_len, width=.5, by=.5, data=val, index=index, start=.1, align='left'
-  )
-})
 
 unitizer_sect("errors", {
   # mismatch index/data length

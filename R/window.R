@@ -63,16 +63,16 @@
 #' `align=width - 1L`, whereas for `window_i_exec` it is equivalent to
 #' `align=width`.
 #'
-#' The semantics of these function are **loosely** modelled on those of
-#' `zoo::rollapply`, with additional modifications based on
-#' `slider::slide_index`.
-#'
 #' There are no special optimizations beyond the use of `{r2c}` functions
 #' over regular R functions.  For wide windows there are more efficient
 #' solutions depending on the statistic applied.  For example, for rolling means
 #' and a few other simple statistics `{data.table}` offers the "on-line"
 #' algorithm and `{slider}` the "segment tree" algorithm, each with different
 #' performance and precision trade-offs.
+#'
+#' The semantics of these function are **loosely** modelled on those of
+#' `zoo::rollapply`, with additional modifications inspired by
+#' `slider::slide_index`.
 #'
 #' @note For the purposes of this documentation, the first value in a set or the
 #'   lowest value in a range are considered to be the "leftmost" values.  Thus
@@ -117,12 +117,12 @@
 #'   window sizes when the windows are partially out of bounds at the end of the
 #'   `data` vectors.
 #' @param align vector of one of "center" (default), "left", "right", or a
-#'   positive finite non-NA integer (`window_exec`) or numeric (`window_i_exec`)
-#'   scalar value representing what part of the window aligns with the base
-#'   index on the vector.  Numeric values represent the leftwards offset of the
-#'   "left" end of the window relative to the base index, where `0` is
-#'   equivalent to "left".  See "Details" for some subtleties about the effect
-#'   of align for `window_exec` vs `window_i_exec`.
+#'   finite non-NA integer (`window_exec`) or numeric (`window_i_exec`)
+#'   scalar representing what part of the window aligns with the base index on
+#'   the vector.  Numeric values represent the leftwards offset of the "left"
+#'   end of the window relative to the base index, where `0` is equivalent to
+#'   "left".  See "Details" for some subtleties about the effect of align for
+#'   `window_exec` vs `window_i_exec`.
 #' @param start numeric(1) first base index for windows for `window_i_exec`.
 #'   The range defined by `start` and `end` should intersect with values in
 #'   `index` otherwise you will compute on a series of empty windows.  See
@@ -163,7 +163,7 @@ window_exec <- function(
     partial=LGL.1,
     align=
       (CHR.1 && . %in% c('center', 'left', 'right')) ||
-      (INT.1.POS && . <= .Machine[['integer.max']]),
+      (INT.1 && . <= .Machine[['integer.max']] && . >= -.Machine[['integer.max']]),
     MoreArgs=list(),
     enclos=is.environment(.)
   )
@@ -174,13 +174,6 @@ window_exec <- function(
     offset[align == 'center'] <- as.integer((width - 1)/2)
     offset[align == 'right'] <- width - 1L
   } else offset <- as.integer(align)
-
-  if(any(offset >= width)) {
-    # Bad check, doesn't account for recycling (ok for scalar)
-    stop(
-      "All `align` integer values must be less than the corresponding ",
-      "width value."
-  ) }
 
   obj <- get_r2c_dat(fun)
   call <- sys.call()
@@ -210,9 +203,7 @@ window_i_exec <- function(
       (list() && all(is.num_naked(.)) && length(.) > 0)
     ),
     by=NUM.1.POS,
-    align=
-      (CHR.1 && . %in% c('center', 'left', 'right')) ||
-      (NUM.1.POS),
+    align=(CHR.1 && . %in% c('center', 'left', 'right')) || NUM.1,
     MoreArgs=list(),
     enclos=is.environment(.),
     start=NUM.1,
@@ -228,13 +219,6 @@ window_i_exec <- function(
     offset[align == 'center'] <- width / 2
     offset[align == 'right'] <- width
   } else offset <- as.numeric(align)
-
-  if(any(offset > width)) {
-    # Bad check, doesn't account for recycling (ok for scalar)
-    stop(
-      "All `align` values must be less than or equal" ,
-      " the corresponding width value."
-  ) }
 
   obj <- get_r2c_dat(fun)
   call <- sys.call()
@@ -264,7 +248,6 @@ window_exec_int <- function(
       length(index), " instead of ", d.len, ")"
     )
   if(!is.null(index)) index <- as.numeric(index)
-
 
   # - Match Data to Parameters and Allocate ------------------------------------
 

@@ -2,7 +2,7 @@
 
 # To Do / Questions
 
-* Test that 
+* We should be able to specify align values that exceed the window range.
 * `DYNLOAD` warnings around `run()`; maybe that function doesn't need to be of
   the type DYNLOAD?  We know what the interface of it is, so we just need to
   check whether that's compatible with R's compilation mechanism.
@@ -244,6 +244,63 @@ doesn't make any sense.
 * Annotate code with the call that it corresponds to
 
 # Window Implementation
+
+## Discrete vs Continuous
+
+Is the "irregular" mode really about using a continuous variable, and thus the
+base index points to a zero-width instantaneous moment (`POSIXct`?).  Whereas
+instead the normal mode is pointing to a fixed width element.  What about
+something like a `Date`?  Which is it?  If it is continuous, do we just take it
+to be the instant the day switches, midnight?  Does it belong to the prior or
+the subsequent day?
+
+## Closed / Open intervals
+
+Related to the above, how do we treat the ends of a window?  Do we give the
+option of how to treat them?  What should be the default.
+
+It's tricky because there is no consistent answer.  For no overlapping windows,
+we get `n` if align is left or center, but `n-1` if it is right.
+
+I think what makes most sense is to have a half closed interval.  We're picking
+open on the right, so that e.g. if we pick a date, and we right align with width
+1 day, we'll get all the entries from the prior day excluding anything that
+happened at midnight, which we consider part of the current day.
+
+Maybe in the future we'll give the option to do something different.
+
+## End condition
+
+Struggling a little bit to figure out the natural end condition.  If `align =
+"left"` then it makes sense to have as many iterations as intervals.  We don't
+need end to get a go at being an base index because it is included in the prior
+window (notwithstanding smaller windows, etc.).
+
+I guess `end` needs a shot at being a window because there is no guarantee it
+was included in the prior window.  And it seems weird to use presence in the
+prior window as reason to give it a shot or not, although in the special case of
+`width = by` it does produce a "pleasing" outcome.
+
+## Alternative Irregular Windows
+
+Firstly we clearly need to rename our things.  There window size, window
+spacing, and window contents.  Our implementation is regular in the first two.
+We could allow:
+
+* Specifying indices.
+* Specifying window positions (where these could be the same as indices to
+  simulate what slider does).
+* Specifying window start/end points (equivalent to positions with variable
+  widths?)
+
+Instead of at regular intervals
+
+## Testing Irregular Windows
+
+* Test against an R-level implementation?  Generate the sequence of points, and
+  for each one, turn into a range, find the things in the range, and e.g. sum
+  them?
+* 
 
 ## r2c
 

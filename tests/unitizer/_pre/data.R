@@ -59,3 +59,10 @@ r2c_sum <- r2cq(sum(x))
 r2c_add <- r2cq(x + y)
 r2c_len <- r2cq(length(x))
 
+show_bits <- function(x, n=as.integer(max(c(log2(x), 0), na.rm=TRUE)) + 1L) {
+  raw <- vapply(x, intToBits, raw(32))
+  res <- as.integer(raw)
+  dim(res) <- dim(raw)
+  res[seq_len(n),,drop=FALSE]
+}
+

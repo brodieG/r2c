@@ -32,28 +32,26 @@ SEXP R2C_run_window(
   SEXP ctrl,
   SEXP width,
   SEXP offset,
-  SEXP by,
+  SEXP by_sxp,
   SEXP partial
 ) {
   if(TYPEOF(width) != INTSXP || XLENGTH(width) != 1L)
     Rf_error("Argument `width` should be scalar integer.");
   if(TYPEOF(offset) != INTSXP || XLENGTH(offset) != 1L)
     Rf_error("Argument `offset` should be scalar integer.");
-  if(TYPEOF(by) != INTSXP || XLENGTH(by) != 1L)
+  if(TYPEOF(by_sxp) != INTSXP || XLENGTH(by_sxp) != 1L)
     Rf_error("Argument `by` should be scalar integer.");
   if(TYPEOF(partial) != LGLSXP || XLENGTH(partial) != 1L)
     Rf_error("Argument `partial` should be scalar logical.");
 
-  int w_int = Rf_asInteger(width);
-  int o_int = Rf_asInteger(offset);
-  int by_int = Rf_asInteger(by);
+  int w = Rf_asInteger(width);
+  int o = Rf_asInteger(offset);
+  int by = Rf_asInteger(by_sxp);
   int part_int = Rf_asInteger(partial);
 
   // This should be validated R level, but bad if wrong
-  if(w_int < 0 || o_int < 0 || o_int >= w_int || by_int < 1)
-    Rf_error(
-      "Internal Error: bad window values w %d o %d b %d.", w_int, o_int, by_int
-    );
+  if(w < 0 || by < 1)
+    Rf_error("Internal Error: bad window values w %d o %d b %d.", w, o, by);
 
   struct R2C_dat dp = prep_data(dat, dat_cols, ids, flag, ctrl, so);
   R_xlen_t rlen = dp.lens[I_RES];
@@ -77,6 +75,13 @@ SEXP R2C_run_window(
   R_xlen_t len = 0;   // length of window, trim data if OOB based on start
   R_xlen_t i = 0;     // base index, will scan through the data vector(s)
 
+  if(o < 0 && R_XLEN_T_MAX + o < d_size)
+    Rf_error(
+      "`align`, `window`, and `data` cause counter to overflow R_XLEN_T_MAX."
+    );
+
+  R_xlen_t imax = R_XLEN_T_MAX - by;
+
   // This is not super optimized.  There are common special cases (e.g. window
   // fully in bounds) that require less work than those partially out of bounds,
   // so we could split the loop.  In testing though there does not seem to be
@@ -84,10 +89,10 @@ SEXP R2C_run_window(
   // windows, and if windows are big, the actual function evaluation will be
   // slow relative to the bookkeeping of the start/len variables.
 
-  for(i = 0; i < d_size && rlen > 0; i += by_int, --rlen) {
+  for(i = 0; i < d_size && rlen > 0; i += by, --rlen) {
     int incomplete = 0;
-    start = i - o_int;
-    len = w_int;
+    start = i - o;
+    len = w;
     if(start < 0) {             // OOB due to offset
       len += start;
       start = 0;
@@ -113,6 +118,12 @@ SEXP R2C_run_window(
       **(dp.data + I_RES) = NA_REAL;
     }
     ++(*(dp.data + I_RES));
+
+    // Check for possible overflows
+    if(i > imax) {
+      if(rlen != 1) Rf_error("Internal Error: `by` (%d) overflows `i`", by);
+      break;
+    }
   }
   if(i < d_size || rlen > 0)
     Rf_error(
@@ -154,7 +165,7 @@ SEXP R2C_run_window_i(
 
   // This should be validated R level, but bad if wrong
   if(
-    w < 0 || o < 0 || o > w || by < 0 || start > end ||
+    w < 0 || by < 0 || start > end ||
     isnan(w) || isnan(o) || isnan(by) || isnan(start) || isnan(end) ||
     isnan(w) || isnan(o) || isnan(by) || isnan(start) || isnan(end) ||
     !isfinite(w) || !isfinite(o) || !isfinite(by) || !isfinite(start) ||
