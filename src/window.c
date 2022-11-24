@@ -58,6 +58,7 @@ SEXP R2C_run_window(
 
   // these will be stored 1-index, so double (see assumptions.c)
   double recycle_warn = 0;
+  double * recycle_flag = dp.data[I_STAT] + STAT_RECYCLE;
 
   // Make a copy of the base data pointers
   double ** dat_base = (double **) R_alloc(dp.dat_end, sizeof(double *));
@@ -108,10 +109,8 @@ SEXP R2C_run_window(
         dp.lens[j] = len;
       }
       (*(dp.fun))(dp.data, dp.lens, dp.datai, dp.narg, dp.flags, dp.ctrl);
-      // Unlike with groups, either none or all would warn, so we shouldn't have
-      // to check every single step.
-      if(dp.data[I_STAT][STAT_RECYCLE] && !recycle_warn)
-        recycle_warn = (double)start + 1;
+      // Windows can have varying number of elements
+      if(*recycle_flag && !recycle_warn) recycle_warn = (double)i + 1;
       if(dp.lens[I_RES] != 1)
         Rf_error("Window result size is not 1 (is %jd).", dp.lens[I_RES]);
     } else {
@@ -196,6 +195,7 @@ SEXP R2C_run_window_i(
 
   // these will be stored 1-index, so double (see assumptions.c)
   double recycle_warn = 0;
+  double * recycle_flag = dp.data[I_STAT] + STAT_RECYCLE;
 
   // Make a copy of the base data pointers
   double ** dat_base = (double **) R_alloc(dp.dat_end, sizeof(double *));
@@ -221,10 +221,8 @@ SEXP R2C_run_window_i(
 
   // `+ by * i` instead of `+= by` for precision
   for(R_xlen_t i = 0; i < rlen; ++i, left = start + by * i) {
-    while(ileft < ilen && index[ileft] < left) ++ileft;
-    if(ileft >= ilen) {
-      ileft = iright = ilen - 1;
-    } else {
+    while(index[ileft] < left && ileft < ilen) ++ileft;
+    if(ileft < ilen) {
       right = left + w;
       // better iright_prev if window >> by, but otherwise ileft is better.
       // relying on branch pred figuring out this is constant for duration
@@ -232,9 +230,11 @@ SEXP R2C_run_window_i(
       if(ileft > iright_prev) iright = ileft + 1;
       else iright = iright_prev + 1;
       // Keep going until overshoot, then step back
-      while(iright < ilen && index[iright] < right) ++iright;
+      while(index[iright] < right && iright < ilen) ++iright;
       --iright;
       iright_prev = iright;
+    } else {
+      ileft = iright = ilen - 1;
     }
     // Rprintf(
     //   "left %0.3f right %0.3f ileftv %0.3f irightv %0.3f il %d ir %d end %0.3f\n",
@@ -243,21 +243,22 @@ SEXP R2C_run_window_i(
     //   ileft, iright, end
     // );
 
-    if(index[ileft] >= right || index[iright] < left) {
-      // Could have long periods when this is true, could have separate loops
-      // for those at the beginning and end
-      for(int j = dp.dat_start; j <= dp.dat_end; ++j) dp.lens[j] = 0;
-    } else {
+    if(index[ileft] < right && index[iright] >= left) {
+      // At least one value
       R_xlen_t len = iright - ileft + 1;
       for(int j = dp.dat_start; j <= dp.dat_end; ++j) {
         dp.data[j] = dat_base[j] + ileft;
         dp.lens[j] = len;
-    } }
+      }
+    } else {
+      // Empty, could have separate loops to handle this at beginning or end
+      for(int j = dp.dat_start; j <= dp.dat_end; ++j) dp.lens[j] = 0;
+    }
     (*(dp.fun))(dp.data, dp.lens, dp.datai, dp.narg, dp.flags, dp.ctrl);
     // Unlike with groups, either none or all would warn, so we shouldn't have
     // to check every single step.
-    if(dp.data[I_STAT][STAT_RECYCLE] && !recycle_warn)
-      recycle_warn = (double)start + 1;
+    if(*recycle_flag && !recycle_warn)
+      recycle_warn = (double)i + 1;
 
     // Next two checks should not be necessary if all the calcs are right
     if(dp.lens[I_RES] != 1)
