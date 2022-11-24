@@ -197,7 +197,7 @@ window_i_exec <- function(
   vetr(
     fun=is.function(.) && inherits(., 'r2c_fun'),
     width=NUM.1.POS && . > 0,
-    index=NUM || INT,
+    index=numeric() || integer(),
     data=(
       (numeric() || integer()) ||
       (list() && all(is.num_naked(.)) && length(.) > 0)
