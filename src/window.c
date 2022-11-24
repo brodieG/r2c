@@ -189,10 +189,10 @@ SEXP R2C_run_window_i(
   double * index = REAL(index_sxp);
   R_xlen_t ilen = XLENGTH(index_sxp);
   R_xlen_t rlen = dp.lens[I_RES];
-  Rprintf(
-    "w %0.3f o %0.3f by %0.3f rlen %d start %0.3f end %0.3f\n",
-    w, o, by, rlen
-  );
+  // Rprintf(
+  //   "w %0.3f o %0.3f by %0.3f rlen %d start %0.3f end %0.3f\n",
+  //   w, o, by, rlen
+  // );
 
   // these will be stored 1-index, so double (see assumptions.c)
   double recycle_warn = 0;
@@ -214,8 +214,8 @@ SEXP R2C_run_window_i(
   // with e.g. index[ileft] < left, but there it won't cause us to write one too
   // many or too few values into our result vector, so we ignore it.
 
-  R_xlen_t ileft = 0; // index of left end of window
-  R_xlen_t iright = 0;// index of right end of window
+  R_xlen_t ileft, iright, iright_prev;  // indices of ends of window
+  ileft = iright = iright_prev = 0;
   double left, right;
   left = start;
 
@@ -226,17 +226,22 @@ SEXP R2C_run_window_i(
       ileft = iright = ilen - 1;
     } else {
       right = left + w;
-      iright = ileft + 1;
+      // better iright_prev if window >> by, but otherwise ileft is better.
+      // relying on branch pred figuring out this is constant for duration
+      // + 1 because we do --iright.
+      if(ileft > iright_prev) iright = ileft + 1;
+      else iright = iright_prev + 1;
       // Keep going until overshoot, then step back
       while(iright < ilen && index[iright] < right) ++iright;
       --iright;
+      iright_prev = iright;
     }
-    Rprintf(
-      "left %0.3f right %0.3f ileftv %0.3f irightv %0.3f il %d ir %d end %0.3f\n",
-      left, right,
-      index[ileft], index[iright],
-      ileft, iright, end
-    );
+    // Rprintf(
+    //   "left %0.3f right %0.3f ileftv %0.3f irightv %0.3f il %d ir %d end %0.3f\n",
+    //   left, right,
+    //   index[ileft], index[iright],
+    //   ileft, iright, end
+    // );
 
     if(index[ileft] >= right || index[iright] < left) {
       // Could have long periods when this is true, could have separate loops
