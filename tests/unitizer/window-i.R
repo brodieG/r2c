@@ -1,6 +1,5 @@
 library(r2c)
 
-
 wiexe_len <- function(i, x, w, by, align='center')
   window_i_exec(r2c_len, width=w, by=by, align=align, data=x, index=i)
 wiexe_sum <- function(i, x, w, by, align='center')
@@ -39,8 +38,15 @@ unitizer_sect("base index boundaries", {
   wiexe_sum(i=0:1, x=xs, w=1, by=1.01, align='left')
   wiexe_sum(i=0:1, x=xs, w=1, by=1.01, align='center')
   wiexe_sum(i=0:1, x=xs, w=1, by=1.01, align='right')
-
 })
+unitizer_sect("start end", {
+  vals <- 2^(0:2)
+  window_i_exec(r2c_sum, index=0:2, data=vals, width=1, by=1, start=-2, end=-1)
+  window_i_exec(r2c_sum, index=0:2, data=vals, width=1, by=1, start=-2, end=0)
+  window_i_exec(r2c_sum, index=0:2, data=vals, width=1, by=1, start=2, end=3)
+  window_i_exec(r2c_sum, index=0:2, data=vals, width=1, by=1, start=3, end=5)
+})
+
 unitizer_sect("Numeric Align", {
   # See previous section
   wiexe_len(i=0:1, x=0:1, w=1, by=1, align=0)
@@ -51,7 +57,13 @@ unitizer_sect("Numeric Align", {
   show_bits(wiexe_sum(i=0:1, x=1:2, w=1, by=1, align=1.5))
   show_bits(wiexe_sum(i=0:1, x=1:2, w=1, by=1, align=2))
 })
-
+unitizer_sect("Overlapping windows", {
+  vals <- 2^(0:2)
+  show_bits(wiexe_sum(i=0:2, x=vals, w=2, by=1, align='left'))
+  show_bits(wiexe_sum(i=0:2, x=vals, w=1.99, by=1, align='left'))
+  show_bits(wiexe_sum(i=0:2, x=vals, w=2.01, by=1, align='left'))
+  show_bits(wiexe_sum(i=0:2, x=vals, w=2, by=.5, align='left'))
+})
 
 unitizer_sect("errors", {
   # mismatch index/data length

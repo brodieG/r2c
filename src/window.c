@@ -118,7 +118,7 @@ SEXP R2C_run_window(
     }
     ++(*(dp.data + I_RES));
 
-    // Check for possible overflows
+    // large `by` could (theoretically) overflow on last loop iteration
     if(i > imax) {
       if(rlen != 1) Rf_error("Internal Error: `by` (%d) overflows `i`", by);
       break;
@@ -188,10 +188,6 @@ SEXP R2C_run_window_i(
   double * index = REAL(index_sxp);
   R_xlen_t ilen = XLENGTH(index_sxp);
   R_xlen_t rlen = dp.lens[I_RES];
-  // Rprintf(
-  //   "w %0.3f o %0.3f by %0.3f rlen %d start %0.3f end %0.3f\n",
-  //   w, o, by, rlen
-  // );
 
   // these will be stored 1-index, so double (see assumptions.c)
   double recycle_warn = 0;
@@ -236,12 +232,6 @@ SEXP R2C_run_window_i(
     } else {
       ileft = iright = ilen - 1;
     }
-    // Rprintf(
-    //   "left %0.3f right %0.3f ileftv %0.3f irightv %0.3f il %d ir %d end %0.3f\n",
-    //   left, right,
-    //   index[ileft], index[iright],
-    //   ileft, iright, end
-    // );
 
     if(index[ileft] < right && index[iright] >= left) {
       // At least one value
@@ -255,12 +245,10 @@ SEXP R2C_run_window_i(
       for(int j = dp.dat_start; j <= dp.dat_end; ++j) dp.lens[j] = 0;
     }
     (*(dp.fun))(dp.data, dp.lens, dp.datai, dp.narg, dp.flags, dp.ctrl);
-    // Unlike with groups, either none or all would warn, so we shouldn't have
-    // to check every single step.
     if(*recycle_flag && !recycle_warn)
       recycle_warn = (double)i + 1;
 
-    // Next two checks should not be necessary if all the calcs are right
+    // checks not be necessary if all the calcs are right
     if(dp.lens[I_RES] != 1)
       Rf_error("Window result size is not 1 (is %jd).", dp.lens[I_RES]);
 
