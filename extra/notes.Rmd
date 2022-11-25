@@ -2,19 +2,25 @@
 
 # To Do / Questions
 
-* `DYNLOAD` warnings around `run()`; maybe that function doesn't need to be of
-  the type DYNLOAD?  We know what the interface of it is, so we just need to
-  check whether that's compatible with R's compilation mechanism.
+* Make overflow testable.
 * Test that everything works if there is no group varying data (i.e. everything
   fed through MoreArgs).  Not completely trivial to test as we need a function
   that allows us to specify a `data` parameter, but then uses it as a control
   instead of data (at least for `group_exec`).  We just need the group varying
   data to be referenced somewhere in the call, which 
-* Recycle warning for windows, does it make sense?  It might with the partial
-  windows, but for the main section we should only need to check once?
 * Be sure to test a window that is wider than the data to see that partial
   windows are computed correctly on both sides?  Should be okay.
-
+* What happens with `by` == `width` for `window_i_exec`.  It will cause values
+  on the boundary to be included in two adjacent windows.  Is that bad?  It's
+  the opposite of `window_exec` where they are not.  If we change it to be
+  closed(?) on the right though then what is the meaning of `align='right'`?
+  Right now we define that as `width`.  Do we allow ourselves to say that with
+  `align='right'` the base index is not actually included in the window?
+* Recycle warning for windows, does it make sense?  It might with the partial
+  windows, but for the main section we should only need to check once?  This is
+  actually significant for the `w=1` case, taking about 40% of the time the
+  function evaluation takes (`r2c_sum`).  But probably in the noise for all
+  other cases.
 
 ## For CRAN
 
@@ -140,6 +146,12 @@
 
 ## Done
 
+* `DYNLOAD` warnings around `run()`; maybe that function doesn't need to be of
+  the type DYNLOAD?  We know what the interface of it is, so we just need to
+  check whether that's compatible with R's compilation mechanism.
+    * Turns out R-devel was in a weird state where their own transition from
+      empty arglist was incomplete.
+* We should be able to specify align values that exceed the window range.
 * Tests groups that aren't just 1:n or 0:n (I think we do this)?
 * Test on windows.  Instructions for windows users about toolchain, etc?
 * Fill out acknowledgments.
@@ -237,6 +249,141 @@ doesn't make any sense.
 * Annotate code with the call that it corresponds to
 
 # Window Implementation
+
+## Discrete vs Continuous
+
+Is the "irregular" mode really about using a continuous variable, and thus the
+base index points to a zero-width instantaneous moment (`POSIXct`?).  Whereas
+instead the normal mode is pointing to a fixed width element.  What about
+something like a `Date`?  Which is it?  If it is continuous, do we just take it
+to be the instant the day switches, midnight?  Does it belong to the prior or
+the subsequent day?
+
+## Closed / Open intervals
+
+Related to the above, how do we treat the ends of a window?  Do we give the
+option of how to treat them?  What should be the default.
+
+It's tricky because there is no consistent answer.  For no overlapping windows,
+we get `n` if align is left or center, but `n-1` if it is right.
+
+I think what makes most sense is to have a half closed interval.  We're picking
+open on the right, so that e.g. if we pick a date, and we right align with width
+1 day, we'll get all the entries from the prior day excluding anything that
+happened at midnight, which we consider part of the current day.
+
+Maybe in the future we'll give the option to do something different.
+
+## End condition
+
+Struggling a little bit to figure out the natural end condition.  If `align =
+"left"` then it makes sense to have as many iterations as intervals.  We don't
+need end to get a go at being an base index because it is included in the prior
+window (notwithstanding smaller windows, etc.).
+
+I guess `end` needs a shot at being a window because there is no guarantee it
+was included in the prior window.  And it seems weird to use presence in the
+prior window as reason to give it a shot or not, although in the special case of
+`width = by` it does produce a "pleasing" outcome.
+
+## Alternative Irregular Windows
+
+Firstly we clearly need to rename our things.  There window size, window
+spacing, and window contents.  Our implementation is regular in the first two.
+We could allow:
+
+* Specifying indices.
+* Specifying window positions (where these could be the same as indices to
+  simulate what slider does).
+* Specifying window start/end points (equivalent to positions with variable
+  widths?)
+
+What should the names be?  Current `window_i_exec` is not actually irregular.
+
+* Is it step vs. slide?  But both are step.
+* Discrete vs continuous?
+* Integer vs real?  Maybe.
+* `window`
+* `window_c`
+* `window_ci`, this replaces `by` with `at`?
+
+    gexe(fun, groups, data, MoreArgs, enclos)
+    wexe(fun, width, data, MoreArgs, by, partial, align, enclos)
+    wcexe(fun, width, data, MoreArgs, by, partial, align, enclos)
+    wciexe(fun, width, index, data, MoreArgs, by, partial, align, enclos)
+
+    gexe(fun, d, g, args, enclos)
+    wexe(fun, d, w, by, align, partial, args, enclos)
+    wcexe(fun, d, i, w, by, align, partial, args, enclos)
+    wciexe(fun, d, i, w, at, align, partial, args, enclos)
+
+    g_exe(fun, data, g, args, enclos)
+    # discrete regular
+    wd_exe(fun, data, w, by, align, partial, args, enclos)
+    # continuous regular
+    wc_exe(fun, data, i, w, by, align, start, end, partial, args, enclos)
+    # continuous irregular
+    wi_exe(fun, data, i, w, at, align, start, end, partial, args, enclos)
+
+    g_exe
+    wd_by_exe
+    wd_at_exe
+    wc_by_exe
+    wc_at_exe
+
+    g_exe
+
+    wdby_exe
+    wdat_exe
+
+    wcby_exe
+    wcat_exe
+
+So is there a way to merge the discrete and continuous interfaces into one?  Not
+really, they are pretty different.  But continuous can completely cover the
+discrete case.
+
+Actually, they are pretty close because the following produce the same value:
+
+    wd_by(x, w=<odd number>)
+    wc_by(x, seq_along(x), w=<odd number>)
+
+One issue remaining is how to treat "align='right'".  In continuous it excludes
+the base index value due to the open interval on the right.  But in discrete it
+includes it.  If we defined it as `right = width - 1`, it works in continuous
+too?
+
+    |1|0|1|2|3|
+        ^
+      [ | )
+      ( | ]
+    [ | | | )
+    ( | | | ]
+
+It does, it just gets weird if e.g. `width = 0.1`.  The alternative is to define
+"right" as `align = width`.  Then the two methods are consistent, albeit
+inconsistent with `rollapply`.
+
+Is this consistent with `align = "center"` equal to `align = width / 2`?  It can
+be if we declare that for even sized windows it is the leading part of the
+window that gets the extra element, as opposed to the trailing one.  If we had
+intervals closed on the right instead of the left then it would be consistent,
+but that goes against the logic of the trailing intervals and midnight being
+part of the day that follows it.
+
+    w_by(
+      f, x, w,
+      i=seq_along(x), by=1, align='center',
+      start=i[1], end=i[length(i)], partial
+    )
+    w_at(
+      f, x, w,
+      i=seq_along(x), at=i, align='center',
+      partial
+    )
+
+What does `partial` mean for the continuous case?
+
 
 ## r2c
 

@@ -1,6 +1,7 @@
 
 
     library(r2c)
+    set.seed(1)
     conv <- r2cq(sum(x * y))
     n <- 1e7
     w <- 100
@@ -75,3 +76,60 @@ Scaling of online algo?  Will need to test with `sys.time`.
     ##  0.163   0.000   0.165
 
 There is not that much overhead.
+
+## New Benchmarks
+
+These are since we cleaned up things a bit.  Not sure if original window calcs
+are slower due to cruft or changes in the code.
+
+Let's try to do an equivalent `window_i` version
+
+    set.seed(1)
+    n <- 1e7
+    x <- runif(n) * runif(n)
+    w <- 101
+    i <- seq_along(x) + 0
+
+    system.time(
+      res.wi <- window_i_exec(
+        r2c_sum, data=x, index=i, width=w, align='center', by=1
+      )
+    )
+    ##   user  system elapsed 
+    ##  1.026   0.003   1.033 
+
+Not too bad compared to original:
+
+    system.time(
+      res.rp <- window_exec(
+        r2c_sum, x, width=w, align='center', partial=TRUE
+      )
+    )
+    ##   user  system elapsed 
+    ##  0.867   0.002   0.872 
+    identical(res.rp, res.wi)
+    ## [1] TRUE
+
+Test overhead:
+
+    system.time(
+      res.wi1 <- window_i_exec(
+        r2c_sum, data=x, index=i, width=1, align='center', by=1
+      )
+    )
+    ##   user  system elapsed 
+    ##  0.228   0.000   0.228 
+    system.time(
+      res.rp1 <- window_exec(
+        r2c_sum, data=x, width=1, align='center', by=1, partial=TRUE
+      )
+    )
+    ##   user  system elapsed 
+    ##  0.154   0.001   0.156 
+    identical(res.wi1, res.rp1)
+    ## [1] TRUE
+
+    for(j in 1:20)
+      res.wi1 <- window_i_exec(
+        r2c_sum, data=x, index=i, width=1, align='center', by=1
+      )
