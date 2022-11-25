@@ -54,7 +54,6 @@ SEXP R2C_run_window(
     Rf_error("Internal Error: bad window values w %d o %d b %d.", w, o, by);
 
   struct R2C_dat dp = prep_data(dat, dat_cols, ids, flag, ctrl, so);
-  R_xlen_t rlen = dp.lens[I_RES];
 
   // these will be stored 1-index, so double (see assumptions.c)
   double recycle_warn = 0;
@@ -81,7 +80,10 @@ SEXP R2C_run_window(
       "`align`, `window`, and `data` cause counter to overflow R_XLEN_T_MAX."
     );
 
+  // Avoid theoretical potential for R_xlen_t overflow in loop counter in case
+  // where `by` stride is wide and last step would be well past end of data.
   R_xlen_t imax = R_XLEN_T_MAX - by;
+  if(d_size < imax) imax = d_size;
 
   // This is not super optimized.  There are common special cases (e.g. window
   // fully in bounds) that require less work than those partially out of bounds,
@@ -90,7 +92,7 @@ SEXP R2C_run_window(
   // windows, and if windows are big, the actual function evaluation will be
   // slow relative to the bookkeeping of the start/len variables.
 
-  for(i = 0; i < d_size && rlen > 0; i += by, --rlen) {
+  for(i = 0; i < imax; i += by) {
     int incomplete = 0;
     start = i - o;
     len = w;
@@ -117,18 +119,7 @@ SEXP R2C_run_window(
       **(dp.data + I_RES) = NA_REAL;
     }
     ++(*(dp.data + I_RES));
-
-    // large `by` could (theoretically) overflow on last loop iteration
-    if(i > imax) {
-      if(rlen != 1) Rf_error("Internal Error: `by` (%d) overflows `i`", by);
-      break;
-    }
   }
-  if(i < d_size || rlen > 0)
-    Rf_error(
-      "Internal error: input/by/output size mismatch %jd %jd %jd.",
-      d_size, i, rlen
-    );
   return Rf_ScalarReal((double) recycle_warn);
 }
 
