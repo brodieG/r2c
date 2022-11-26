@@ -122,6 +122,44 @@ SEXP R2C_run_window(
   }
   return Rf_ScalarReal((double) recycle_warn);
 }
+#define SLIDE_WINDOW(left_cond, right_cond, ib_cond) do {                     \
+  for(R_xlen_t i = 0; i < rlen; ++i, left = start + by * i) {                 \
+    /* `+ by * i` instead of `+= by` for precision */                         \
+    while((left_cond) && ileft < ilen) ++ileft;                               \
+    if(ileft < ilen) {                                                        \
+      right = left + w;                                                       \
+      /* better iright_prev if window >> by, but otherwise ileft is better. */\
+      /* relying on branch pred figuring out this is constant for duration  */\
+      /* + 1 because we do --iright.                                        */\
+      if(ileft > iright_prev) iright = ileft + 1;                             \
+      else iright = iright_prev + 1;                                          \
+      /* overshoot and step back */                                           \
+      while((right_cond) && iright < ilen) ++iright;                          \
+      --iright;                                                               \
+      iright_prev = iright;                                                   \
+    } else {                                                                  \
+      ileft = iright = ilen - 1;                                              \
+    }                                                                         \
+    if((ib_cond)) { /* at least one value */                                  \
+      R_xlen_t len = iright - ileft + 1;                                      \
+      for(int j = dp.dat_start; j <= dp.dat_end; ++j) {                       \
+        dp.data[j] = dat_base[j] + ileft;                                     \
+        dp.lens[j] = len;                                                     \
+      }                                                                       \
+    } else {        /* empty window */                                        \
+      for(int j = dp.dat_start; j <= dp.dat_end; ++j) dp.lens[j] = 0;         \
+    }                                                                         \
+  (*(dp.fun))(dp.data, dp.lens, dp.datai, dp.narg, dp.flags, dp.ctrl);        \
+  if(*recycle_flag && !recycle_warn)                                          \
+    recycle_warn = (double)i + 1;                                             \
+                                                                              \
+  /* checks not be necessary if all the calcs are right  */                   \
+  if(dp.lens[I_RES] != 1)                                                     \
+    Rf_error("Window result size is not 1 (is %jd).", dp.lens[I_RES]);        \
+                                                                              \
+  ++(*(dp.data + I_RES));                                                     \
+  }                                                                           \
+} while (0)
 
 SEXP R2C_run_window_i(
   SEXP so,
@@ -155,11 +193,9 @@ SEXP R2C_run_window_i(
 
   // This should be validated R level, but bad if wrong
   if(
-    w < 0 || by < 0 || start > end ||
-    isnan(w) || isnan(o) || isnan(by) || isnan(start) || isnan(end) ||
-    isnan(w) || isnan(o) || isnan(by) || isnan(start) || isnan(end) ||
-    !isfinite(w) || !isfinite(o) || !isfinite(by) || !isfinite(start) ||
-    !isfinite(end)
+    isnan(w) || !isfinite(w) || isnan(o) || !isfinite(o) ||
+    isnan(by) || !isfinite(by) || isnan(start) || !isfinite(start) ||
+    isnan(end) || !isfinite(end) || w < 0 || by < 0 || start > end
   )
     Rf_error(
       "Internal Error: bad window values w %f o %f b %f start %f end %f.",
@@ -205,45 +241,15 @@ SEXP R2C_run_window_i(
   ileft = iright = iright_prev = 0;
   double left, right;
   left = start;
+  int lclose, rclose;
+  lclose = 1;
+  rclose = 0;
 
-  // `+ by * i` instead of `+= by` for precision
-  for(R_xlen_t i = 0; i < rlen; ++i, left = start + by * i) {
-    while(index[ileft] < left && ileft < ilen) ++ileft;
-    if(ileft < ilen) {
-      right = left + w;
-      // better iright_prev if window >> by, but otherwise ileft is better.
-      // relying on branch pred figuring out this is constant for duration
-      // + 1 because we do --iright.
-      if(ileft > iright_prev) iright = ileft + 1;
-      else iright = iright_prev + 1;
-      // Keep going until overshoot, then step back
-      while(index[iright] < right && iright < ilen) ++iright;
-      --iright;
-      iright_prev = iright;
-    } else {
-      ileft = iright = ilen - 1;
-    }
-
-    if(index[ileft] < right && index[iright] >= left) {
-      // At least one value
-      R_xlen_t len = iright - ileft + 1;
-      for(int j = dp.dat_start; j <= dp.dat_end; ++j) {
-        dp.data[j] = dat_base[j] + ileft;
-        dp.lens[j] = len;
-      }
-    } else {
-      // Empty, could have separate loops to handle this at beginning or end
-      for(int j = dp.dat_start; j <= dp.dat_end; ++j) dp.lens[j] = 0;
-    }
-    (*(dp.fun))(dp.data, dp.lens, dp.datai, dp.narg, dp.flags, dp.ctrl);
-    if(*recycle_flag && !recycle_warn)
-      recycle_warn = (double)i + 1;
-
-    // checks not be necessary if all the calcs are right
-    if(dp.lens[I_RES] != 1)
-      Rf_error("Window result size is not 1 (is %jd).", dp.lens[I_RES]);
-
-    ++(*(dp.data + I_RES));
+  if(lclose && !rclose) {
+    SLIDE_WINDOW(
+      index[ileft] < left, index[iright] < right,
+      index[ileft] < right && index[iright] >= left
+    );
   }
   return Rf_ScalarReal((double) recycle_warn);
 }
