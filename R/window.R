@@ -182,7 +182,7 @@ window_exec <- function(
     width=width, index=NULL, data=data,
     MoreArgs=MoreArgs, by=by,
     offset=offset, partial=partial,
-    call=call
+    call=call, interval=1L
   )
 }
 #' @rdname window_exec
@@ -190,7 +190,7 @@ window_exec <- function(
 
 window_i_exec <- function(
   fun, width, index, data, MoreArgs=list(), by,
-  align='center', start=index[1L], end=index[length(index)],
+  align='center', start=index[1L], end=index[length(index)], interval="[)",
   enclos=parent.frame()
 ) {
   # FIXME: add validation for shlib
@@ -207,7 +207,8 @@ window_i_exec <- function(
     MoreArgs=list(),
     enclos=is.environment(.),
     start=NUM.1,
-    end=NUM.1 && . >= start
+    end=NUM.1 && . >= start,
+    interval=CHR.1 && . %in% c("()", "[)", "(]", "[]")
   )
   width <- as.numeric(width)
   by <- as.numeric(by)
@@ -227,13 +228,14 @@ window_i_exec <- function(
     width=width, index=index, data=data,
     MoreArgs=MoreArgs, by=by,
     offset=offset, partial=FALSE,
-    call=call, start=start, end=end
+    call=call, start=start, end=end, 
+    interval=match(interval, c("()", "[)", "(]", "[]")) - 1L
   )
 }
 
 window_exec_int <- function(
   obj, formals, enclos, width, index, data, MoreArgs, by, partial, offset,
-  start, end, call
+  start, end, interval, call
 ) {
   preproc <- obj[['preproc']]
   shlib <- obj[['so']]
@@ -314,7 +316,8 @@ window_exec_int <- function(
         by,
         index,
         start,
-        end
+        end,
+        interval
       )
     }
     # Result vector is modified by reference

@@ -122,10 +122,10 @@ SEXP R2C_run_window(
   }
   return Rf_ScalarReal((double) recycle_warn);
 }
-#define SLIDE_WINDOW(left_cond, right_cond, ib_cond) do {                     \
+#define SLIDE_WINDOW(LEFT_COND, RIGHT_COND, IB_COND) do {                     \
+  /* `+ by * i` instead of `+= by` for precision */                           \
   for(R_xlen_t i = 0; i < rlen; ++i, left = start + by * i) {                 \
-    /* `+ by * i` instead of `+= by` for precision */                         \
-    while((left_cond) && ileft < ilen) ++ileft;                               \
+    while((LEFT_COND) && ileft < ilen) ++ileft;                               \
     if(ileft < ilen) {                                                        \
       right = left + w;                                                       \
       /* better iright_prev if window >> by, but otherwise ileft is better. */\
@@ -134,13 +134,13 @@ SEXP R2C_run_window(
       if(ileft > iright_prev) iright = ileft + 1;                             \
       else iright = iright_prev + 1;                                          \
       /* overshoot and step back */                                           \
-      while((right_cond) && iright < ilen) ++iright;                          \
+      while((RIGHT_COND) && iright < ilen) ++iright;                          \
       --iright;                                                               \
       iright_prev = iright;                                                   \
     } else {                                                                  \
       ileft = iright = ilen - 1;                                              \
     }                                                                         \
-    if((ib_cond)) { /* at least one value */                                  \
+    if((IB_COND)) { /* at least one value */                                  \
       R_xlen_t len = iright - ileft + 1;                                      \
       for(int j = dp.dat_start; j <= dp.dat_end; ++j) {                       \
         dp.data[j] = dat_base[j] + ileft;                                     \
@@ -174,12 +174,15 @@ SEXP R2C_run_window_i(
   SEXP by_sxp,
   SEXP index_sxp,
   SEXP start_sxp,
-  SEXP end_sxp
+  SEXP end_sxp,
+  SEXP interval_sxp
 ) {
+  if(TYPEOF(interval_sxp) != INTSXP || XLENGTH(interval_sxp) != 1L)
+    Rf_error("Argument `interval` should be scalar integer.");
   if(TYPEOF(width) != REALSXP || XLENGTH(width) != 1L)
-    Rf_error("Argument `width` should be scalar integer.");
+    Rf_error("Argument `width` should be scalar numeric.");
   if(TYPEOF(offset) != REALSXP || XLENGTH(offset) != 1L)
-    Rf_error("Argument `offset` should be scalar integer.");
+    Rf_error("Argument `offset` should be scalar numeric.");
   if(TYPEOF(by_sxp) != REALSXP || XLENGTH(by_sxp) != 1L)
     Rf_error("Argument `by` should be scalar numeric.");
   if(TYPEOF(index_sxp) != REALSXP)
@@ -241,14 +244,30 @@ SEXP R2C_run_window_i(
   ileft = iright = iright_prev = 0;
   double left, right;
   left = start;
+  int interval = INTEGER(interval_sxp)[0];
   int lclose, rclose;
-  lclose = 1;
-  rclose = 0;
+  lclose = interval & 1;
+  rclose = interval & 2;
 
   if(lclose && !rclose) {
     SLIDE_WINDOW(
       index[ileft] < left, index[iright] < right,
       index[ileft] < right && index[iright] >= left
+    );
+  } else if (!lclose && rclose) {
+    SLIDE_WINDOW(
+      index[ileft] <= left, index[iright] <= right,
+      index[ileft] <= right && index[iright] > left
+    );
+  } else if (lclose && rclose) {
+    SLIDE_WINDOW(
+      index[ileft] < left, index[iright] <= right,
+      index[ileft] <= right && index[iright] >= left
+    );
+  } else if (!lclose && !rclose) {
+    SLIDE_WINDOW(
+      index[ileft] < left, index[iright] < right,
+      index[ileft] < right && index[iright] > left
     );
   }
   return Rf_ScalarReal((double) recycle_warn);
