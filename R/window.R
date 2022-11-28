@@ -191,7 +191,7 @@ window_exec <- function(
 window_i_exec <- function(
   fun, width, index, data, MoreArgs=list(), by,
   align='center', start=index[1L], end=index[length(index)], interval="[)",
-  enclos=parent.frame()
+  partial=TRUE, enclos=parent.frame()
 ) {
   # FIXME: add validation for shlib
   vetr(
@@ -208,7 +208,8 @@ window_i_exec <- function(
     enclos=is.environment(.),
     start=NUM.1,
     end=NUM.1 && . >= start,
-    interval=CHR.1 && . %in% c("()", "[)", "(]", "[]")
+    interval=CHR.1 && . %in% c("()", "[)", "(]", "[]"),
+    partial=LGL.1
   )
   width <- as.numeric(width)
   by <- as.numeric(by)
@@ -227,8 +228,8 @@ window_i_exec <- function(
     obj, formals=formals(fun), enclos=enclos,
     width=width, index=index, data=data,
     MoreArgs=MoreArgs, by=by,
-    offset=offset, partial=FALSE,
-    call=call, start=start, end=end, 
+    offset=offset, partial=partial,
+    call=call, start=start, end=end,
     interval=match(interval, c("()", "[)", "(]", "[]")) - 1L
   )
 }
@@ -317,7 +318,8 @@ window_exec_int <- function(
         index,
         start,
         end,
-        interval
+        interval,
+        partial
       )
     }
     # Result vector is modified by reference

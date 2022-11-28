@@ -124,7 +124,7 @@ SEXP R2C_run_window(
 }
 #define SLIDE_WINDOW(LEFT_COND, RIGHT_COND, IB_COND) do {                     \
   /* `+ by * i` instead of `+= by` for precision */                           \
-  for(R_xlen_t i = 0; i < rlen; ++i, left = start + by * i) {                 \
+  for(R_xlen_t i = 0; i < rlen; ++i, left = base0 + by * i) {                 \
     while((LEFT_COND) && ileft < ilen) ++ileft;                               \
     if(ileft < ilen) {                                                        \
       right = left + w;                                                       \
@@ -149,15 +149,15 @@ SEXP R2C_run_window(
     } else {        /* empty window */                                        \
       for(int j = dp.dat_start; j <= dp.dat_end; ++j) dp.lens[j] = 0;         \
     }                                                                         \
-  (*(dp.fun))(dp.data, dp.lens, dp.datai, dp.narg, dp.flags, dp.ctrl);        \
-  if(*recycle_flag && !recycle_warn)                                          \
-    recycle_warn = (double)i + 1;                                             \
+    if(partial || (start <= left && end >= right)) {                          \
+      (*(dp.fun))(dp.data, dp.lens, dp.datai, dp.narg, dp.flags, dp.ctrl);    \
+      /* checks not be necessary if all the calcs are right  */               \
+      if(dp.lens[I_RES] != 1)                                                 \
+        Rf_error("Window result size is not 1 (is %jd).", dp.lens[I_RES]);    \
+    } else  **(dp.data + I_RES) = NA_REAL;                                    \
                                                                               \
-  /* checks not be necessary if all the calcs are right  */                   \
-  if(dp.lens[I_RES] != 1)                                                     \
-    Rf_error("Window result size is not 1 (is %jd).", dp.lens[I_RES]);        \
-                                                                              \
-  ++(*(dp.data + I_RES));                                                     \
+    if(*recycle_flag && !recycle_warn) recycle_warn = (double)i + 1;          \
+    ++(*(dp.data + I_RES));                                                   \
   }                                                                           \
 } while (0)
 
@@ -175,7 +175,8 @@ SEXP R2C_run_window_i(
   SEXP index_sxp,
   SEXP start_sxp,
   SEXP end_sxp,
-  SEXP interval_sxp
+  SEXP interval_sxp,
+  SEXP partial_sxp
 ) {
   if(TYPEOF(interval_sxp) != INTSXP || XLENGTH(interval_sxp) != 1L)
     Rf_error("Argument `interval` should be scalar integer.");
@@ -187,12 +188,15 @@ SEXP R2C_run_window_i(
     Rf_error("Argument `by` should be scalar numeric.");
   if(TYPEOF(index_sxp) != REALSXP)
     Rf_error("Argument `index` should be numeric.");
+  if(TYPEOF(partial_sxp) != LGLSXP || XLENGTH(partial_sxp) != 1L)
+    Rf_error("Argument `partial` should be TRUE or FALSE.");
 
   double w = Rf_asReal(width);
   double o = Rf_asReal(offset);
   double by = Rf_asReal(by_sxp);
   double start = Rf_asReal(start_sxp);
   double end = Rf_asReal(end_sxp);
+  int partial = Rf_asInteger(partial_sxp);  // NA checked at R level
 
   // This should be validated R level, but bad if wrong
   if(
@@ -205,10 +209,9 @@ SEXP R2C_run_window_i(
       w, o, by, start, end
     );
 
-  // Shift start/end by o, so we can treat window start as the base index
-  start = start - o;
-  end = end - o;
-  if(!isfinite(start))
+  // Shift start by o, so we can treat window start as the base index
+  double base0 = start - o;
+  if(!isfinite(base0))
     Rf_error(
       "`start` and `align` values create a negative infinity left bound, ",
       "which is disallowed."
@@ -243,7 +246,7 @@ SEXP R2C_run_window_i(
   R_xlen_t ileft, iright, iright_prev;  // indices of ends of window
   ileft = iright = iright_prev = 0;
   double left, right;
-  left = start;
+  left = base0;
   int interval = INTEGER(interval_sxp)[0];
   int lclose, rclose;
   lclose = interval & 1;

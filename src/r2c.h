@@ -79,7 +79,7 @@ SEXP R2C_run_window_i(
   SEXP so, SEXP dat, SEXP dat_cols, SEXP ids, SEXP flag,
   SEXP ctrl, SEXP width, SEXP offset,
   SEXP by_sxp, SEXP index_sxp, SEXP start_sxp, SEXP end_sxp,
-  SEXP interval_sxp
+  SEXP interval_sxp, SEXP partial
 );
 
 #endif  /* R2C_H */
