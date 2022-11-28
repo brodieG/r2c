@@ -45,7 +45,6 @@
     ##    user  system elapsed
     ##   5.387   0.569   6.262
 
-
 Pretty volatile timings here, probably need to gc first always.
 
     library(data.table)
@@ -79,6 +78,8 @@ There is not that much overhead.
 
 ## New Benchmarks
 
+    source('extra/systime2.R')
+
 These are since we cleaned up things a bit.  Not sure if original window calcs
 are slower due to cruft or changes in the code.
 
@@ -110,6 +111,25 @@ Not too bad compared to original:
     identical(res.rp, res.wi)
     ## [1] TRUE
 
+After adding partial:
+
+    system.time(
+      res.wi <- window_i_exec(
+        r2c_sum, data=x, index=i, width=w, align='center', by=1
+      )
+    )
+    ##   user  system elapsed 
+    ##  0.970   0.002   0.976 
+
+    system.time(
+      res.wi <- window_i_exec(
+        r2c_sum, data=x, index=i, width=w, align='center', by=1,
+        partial=TRUE
+      )
+    )
+    ##   user  system elapsed 
+    ##  0.975   0.003   0.982 
+
 Test overhead:
 
     system.time(
@@ -128,6 +148,25 @@ Test overhead:
     ##  0.154   0.001   0.156 
     identical(res.wi1, res.rp1)
     ## [1] TRUE
+
+    res.wi1 <- window_i_exec(
+      r2c_sum, data=x, index=i, width=1, align=0, by=1
+    )
+    x <- 2^(0:2)
+    window_i_exec(
+      r2c_sum, data=x, index=seq_along(x), width=1, align=0, by=1
+    )
+    x <- 2^(0:2)
+    window_i_exec(
+      r2c_sum, data=x, index=seq_along(x), width=1, align=1, by=1
+    )
+    window_i_exec(
+      r2c_sum, data=x, index=seq_along(x), width=1, align=.5, by=1
+    )
+    window_i_exec(
+      r2c_sum, data=x, index=seq_along(x), width=2, align=1, by=1,
+      partial=TRUE
+    )
 
     for(j in 1:20)
       res.wi1 <- window_i_exec(
