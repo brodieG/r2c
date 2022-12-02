@@ -325,6 +325,18 @@ get_so_loc <- function(r2c.fun) get_r2c_dat(r2c.fun)[['so']]
 get_compile_out <- function(r2c.fun) get_r2c_dat(r2c.fun)[['compile.out']]
 
 get_r2c_dat <- function(r2c.fun) {
-  as.list(body(r2c.fun)[[c(2L,3L)]])  # the object is embedded in the function
+  if(!is.function(r2c.fun) || !inherits(r2c.fun, "r2c_fun"))
+    stop("`r2c.fun` must be an r2c function.")
+  dat <- try(body(r2c.fun)[[c(2L,3L)]])
+  if(inherits(try, "try-error"))
+    stop("`r2c.fun` does not appear to be structured like an r2c function.")
+  if(!is.environment(dat))
+    stop("Could not find data environment in `r2c.fun`")
+
+  dat <- as.list(dat)
+  if(!all(c('preproc', 'call', 'so', 'compile.out') %in% names(dat)))
+    stop("`r2c.fun` missing some expected components.")
+
+  dat
 }
 
