@@ -36,7 +36,30 @@ bsac <- function(call, groups, data, MoreArgs=list(), enclos=parent.frame()) {
   )
   unlist(res)
 }
+#' Retrieve First Vector from Data
+#'
+#' Designed to handle the case where `data` can be either a numeric vector or a
+#' list of numeric vectors.
+#'
+#' @export
+#' @param data a numeric vector, or a (possibly empty) list of numeric vectors.
+#' @return if `data` is a list, the first element if it is a numeric vector, or
+#'   an empty numeric vector if the list is empty.  If `data` is a numeric
+#'   vector, then `data`.  Otherwise an error is thrown.
+#' @examples
+#' first_vec(1:5)
+#' first_vec(runif(5))
+#' first_vec(mtcars)
+#' first_vec(matrix(1:4, 2))  # matrices treated as vectors
 
+first_vec <- function(data) {
+  vetr(is.list(.) || is.numeric(.))
+  if(is.list(x) && !length(x)) x <- numeric()
+  if(is.list(x)) x <- x[[1L]]
+  if(!is.numeric(x))
+    stop("Argument `data` must be numeric, or a list containing numeric vectors.")
+  x
+}
 
 is.num_naked <- function(x)
   vapply(x, is.vector, TRUE, "numeric") |
