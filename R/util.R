@@ -13,8 +13,6 @@
 ##
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
-## Used to be an S3 method, but that makes reloading package a problem.
-
 #' Basic Split Apply Combine
 #'
 #' Evaluates quoted expressions in the context of data split by group.  Intended

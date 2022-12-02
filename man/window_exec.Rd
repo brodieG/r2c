@@ -22,10 +22,12 @@ window_i_exec(
   index,
   data,
   MoreArgs = list(),
-  by = 1L,
+  by,
   align = "center",
   start = index[1L],
   end = index[length(index)],
+  interval = "[)",
+  partial = TRUE,
   enclos = parent.frame()
 )
 }
@@ -43,7 +45,7 @@ window.}
 \item{data}{a numeric vector, or a list of numeric vectors, each vector the
 same length as the vector(s) in \code{groups}.  If a named list, the vectors
 will be matched to \code{fun} parameters by those names.  Elements without names
-are matched positionally.  If a list must contain at least one element.
+are matched positionally.  If a list must contain at least one vector.
 Conceptually, this parameter is used similarly to \code{envir} parameter to
 \code{\link[base:eval]{base::eval}} when that is a list (see \code{enclos}).}
 
@@ -65,22 +67,22 @@ window sizes when the windows are partially out of bounds at the end of the
 \code{data} vectors.}
 
 \item{align}{vector of one of "center" (default), "left", "right", or a
-positive finite non-NA integer (\code{window_exec}) or numeric (\code{window_i_exec})
-scalar value representing what part of the window aligns with the base
-index on the vector, where "left" is the part of the window nearest the
-first element of the vector.  Numeric values represent the left-wards
-offset of the "left" end of the window relative to the base index, where
-\code{0} is equivalent to "left".  See "Details" for some subtleties about the
-effect of align for \code{window_exec} vs \code{window_i_exec}.}
+finite non-NA integer (\code{window_exec}) or numeric (\code{window_i_exec})
+scalar representing what part of the window aligns with the base index on
+the vector.  Numeric values represent the leftwards offset of the "left"
+end of the window relative to the base index, where \code{0} is equivalent to
+"left".  See "Details" for some subtleties about the effect of align for
+\code{window_exec} vs \code{window_i_exec}.}
 
 \item{enclos}{environment to use as the \code{enclos} parameter to
 \code{\link[base:eval]{base::eval}} when evaluating expressions or matching calls (see \code{data}).}
 
-\item{index}{a numeric vector of finite, non-NA, monotonically increasing
-values to slide the window against.  It is the user's responsibility to
-ensure these requirements are met (see notes).  Data entries that
-correspond to index values within a window will be used in the calculation
-associated with that window.}
+\item{index}{a numeric vector with as many elements as \code{data}, containing
+finite, non-NA, monotonically increasing values to slide the window
+against.  It is the user's responsibility to ensure these requirements are
+met (see notes).  Data entries that correspond to index values within a
+window will be used in the calculation associated with that window.
+Windows are closed at their beginning and open at their end.}
 
 \item{start}{numeric(1) first base index for windows for \code{window_i_exec}.
 The range defined by \code{start} and \code{end} should intersect with values in
@@ -93,59 +95,58 @@ The range defined by \code{start} and \code{end} should intersect with values in
 \value{
 a numeric vector, the length of which is determined by the length of
 the data and the value of \code{by} (\code{window_exec}), or by
-\code{(end - start) / by + 1} (\code{window_i_exec}).
+\code{floor(end - start) / by + 1} (\code{window_i_exec}).
 }
 \description{
 Calls the native code associated with \code{fun} on sequential windows along the
-\code{data} vectors.  The windows are aligned relative to a base index that is
-stepped through the data range using a stride specified with \code{by}.
+\code{data} vector(s).  The windows are aligned relative to a base index that
+is iterated over the data range.
 }
 \details{
-For \code{window_exec} windows are always sized \code{width} elements except in the
-cases where the window overflows the beginning or end of the data and
-\code{partial=TRUE}.  The first base index corresponds to the first element in the
-data.  The \code{align} parameter can be used to change how the window is shifted
-from the base index.  A visual illustration of the effect of the \code{align}
-parameter on the fourth iteration of function application, with \code{by=1L} and
-\code{width=4L}:
+\code{data} is made up of "elements", where an "element" is a vector element if
+\code{data} is an atomic vector, or a "row" if it is a "data.frame" / list of
+equal length atomic vectors.  Elements of \code{data} are arrayed on the real line
+in positions determined by \code{i}.  The default is for each element to be
+located at its integer rank, i.e. the first element is at 1, the second at 2,
+and so on.  Windows are intervals on the real line centered on each base
+index, with bounds closed on the left and open on the right.  Both the bounds
+types and window alignment are adjustable.
 
-\if{html}{\out{<div class="sourceCode">}}\preformatted{## window_exec(..., width=4L)
+As an illustration consider the case of width 3 windows (\code{w = 3}) at the
+fourth iteration, with various offset (\code{o} settings).  The offset is how far
+to the left of the base index the left end of the window is aligned:
 
-       +--------- On the 4th iteration, base index is [4]
-       v
- 1 2 3 4 5 6 7    seq_along(x)  # `x` represents a vector in `data`
-       + - - +    align = "left"
-       + - - +    align = 0L
- + - - +          align = "right"
- + - - +          align = 3L
-     + - - +      align = "center"
-     + - - +      align = 1L
-   + - - +        align = 2L
+\if{html}{\out{<div class="sourceCode">}}\preformatted{                   +------------- 4th iteration, base index is 4.0
+                   V
+1.0   2.0   3.0   4.0   5.0   6.0   7.0 | < Real Line
+ 1     2     3     4     5     6     7  | < Element Rank
+
+                                          Offset    In-window
+          [-----------------)           | o = w/2   \{3, 4, 5\}
+                   [-----------------)  | o =   0   \{4, 5, 6\}
+ [-----------------)                    | o =   w   \{1, 2, 3\}
 }\if{html}{\out{</div>}}
 
-If \code{align = "left"}, on the 4th iteration elements \verb{[4:7]} will be in the
-window, which is also true with \code{align = 0L}.  If \code{align = "center"} (or
-\code{align = 1L}), then elements \verb{[3:6]} will be in the window.
+In each case we get three elements in the window, although this is only
+because the positions of the elements are on the integers.  Because the
+windows are open on the right, elements that align exactly on the right end
+of the window are excluded.  With irregularly spaced elements, e.g. with \code{i = c(1, 1.25, 2.5, 5.3, 7, ...)}, we might see (positions approximate):
 
-For \code{window_i_exec} the ends of the window are always \code{width} apart, but  the
-number of elements included in any given window is a function of how many of
-the values in \code{index} fall between the beginning and the end of each window
-(inclusive).  It is thus possible to end up with empty windows depending on
-the spacing of values in \code{index}.  The initial base index defaults to the
-first value in \code{index}, but can be changed with \code{start}.  Similarly, the last
-base index defaults to the last value in \code{index}, but can be changed with
-\code{end}.
+\if{html}{\out{<div class="sourceCode">}}\preformatted{                   +------------- 4th iteration, base index is 4.0
+                   V
+1.0   2.0   3.0   4.0   5.0   6.0   7.0 | < Real Line
+ 1 2      3                4         5  | < Element Rank
 
-Because \code{window_exec} windows are defined in terms of a count of elements,
-but in \code{window_i_exec} they are defined in terms of position along the real
-line, the meaning of numeric \code{align} values is different for each.  In
-particular, for \code{window_exec}, \code{align="right"} is equivalent to
-\code{align=width - 1L}, whereas for \code{window_i_exec} it is equivalent to
-\code{align=width}.
+                                          Offset    In-window
+          [-----------------)           | o = w/2   \{3, 4\}
+                   [-----------------)  | o =   0   \{4\}
+ [-----------------)                    | o =   w   \{1, 2, 3\}
+}\if{html}{\out{</div>}}
 
-The semantics of these function are \strong{loosely} modelled on those of
-\code{zoo::rollapply}, with additional modifications based on
-\code{slider::slide_index}.
+The range within which values are eligible for inclusion in any window is
+given by \code{start} and \code{end}.  Windows that extend outside of this range are
+considered incomplete.  Setting \code{partial=FALSE} will skip calculations of
+those windows and use NA for their result.
 
 There are no special optimizations beyond the use of \code{{r2c}} functions
 over regular R functions.  For wide windows there are more efficient
@@ -153,8 +154,18 @@ solutions depending on the statistic applied.  For example, for rolling means
 and a few other simple statistics \code{{data.table}} offers the "on-line"
 algorithm and \code{{slider}} the "segment tree" algorithm, each with different
 performance and precision trade-offs.
+
+The semantics of these function are \strong{loosely} modelled on those of
+\code{zoo::rollapply}, with additional modifications inspired by
+\code{slider::slide_index}.
 }
 \note{
+For the purposes of this documentation, the first value in a set or the
+lowest value in a range are considered to be the "leftmost" values.
+We think of vectors as starting on the "left" and ending on the "right",
+and of the real line as having negative infinity to the "left" of positive
+infinity.
+
 Window widths, alignments, and strides must be scalars (this may change
 in the future).
 
@@ -165,7 +176,8 @@ values to end up in a window they do not belong to, or values to be
 excluded from windows they belong to.  The exact behavior of NAs with
 respect to relational operators in C is not strictly defined, so the
 results of \code{index} vectors containing NAs might vary depending on the C
-implementation used to compile this package.
+implementation used to compile this package.  Future versions may check for
+and disallow disordered or NA values in \code{index}.
 }
 \examples{
 r2c_mean <- r2cq(mean(x))

@@ -230,7 +230,7 @@ r2c_groups_template <- function() {
 #' @param data a numeric vector, or a list of numeric vectors, each vector the
 #'   same length as the vector(s) in `groups`.  If a named list, the vectors
 #'   will be matched to `fun` parameters by those names.  Elements without names
-#'   are matched positionally.  If a list must contain at least one element.
+#'   are matched positionally.  If a list must contain at least one vector.
 #'   Conceptually, this parameter is used similarly to `envir` parameter to
 #'   [`base::eval`] when that is a list (see `enclos`).
 #' @param MoreArgs a list of R objects to pass on as group-invariant arguments

@@ -57,10 +57,9 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #'
 #' While "r2c_fun" functions can be called in the same way as normal R
 #' functions, there is limited value in doing so.  "r2c_fun" functions are
-#' optimized to be invoked invoked indirectly with runners like [`group_exec`]
-#' (currently the only one implemented).  In many common cases it is likely that
-#' using an "r2c_fun" directly will be slower than evaluating the corresponding
-#' R expression.
+#' optimized to be invoked invoked indirectly with runners like [`group_exec`].
+#' In many common cases it is likely that using an "r2c_fun" directly instead of
+#' with a runner will be slower than evaluating the corresponding R expression.
 #'
 #' The structure of "r2c_fun" objects is subject to change without notice in
 #' future `r2c` releases.  The only supported uses of them are standard
@@ -91,7 +90,8 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' parameters must be attribute-less numeric vectors.  Integer vectors are
 #' supported, but they are coerced to numeric (and thus copied) before use.  If
 #' all data inputs are integer and the R counterpart functions in `call` support
-#' integer output, the result will be returned as integer.  There are no general
+#' integer output, the result will be returned as integer by coercing (thus
+#' copying) the otherwise numeric result to integer.  There are no general
 #' type restrictions on control parameters, but each implemented function will
 #' only accept values for them that would make sense for the R counterparts.
 #'
