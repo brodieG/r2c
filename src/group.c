@@ -86,13 +86,13 @@ SEXP R2C_group_sizes(SEXP g) {
 /*
  * Apply function by groups.
  *
- * See prep_data and R2C_dat struct for what many of the parameters are.
+ * See prep_data and R2C_dat struct in r2c.h for more detail on what the
+ * paramters correspond to.
  */
 
 SEXP R2C_run_group(
   SEXP so,
   SEXP dat,
-  // How many of the columns of `dat` are of the group varying type.
   SEXP dat_cols,
   SEXP ids,
   SEXP flag,

@@ -62,6 +62,367 @@ roll_finalize <- function(res, alloc, status) {
   res
 }
 
+#' Execute r2c Function on Rolling Windows in Data
+#'
+#' @description
+#'
+#' Calls the native code associated with `fun` on sequential windows along the
+#' `data` vector(s).  The `roll*_exec` functions provide different mechanism for
+#' defining the space covered by each window. All of them will compute `fun` for
+#' each iteration with the set of data "elements" that fall within that window.
+#'
+#' * `rollby_exec`: equal width windows at regularly spaced intervals (`by`).
+#' * `rollat_exec`: equal width windows at specific locations given in `at`.
+#' * `rollbw_exec`: windows with ends defined explicitly in `left` and `right`.
+#'
+#' @section Data Elements:
+#'
+#' `data` is made up of "elements", where an "element" is a vector element if
+#' `data` is an atomic vector, or a "row" if it is a "data.frame" / list of
+#' equal-length atomic vectors.  Elements of `data` are arrayed on the real line
+#' at positions specified by `x`.  The default is for each element to be located
+#' at its integer rank, i.e. the first element is at 1, the second at 2, and so
+#' on.  Rank position is the sole and implicit option for [`rolli_exec`], which
+#' will be more efficient for that case, slightly so for `by = 1`, and more so
+#' for larger values of `by`.
+#'
+#' @section Intervals:
+#'
+#' Windows are intervals on the real line aligned relative to each anchor for
+#' `rollby_exec` and `rollat_exec`, and specified explicitly in `rollbw_exec`.
+#' Bounds are closed on the left and open on the right.  Both window alignment
+#' are adjustable with `bounds` and `offset` respectively.
+#'
+#' As an illustration for `rollby_exec` and `rollat_exec`, consider the case of
+#' width 3 windows (`width = 3`) at the fourth iteration, with various `offset`
+#' The offset is the distance from the left end of the window to the anchor:
+#'
+#' ```
+#'                    +------------- 4th iteration, anchor is 4.0
+#'                    V
+#' 1.0   2.0   3.0   4.0   5.0   6.0   7.0 | < Real Line
+#'  1     2     3     4     5     6     7  | < Element Rank
+#'                    |
+#'                    |                      Offset    In-window Elements
+#'           [-----------------)           | o = w/2   {3, 4, 5}
+#'                    [-----------------)  | o =   0   {4, 5, 6}
+#'  [-----------------)                    | o =   w   {1, 2, 3}
+#' ```
+#'
+#' In each case we get three elements in the window, although this is only
+#' because the positions of the elements are on the integers.  Because the
+#' windows are open on the right, elements that align exactly on the right end
+#' of the window are excluded.  With irregularly spaced elements, e.g. with
+#' `x = c(1, 1.25, 2.5, 5.3, 7, ...)`, we might see (positions approximate):
+#'
+#' ```
+#'                    +------------- 4th iteration, base index is 4.0
+#'                    V
+#' 1.0   2.0   3.0   4.0   5.0   6.0   7.0 | < Real Line
+#'  1 2      3        |       4         5  | < Element Rank
+#'                    |
+#'                    |                      Offset    In-window
+#'           [-----------------)           | o = w/2   {3, 4}
+#'                    [-----------------)  | o =   0   {4}
+#'  [-----------------)                    | o =   w   {1, 2, 3}
+#' ```
+#'
+#' The range within which values are eligible for inclusion in any window is
+#' given by `start` and `end`.  Windows that extend outside of this range are
+#' considered incomplete; any values that would fall within the window but
+#' outside `start` or `end` are ignored.  Setting `partial=FALSE` will skip
+#' calculations of those windows and use NA for their result.
+#'
+#' `rollbw_exec` has neither `width` nor `offset` parameters and instead allows
+#' you to specify the ends of each window directly with `left` and `right`.
+#'
+#' @section Equivalence:
+#'
+#' The `roll*_exec` functions can be ordered by increasing generality:
+#'
+#' [`rolli_exec`] < `rollby_exec` < `rollat_exec` < `rollbw_exec`
+#'
+#' Each of the functions can replicate the semantics of any of the less general
+#' functions, but with increased generality come slight efficiency decreases.
+#'
+#' `rolli_exec` has semantics similar to the simple use case for
+#' `zoo::rollapply`, `data.table::froll*`, and `RcppRoll::roll*`.
+#' `rollat_exec(..., x=x, at=x)` has semantics similar to `slider::slide_index`.
+#'
+#' @section Performance:
+#'
+#' There are no special optimizations beyond the use of `{r2c}` functions
+#' over regular R functions.  For wide windows there are more efficient
+#' solutions depending on the statistic applied.  For example, for rolling means
+#' and a few other simple statistics `{data.table}` offers the "on-line"
+#' algorithm and `{slider}` the "segment tree" algorithm, each with different
+#' performance and precision trade-offs.  In testing with sums we've found the
+#' "segment tree" algorithm to start outperforming `{r2c}` at window size ~100.
+#' At that size, the `data.table` "on-line" algorithm is significantly faster.
+#'
+#' For `by` values wider than the typical difference between `x` values,
+#' implementations that adjust the search stride along `x` taking advantage of
+#' its ordered nature will likely be faster.  [`rolli_exec`] does this.
+#'
+#' Any ALTREP objects generated for use in `x`, `at`, `left`, or `right`
+#' will be expanded.  Implementing ALTREP access for them is desirable, but
+#' would complicate the code substantially so is unlikely to get implemented
+#' absent substantial demand for it.
+#'
+#' Recall that the less general the `roll*_` function is, the better performance
+#' it will have (see "Equivalence").
+#'
+#' @note For the purposes of this documentation, the first value in a set or the
+#'   lowest value in a range are considered to be the "leftmost" values.
+#'   We think of vectors as starting on the "left" and ending on the "right",
+#'   and of the real line as having negative infinity to the "left" of positive
+#'   infinity.
+#' @note Position vectors are expected to be monotonically increasing and devoid
+#'   of NA and non-finite values.  Additionally it is expected that `right >=
+#'   left`.  It is the user's responsibility to ensure these expectations are
+#'   met.  Window bounds are compared to element positions sequentially using by
+#'   LT, LTE, GT, GTE relational operators in C, the exact set of which
+#'   depending on `bounds`.  If any of the position vectors are out of order, or
+#'   contain NAs, or non-finite values, some, or all windows may not contain the
+#'   elements they should.  Further, if there are any NAs the result may depend
+#'   on the C implementation used to compile this package.  Future versions may
+#'   check for and disallow disordered, NA, and/or non-finite values in the
+#'   position vectors.
+#'
+#' @export
+#' @inheritParams group_exec
+#' @seealso [`r2c`] for more details on the behavior and constraints of
+#'   "r2c_fun" functions, [`base::eval`] for the semantics of `enclos`.
+#' @param fun an "r2c_fun" function as produced by [`r2c`], except with the
+#'   additional restriction that it must be guaranteed to produce scalar
+#'   results as used with this function.
+#' @param width scalar positive numeric giving the width of the window interval.
+#' @param x finite, non-NA, monotonically increasing numeric vector with as many
+#'   elements as `data`.  Each element is the position on the real line of the
+#'   corresponding `data` element (see notes).
+#' @param by numeric(1), strictly positive, finite, non-NA interpreted
+#'   as the stride to increment the anchor by after each `fun` application.
+#' @param at numeric(n) of non-NA, finite, monotonically increasing anchor
+#'   positions on the real line for each window to be computed on (see notes).
+#' @param left numeric(n) of non-NA, finite, monotonically increasing
+#'   positions of the left end of each window on the real line (see notes).
+#' @param right numeric(n) of non-NA, finite, monotonically increasing
+#'   positions of the left end of each window on the real line, where
+#'   `right >= left` (see notes).
+#' @param partial TRUE or FALSE (default), whether to allow computation on
+#'   partial that extent to the left of `start` and/or to the `right` of `end`.
+#'   If `FALSE`, such windows will compute to NA (see `start`).  If `TRUE` all
+#'   data elements positioned within the window are eligible for computation,
+#'   even if they are outside of `[start,end]` (subject to `bounds`).  To
+#'   exclude such points remove them from `data` before using these functions.
+#' @param offset numeric(1), finite, non-na, representing the leftward offset of
+#'   the left end of the window from its "anchor".  See "Intervals".
+#' @param start numeric(1) position on real line of first "anchor".  Windows
+#'   that extend to the left of `start` (or to the right of `end`) are
+#'   incomplete and will compute as NA if `partial=FALSE` (see `partial`).
+#' @param end numeric(1) position on real line of last "anchor", see `start`.
+#' @return a numeric vector of length:
+#'
+#' * `(end - start) %/% by + 1` for `rollby_exec`.
+#' * `length(at)` for `rollat_exec`.
+#' * `length(left)` for `rollbw_exec`.
+#'
+#' @family rolling functions
+#' @seealso [`first_vec`].
+
+rollby_exec <- function(
+  fun, data, width, by, offset=width/2,
+  x=seq_along(first_vec(data)),
+  start=x[1L], end=x[length(x)],
+  bounds="[)", partial=TRUE, MoreArgs=list(), enclos=parent.frame()
+) {
+  # FIXME: add validation for shlib
+  vetr(
+    fun=is.function(.) && inherits(., 'r2c_fun'),
+    width=NUM.1.POS,
+    x=numeric() || integer(),
+    data=(
+      (numeric() || integer()) ||
+      (list() && all(is.num_naked(.)) && length(.) > 0)
+    ),
+    by=NUM.1.POS,
+    offset=NUM.1,
+    MoreArgs=list(),
+    enclos=is.environment(.),
+    start=NUM.1,
+    end=NUM.1 && . >= start,
+    bounds=CHR.1 && . %in% c("()", "[)", "(]", "[]"),
+    partial=LGL.1
+  )
+  width <- as.numeric(width)
+  by <- as.numeric(by)
+  offset <- as.numeric(offset)
+  start <- as.numeric(start)  # could be e.g. POSIXct
+  end <- as.numeric(end)
+
+  obj <- get_r2c_dat(fun)
+  call <- sys.call()
+
+  d.len <- length(first_vec(data))
+  r.len <- (d.len - 1L) %/% by + 1L
+  status <- numeric(1)
+
+  res <- if(r.len) {
+    prep <- roll_prep(
+      obj, data=data, r.len=r.len, formals=formals(fun), enclos=enclos,
+      call=call, fun=rollby_exec
+    )
+    status <- .Call(
+      R2C_run_window_i,
+      handle[['name']],
+      prep[['dat']],
+      prep[['dat_cols']],
+      prep[['ids']],
+      prep[['flag']],
+      prep[['control']],
+      width,
+      offset,
+      by,
+      x,
+      start,
+      end,
+      match(bounds, c("()", "[)", "(]", "[]")) - 1L,
+      partial
+    )
+    # Result vector is modified by reference
+    alp[['dat']][[res.i]]
+  } else numeric()
+
+  roll_finalize(res, alloc, status)
+}
+
+#' @export
+#' @rdname rollby_exec
+
+rollat_exec <- function(
+  fun, data, width, at=x, offset=width/2,
+  x=seq_along(first_vec(data)),
+  bounds="[)", partial=TRUE, MoreArgs=list(), enclos=parent.frame()
+) {
+  vetr(
+    fun=is.function(.) && inherits(., 'r2c_fun'),
+    width=NUM.1.POS,
+    x=numeric() || integer(),
+    data=(
+      (numeric() || integer()) ||
+      (list() && all(is.num_naked(.)) && length(.) > 0)
+    ),
+    at=numeric(),
+    offset=NUM.1,
+    MoreArgs=list(),
+    enclos=is.environment(.),
+    bounds=CHR.1 && . %in% c("()", "[)", "(]", "[]"),
+    partial=LGL.1
+  )
+  width <- as.numeric(width)
+  at <- if(!is.numeric(at)) as.numeric(at)  # don't coerce POSIXct
+  offset <- as.numeric(offset)
+
+  obj <- get_r2c_dat(fun)
+  call <- sys.call()
+
+  r.len <- length(at)
+  status <- numeric(1)
+
+  res <- if(r.len) {
+    # guaranteed at least one value
+    start <- as.numeric(at[1L])         # could be e.g. POSIXct
+    end <- as.numeric(at[length(at)])
+    prep <- roll_prep(
+      obj, data=data, r.len=r.len, formals=formals(fun), enclos=enclos,
+      call=call, fun=rollby_exec
+    )
+    status <- .Call(
+      R2C_run_window_at,
+      handle[['name']],
+      prep[['dat']],
+      prep[['dat_cols']],
+      prep[['ids']],
+      prep[['flag']],
+      prep[['control']],
+      width,
+      offset,
+      at,
+      x,
+      start,
+      end,
+      match(bounds, c("()", "[)", "(]", "[]")) - 1L,
+      partial
+    )
+    # Result vector is modified by reference
+    alp[['dat']][[res.i]]
+  } else numeric()
+
+  roll_finalize(res, alloc, status)
+}
+#' @export
+#' @rdname rollby_exec
+
+rollbw_exec <- function(
+  fun, data, left, right,
+  x=seq_along(first_vec(data)),
+  bounds="[)", partial=TRUE, MoreArgs=list(), enclos=parent.frame()
+) {
+  vetr(
+    fun=is.function(.) && inherits(., 'r2c_fun'),
+    x=numeric() || integer(),
+    data=(
+      (numeric() || integer()) ||
+      (list() && all(is.num_naked(.)) && length(.) > 0)
+    ),
+    start=numeric(),
+    end=numeric() && length(.) == length(start),
+    MoreArgs=list(),
+    enclos=is.environment(.),
+    bounds=CHR.1 && . %in% c("()", "[)", "(]", "[]"),
+    partial=LGL.1
+  )
+  width <- as.numeric(width)
+  at <- if(!is.numeric(at)) as.numeric(at)  # don't coerce POSIXct
+  offset <- as.numeric(offset)
+
+  obj <- get_r2c_dat(fun)
+  call <- sys.call()
+
+  r.len <- length(left)
+  status <- numeric(1)
+
+  res <- if(r.len) {
+    # guaranteed at least one value
+    start <- as.numeric(left[1L])
+    end <- as.numeric(right[length(right)])
+    prep <- roll_prep(
+      obj, data=data, r.len=r.len, formals=formals(fun), enclos=enclos,
+      call=call, fun=rollby_exec
+    )
+    status <- .Call(
+      R2C_run_window_bw,
+      handle[['name']],
+      prep[['dat']],
+      prep[['dat_cols']],
+      prep[['ids']],
+      prep[['flag']],
+      prep[['control']],
+      left,
+      right,
+      x,
+      start,
+      end,
+      match(bounds, c("()", "[)", "(]", "[]")) - 1L,
+      partial
+    )
+    # Result vector is modified by reference
+    alp[['dat']][[res.i]]
+  } else numeric()
+
+  roll_finalize(res, alloc, status)
+}
+
 #' Execute r2c Function on Rolling Windows of Integer Spaced Data
 #'
 #' Calls the native code associated with `fun` on sequential regularly spaced
@@ -104,6 +465,7 @@ roll_finalize <- function(res, alloc, status) {
 #'     width=n - 1,
 #'     offset=((match(align, c('left', 'center', 'right')) - 1) / 2) * (n - 1)
 #'     bounds="[]",
+#'     partial=FALSE,
 #'     ...
 #'    )
 #' ```
@@ -118,7 +480,7 @@ roll_finalize <- function(res, alloc, status) {
 #' The `align` values translate to a number in `[0,width]` such that "left"
 #' corresponds to `0`, "center" to `width/2`, and "right" to `width`.
 #'
-#' @inherit params rollby_exec
+#' @inheritParams rollby_exec
 #' @family rolling functions
 #' @seealso [`first_vec`].
 #' @param n integer number of adjacent data "elements" to compute `fun` on.
@@ -197,233 +559,5 @@ rolli_exec <- function(
   } else numeric()
 
   roll_finalize(res, alloc, status)
-}
-#' Execute r2c Function on Rolling Windows in Data
-#'
-#' @description
-#'
-#' Calls the native code associated with `fun` on sequential windows along the
-#' `data` vector(s).  The `roll*_exec` functions provide different mechanism for
-#' defining the space covered by each window. All of them will compute `fun` for
-#' each iteration with the set of data "elements" that fall in the corresponding
-#' window.
-#'
-#' * `rollby_exec` equal width windows at regularly spaced intervals `by` apart.
-#' * `rollat_exec` equal width windows at specific locations given in `at`.
-#' * `rollin_exec` windows with ends defined explicitly in `left` and `right`.
-#'
-#' @section Data Elements:
-#'
-#' `data` is made up of "elements", where an "element" is a vector element if
-#' `data` is an atomic vector, or a "row" if it is a "data.frame" / list of
-#' equal-length atomic vectors.  Elements of `data` are arrayed on the real line
-#' at positions specified by `x`.  The default is for each element to be
-#' located at its integer rank, i.e. the first element is at 1, the second at 2,
-#' and so on.  Rank position is the sole and implicit option for [`rolli_exec`],
-#' which will be more efficient for that case, slightly so for `by = 1`, and
-#' more so for larger values of `by`.
-#'
-#' @section Intervals:
-#'
-#' Windows are intervals on the real line aligned relative to each anchor for
-#' `rollby_exec` and `rollat_exec`, and specified explicitly in `rollin_exec`.
-#' Bounds are closed on the left and open on the right.  Both window alignment
-#' are adjustable with `bounds` and `offset` respectively.
-#'
-#' As an illustration for `rollby_exec` and `rollat_exec`, consider the case of
-#' width 3 windows (`width = 3`) at the fourth iteration, with various `offset`
-#' The offset is the distance from the left end of the window to the anchor:
-#'
-#' ```
-#'                    +------------- 4th iteration, anchor is 4.0
-#'                    V
-#' 1.0   2.0   3.0   4.0   5.0   6.0   7.0 | < Real Line
-#'  1     2     3     4     5     6     7  | < Element Rank
-#'                    |
-#'                    |                      Offset    In-window Elements
-#'           [-----------------)           | o = w/2   {3, 4, 5}
-#'                    [-----------------)  | o =   0   {4, 5, 6}
-#'  [-----------------)                    | o =   w   {1, 2, 3}
-#' ```
-#'
-#' In each case we get three elements in the window, although this is only
-#' because the positions of the elements are on the integers.  Because the
-#' windows are open on the right, elements that align exactly on the right end
-#' of the window are excluded.  With irregularly spaced elements, e.g. with
-#' `x = c(1, 1.25, 2.5, 5.3, 7, ...)`, we might see (positions approximate):
-#'
-#' ```
-#'                    +------------- 4th iteration, base index is 4.0
-#'                    V
-#' 1.0   2.0   3.0   4.0   5.0   6.0   7.0 | < Real Line
-#'  1 2      3        |       4         5  | < Element Rank
-#'                    |
-#'                    |                      Offset    In-window
-#'           [-----------------)           | o = w/2   {3, 4}
-#'                    [-----------------)  | o =   0   {4}
-#'  [-----------------)                    | o =   w   {1, 2, 3}
-#' ```
-#'
-#' The range within which values are eligible for inclusion in any window is
-#' given by `start` and `end`.  Windows that extend outside of this range are
-#' considered incomplete; any values that would fall within the window but
-#' outside `start` or `end` are ignored.  Setting `partial=FALSE` will skip
-#' calculations of those windows and use NA for their result.
-#'
-#' `rollin_exec` has neither `width` nor `offset` parameters and instead allows
-#' you to specify the ends of each window directly with `left` and `right`.
-#'
-#' @section Performance:
-#'
-#' There are no special optimizations beyond the use of `{r2c}` functions
-#' over regular R functions.  For wide windows there are more efficient
-#' solutions depending on the statistic applied.  For example, for rolling means
-#' and a few other simple statistics `{data.table}` offers the "on-line"
-#' algorithm and `{slider}` the "segment tree" algorithm, each with different
-#' performance and precision trade-offs.  In testing with sums we've found the
-#' "segment tree" algorithm to start outperforming `{r2c}` at window size ~100.
-#' At that size, the `data.table` "on-line" algorithm is significantly faster.
-#'
-#' For `by` values much wider than the typical difference between `x` values,
-#' implementations that adjust the search stride along `x` taking advantage of
-#' its ordered nature will likely be faster.  [`rolli_exec`] does this for the
-#' special case of integer `x`.
-#'
-#' @note For the purposes of this documentation, the first value in a set or the
-#'   lowest value in a range are considered to be the "leftmost" values.
-#'   We think of vectors as starting on the "left" and ending on the "right",
-#'   and of the real line as having negative infinity to the "left" of positive
-#'   infinity.
-#' @note Window widths, alignments, and strides must be scalars (this may change
-#'   in the future).
-#' @note The `window_i_exec` algorithm iterates over the values in the `index`
-#'   vector until they come in range of the window as determined by LT and LTE
-#'   relational operators in C.  As such, out of order or NA indices may cause
-#'   values to end up in a window they do not belong to, or values to be
-#'   excluded from windows they belong to.  The exact behavior of NAs with
-#'   respect to relational operators in C is not strictly defined, so the
-#'   results of `index` vectors containing NAs might vary depending on the C
-#'   implementation used to compile this package.  Future versions may check for
-#'   and disallow disordered or NA values in `index`.
-#'
-#' @export
-#' @inheritParams group_exec
-#' @seealso [`r2c`] for more details on the behavior and constraints of
-#'   "r2c_fun" functions, [`base::eval`] for the semantics of `enclos`.
-#' @param fun an "r2c_fun" function as produced by [`r2c`], except with the
-#'   additional restriction that it must be guaranteed to produce scalar
-#'   results as used with this function.
-#' @param width scalar positive numeric giving the width of the window interval.
-#' @param x finite, non-NA, monotonically increasing numeric vector with as many
-#'   elements as `data`.  Each element is the position on the real line of the
-#'   corresponding `data` element.  It is the user's responsibility to ensure
-#'   these requirements are met (see notes).
-#' @param by numeric(1), strictly positive, finite, non-NA interpreted
-#'   as the stride to increment the anchor by after each `fun` application.
-#' @param partial TRUE or FALSE (default), whether to allow computation on
-#'   partial windows. If `FALSE`, incomplete windows will be NA.  If `TRUE`
-#'   vectors passed to `fun` may have lengths shorter than the corresponding
-#'   window sizes when the windows are partially out of bounds at either end
-#'   of the `data` vector(s).
-#' @param offset numeric(1), finite, non-na, representing the leftward offset of
-#'   the left end of the window from its "anchor".  See "Intervals".
-#' @param start numeric(1) position on real line of first "anchor", in
-#'   combination with `end` is equivalent in effect to subsetting `data` to the
-#'   elements between `start and `end`, without copying the `data`.
-#' @param end numeric(1) position on real line of last "anchor", see `start`.
-#' @return a numeric vector of length `(end - start) %/% by + 1`
-#' @family rolling functions
-#' @seealso [`first_vec`].
-#' @examples
-
-rollby_exec <- function(
-  fun, data, width, by,
-  offset=width/2,
-  x=seq_along(first_vec(data)),
-  start=x[1L], end=x[length(x)], bounds="[)",
-  partial=TRUE, MoreArgs=list(), enclos=parent.frame()
-) {
-  # FIXME: add validation for shlib
-  vetr(
-    fun=is.function(.) && inherits(., 'r2c_fun'),
-    width=NUM.1.POS && . > 0,
-    x=numeric() || integer(),
-    data=(
-      (numeric() || integer()) ||
-      (list() && all(is.num_naked(.)) && length(.) > 0)
-    ),
-    by=NUM.1.POS,
-    offset=NUM.1,
-    MoreArgs=list(),
-    enclos=is.environment(.),
-    start=NUM.1,
-    end=NUM.1 && . >= start,
-    bounds=CHR.1 && . %in% c("()", "[)", "(]", "[]"),
-    partial=LGL.1
-  )
-  width <- as.numeric(width)
-  by <- as.numeric(by)
-  start <- as.numeric(start)  # could be e.g. POSIXct
-  end <- as.numeric(end)
-
-  if(is.character(align)) {
-    offset <- numeric(length(align))
-    offset[align == 'center'] <- width / 2
-    offset[align == 'right'] <- width
-  } else offset <- as.numeric(align)
-
-  obj <- get_r2c_dat(fun)
-  call <- sys.call()
-
-  d.len <- length(first_vec(data))
-  r.len <- (d.len - 1L) %/% by + 1L
-  status <- numeric(1)
-
-  res <- if(r.len) {
-    prep <- roll_prep(
-      obj, data=data, r.len=r.len, formals=formals(fun), enclos=enclos,
-      call=call, fun=rollby_exec
-    )
-    status <- .Call(
-      R2C_run_window_i,
-      handle[['name']],
-      prep[['dat']],
-      prep[['dat_cols']],
-      prep[['ids']],
-      prep[['flag']],
-      prep[['control']],
-      width,
-      offset,
-      by,
-      x,
-      start,
-      end,
-      match(bounds, c("()", "[)", "(]", "[]")) - 1L,
-      partial
-    )
-    # Result vector is modified by reference
-    alp[['dat']][[res.i]]
-  } else numeric()
-
-  roll_finalize(res, alloc, status)
-}
-
-rollat_exec <- function(
-  fun, data, width, at=x,
-  offset=width/2,
-  x=seq_along(first_vec(data)),
-  start=x[1L], end=x[length(x)], bounds="[)",
-  partial=TRUE, MoreArgs=list(), enclos=parent.frame()
-) {
-
-}
-
-rollin_exec <- function(
-  fun, data, width, left, right,
-  offset=width/2,
-  start=x[1L], end=x[length(x)], bounds="[)",
-  partial=TRUE, MoreArgs=list(), enclos=parent.frame()
-) {
-
 }
 
