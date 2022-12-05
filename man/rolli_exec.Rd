@@ -20,12 +20,12 @@ rolli_exec(
 additional restriction that it must be guaranteed to produce scalar
 results as used with this function.}
 
-\item{data}{a numeric vector, or a list of numeric vectors, each vector the
-same length as the vector(s) in \code{groups}.  If a named list, the vectors
-will be matched to \code{fun} parameters by those names.  Elements without names
-are matched positionally.  If a list must contain at least one vector.
-Conceptually, this parameter is used similarly to \code{envir} parameter to
-\code{\link[base:eval]{base::eval}} when that is a list (see \code{enclos}).}
+\item{data}{a numeric vector, or a list of equal length numeric vectors.
+If a named list, the vectors will be matched to \code{fun} parameters by those
+names.  Elements without names are matched positionally.  If a list must
+contain at least one vector.  Conceptually, this parameter is used
+similarly to \code{envir} parameter to \code{\link[base:eval]{base::eval}} when that is a list (see
+\code{enclos}).}
 
 \item{n}{integer number of adjacent data "elements" to compute \code{fun} on.
 This is equivalent to the integer case of \code{width} for \code{zoo::rollapply}, but
@@ -47,12 +47,12 @@ data elements positioned within the window are eligible for computation,
 even if they are outside of \verb{[start,end]} (subject to \code{bounds}).  To
 exclude such points remove them from \code{data} before using these functions.}
 
-\item{MoreArgs}{a list of R objects to pass on as group-invariant arguments
-to \code{fun}.  Unlike with \code{data}, each of the objects therein are passed in
-full to the native code for each group.  This is useful for arguments that
-are intended to remain constant group to group.  Matching of these objects
-to \code{fun} parameters is the same as for \code{data}, with positional matching
-occurring after the elements in \code{data} are matched.}
+\item{MoreArgs}{a list of R objects to pass on as iteration-invariant
+arguments to \code{fun}.  Unlike with \code{data}, each of the objects therein are
+passed in full to the native code for each iteration  This is useful for
+arguments that are intended to remain constant across iterations.  Matching
+of these objects to \code{fun} parameters is the same as for \code{data}, with
+positional matching occurring after the elements in \code{data} are matched.}
 
 \item{enclos}{environment to use as the \code{enclos} parameter to
 \code{\link[base:eval]{base::eval}} when evaluating expressions or matching calls (see \code{data}).}

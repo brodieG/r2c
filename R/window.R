@@ -86,16 +86,17 @@ roll_finalize <- function(res, alloc, status) {
 #' will be more efficient for that case, slightly so for `by = 1`, and more so
 #' for larger values of `by`.
 #'
-#' @section Intervals:
+#' @section Windows:
 #'
-#' Windows are intervals on the real line aligned relative to each anchor for
-#' `rollby_exec` and `rollat_exec`, and specified explicitly in `rollbw_exec`.
-#' Bounds are closed on the left and open on the right.  Both window alignment
-#' are adjustable with `bounds` and `offset` respectively.
+#' Windows are intervals on the real line aligned (adjustably) relative to an
+#' "anchor" point given by `at` for  `rollat_exec`, or derived from `start` and
+#' `by` for `rollby_exec`.  `rollbw_exec` defines the ends of each window
+#' explicitly via `left` and `right`.  Interval bounds are closed on the left
+#' and open on the right by default.
 #'
 #' As an illustration for `rollby_exec` and `rollat_exec`, consider the case of
-#' width 3 windows (`width = 3`) at the fourth iteration, with various `offset`
-#' The offset is the distance from the left end of the window to the anchor:
+#' `width = 3` windows at the fourth iteration, with various `offset` values. The
+#' offset is the distance from the left end of the window to the anchor:
 #'
 #' ```
 #'                    +------------- 4th iteration, anchor is 4.0
@@ -127,15 +128,6 @@ roll_finalize <- function(res, alloc, status) {
 #'  [-----------------)                    | o =   w   {1, 2, 3}
 #' ```
 #'
-#' The range within which values are eligible for inclusion in any window is
-#' given by `start` and `end`.  Windows that extend outside of this range are
-#' considered incomplete; any values that would fall within the window but
-#' outside `start` or `end` are ignored.  Setting `partial=FALSE` will skip
-#' calculations of those windows and use NA for their result.
-#'
-#' `rollbw_exec` has neither `width` nor `offset` parameters and instead allows
-#' you to specify the ends of each window directly with `left` and `right`.
-#'
 #' @section Equivalence:
 #'
 #' The `roll*_exec` functions can be ordered by increasing generality:
@@ -159,6 +151,10 @@ roll_finalize <- function(res, alloc, status) {
 #' performance and precision trade-offs.  In testing with sums we've found the
 #' "segment tree" algorithm to start outperforming `{r2c}` at window size ~100.
 #' At that size, the `data.table` "on-line" algorithm is significantly faster.
+#' An advantage of `{r2c}` is that it remains fast for any arbitrary expression
+#' of the supported functions, whereas the "on-line" and "segment tree"
+#' implementations are limited to a narrow set of predefined calculations like
+#' `sum`.
 #'
 #' For `by` values wider than the typical difference between `x` values,
 #' implementations that adjust the search stride along `x` taking advantage of
@@ -166,8 +162,7 @@ roll_finalize <- function(res, alloc, status) {
 #'
 #' Any ALTREP objects generated for use in `x`, `at`, `left`, or `right`
 #' will be expanded.  Implementing ALTREP access for them is desirable, but
-#' would complicate the code substantially so is unlikely to get implemented
-#' absent substantial demand for it.
+#' would complicate the code substantially so is unlikely to get implemented.
 #'
 #' Recall that the less general the `roll*_` function is, the better performance
 #' it will have (see "Equivalence").
@@ -200,28 +195,31 @@ roll_finalize <- function(res, alloc, status) {
 #' @param x finite, non-NA, monotonically increasing numeric vector with as many
 #'   elements as `data`.  Each element is the position on the real line of the
 #'   corresponding `data` element (see notes).
-#' @param by numeric(1), strictly positive, finite, non-NA interpreted
+#' @param by strictly positive, finite, non-NA scalar numeric, interpreted
 #'   as the stride to increment the anchor by after each `fun` application.
-#' @param at numeric(n) of non-NA, finite, monotonically increasing anchor
+#' @param at non-NA, finite, monotonically increasing numeric vector anchor
 #'   positions on the real line for each window to be computed on (see notes).
-#' @param left numeric(n) of non-NA, finite, monotonically increasing
+#' @param left non-NA, finite, monotonically increasing numeric
 #'   positions of the left end of each window on the real line (see notes).
-#' @param right numeric(n) of non-NA, finite, monotonically increasing
+#' @param right non-NA, finite, monotonically increasing numeric
 #'   positions of the left end of each window on the real line, where
 #'   `right >= left` (see notes).
 #' @param partial TRUE or FALSE (default), whether to allow computation on
-#'   partial that extent to the left of `start` and/or to the `right` of `end`.
-#'   If `FALSE`, such windows will compute to NA (see `start`).  If `TRUE` all
-#'   data elements positioned within the window are eligible for computation,
-#'   even if they are outside of `[start,end]` (subject to `bounds`).  To
-#'   exclude such points remove them from `data` before using these functions.
-#' @param offset numeric(1), finite, non-na, representing the leftward offset of
-#'   the left end of the window from its "anchor".  See "Intervals".
-#' @param start numeric(1) position on real line of first "anchor".  Windows
-#'   that extend to the left of `start` (or to the right of `end`) are
-#'   incomplete and will compute as NA if `partial=FALSE` (see `partial`).
-#' @param end numeric(1) position on real line of last "anchor", see `start`.
-#' @return a numeric vector of length:
+#'   partial windows that extent to the left of `start` and/or to the `right` of
+#'   `end`.  If `FALSE`, such windows will compute to NA (see `start`).  If
+#'   `TRUE` all data elements positioned within the window are eligible for
+#'   computation, even if they are outside of `[start,end]` (subject to
+#'   `bounds`).  To exclude such points remove them from `data` before using
+#'   these functions.
+#' @param offset finite, non-na, scalar numeric representing the leftward offset
+#'   of the left end of the window from its "anchor".  See "Intervals".
+#' @param start non-na, finite scalar numeric position on real line of first
+#'   "anchor".  Windows that extend to the left of `start` (or to the right of
+#'   `end`) are incomplete and will compute as NA if `partial=FALSE` (see
+#'   `partial`).
+#' @param end non-na, finite scalar numeric position on real line of last
+#'   "anchor", see `start`.
+#' @return A numeric vector of length:
 #'
 #' * `(end - start) %/% by + 1` for `rollby_exec`.
 #' * `length(at)` for `rollat_exec`.
@@ -297,7 +295,7 @@ rollby_exec <- function(
 }
 
 #' @export
-#' @rdname rollby_exec
+#' @name rollby_exec
 
 rollat_exec <- function(
   fun, data, width, at=x, offset=width/2,
@@ -361,7 +359,7 @@ rollat_exec <- function(
   roll_finalize(res, alloc, status)
 }
 #' @export
-#' @rdname rollby_exec
+#' @name rollby_exec
 
 rollbw_exec <- function(
   fun, data, left, right,

@@ -51,30 +51,32 @@ rollbw_exec(
 additional restriction that it must be guaranteed to produce scalar
 results as used with this function.}
 
-\item{data}{a numeric vector, or a list of numeric vectors, each vector the
-same length as the vector(s) in \code{groups}.  If a named list, the vectors
-will be matched to \code{fun} parameters by those names.  Elements without names
-are matched positionally.  If a list must contain at least one vector.
-Conceptually, this parameter is used similarly to \code{envir} parameter to
-\code{\link[base:eval]{base::eval}} when that is a list (see \code{enclos}).}
+\item{data}{a numeric vector, or a list of equal length numeric vectors.
+If a named list, the vectors will be matched to \code{fun} parameters by those
+names.  Elements without names are matched positionally.  If a list must
+contain at least one vector.  Conceptually, this parameter is used
+similarly to \code{envir} parameter to \code{\link[base:eval]{base::eval}} when that is a list (see
+\code{enclos}).}
 
 \item{width}{scalar positive numeric giving the width of the window interval.}
 
-\item{by}{numeric(1), strictly positive, finite, non-NA interpreted
+\item{by}{strictly positive, finite, non-NA scalar numeric, interpreted
 as the stride to increment the anchor by after each \code{fun} application.}
 
-\item{offset}{numeric(1), finite, non-na, representing the leftward offset of
-the left end of the window from its "anchor".  See "Intervals".}
+\item{offset}{finite, non-na, scalar numeric representing the leftward offset
+of the left end of the window from its "anchor".  See "Intervals".}
 
 \item{x}{finite, non-NA, monotonically increasing numeric vector with as many
 elements as \code{data}.  Each element is the position on the real line of the
 corresponding \code{data} element (see notes).}
 
-\item{start}{numeric(1) position on real line of first "anchor".  Windows
-that extend to the left of \code{start} (or to the right of \code{end}) are
-incomplete and will compute as NA if \code{partial=FALSE} (see \code{partial}).}
+\item{start}{non-na, finite scalar numeric position on real line of first
+"anchor".  Windows that extend to the left of \code{start} (or to the right of
+\code{end}) are incomplete and will compute as NA if \code{partial=FALSE} (see
+\code{partial}).}
 
-\item{end}{numeric(1) position on real line of last "anchor", see \code{start}.}
+\item{end}{non-na, finite scalar numeric position on real line of last
+"anchor", see \code{start}.}
 
 \item{partial}{TRUE or FALSE (default), whether to allow computation on
 partial that extent to the left of \code{start} and/or to the \code{right} of \code{end}.
@@ -83,28 +85,28 @@ data elements positioned within the window are eligible for computation,
 even if they are outside of \verb{[start,end]} (subject to \code{bounds}).  To
 exclude such points remove them from \code{data} before using these functions.}
 
-\item{MoreArgs}{a list of R objects to pass on as group-invariant arguments
-to \code{fun}.  Unlike with \code{data}, each of the objects therein are passed in
-full to the native code for each group.  This is useful for arguments that
-are intended to remain constant group to group.  Matching of these objects
-to \code{fun} parameters is the same as for \code{data}, with positional matching
-occurring after the elements in \code{data} are matched.}
+\item{MoreArgs}{a list of R objects to pass on as iteration-invariant
+arguments to \code{fun}.  Unlike with \code{data}, each of the objects therein are
+passed in full to the native code for each iteration  This is useful for
+arguments that are intended to remain constant across iterations.  Matching
+of these objects to \code{fun} parameters is the same as for \code{data}, with
+positional matching occurring after the elements in \code{data} are matched.}
 
 \item{enclos}{environment to use as the \code{enclos} parameter to
 \code{\link[base:eval]{base::eval}} when evaluating expressions or matching calls (see \code{data}).}
 
-\item{at}{numeric(n) of non-NA, finite, monotonically increasing anchor
+\item{at}{non-NA, finite, monotonically increasing numeric vector anchor
 positions on the real line for each window to be computed on (see notes).}
 
-\item{left}{numeric(n) of non-NA, finite, monotonically increasing
+\item{left}{non-NA, finite, monotonically increasing numeric
 positions of the left end of each window on the real line (see notes).}
 
-\item{right}{numeric(n) of non-NA, finite, monotonically increasing
+\item{right}{non-NA, finite, monotonically increasing numeric
 positions of the left end of each window on the real line, where
 \code{right >= left} (see notes).}
 }
 \value{
-a numeric vector of length:
+A numeric vector of length:
 \itemize{
 \item \code{(end - start) \%/\% by + 1} for \code{rollby_exec}.
 \item \code{length(at)} for \code{rollat_exec}.
@@ -153,17 +155,18 @@ will be more efficient for that case, slightly so for \code{by = 1}, and more so
 for larger values of \code{by}.
 }
 
-\section{Intervals}{
+\section{Windows}{
 
 
-Windows are intervals on the real line aligned relative to each anchor for
-\code{rollby_exec} and \code{rollat_exec}, and specified explicitly in \code{rollbw_exec}.
-Bounds are closed on the left and open on the right.  Both window alignment
-are adjustable with \code{bounds} and \code{offset} respectively.
+Windows are intervals on the real line aligned (adjustably) relative to an
+"anchor" point given by \code{at} for  \code{rollat_exec}, or derived from \code{start} and
+\code{by} for \code{rollby_exec}.  \code{rollbw_exec} defines the ends of each window
+explicitly via \code{left} and \code{right}.  Interval bounds are closed on the left
+and open on the right by default.
 
 As an illustration for \code{rollby_exec} and \code{rollat_exec}, consider the case of
-width 3 windows (\code{width = 3}) at the fourth iteration, with various \code{offset}
-The offset is the distance from the left end of the window to the anchor:
+\code{width = 3} windows at the fourth iteration, with various \code{offset} values. The
+offset is the distance from the left end of the window to the anchor:
 
 \if{html}{\out{<div class="sourceCode">}}\preformatted{                   +------------- 4th iteration, anchor is 4.0
                    V
@@ -192,15 +195,6 @@ of the window are excluded.  With irregularly spaced elements, e.g. with
                    [-----------------)  | o =   0   \{4\}
  [-----------------)                    | o =   w   \{1, 2, 3\}
 }\if{html}{\out{</div>}}
-
-The range within which values are eligible for inclusion in any window is
-given by \code{start} and \code{end}.  Windows that extend outside of this range are
-considered incomplete; any values that would fall within the window but
-outside \code{start} or \code{end} are ignored.  Setting \code{partial=FALSE} will skip
-calculations of those windows and use NA for their result.
-
-\code{rollbw_exec} has neither \code{width} nor \code{offset} parameters and instead allows
-you to specify the ends of each window directly with \code{left} and \code{right}.
 }
 
 \section{Equivalence}{
@@ -229,6 +223,10 @@ algorithm and \code{{slider}} the "segment tree" algorithm, each with different
 performance and precision trade-offs.  In testing with sums we've found the
 "segment tree" algorithm to start outperforming \code{{r2c}} at window size ~100.
 At that size, the \code{data.table} "on-line" algorithm is significantly faster.
+An advantage of \code{{r2c}} is that it remains fast for any arbitrary expression
+of the supported functions, whereas the "on-line" and "segment tree"
+implementations are limited to a narrow set of predefined calculations like
+\code{sum}.
 
 For \code{by} values wider than the typical difference between \code{x} values,
 implementations that adjust the search stride along \code{x} taking advantage of
@@ -236,8 +234,7 @@ its ordered nature will likely be faster.  \code{\link{rolli_exec}} does this.
 
 Any ALTREP objects generated for use in \code{x}, \code{at}, \code{left}, or \code{right}
 will be expanded.  Implementing ALTREP access for them is desirable, but
-would complicate the code substantially so is unlikely to get implemented
-absent substantial demand for it.
+would complicate the code substantially so is unlikely to get implemented.
 
 Recall that the less general the \verb{roll*_} function is, the better performance
 it will have (see "Equivalence").
