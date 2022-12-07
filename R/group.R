@@ -64,7 +64,7 @@ group_exec_int <- function(
 
   alloc <- match_and_alloc(
     do=do, MoreArgs=MoreArgs, preproc=preproc, formals=formals,
-    enclos=enclos, gmax=gmax, call=call, fun=r2c::group_exec
+    enclos=enclos, gmax=gmax, call=call, runner=r2c::group_exec
   )
   stack <- alloc[['stack']]
 

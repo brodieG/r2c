@@ -40,7 +40,7 @@ bsac <- function(call, groups, data, MoreArgs=list(), enclos=parent.frame()) {
 #' list of numeric vectors.
 #'
 #' @export
-#' @param data a numeric vector, or a (possibly empty) list of numeric vectors.
+#' @param x a numeric vector, or a (possibly empty) list of numeric vectors.
 #' @return if `data` is a list, the first element if it is a numeric vector, or
 #'   an empty numeric vector if the list is empty.  If `data` is a numeric
 #'   vector, then `data`.  Otherwise an error is thrown.
@@ -50,7 +50,7 @@ bsac <- function(call, groups, data, MoreArgs=list(), enclos=parent.frame()) {
 #' first_vec(mtcars)
 #' first_vec(matrix(1:4, 2))  # matrices treated as vectors
 
-first_vec <- function(data) {
+first_vec <- function(x) {
   vetr(is.list(.) || is.numeric(.))
   if(is.list(x) && !length(x)) x <- numeric()
   if(is.list(x)) x <- x[[1L]]

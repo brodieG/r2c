@@ -13,9 +13,13 @@
 ##
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
-## Helper Functions
+# - Helper Functions -----------------------------------------------------------
 
-roll_prep <- function(obj, data, r.len, formals, enclos, call, fun) {
+## Run steps that share a close resemblance to those in `group_exec`
+
+roll_prep <- function(
+  obj, data, r.len, formals, enclos, call, runner, MoreArgs
+) {
   if(!r.len > 0) stop("Internal Error: prep only when there is result length.")
   preproc <- obj[['preproc']]
   shlib <- obj[['so']]
@@ -31,7 +35,7 @@ roll_prep <- function(obj, data, r.len, formals, enclos, call, fun) {
 
   alloc <- match_and_alloc(
     do=data, MoreArgs=MoreArgs, preproc=preproc, formals=formals,
-    enclos=enclos, gmax=1L, call=call, fun=fun
+    enclos=enclos, gmax=1L, call=call, runner=runner
   )
   stack <- alloc[['stack']]
 
@@ -41,26 +45,57 @@ roll_prep <- function(obj, data, r.len, formals, enclos, call, fun) {
 
   # - Run ----------------------------------------------------------------------
 
-  res <- if(r.len) {
-    handle <- obj[['handle']]
-    if(!is.na(shlib) && !is.loaded("run", PACKAGE=handle[['name']])) {
-      handle <- dyn.load(shlib)
-    }
-    if(!is.loaded("run", PACKAGE=handle[['name']]))
-      stop("Could not load native code.")
-
-    alp <- prep_alloc(alloc, r.len)
+  handle <- obj[['handle']]
+  if(!is.na(shlib) && !is.loaded("run", PACKAGE=handle[['name']])) {
+    handle <- dyn.load(shlib)
   }
-  roll_finalize(res, res.i, alloc, status)
+  if(!is.loaded("run", PACKAGE=handle[['name']]))
+    stop("Could not load native code.")
+
+  prep_alloc(alloc, r.len)
 }
-roll_finalize <- function(res, alloc, status) {
-  res.i <- which(alloc[['alloc']][['type']] == "res")
-  if(alloc[['alloc']][['typeof']][res.i] == "integer") res <- as.integer(res)
+## Convert result to integer if it came in that way, and issue recycling
+## warnings if any were generated.
+
+roll_finalize <- function(prep, status) {
+  alloc <- prep[[c('alloc','alloc')]]
+  res.i <- which(alloc[['type']] == "res")
+  res <- prep[['dat']][[res.i]]
+  if(alloc[['typeof']][res.i] == "integer") res <- as.integer(res)
   if(status) {
     warning("longer object length is not a multiple of shorter object length.")
   }
   res
 }
+## Run common steps across all roll functions
+##
+## Allocation computations, running the C code, cleaning up results.
+
+roll_call <- function(
+  r.len, data, fun, enclos, call, runner, crunner, MoreArgs, ...
+) {
+  if(r.len) {
+    obj <- get_r2c_dat(fun)
+    prep <- roll_prep(
+      obj, data=data, r.len=r.len, formals=formals(fun), enclos=enclos,
+      call=call, runner=runner, MoreArgs=MoreArgs
+    )
+    status <- .Call(
+      crunner,
+      obj[[c('handle', 'name')]],
+      prep[['dat']],
+      prep[['dat_cols']],
+      prep[['ids']],
+      prep[['flag']],
+      prep[['control']],
+      ...
+    )
+    # Result vector is modified by reference
+    roll_finalize(prep, status)
+  } else numeric()
+}
+
+bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 
 #' Execute r2c Function on Rolling Windows in Data
 #'
@@ -71,8 +106,10 @@ roll_finalize <- function(res, alloc, status) {
 #' defining the space covered by each window. All of them will compute `fun` for
 #' each iteration with the set of data "elements" that fall within that window.
 #'
-#' * `rollby_exec`: equal width windows at regularly spaced intervals (`by`).
-#' * `rollat_exec`: equal width windows at specific locations given in `at`.
+#' * `rollby_exec`: equal width windows aligned relative to regularly spaced
+#'    (`by` apart) "anchors" positions.
+#' * `rollat_exec`: equal width windows aligned relative to "anchors" with
+#'    specific positions given in `at`.
 #' * `rollbw_exec`: windows with ends defined explicitly in `left` and `right`.
 #'
 #' @section Data Elements:
@@ -194,16 +231,19 @@ roll_finalize <- function(res, alloc, status) {
 #' @param width scalar positive numeric giving the width of the window interval.
 #' @param x finite, non-NA, monotonically increasing numeric vector with as many
 #'   elements as `data`.  Each element is the position on the real line of the
-#'   corresponding `data` element (see notes).
+#'   corresponding `data` element (see notes).  Integer vectors are coerced to
+#'   numeric.
 #' @param by strictly positive, finite, non-NA scalar numeric, interpreted
 #'   as the stride to increment the anchor by after each `fun` application.
 #' @param at non-NA, finite, monotonically increasing numeric vector anchor
 #'   positions on the real line for each window to be computed on (see notes).
+#'   Integer vectors are coerced to numeric.
 #' @param left non-NA, finite, monotonically increasing numeric
 #'   positions of the left end of each window on the real line (see notes).
+#'   Integer vectors are coerced to numeric.
 #' @param right non-NA, finite, monotonically increasing numeric
 #'   positions of the left end of each window on the real line, where
-#'   `right >= left` (see notes).
+#'   `right >= left` (see notes).  Integer vectors are coerced to numeric.
 #' @param partial TRUE or FALSE (default), whether to allow computation on
 #'   partial windows that extent to the left of `start` and/or to the `right` of
 #'   `end`.  If `FALSE`, such windows will compute to NA (see `start`).  If
@@ -230,7 +270,7 @@ roll_finalize <- function(res, alloc, status) {
 
 rollby_exec <- function(
   fun, data, width, by, offset=width/2,
-  x=seq_along(first_vec(data)),
+  x=seq(1, length(first_vec(data)), 1),
   start=x[1L], end=x[length(x)],
   bounds="[)", partial=TRUE, MoreArgs=list(), enclos=parent.frame()
 ) {
@@ -257,49 +297,26 @@ rollby_exec <- function(
   offset <- as.numeric(offset)
   start <- as.numeric(start)  # could be e.g. POSIXct
   end <- as.numeric(end)
-
-  obj <- get_r2c_dat(fun)
-  call <- sys.call()
-
+  if(!is.numeric(x)) x <- as.numeric(x)
   d.len <- length(first_vec(data))
   r.len <- (d.len - 1L) %/% by + 1L
-  status <- numeric(1)
 
-  res <- if(r.len) {
-    prep <- roll_prep(
-      obj, data=data, r.len=r.len, formals=formals(fun), enclos=enclos,
-      call=call, fun=rollby_exec
-    )
-    status <- .Call(
-      R2C_run_window_i,
-      handle[['name']],
-      prep[['dat']],
-      prep[['dat_cols']],
-      prep[['ids']],
-      prep[['flag']],
-      prep[['control']],
-      width,
-      offset,
-      by,
-      x,
-      start,
-      end,
-      match(bounds, c("()", "[)", "(]", "[]")) - 1L,
-      partial
-    )
-    # Result vector is modified by reference
-    alp[['dat']][[res.i]]
-  } else numeric()
+  call <- sys.call()
 
-  roll_finalize(res, alloc, status)
+  roll_call(
+    runner=r2c::rollby_exec, crunner=R2C_run_window_by,
+    r.len=r.len, data=data, fun=fun, enclos=enclos, call=call,
+    MoreArgs=MoreArgs,
+    width, offset, by, x,
+    start, end, bounds_num(bounds), partial
+  )
 }
-
 #' @export
 #' @name rollby_exec
 
 rollat_exec <- function(
   fun, data, width, at=x, offset=width/2,
-  x=seq_along(first_vec(data)),
+  x=seq(1, length(first_vec(data)), 1),
   bounds="[)", partial=TRUE, MoreArgs=list(), enclos=parent.frame()
 ) {
   vetr(
@@ -318,52 +335,26 @@ rollat_exec <- function(
     partial=LGL.1
   )
   width <- as.numeric(width)
-  at <- if(!is.numeric(at)) as.numeric(at)  # don't coerce POSIXct
+  if(!is.numeric(at)) at <- as.numeric(at)  # don't coerce POSIXct
   offset <- as.numeric(offset)
+  if(!is.numeric(x)) x <- as.numeric(x)
 
-  obj <- get_r2c_dat(fun)
   call <- sys.call()
 
-  r.len <- length(at)
-  status <- numeric(1)
-
-  res <- if(r.len) {
-    # guaranteed at least one value
-    start <- as.numeric(at[1L])         # could be e.g. POSIXct
-    end <- as.numeric(at[length(at)])
-    prep <- roll_prep(
-      obj, data=data, r.len=r.len, formals=formals(fun), enclos=enclos,
-      call=call, fun=rollby_exec
-    )
-    status <- .Call(
-      R2C_run_window_at,
-      handle[['name']],
-      prep[['dat']],
-      prep[['dat_cols']],
-      prep[['ids']],
-      prep[['flag']],
-      prep[['control']],
-      width,
-      offset,
-      at,
-      x,
-      start,
-      end,
-      match(bounds, c("()", "[)", "(]", "[]")) - 1L,
-      partial
-    )
-    # Result vector is modified by reference
-    alp[['dat']][[res.i]]
-  } else numeric()
-
-  roll_finalize(res, alloc, status)
+  roll_call(
+    runner=r2c::rollat_exec, crunner=R2C_run_window_at,
+    r.len=length(at), data=data, fun=fun, enclos=enclos, call=call,
+    MoreArgs=MoreArgs,
+    width, offset, at, x,
+    start, end, bounds_num(bounds), partial
+  )
 }
 #' @export
 #' @name rollby_exec
 
 rollbw_exec <- function(
   fun, data, left, right,
-  x=seq_along(first_vec(data)),
+  x=seq(1, length(first_vec(data)), 1),
   bounds="[)", partial=TRUE, MoreArgs=list(), enclos=parent.frame()
 ) {
   vetr(
@@ -381,44 +372,21 @@ rollbw_exec <- function(
     partial=LGL.1
   )
   width <- as.numeric(width)
-  at <- if(!is.numeric(at)) as.numeric(at)  # don't coerce POSIXct
   offset <- as.numeric(offset)
+  if(!is.numeric(left)) left <- as.numeric(left)   # don't coerce e.g. POSIXct
+  if(!is.numeric(right)) right <- as.numeric(right)# don't coerce e.g. POSIXct
+  if(!is.numeric(x)) x <- as.numeric(x)
 
   obj <- get_r2c_dat(fun)
   call <- sys.call()
 
-  r.len <- length(left)
-  status <- numeric(1)
-
-  res <- if(r.len) {
-    # guaranteed at least one value
-    start <- as.numeric(left[1L])
-    end <- as.numeric(right[length(right)])
-    prep <- roll_prep(
-      obj, data=data, r.len=r.len, formals=formals(fun), enclos=enclos,
-      call=call, fun=rollby_exec
-    )
-    status <- .Call(
-      R2C_run_window_bw,
-      handle[['name']],
-      prep[['dat']],
-      prep[['dat_cols']],
-      prep[['ids']],
-      prep[['flag']],
-      prep[['control']],
-      left,
-      right,
-      x,
-      start,
-      end,
-      match(bounds, c("()", "[)", "(]", "[]")) - 1L,
-      partial
-    )
-    # Result vector is modified by reference
-    alp[['dat']][[res.i]]
-  } else numeric()
-
-  roll_finalize(res, alloc, status)
+  roll_call(
+    runner=r2c::rollbw_exec, crunner=R2C_run_window_bw,
+    r.len=length(left), data=data, fun=fun, enclos=enclos, call=call,
+    MoreArgs=MoreArgs,
+    left, right, x,
+    start, end, bounds_num(bounds), partial
+  )
 }
 
 #' Execute r2c Function on Rolling Windows of Integer Spaced Data
@@ -475,11 +443,12 @@ rollbw_exec <- function(
 #' [     ]     |  width = 3 - 1 = 2 = n - 1
 #' ```
 #'
-#' The `align` values translate to a number in `[0,width]` such that "left"
-#' corresponds to `0`, "center" to `width/2`, and "right" to `width`.
+#' The `align` values correspond to numeric values as follows: "left"
+#' to `0`, "center" to `width/2`, and "right" to `width`.
 #'
 #' @inheritParams rollby_exec
 #' @family rolling functions
+#' @export
 #' @seealso [`first_vec`].
 #' @param n integer number of adjacent data "elements" to compute `fun` on.
 #'   This is equivalent to the integer case of `width` for `zoo::rollapply`, but
@@ -490,19 +459,19 @@ rollbw_exec <- function(
 #' @param align scalar character one of "center" (default), "left", or "right",
 #'   indicating what part of the window should align to the base index.
 #'   Alternatively, a scalar integer where `0` is equivalent to "left", `n - 1`
-#'   equivalent to "right", and `(width - 1) %/% 2` is equivalent to "center".
+#'   equivalent to "right", and `(n - 1) %/% 2` is equivalent to "center".
 #' @return a numeric vector of length `length(first_vec(data)) %/% by`.
 #' @examples
 #' r2c_mean <- r2cq(mean(x))
 #' with(
 #'   mtcars,
-#'   rolli_exec(r2c_mean, hp, width=5)
+#'   rolli_exec(r2c_mean, hp, n=5)
 #' )
 #' r2c_len <- r2cq(length(x))
 #'
-#' rolli_exec(r2c_len, rep(1, 5), width=5, align='left', partial=TRUE)
-#' rolli_exec(r2c_len, rep(1, 5), width=5, align='center', partial=TRUE)
-#' rolli_exec(r2c_len, rep(1, 5), width=5, align='right', partial=TRUE)
+#' rolli_exec(r2c_len, rep(1, 5), n=5, align='left', partial=TRUE)
+#' rolli_exec(r2c_len, rep(1, 5), n=5, align='center', partial=TRUE)
+#' rolli_exec(r2c_len, rep(1, 5), n=5, align='right', partial=TRUE)
 
 rolli_exec <- function(
   fun, data, n, by=1L, align='center', partial=FALSE,
@@ -511,7 +480,7 @@ rolli_exec <- function(
   # FIXME: add validation for shlib
   vetr(
     fun=is.function(.) && inherits(., 'r2c_fun'),
-    width=INT.1.POS.STR && . <= .Machine[['integer.max']],
+    n=INT.1.POS.STR && . <= .Machine[['integer.max']],
     data=(
       (numeric() || integer()) ||
       (list() && all(is.num_naked(.)) && length(.) > 0)
@@ -524,38 +493,25 @@ rolli_exec <- function(
     MoreArgs=list(),
     enclos=is.environment(.)
   )
-  width <- as.integer(width)
+  n <- as.integer(n)
   by <- as.integer(by)
   if(is.character(align)) {
     offset <- integer(length(align))
-    offset[align == 'center'] <- as.integer((width - 1)/2)
-    offset[align == 'right'] <- width - 1L
+    offset[align == 'center'] <- as.integer((n - 1)/2)
+    offset[align == 'right'] <- n - 1L
   } else offset <- as.integer(align)
 
   obj <- get_r2c_dat(fun)
   call <- sys.call()
   status <- numeric(1)
+  d.len <- length(first_vec(data))
+  r.len <- (d.len - 1L) %/% by + 1L
 
-  res <- if(r.len) {
-    prep <- roll_prep(
-      obj, data=data, r.len=r.len, formals=formals(fun), enclos=enclos,
-      call=call, fun=rollby_exec
-    )
-    status <- .Call(
-      R2C_run_window,
-      handle[['name']],
-      prep[['dat']],
-      prep[['dat_cols']],
-      prep[['ids']],
-      prep[['flag']],
-      prep[['control']],
-      width,
-      offset,
-      by,
-      partial
-    )
-  } else numeric()
-
-  roll_finalize(res, alloc, status)
+  roll_call(
+    runner=r2c::rolli_exec, crunner=R2C_run_window,
+    r.len=r.len, data=data, fun=fun, enclos=enclos, call=call,
+    MoreArgs=MoreArgs,
+    n, offset, by, partial
+  )
 }
 
