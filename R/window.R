@@ -272,7 +272,7 @@ rollby_exec <- function(
   fun, data, width, by, offset=width/2,
   x=seq(1, length(first_vec(data)), 1),
   start=x[1L], end=x[length(x)],
-  bounds="[)", partial=TRUE, MoreArgs=list(), enclos=parent.frame()
+  bounds="[)", partial=FALSE, MoreArgs=list(), enclos=parent.frame()
 ) {
   # FIXME: add validation for shlib
   vetr(
@@ -317,7 +317,7 @@ rollby_exec <- function(
 rollat_exec <- function(
   fun, data, width, at=x, offset=width/2,
   x=seq(1, length(first_vec(data)), 1),
-  bounds="[)", partial=TRUE, MoreArgs=list(), enclos=parent.frame()
+  bounds="[)", partial=FALSE, MoreArgs=list(), enclos=parent.frame()
 ) {
   vetr(
     fun=is.function(.) && inherits(., 'r2c_fun'),
@@ -355,7 +355,7 @@ rollat_exec <- function(
 rollbw_exec <- function(
   fun, data, left, right,
   x=seq(1, length(first_vec(data)), 1),
-  bounds="[)", partial=TRUE, MoreArgs=list(), enclos=parent.frame()
+  bounds="[)", partial=FALSE, MoreArgs=list(), enclos=parent.frame()
 ) {
   vetr(
     fun=is.function(.) && inherits(., 'r2c_fun'),
