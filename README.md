@@ -308,6 +308,8 @@ optimization.
   which `window_exec` borrows elements.
 * [David Vaughan][13] for ideas on window functions, including the index concept
   used in `window_i_exec`, borrowed from [`{slider}`].
+* Byron Ellis and [Peter Danenberg](https://github.com/klutometis) for the
+  implementation of `functional::Curry`, used in tests.
 * [Hadley Wickham](https://github.com/hadley/) and [Peter
   Danenberg](https://github.com/klutometis) for
   [roxygen2](https://cran.r-project.org/package=roxygen2).
