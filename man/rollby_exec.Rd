@@ -79,11 +79,12 @@ corresponding \code{data} element (see notes).}
 "anchor", see \code{start}.}
 
 \item{partial}{TRUE or FALSE (default), whether to allow computation on
-partial that extent to the left of \code{start} and/or to the \code{right} of \code{end}.
-If \code{FALSE}, such windows will compute to NA (see \code{start}).  If \code{TRUE} all
-data elements positioned within the window are eligible for computation,
-even if they are outside of \verb{[start,end]} (subject to \code{bounds}).  To
-exclude such points remove them from \code{data} before using these functions.}
+partial windows that extent to the left of \code{start} and/or to the \code{right} of
+\code{end}.  If \code{FALSE}, such windows will compute to NA (see \code{start}).  If
+\code{TRUE} all data elements positioned within the window are eligible for
+computation, even if they are outside of \verb{[start,end]} (subject to
+\code{bounds}).  To exclude such points remove them from \code{data} before using
+these functions.}
 
 \item{MoreArgs}{a list of R objects to pass on as iteration-invariant
 arguments to \code{fun}.  Unlike with \code{data}, each of the objects therein are
@@ -119,8 +120,10 @@ Calls the native code associated with \code{fun} on sequential windows along the
 defining the space covered by each window. All of them will compute \code{fun} for
 each iteration with the set of data "elements" that fall within that window.
 \itemize{
-\item \code{rollby_exec}: equal width windows at regularly spaced intervals (\code{by}).
-\item \code{rollat_exec}: equal width windows at specific locations given in \code{at}.
+\item \code{rollby_exec}: equal width windows aligned relative to regularly spaced
+(\code{by} apart) "anchors" positions.
+\item \code{rollat_exec}: equal width windows aligned relative to "anchors" with
+specific positions given in \code{at}.
 \item \code{rollbw_exec}: windows with ends defined explicitly in \code{left} and \code{right}.
 }
 }

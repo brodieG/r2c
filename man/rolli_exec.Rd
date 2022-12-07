@@ -41,11 +41,12 @@ Alternatively, a scalar integer where \code{0} is equivalent to "left", \code{n 
 equivalent to "right", and \code{(width - 1) \%/\% 2} is equivalent to "center".}
 
 \item{partial}{TRUE or FALSE (default), whether to allow computation on
-partial that extent to the left of \code{start} and/or to the \code{right} of \code{end}.
-If \code{FALSE}, such windows will compute to NA (see \code{start}).  If \code{TRUE} all
-data elements positioned within the window are eligible for computation,
-even if they are outside of \verb{[start,end]} (subject to \code{bounds}).  To
-exclude such points remove them from \code{data} before using these functions.}
+partial windows that extent to the left of \code{start} and/or to the \code{right} of
+\code{end}.  If \code{FALSE}, such windows will compute to NA (see \code{start}).  If
+\code{TRUE} all data elements positioned within the window are eligible for
+computation, even if they are outside of \verb{[start,end]} (subject to
+\code{bounds}).  To exclude such points remove them from \code{data} before using
+these functions.}
 
 \item{MoreArgs}{a list of R objects to pass on as iteration-invariant
 arguments to \code{fun}.  Unlike with \code{data}, each of the objects therein are
@@ -111,11 +112,10 @@ Window element counts correspond to an interval width as \code{n - 1}, e.g.:
 [     ]     |  width = 3 - 1 = 2 = n - 1
 }\if{html}{\out{</div>}}
 
-The \code{align} values translate to a number in \verb{[0,width]} such that "left"
-corresponds to \code{0}, "center" to \code{width/2}, and "right" to \code{width}.
+The \code{align} values correspond to numeric values as follows: "left"
+to \code{0}, "center" to \code{width/2}, and "right" to \code{width}.
 
 [     ]: R:\%20\%20\%20\%20\%20
-[0,width]: R:0,width
 }
 
 \section{Data Elements}{
@@ -139,9 +139,9 @@ with(
 )
 r2c_len <- r2cq(length(x))
 
-rolli_exec(r2c_len, rep(1, 5), width=5, align='left', partial=TRUE)
-rolli_exec(r2c_len, rep(1, 5), width=5, align='center', partial=TRUE)
-rolli_exec(r2c_len, rep(1, 5), width=5, align='right', partial=TRUE)
+rolli_exec(r2c_len, rep(1, 5), n=5, align='left', partial=TRUE)
+rolli_exec(r2c_len, rep(1, 5), n=5, align='center', partial=TRUE)
+rolli_exec(r2c_len, rep(1, 5), n=5, align='right', partial=TRUE)
 }
 \seealso{
 \code{\link{first_vec}}.

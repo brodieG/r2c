@@ -14,7 +14,7 @@ Suggests:
   unitizer
 Imports:
   utils,
-  vetr
+  vetr (>= 0.2.14.9000)
 RoxygenNote: 7.2.0
 Roxygen: list(markdown = TRUE)
 Encoding: UTF-8
