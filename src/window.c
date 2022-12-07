@@ -158,7 +158,7 @@ struct win_args {
 #define SET_MBR(OBJ, SYM, NAME, TYPE, SETTER, TYPEN, TEST) do {         \
   if(TYPEOF((OBJ)) != NILSXP) {                                         \
     if(TEST(OBJ, TYPE))                                                 \
-      IERR("Argument `" NAME "` should be scalar " TYPEN ".");          \
+      IERR("Argument `" NAME "` should be " TYPEN " vector.");          \
     wa.SYM = SETTER((OBJ));                                             \
   }                                                                     \
 } while(0)
@@ -187,8 +187,8 @@ static struct win_args prep_win_args(
   SET_MBR_REAL_SCL(by_sxp,          by,              "by");
   SET_MBR_REAL_SCL(start_sxp,       start,           "start");
   SET_MBR_REAL_SCL(end_sxp,         end,             "end");
-  SET_MBR_INT_SCL( partial_sxp,     partial,         "partial");
-  SET_MBR_LGL_SCL( bounds_sxp,      bounds,          "bounds");
+  SET_MBR_LGL_SCL( partial_sxp,     partial,         "partial");
+  SET_MBR_INT_SCL( bounds_sxp,      bounds,          "bounds");
 
   // Vector members
   SET_MBR_REAL(    x_sxp,           x,               "x");
@@ -212,8 +212,8 @@ static struct win_args prep_win_args(
   wa.rlen = dp.lens[I_RES];
 
   // Make a copy of the base data pointers
-  wa.dbase = (double **) R_alloc(dp.dat_end, sizeof(double *));
-  for(int j = dp.dat_start; j <= dp.dat_end; ++j) wa.dbase[j] = wa.dbase[j];
+  wa.dbase = (double **) R_alloc(dp.dat_end + 1, sizeof(double *));
+  for(int j = dp.dat_start; j <= dp.dat_end; ++j) wa.dbase[j] = dp.data[j];
 
   return wa;
 }
@@ -237,9 +237,11 @@ static struct win_args prep_win_args(
   R_xlen_t ileft, iright, iright_prev;  /* indices of ends of window */     \
   ileft = iright = iright_prev = 0;                                         \
   double * recycle_flag = dp.data[I_STAT] + STAT_RECYCLE;                   \
-  double left, right;                                                       \
   /* left/right set by L_EXP and R_EXP respectively */                      \
-  for(R_xlen_t i = 0; i < wa.rlen; ++i, (L_EXP), (R_EXP)) {                 \
+  double left, right;                                                       \
+  R_xlen_t i = 0; /* need initial vals for L_EXP and R_EXP */               \
+  L_EXP; R_EXP;                                                             \
+  for(; i < wa.rlen; ++i, (L_EXP), (R_EXP)) {                               \
     while(wa.x[ileft] L_OP left && ileft < wa.xlen) ++ileft;                \
     if(ileft < wa.xlen) {                                                   \
       /* Small optim: reset to iright_prev if window >> by */               \
