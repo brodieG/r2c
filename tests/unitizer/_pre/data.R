@@ -66,11 +66,4 @@ show_bits <- function(x, n=as.integer(max(c(log2(x), 0), na.rm=TRUE)) + 1L) {
   dim(res) <- dim(raw)
   res[seq_len(n),,drop=FALSE]
 }
-# Originally from Byron Ellis, via the Peter Danenberg's {functional}
-# GPL>=2.
-
-Curry <- function (FUN, ...) {
-  .orig = list(...)
-  function(...) do.call(FUN, c(.orig, list(...)))
-}
 

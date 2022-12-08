@@ -91,4 +91,37 @@ without_seed <- function(expr, env=parent.frame()) {
   expr
 }
 
+#' Pre-Set Function Parameters
+#'
+#' Create a new function from an existing function, but with parameters pre-set.
+#' This is a function intended for testing to simplify complex expressions
+#' involving the `_exec` functions.  It merely stores the function expression to
+#' execute in the lexical environment it was created in.  All symbols will be
+#' resolved at evaluation time, not at creation time.
+#'
+#' This is inspired by a function originally from Byron Ellis, adapted by Jamie
+#' F Olson, and discovered by me via Peter Danenberg's `{functional}` (see
+#' packages `?functional::Curry` and `functional::CurryL`).  The implementation
+#' here is different, in particular it makes it easy to see what the intended
+#' call is by displaying the function contents (see examples).
+#'
+#' @export
+#' @param FUN the function to pre-set parameters for
+#' @param ... parameters to pre-set
+#' @return `FUN` wrapped with pre-set parameters
+#' @examples
+#' sum_nona <- lcurry(sum, na.rm=TRUE)
+#' sum_nona(c(1, NA, 2))
+#' sum_nona
+
+lcurry <- function (FUN, ...) {
+  call <- match.call()
+  call[[1]] <- call[[2]]
+  call[[2]] <- NULL
+  call[[length(call) + 1]] <- quote(...)
+  f <- function(...) NULL
+  body(f) <- call
+  environment(f) <- parent.frame()
+  f
+}
 
