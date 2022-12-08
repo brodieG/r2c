@@ -24,9 +24,9 @@ R_CallMethodDef callMethods[] = {
   {"group_sizes", (DL_FUNC) &R2C_group_sizes, 1},
   {"run_group", (DL_FUNC) &R2C_run_group, 8},
   {"run_window", (DL_FUNC) &R2C_run_window, 10},
-  {"run_window_by", (DL_FUNC) &R2C_run_window_by, 14},
+  {"run_window_by", (DL_FUNC) &R2C_run_window_by, 13},
   {"run_window_at", (DL_FUNC) &R2C_run_window_at, 11},
-  {"run_window_bw", (DL_FUNC) &R2C_run_window_bw, 11},
+  {"run_window_bw", (DL_FUNC) &R2C_run_window_bw, 10},
   {"assumptions", (DL_FUNC) &R2C_assumptions, 0},
   {"constants", (DL_FUNC) &R2C_constants, 0},
 

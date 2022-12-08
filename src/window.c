@@ -122,26 +122,28 @@ SEXP R2C_run_window(
 }
 
 struct win_args {
-  double w;
-  double o;
+  double w;         // `width`
+  double o;         // `offset`
   double by;
   double start;
   double end;
   int partial;
   int bounds;
-  double ** dbase;  /// base of data pointers
-  double * x;
-  double * at;
-  double * l_end;
-  double * r_end;
-  R_xlen_t xlen;
-  R_xlen_t rlen;
+  double ** dbase;  // base of `data` pointers
+  double * x;       // same as R level `x`
+  double * at;      // same as R level `at`
+  double * l_end;   // same as R level `left`
+  double * r_end;   // same as R level `right`
+  R_xlen_t xlen;    // Length of `x`
+  R_xlen_t rlen;    // Length of result vector
 };
 /* Check and Initialize Shared Window Arguments
  *
  * Allows centralizing the checking and setting across most of the window
- * functions.  Everything first initialized to zero. Since not all functions use
- * all arguments, we use NULL to represent unused arguments.
+ * functions.  Arguments not used by a particular function are passed in as
+ * NULL.  Those will not be checked and will set their corresponding member in
+ * the returned struct to 0 (including the pointers, so don't go dereferencing
+ * those).
  *
  * Following macros are for exclusive use with this function.  SET_MBR* are
  * responsible for checking SEXPs, converting to C basic types, and setting them
@@ -211,7 +213,8 @@ static struct win_args prep_win_args(
   wa.xlen = XLENGTH(x_sxp);
   wa.rlen = dp.lens[I_RES];
 
-  // Make a copy of the base data pointers
+  // Make a copy of the base data pointers to use as references as we advance
+  // through the data
   wa.dbase = (double **) R_alloc(dp.dat_end + 1, sizeof(double *));
   for(int j = dp.dat_start; j <= dp.dat_end; ++j) wa.dbase[j] = dp.data[j];
 
@@ -220,6 +223,12 @@ static struct win_args prep_win_args(
 
 /*
  * Generate the Window Application Loop
+ *
+ * Algorithm is to advance through data positions in `x` until finding first
+ * element that is inside window range.  Then, continue advancing (either from
+ * the first in-range element, or the previous iteration last in-range element)
+ * until we find first out of range element, and then back up one to presumed
+ * last in-range element.
  *
  * All the _OP "variables" are comparison operators in <, >, <=, >=.  See
  * ROLL_WINDOW for more details.
@@ -242,16 +251,17 @@ static struct win_args prep_win_args(
   R_xlen_t i = 0; /* need initial vals for L_EXP and R_EXP */               \
   L_EXP; R_EXP;                                                             \
   for(; i < wa.rlen; ++i, (L_EXP), (R_EXP)) {                               \
+    /* Find first in-range element */                                       \
     while(wa.x[ileft] L_OP left && ileft < wa.xlen) ++ileft;                \
     if(ileft < wa.xlen) {                                                   \
       /* Small optim: reset to iright_prev if window >> by */               \
       if(ileft > iright_prev) iright = ileft + 1;                           \
       else iright = iright_prev + 1;                                        \
-      /* Scan for right end, overshoot and step back */                     \
+      /* Find first oob element  to right */                                \
       while(wa.x[iright] R_OP right && iright < wa.xlen) ++iright;          \
-      --iright;                                                             \
+      --iright;   /* step back to last in-range element */                  \
       iright_prev = iright;                                                 \
-    } else {                                                                \
+    } else {      /* ran out of vector */                                   \
       ileft = iright = wa.xlen - 1;                                         \
     }                                                                       \
     if(wa.x[ileft] IBL_OP right && wa.x[iright] IBR_OP left) {              \
@@ -260,16 +270,14 @@ static struct win_args prep_win_args(
         dp.data[j] = wa.dbase[j] + ileft;                                   \
         dp.lens[j] = len;                                                   \
       }                                                                     \
-    } else {        /* empty window */                                      \
+    } else {      /* empty window */                                        \
       for(int j = dp.dat_start; j <= dp.dat_end; ++j) dp.lens[j] = 0;       \
     }                                                                       \
-    if(wa.partial || (wa.start <= left && wa.end >= right)) {               \
-      /* RUN r2c FUN */                                                     \
-      (*(dp.fun))(dp.data, dp.lens, dp.datai, dp.narg, dp.flags, dp.ctrl);  \
-      /* Should be debug-mode only check */                                 \
-      if(dp.lens[I_RES] != 1)                                               \
-        Rf_error("Window result size is not 1 (is %jd).", dp.lens[I_RES]);  \
-    } else  **(dp.data + I_RES) = NA_REAL;                                  \
+    /* RUN r2c FUN */                                                       \
+    (*(dp.fun))(dp.data, dp.lens, dp.datai, dp.narg, dp.flags, dp.ctrl);    \
+    /* Should be debug-mode only check */                                   \
+    if(dp.lens[I_RES] != 1)                                                 \
+      Rf_error("Window result size is not 1 (is %jd).", dp.lens[I_RES]);    \
                                                                             \
     if(*recycle_flag && !recycle_warn) recycle_warn = (double)i + 1;        \
     ++(*(dp.data + I_RES));                                                 \
@@ -288,6 +296,10 @@ static struct win_args prep_win_args(
  * R_END the expression that defines the left end of the window
  *
  * L_END R_END are reset at each iterations of the ROLL_BOUND loop.
+ *
+ * `bounds` is integer in 0-3, to be interpreted such that the value of the
+ * first bit designates the closedness of the left end, and the second bit the
+ * closedness of the right end.
  */
 
 #define ROLL_WINDOW(L_END, R_END) do {                      \
@@ -323,20 +335,21 @@ SEXP R2C_run_window_by(
   SEXP x_sxp,
   SEXP start_sxp,
   SEXP end_sxp,
-  SEXP bounds_sxp,
-  SEXP partial_sxp
+  SEXP bounds_sxp
 ) {
   struct R2C_dat dp = prep_data(dat, dat_cols, ids, flag, ctrl, so);
   struct win_args wa = prep_win_args(
     width, offset, x_sxp, by_sxp,
     R_NilValue, R_NilValue, R_NilValue,
-    start_sxp, end_sxp, bounds_sxp, partial_sxp, dp
+    start_sxp, end_sxp,
+    bounds_sxp, R_NilValue, dp
   );
   // Shift start by o, so we can treat window start as the base x
   double base0 = wa.start - wa.o;
-  if(!isfinite(base0))
+  double end0 = wa.end - wa.o;
+  if(!isfinite(base0) || !isfinite(end0))
     Rf_error(
-      "`start` and `offset` values create a negative infinity left bound, ",
+      "`start`/`end` and `offset` values create infinite bound(s), ",
       "which is disallowed."
     );
 
@@ -355,16 +368,14 @@ SEXP R2C_run_window_at(
   SEXP offset,
   SEXP at_sxp,
   SEXP x_sxp,
-  SEXP start_sxp,
-  SEXP end_sxp,
-  SEXP bounds_sxp,
-  SEXP partial_sxp
+  SEXP bounds_sxp
 ) {
   struct R2C_dat dp = prep_data(dat, dat_cols, ids, flag, ctrl, so);
   struct win_args wa = prep_win_args(
     width, offset, x_sxp, R_NilValue,
     at_sxp, R_NilValue, R_NilValue,
-    start_sxp, end_sxp, bounds_sxp, partial_sxp, dp
+    R_NilValue, R_NilValue,
+    bounds_sxp, R_NilValue, dp
   );
   ROLL_WINDOW(wa.at[i] - wa.o, left + wa.w);
 }
@@ -379,16 +390,14 @@ SEXP R2C_run_window_bw(
   SEXP left_sxp,
   SEXP right_sxp,
   SEXP x_sxp,
-  SEXP start_sxp,
-  SEXP end_sxp,
-  SEXP bounds_sxp,
-  SEXP partial_sxp
+  SEXP bounds_sxp
 ) {
   struct R2C_dat dp = prep_data(dat, dat_cols, ids, flag, ctrl, so);
   struct win_args wa = prep_win_args(
     R_NilValue, R_NilValue, x_sxp, R_NilValue,
     R_NilValue, left_sxp, right_sxp,
-    start_sxp, end_sxp, bounds_sxp, partial_sxp, dp
+    R_NilValue, R_NilValue,
+    bounds_sxp, R_NilValue, dp
   );
   ROLL_WINDOW(wa.l_end[i], wa.r_end[i]);
 }

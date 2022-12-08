@@ -94,6 +94,7 @@ roll_call <- function(
     roll_finalize(prep, status)
   } else numeric()
 }
+# Map bounds to integer in 0-3, (see window.c ROLL_WINDOW).
 
 bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 
@@ -105,6 +106,8 @@ bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 #' `data` vector(s).  The `roll*_exec` functions provide different mechanism for
 #' defining the space covered by each window. All of them will compute `fun` for
 #' each iteration with the set of data "elements" that fall within that window.
+#' Data elements may be given irregularly spaced positions with `x`, so there
+#' may be different number of elements in each window.
 #'
 #' * `rollby_exec`: equal width windows aligned relative to regularly spaced
 #'    (`by` apart) "anchors" positions.
@@ -165,6 +168,9 @@ bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 #'  [-----------------)                    | o =   w   {1, 2, 3}
 #' ```
 #'
+#' Unlike with [`rolli_exec`] there is no `partial` parameter as there is no
+#' expectation of a fixed number of elements in any given window.
+#'
 #' @section Equivalence:
 #'
 #' The `roll*_exec` functions can be ordered by increasing generality:
@@ -180,18 +186,16 @@ bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 #'
 #' @section Performance:
 #'
-#' There are no special optimizations beyond the use of `{r2c}` functions
-#' over regular R functions.  For wide windows there are more efficient
-#' solutions depending on the statistic applied.  For example, for rolling means
-#' and a few other simple statistics `{data.table}` offers the "on-line"
-#' algorithm and `{slider}` the "segment tree" algorithm, each with different
-#' performance and precision trade-offs.  In testing with sums we've found the
-#' "segment tree" algorithm to start outperforming `{r2c}` at window size ~100.
-#' At that size, the `data.table` "on-line" algorithm is significantly faster.
-#' An advantage of `{r2c}` is that it remains fast for any arbitrary expression
-#' of the supported functions, whereas the "on-line" and "segment tree"
-#' implementations are limited to a narrow set of predefined calculations like
-#' `sum`.
+#' In general `{r2c}` should perform better than most alternate R window
+#' functions for "arbitrary" statistics (i.e. those that can be composed from
+#' `{r2c}` supported functions).  Some other packages have special algorithms
+#' that will outperform `{r2c}` on wide windows for a small set of simple
+#' predefined statistics.  For example, for rolling means `{data.table}` offers
+#' the "on-line" algorithm and `{slider}` the "segment tree" algorithm, each
+#' with different performance and precision trade-offs.  In testing with sums
+#' we've found the "segment tree" algorithm to start outperforming `{r2c}` at
+#' window size ~100.  At that size, the `data.table` "on-line" algorithm is
+#' significantly faster.
 #'
 #' For `by` values wider than the typical difference between `x` values,
 #' implementations that adjust the search stride along `x` taking advantage of
@@ -244,19 +248,12 @@ bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 #' @param right non-NA, finite, monotonically increasing numeric
 #'   positions of the left end of each window on the real line, where
 #'   `right >= left` (see notes).  Integer vectors are coerced to numeric.
-#' @param partial TRUE or FALSE (default), whether to allow computation on
-#'   partial windows that extent to the left of `start` and/or to the `right` of
-#'   `end`.  If `FALSE`, such windows will compute to NA (see `start`).  If
-#'   `TRUE` all data elements positioned within the window are eligible for
-#'   computation, even if they are outside of `[start,end]` (subject to
-#'   `bounds`).  To exclude such points remove them from `data` before using
-#'   these functions.
 #' @param offset finite, non-na, scalar numeric representing the leftward offset
 #'   of the left end of the window from its "anchor".  See "Intervals".
 #' @param start non-na, finite scalar numeric position on real line of first
-#'   "anchor".  Windows that extend to the left of `start` (or to the right of
-#'   `end`) are incomplete and will compute as NA if `partial=FALSE` (see
-#'   `partial`).
+#'   "anchor".  Windows may extend to the left of `start` (or to the right of
+#'   `end`) based on `offset`, and will include any data elements inside the
+#'   window but outside `[start,end]`.
 #' @param end non-na, finite scalar numeric position on real line of last
 #'   "anchor", see `start`.
 #' @return A numeric vector of length:
@@ -272,7 +269,7 @@ rollby_exec <- function(
   fun, data, width, by, offset=width/2,
   x=seq(1, length(first_vec(data)), 1),
   start=x[1L], end=x[length(x)],
-  bounds="[)", partial=FALSE, MoreArgs=list(), enclos=parent.frame()
+  bounds="[)", MoreArgs=list(), enclos=parent.frame()
 ) {
   # FIXME: add validation for shlib
   vetr(
@@ -289,17 +286,18 @@ rollby_exec <- function(
     enclos=is.environment(.),
     start=NUM.1,
     end=NUM.1 && . >= start,
-    bounds=CHR.1 && . %in% c("()", "[)", "(]", "[]"),
-    partial=LGL.1
+    bounds=CHR.1 && . %in% c("()", "[)", "(]", "[]")
   )
   width <- as.numeric(width)
   by <- as.numeric(by)
   offset <- as.numeric(offset)
-  start <- as.numeric(start)  # could be e.g. POSIXct
+  start <- as.numeric(start)   # Coerce to avoid e.g. date arithmetic
   end <- as.numeric(end)
-  if(!is.numeric(x)) x <- as.numeric(x)
-  d.len <- length(first_vec(data))
-  r.len <- (d.len - 1L) %/% by + 1L
+  # Don't coerce underlying numeric vectors (e.g. POSIXct)
+  if(typeof(x) != "numeric") x <- as.numeric(x)
+  r.len <- (end - start) %/% by + 1
+  if(!is.finite(r.len))
+    stop("`end`/`start`/`by` combine to produce a too-long result vector.")
 
   call <- sys.call()
 
@@ -308,7 +306,7 @@ rollby_exec <- function(
     r.len=r.len, data=data, fun=fun, enclos=enclos, call=call,
     MoreArgs=MoreArgs,
     width, offset, by, x,
-    start, end, bounds_num(bounds), partial
+    start, end, bounds_num(bounds)
   )
 }
 #' @export
@@ -317,7 +315,7 @@ rollby_exec <- function(
 rollat_exec <- function(
   fun, data, width, at=x, offset=width/2,
   x=seq(1, length(first_vec(data)), 1),
-  bounds="[)", partial=FALSE, MoreArgs=list(), enclos=parent.frame()
+  bounds="[)", MoreArgs=list(), enclos=parent.frame()
 ) {
   vetr(
     fun=is.function(.) && inherits(., 'r2c_fun'),
@@ -331,13 +329,13 @@ rollat_exec <- function(
     offset=NUM.1,
     MoreArgs=list(),
     enclos=is.environment(.),
-    bounds=CHR.1 && . %in% c("()", "[)", "(]", "[]"),
-    partial=LGL.1
+    bounds=CHR.1 && . %in% c("()", "[)", "(]", "[]")
   )
   width <- as.numeric(width)
-  if(!is.numeric(at)) at <- as.numeric(at)  # don't coerce POSIXct
   offset <- as.numeric(offset)
-  if(!is.numeric(x)) x <- as.numeric(x)
+  # Don't coerce underlying numeric vectors (e.g. POSIXct)
+  if(typeof(at) != "numeric") at <- as.numeric(at)
+  if(typeof(x) != "numeric") x <- as.numeric(x)
 
   call <- sys.call()
 
@@ -346,7 +344,7 @@ rollat_exec <- function(
     r.len=length(at), data=data, fun=fun, enclos=enclos, call=call,
     MoreArgs=MoreArgs,
     width, offset, at, x,
-    start, end, bounds_num(bounds), partial
+    bounds_num(bounds)
   )
 }
 #' @export
@@ -355,7 +353,7 @@ rollat_exec <- function(
 rollbw_exec <- function(
   fun, data, left, right,
   x=seq(1, length(first_vec(data)), 1),
-  bounds="[)", partial=FALSE, MoreArgs=list(), enclos=parent.frame()
+  bounds="[)", MoreArgs=list(), enclos=parent.frame()
 ) {
   vetr(
     fun=is.function(.) && inherits(., 'r2c_fun'),
@@ -364,20 +362,15 @@ rollbw_exec <- function(
       (numeric() || integer()) ||
       (list() && all(is.num_naked(.)) && length(.) > 0)
     ),
-    start=numeric(),
-    end=numeric() && length(.) == length(start),
     MoreArgs=list(),
     enclos=is.environment(.),
-    bounds=CHR.1 && . %in% c("()", "[)", "(]", "[]"),
-    partial=LGL.1
+    bounds=CHR.1 && . %in% c("()", "[)", "(]", "[]")
   )
-  width <- as.numeric(width)
-  offset <- as.numeric(offset)
-  if(!is.numeric(left)) left <- as.numeric(left)   # don't coerce e.g. POSIXct
-  if(!is.numeric(right)) right <- as.numeric(right)# don't coerce e.g. POSIXct
-  if(!is.numeric(x)) x <- as.numeric(x)
+  # Don't coerce underlying numeric vectors (e.g. POSIXct)
+  if(typeof(x) != "numeric") x <- as.numeric(x)
+  if(typeof(left) != "numeric") left <- as.numeric(left)
+  if(typeof(right) != "numeric") right <- as.numeric(right)
 
-  obj <- get_r2c_dat(fun)
   call <- sys.call()
 
   roll_call(
@@ -385,7 +378,7 @@ rollbw_exec <- function(
     r.len=length(left), data=data, fun=fun, enclos=enclos, call=call,
     MoreArgs=MoreArgs,
     left, right, x,
-    start, end, bounds_num(bounds), partial
+    bounds_num(bounds)
   )
 }
 
@@ -431,7 +424,6 @@ rollbw_exec <- function(
 #'     width=n - 1,
 #'     offset=((match(align, c('left', 'center', 'right')) - 1) / 2) * (n - 1)
 #'     bounds="[]",
-#'     partial=FALSE,
 #'     ...
 #'    )
 #' ```
@@ -460,6 +452,8 @@ rollbw_exec <- function(
 #'   indicating what part of the window should align to the base index.
 #'   Alternatively, a scalar integer where `0` is equivalent to "left", `n - 1`
 #'   equivalent to "right", and `(n - 1) %/% 2` is equivalent to "center".
+#' @param partial TRUE or FALSE (default), whether to allow computation on
+#'   partial windows that extent out of either end of the data.
 #' @return a numeric vector of length `length(first_vec(data)) %/% by`.
 #' @examples
 #' r2c_mean <- r2cq(mean(x))
