@@ -20,10 +20,10 @@ library(r2c)
 wvec <- 2^(0:4)
 
 # Partial, and various alignments
-rsum_pl <- Curry(r2c::rolli_exec, r2c_sum, align='left', partial=TRUE)
-rsum_pc <- Curry(r2c::rolli_exec, r2c_sum, align='center', partial=TRUE)
-rsum_pr <- Curry(r2c::rolli_exec, r2c_sum, align='right', partial=TRUE)
-rsum_p <- Curry(r2c::rolli_exec, r2c_sum, partial=TRUE)
+rsum_pl <- lcurry(r2c::rolli_exec, r2c_sum, align='left', partial=TRUE)
+rsum_pc <- lcurry(r2c::rolli_exec, r2c_sum, align='center', partial=TRUE)
+rsum_pr <- lcurry(r2c::rolli_exec, r2c_sum, align='right', partial=TRUE)
+rsum_p <- lcurry(r2c::rolli_exec, r2c_sum, partial=TRUE)
 
 ## see _pre/data.R for show_bits and other things
 
@@ -56,12 +56,12 @@ unitizer_sect("window partial", {
 
   # Numeric align
   show_bits(rsum_p(wvec, n=5, align=0))
-  show_bits(rsum_p(wvec, n=5, align=4))
-  show_bits(rsum_p(wvec, n=5, align=2))
+  show_bits(rsum_p(wvec, n=5, align=-4))
+  show_bits(rsum_p(wvec, n=5, align=-2))
 
   # Numeric align OOB (valid)
-  show_bits(rsum_p(wvec, n=5, align=-1))
-  show_bits(rsum_p(wvec, n=5, align=5))
+  show_bits(rsum_p(wvec, n=5, align=1))
+  show_bits(rsum_p(wvec, n=5, align=-5))
 })
 unitizer_sect("by", {
   show_bits(rsum_pl(wvec, n=1, by=2))

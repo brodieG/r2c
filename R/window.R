@@ -98,21 +98,20 @@ roll_call <- function(
 
 bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 
-#' Execute r2c Function on Rolling Windows in Data
+#' Compute on Sequential Windows on Data
 #'
 #' @description
 #'
-#' Calls the native code associated with `fun` on sequential windows along the
-#' `data` vector(s).  The `roll*_exec` functions provide different mechanism for
-#' defining the space covered by each window. All of them will compute `fun` for
-#' each iteration with the set of data "elements" that fall within that window.
-#' Data elements may be given irregularly spaced positions with `x`, so there
-#' may be different number of elements in each window.
+#' Calls the native code associated with `fun` on sequential windows along
+#' `data` vector(s) with "elements" positioned on the real line.  Data element
+#' Positions are given with `x` and can be irregularly spaced, so equal sized
+#' windows may contain different number of elements.  Each `roll*_exec` function
+#' provides a different mechanism for defining the space covered by each window.
+#' All of them will compute `fun` for each iteration with the set of data
+#' "elements" that fall within that window.
 #'
-#' * `rollby_exec`: equal width windows aligned relative to regularly spaced
-#'    (`by` apart) "anchors" positions.
-#' * `rollat_exec`: equal width windows aligned relative to "anchors" with
-#'    specific positions given in `at`.
+#' * `rollby_exec`: equal width windows spaced `by` apart.
+#' * `rollat_exec`: equal width windows at specific positions given in `at`.
 #' * `rollbw_exec`: windows with ends defined explicitly in `left` and `right`.
 #'
 #' @section Data Elements:
@@ -135,19 +134,19 @@ bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 #' and open on the right by default.
 #'
 #' As an illustration for `rollby_exec` and `rollat_exec`, consider the case of
-#' `width = 3` windows at the fourth iteration, with various `offset` values. The
-#' offset is the distance from the left end of the window to the anchor:
+#' `width = 3` windows at the fourth iteration, with various `offset` values.
+#' The offset is the distance from the left end of the window to the anchor:
 #'
 #' ```
-#'                    +------------- 4th iteration, anchor is 4.0
-#'                    V
+#' ## rollby_exec(..., by=1, width=3)
+#'                    +------------- 4th iteration, anchor is 4.0 #'                    V
 #' 1.0   2.0   3.0   4.0   5.0   6.0   7.0 | < Real Line
-#'  1     2     3     4     5     6     7  | < Element Rank
+#'  1     2     3     4     5     6     7  | < Element Position
 #'                    |
-#'                    |                      Offset    In-window Elements
-#'           [-----------------)           | o = w/2   {3, 4, 5}
-#'                    [-----------------)  | o =   0   {4, 5, 6}
-#'  [-----------------)                    | o =   w   {1, 2, 3}
+#'                    |                      Offset     In-window Elements
+#'                    [-----------------)  | o =    0   {4, 5, 6}
+#'           [-----------------)           | o = -w/2   {3, 4, 5}
+#'  [-----------------)                    | o =   -w   {1, 2, 3}
 #' ```
 #'
 #' In each case we get three elements in the window, although this is only
@@ -157,19 +156,25 @@ bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 #' `x = c(1, 1.25, 2.5, 5.3, 7, ...)`, we might see (positions approximate):
 #'
 #' ```
+#' ## rollby_exec(..., by=1, width=3, x=c(1, 1.25, 2.5, 5.3, 7))
 #'                    +------------- 4th iteration, base index is 4.0
 #'                    V
 #' 1.0   2.0   3.0   4.0   5.0   6.0   7.0 | < Real Line
-#'  1 2      3        |       4         5  | < Element Rank
+#'  1 2      3        |       4         5  | < Element ~Position
 #'                    |
-#'                    |                      Offset    In-window
-#'           [-----------------)           | o = w/2   {3, 4}
-#'                    [-----------------)  | o =   0   {4}
-#'  [-----------------)                    | o =   w   {1, 2, 3}
+#'                    |                      Offset     In-window
+#'                    [-----------------)  | o =    0   {4}
+#'           [-----------------)           | o = -w/2   {3, 4}
+#'  [-----------------)                    | o =   -w   {1, 2, 3}
 #' ```
 #'
 #' Unlike with [`rolli_exec`] there is no `partial` parameter as there is no
 #' expectation of a fixed number of elements in any given window.
+#'
+#' A restriction is that both ends of a window must be monotonically increasing
+#' relative to their counterparts in the prior window.  This restriction might
+#' be relaxed for `rollbw_exec` in the future, likely at the cost of
+#' performance.
 #'
 #' @section Equivalence:
 #'
@@ -186,16 +191,23 @@ bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 #'
 #' @section Performance:
 #'
-#' In general `{r2c}` should perform better than most alternate R window
+#' In general `{r2c}` should perform better than most alternate window
 #' functions for "arbitrary" statistics (i.e. those that can be composed from
-#' `{r2c}` supported functions).  Some other packages have special algorithms
-#' that will outperform `{r2c}` on wide windows for a small set of simple
-#' predefined statistics.  For example, for rolling means `{data.table}` offers
-#' the "on-line" algorithm and `{slider}` the "segment tree" algorithm, each
-#' with different performance and precision trade-offs.  In testing with sums
-#' we've found the "segment tree" algorithm to start outperforming `{r2c}` at
-#' window size ~100.  At that size, the `data.table` "on-line" algorithm is
-#' significantly faster.
+#' `{r2c}` supported functions).  Some packages implement algorithms that will
+#' outperform `{r2c}` on wide windows for a small set of simple predefined
+#' statistics.  For example, for rolling means `{data.table}` offers the
+#' "on-line" algorithm and `{slider}` the "segment tree" algorithm, each with
+#' different performance and precision trade-offs.
+#'
+#' In testing with sums we've found the `{slider}` (v0.2.2) "segment tree"
+#' algorithm to start outperforming `{r2c}` at window size ~100 for
+#' `slider::slide_sum` and at window size ~1000 for `slider::slide_index_sum`.
+#'
+#' The `{data.table}` (v1.14.6) "on-line" algorithm is significantly faster than
+#' either `{r2c}` or `{slider}`, and at least on systems with 80 bit long
+#' doubles the precision loss seems tolerable for many applications.  The
+#' `{data.table}` "exact" algorithm in single thread mode has performance near
+#' identical to `[rolli_exec]`.
 #'
 #' For `by` values wider than the typical difference between `x` values,
 #' implementations that adjust the search stride along `x` taking advantage of
@@ -248,8 +260,12 @@ bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 #' @param right non-NA, finite, monotonically increasing numeric
 #'   positions of the left end of each window on the real line, where
 #'   `right >= left` (see notes).  Integer vectors are coerced to numeric.
-#' @param offset finite, non-na, scalar numeric representing the leftward offset
-#'   of the left end of the window from its "anchor".  See "Intervals".
+#' @param offset finite, non-na, scalar numeric representing the offset
+#'   of the window from its "anchor".  Defaults to 0, which means the left end
+#'   of the window is aligned with the anchor (i.e. conceptually equivalent to
+#'   `align="left"` for [`rolli_exec`]).  Use `-width/2` for center aligned, and
+#'   `-width` for right aligned.  See "Intervals".  Note this default is
+#'   different to that for [`rolli_exec`].
 #' @param start non-na, finite scalar numeric position on real line of first
 #'   "anchor".  Windows may extend to the left of `start` (or to the right of
 #'   `end`) based on `offset`, and will include any data elements inside the
@@ -266,7 +282,7 @@ bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 #' @seealso [`first_vec`].
 
 rollby_exec <- function(
-  fun, data, width, by, offset=width/2,
+  fun, data, width, by, offset=0,
   x=seq(1, length(first_vec(data)), 1),
   start=x[1L], end=x[length(x)],
   bounds="[)", MoreArgs=list(), enclos=parent.frame()
@@ -288,9 +304,11 @@ rollby_exec <- function(
     end=NUM.1 && . >= start,
     bounds=CHR.1 && . %in% c("()", "[)", "(]", "[]")
   )
+  # internal logic has offset as the leftwards offset, but that's confusing so
+  # we changed the external definition
+  offset <- -as.numeric(offset)
   width <- as.numeric(width)
   by <- as.numeric(by)
-  offset <- as.numeric(offset)
   start <- as.numeric(start)   # Coerce to avoid e.g. date arithmetic
   end <- as.numeric(end)
   # Don't coerce underlying numeric vectors (e.g. POSIXct)
@@ -313,7 +331,7 @@ rollby_exec <- function(
 #' @name rollby_exec
 
 rollat_exec <- function(
-  fun, data, width, at=x, offset=width/2,
+  fun, data, width, at=x, offset=0,
   x=seq(1, length(first_vec(data)), 1),
   bounds="[)", MoreArgs=list(), enclos=parent.frame()
 ) {
@@ -332,7 +350,9 @@ rollat_exec <- function(
     bounds=CHR.1 && . %in% c("()", "[)", "(]", "[]")
   )
   width <- as.numeric(width)
-  offset <- as.numeric(offset)
+  # internal logic has offset as the leftwards offset, but that's confusing so
+  # we changed the external definition
+  offset <- -as.numeric(offset)
   # Don't coerce underlying numeric vectors (e.g. POSIXct)
   if(typeof(at) != "numeric") at <- as.numeric(at)
   if(typeof(x) != "numeric") x <- as.numeric(x)
@@ -382,14 +402,15 @@ rollbw_exec <- function(
   )
 }
 
-#' Execute r2c Function on Rolling Windows of Integer Spaced Data
+#' Compute on Sequential Regular Windows on Equidistant Data
 #'
 #' Calls the native code associated with `fun` on sequential regularly spaced
 #' windows along the `data` vector(s).  Each window is aligned relative to a
 #' specific data "element" (anchor), and the set of window size `n` contiguous
 #' elements around and including the "anchor" are computed on.  This is a
 #' special case of [`rollby_exec`] intended to mimic the semantics of
-#' [zoo::rollapply] where `width` is a scalar integer.
+#' [zoo::rollapply] where `width` is a scalar integer, and implicitly the data
+#' elements are equally spaced.
 #'
 #' @inheritSection rollby_exec Data Elements
 #'
@@ -406,8 +427,8 @@ rollbw_exec <- function(
 #'        |
 #'        |            Align     In-Window Elements
 #'        * * * *    | "left"    {4, 5, 6, 7}
+#'      * * * *      | "center"  {3, 4, 5, 6}  <- default
 #'  * * * *          | "right"   {1, 2, 3, 4}
-#'      * * * *      | "center"  {3, 4, 5, 6}
 #' ```
 #'
 #' For the case of "center" with even sized windows more elements will be to the
@@ -422,7 +443,7 @@ rollbw_exec <- function(
 #'   roll_by_exec(
 #'     fun, data,
 #'     width=n - 1,
-#'     offset=((match(align, c('left', 'center', 'right')) - 1) / 2) * (n - 1)
+#'     offset=((match(align, c('left', 'center', 'right')) - 1) / 2) * (1 - n)
 #'     bounds="[]",
 #'     ...
 #'    )
@@ -436,7 +457,9 @@ rollbw_exec <- function(
 #' ```
 #'
 #' The `align` values correspond to numeric values as follows: "left"
-#' to `0`, "center" to `width/2`, and "right" to `width`.
+#' to `0`, "center" to `-width/2`, and "right" to `-width`.  The default window
+#' alignment is equivalent to "left" for [`rollby_exec`], which is different
+#' than for this function.
 #'
 #' @inheritParams rollby_exec
 #' @family rolling functions
@@ -450,8 +473,9 @@ rollbw_exec <- function(
 #'   increment the "anchor" after each `fun` application.
 #' @param align scalar character one of "center" (default), "left", or "right",
 #'   indicating what part of the window should align to the base index.
-#'   Alternatively, a scalar integer where `0` is equivalent to "left", `n - 1`
-#'   equivalent to "right", and `(n - 1) %/% 2` is equivalent to "center".
+#'   Alternatively, a scalar integer where `0` is equivalent to "left", `1 - n`
+#'   equivalent to "right", and `(1 - n) %/% 2` is equivalent to "center" (i.e.
+#'   represents the offset of the window relative to its anchor).
 #' @param partial TRUE or FALSE (default), whether to allow computation on
 #'   partial windows that extent out of either end of the data.
 #' @return a numeric vector of length `length(first_vec(data)) %/% by`.
@@ -491,9 +515,12 @@ rolli_exec <- function(
   by <- as.integer(by)
   if(is.character(align)) {
     offset <- integer(length(align))
-    offset[align == 'center'] <- as.integer((n - 1)/2)
-    offset[align == 'right'] <- n - 1L
+    offset[align == 'center'] <- as.integer((1 - n)/2)
+    offset[align == 'right'] <- 1L - n
   } else offset <- as.integer(align)
+  # internal logic has offset as the leftwards offset, but that's confusing so
+  # we changed the external definition
+  offset <- -offset
 
   obj <- get_r2c_dat(fun)
   call <- sys.call()

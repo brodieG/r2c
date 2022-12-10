@@ -4,19 +4,18 @@
 \alias{rollby_exec}
 \alias{rollat_exec}
 \alias{rollbw_exec}
-\title{Execute r2c Function on Rolling Windows in Data}
+\title{Compute on Sequential Windows on Data}
 \usage{
 rollby_exec(
   fun,
   data,
   width,
   by,
-  offset = width/2,
-  x = seq_along(first_vec(data)),
+  offset = 0,
+  x = seq(1, length(first_vec(data)), 1),
   start = x[1L],
   end = x[length(x)],
   bounds = "[)",
-  partial = TRUE,
   MoreArgs = list(),
   enclos = parent.frame()
 )
@@ -26,10 +25,9 @@ rollat_exec(
   data,
   width,
   at = x,
-  offset = width/2,
-  x = seq_along(first_vec(data)),
+  offset = 0,
+  x = seq(1, length(first_vec(data)), 1),
   bounds = "[)",
-  partial = TRUE,
   MoreArgs = list(),
   enclos = parent.frame()
 )
@@ -39,9 +37,8 @@ rollbw_exec(
   data,
   left,
   right,
-  x = seq_along(first_vec(data)),
+  x = seq(1, length(first_vec(data)), 1),
   bounds = "[)",
-  partial = TRUE,
   MoreArgs = list(),
   enclos = parent.frame()
 )
@@ -63,28 +60,25 @@ similarly to \code{envir} parameter to \code{\link[base:eval]{base::eval}} when 
 \item{by}{strictly positive, finite, non-NA scalar numeric, interpreted
 as the stride to increment the anchor by after each \code{fun} application.}
 
-\item{offset}{finite, non-na, scalar numeric representing the leftward offset
-of the left end of the window from its "anchor".  See "Intervals".}
+\item{offset}{finite, non-na, scalar numeric representing the offset
+of the window from its "anchor".  Defaults to 0, which means the left end
+of the window is aligned with the anchor (i.e. conceptually equivalent to
+\code{align="left"} for \code{\link{rolli_exec}}).  Use \code{-width/2} for center aligned, and
+\code{-width} for right aligned.  See "Intervals".  Note this default is
+different to that for \code{\link{rolli_exec}}.}
 
 \item{x}{finite, non-NA, monotonically increasing numeric vector with as many
 elements as \code{data}.  Each element is the position on the real line of the
-corresponding \code{data} element (see notes).}
+corresponding \code{data} element (see notes).  Integer vectors are coerced to
+numeric.}
 
 \item{start}{non-na, finite scalar numeric position on real line of first
-"anchor".  Windows that extend to the left of \code{start} (or to the right of
-\code{end}) are incomplete and will compute as NA if \code{partial=FALSE} (see
-\code{partial}).}
+"anchor".  Windows may extend to the left of \code{start} (or to the right of
+\code{end}) based on \code{offset}, and will include any data elements inside the
+window but outside \verb{[start,end]}.}
 
 \item{end}{non-na, finite scalar numeric position on real line of last
 "anchor", see \code{start}.}
-
-\item{partial}{TRUE or FALSE (default), whether to allow computation on
-partial windows that extent to the left of \code{start} and/or to the \code{right} of
-\code{end}.  If \code{FALSE}, such windows will compute to NA (see \code{start}).  If
-\code{TRUE} all data elements positioned within the window are eligible for
-computation, even if they are outside of \verb{[start,end]} (subject to
-\code{bounds}).  To exclude such points remove them from \code{data} before using
-these functions.}
 
 \item{MoreArgs}{a list of R objects to pass on as iteration-invariant
 arguments to \code{fun}.  Unlike with \code{data}, each of the objects therein are
@@ -97,14 +91,16 @@ positional matching occurring after the elements in \code{data} are matched.}
 \code{\link[base:eval]{base::eval}} when evaluating expressions or matching calls (see \code{data}).}
 
 \item{at}{non-NA, finite, monotonically increasing numeric vector anchor
-positions on the real line for each window to be computed on (see notes).}
+positions on the real line for each window to be computed on (see notes).
+Integer vectors are coerced to numeric.}
 
 \item{left}{non-NA, finite, monotonically increasing numeric
-positions of the left end of each window on the real line (see notes).}
+positions of the left end of each window on the real line (see notes).
+Integer vectors are coerced to numeric.}
 
 \item{right}{non-NA, finite, monotonically increasing numeric
 positions of the left end of each window on the real line, where
-\code{right >= left} (see notes).}
+\code{right >= left} (see notes).  Integer vectors are coerced to numeric.}
 }
 \value{
 A numeric vector of length:
@@ -115,15 +111,16 @@ A numeric vector of length:
 }
 }
 \description{
-Calls the native code associated with \code{fun} on sequential windows along the
-\code{data} vector(s).  The \verb{roll*_exec} functions provide different mechanism for
-defining the space covered by each window. All of them will compute \code{fun} for
-each iteration with the set of data "elements" that fall within that window.
+Calls the native code associated with \code{fun} on sequential windows along
+\code{data} vector(s) with "elements" positioned on the real line.  Data element
+Positions are given with \code{x} and can be irregularly spaced, so equal sized
+windows may contain different number of elements.  Each \verb{roll*_exec} function
+provides a different mechanism for defining the space covered by each window.
+All of them will compute \code{fun} for each iteration with the set of data
+"elements" that fall within that window.
 \itemize{
-\item \code{rollby_exec}: equal width windows aligned relative to regularly spaced
-(\code{by} apart) "anchors" positions.
-\item \code{rollat_exec}: equal width windows aligned relative to "anchors" with
-specific positions given in \code{at}.
+\item \code{rollby_exec}: equal width windows spaced \code{by} apart.
+\item \code{rollat_exec}: equal width windows at specific positions given in \code{at}.
 \item \code{rollbw_exec}: windows with ends defined explicitly in \code{left} and \code{right}.
 }
 }
@@ -168,18 +165,19 @@ explicitly via \code{left} and \code{right}.  Interval bounds are closed on the 
 and open on the right by default.
 
 As an illustration for \code{rollby_exec} and \code{rollat_exec}, consider the case of
-\code{width = 3} windows at the fourth iteration, with various \code{offset} values. The
-offset is the distance from the left end of the window to the anchor:
+\code{width = 3} windows at the fourth iteration, with various \code{offset} values.
+The offset is the distance from the left end of the window to the anchor:
 
-\if{html}{\out{<div class="sourceCode">}}\preformatted{                   +------------- 4th iteration, anchor is 4.0
+\if{html}{\out{<div class="sourceCode">}}\preformatted{## rollby_exec(..., by=1, width=3)
+                   +------------- 4th iteration, anchor is 4.0
                    V
 1.0   2.0   3.0   4.0   5.0   6.0   7.0 | < Real Line
- 1     2     3     4     5     6     7  | < Element Rank
+ 1     2     3     4     5     6     7  | < Element Position
                    |
-                   |                      Offset    In-window Elements
-          [-----------------)           | o = w/2   \{3, 4, 5\}
-                   [-----------------)  | o =   0   \{4, 5, 6\}
- [-----------------)                    | o =   w   \{1, 2, 3\}
+                   |                      Offset     In-window Elements
+                   [-----------------)  | o =    0   \{4, 5, 6\}
+          [-----------------)           | o = -w/2   \{3, 4, 5\}
+ [-----------------)                    | o =   -w   \{1, 2, 3\}
 }\if{html}{\out{</div>}}
 
 In each case we get three elements in the window, although this is only
@@ -188,16 +186,25 @@ windows are open on the right, elements that align exactly on the right end
 of the window are excluded.  With irregularly spaced elements, e.g. with
 \code{x = c(1, 1.25, 2.5, 5.3, 7, ...)}, we might see (positions approximate):
 
-\if{html}{\out{<div class="sourceCode">}}\preformatted{                   +------------- 4th iteration, base index is 4.0
+\if{html}{\out{<div class="sourceCode">}}\preformatted{## rollby_exec(..., by=1, width=3, x=c(1, 1.25, 2.5, 5.3, 7))
+                   +------------- 4th iteration, base index is 4.0
                    V
 1.0   2.0   3.0   4.0   5.0   6.0   7.0 | < Real Line
- 1 2      3        |       4         5  | < Element Rank
+ 1 2      3        |       4         5  | < Element ~Position
                    |
-                   |                      Offset    In-window
-          [-----------------)           | o = w/2   \{3, 4\}
-                   [-----------------)  | o =   0   \{4\}
- [-----------------)                    | o =   w   \{1, 2, 3\}
+                   |                      Offset     In-window
+                   [-----------------)  | o =    0   \{4\}
+          [-----------------)           | o = -w/2   \{3, 4\}
+ [-----------------)                    | o =   -w   \{1, 2, 3\}
 }\if{html}{\out{</div>}}
+
+Unlike with \code{\link{rolli_exec}} there is no \code{partial} parameter as there is no
+expectation of a fixed number of elements in any given window.
+
+A restriction is that both ends of a window must be monotonically increasing
+relative to their counterparts in the prior window.  This restriction might
+be relaxed for \code{rollbw_exec} in the future, likely at the cost of
+performance.
 }
 
 \section{Equivalence}{
@@ -218,18 +225,16 @@ functions, but with increased generality come slight efficiency decreases.
 \section{Performance}{
 
 
-There are no special optimizations beyond the use of \code{{r2c}} functions
-over regular R functions.  For wide windows there are more efficient
-solutions depending on the statistic applied.  For example, for rolling means
-and a few other simple statistics \code{{data.table}} offers the "on-line"
-algorithm and \code{{slider}} the "segment tree" algorithm, each with different
-performance and precision trade-offs.  In testing with sums we've found the
-"segment tree" algorithm to start outperforming \code{{r2c}} at window size ~100.
-At that size, the \code{data.table} "on-line" algorithm is significantly faster.
-An advantage of \code{{r2c}} is that it remains fast for any arbitrary expression
-of the supported functions, whereas the "on-line" and "segment tree"
-implementations are limited to a narrow set of predefined calculations like
-\code{sum}.
+In general \code{{r2c}} should perform better than most alternate R window
+functions for "arbitrary" statistics (i.e. those that can be composed from
+\code{{r2c}} supported functions).  Some other packages have special algorithms
+that will outperform \code{{r2c}} on wide windows for a small set of simple
+predefined statistics.  For example, for rolling means \code{{data.table}} offers
+the "on-line" algorithm and \code{{slider}} the "segment tree" algorithm, each
+with different performance and precision trade-offs.  In testing with sums
+we've found the "segment tree" algorithm to start outperforming \code{{r2c}} at
+window size ~100.  At that size, the \code{data.table} "on-line" algorithm is
+significantly faster.
 
 For \code{by} values wider than the typical difference between \code{x} values,
 implementations that adjust the search stride along \code{x} taking advantage of

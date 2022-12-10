@@ -4,10 +4,10 @@
 \alias{first_vec}
 \title{Retrieve First Vector from Data}
 \usage{
-first_vec(data)
+first_vec(x)
 }
 \arguments{
-\item{data}{a numeric vector, or a (possibly empty) list of numeric vectors.}
+\item{x}{a numeric vector, or a (possibly empty) list of numeric vectors.}
 }
 \value{
 if \code{data} is a list, the first element if it is a numeric vector, or

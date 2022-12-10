@@ -2,7 +2,7 @@
 % Please edit documentation in R/window.R
 \name{rolli_exec}
 \alias{rolli_exec}
-\title{Execute r2c Function on Rolling Windows of Integer Spaced Data}
+\title{Compute on Sequential Regular Windows on Equidistant Data}
 \usage{
 rolli_exec(
   fun,
@@ -37,16 +37,12 @@ increment the "anchor" after each \code{fun} application.}
 
 \item{align}{scalar character one of "center" (default), "left", or "right",
 indicating what part of the window should align to the base index.
-Alternatively, a scalar integer where \code{0} is equivalent to "left", \code{n - 1}
-equivalent to "right", and \code{(width - 1) \%/\% 2} is equivalent to "center".}
+Alternatively, a scalar integer where \code{0} is equivalent to "left", \code{1 - n}
+equivalent to "right", and \code{(1 - n) \%/\% 2} is equivalent to "center" (i.e.
+represents the offset of the window relative to its anchor).}
 
 \item{partial}{TRUE or FALSE (default), whether to allow computation on
-partial windows that extent to the left of \code{start} and/or to the \code{right} of
-\code{end}.  If \code{FALSE}, such windows will compute to NA (see \code{start}).  If
-\code{TRUE} all data elements positioned within the window are eligible for
-computation, even if they are outside of \verb{[start,end]} (subject to
-\code{bounds}).  To exclude such points remove them from \code{data} before using
-these functions.}
+partial windows that extent out of either end of the data.}
 
 \item{MoreArgs}{a list of R objects to pass on as iteration-invariant
 arguments to \code{fun}.  Unlike with \code{data}, each of the objects therein are
@@ -67,7 +63,8 @@ windows along the \code{data} vector(s).  Each window is aligned relative to a
 specific data "element" (anchor), and the set of window size \code{n} contiguous
 elements around and including the "anchor" are computed on.  This is a
 special case of \code{\link{rollby_exec}} intended to mimic the semantics of
-\link[zoo:rollapply]{zoo::rollapply} where \code{width} is a scalar integer.
+\link[zoo:rollapply]{zoo::rollapply} where \code{width} is a scalar integer, and implicitly the data
+elements are equally spaced.
 }
 \section{Window Alignment}{
 
@@ -82,8 +79,8 @@ illustrate on the fourth iteration of a call to \code{rolli_exec}:
        |
        |            Align     In-Window Elements
        * * * *    | "left"    \{4, 5, 6, 7\}
+     * * * *      | "center"  \{3, 4, 5, 6\}  <- default
  * * * *          | "right"   \{1, 2, 3, 4\}
-     * * * *      | "center"  \{3, 4, 5, 6\}
 }\if{html}{\out{</div>}}
 
 For the case of "center" with even sized windows more elements will be to the
@@ -99,9 +96,8 @@ right than to the left of the anchor.
   roll_by_exec(
     fun, data,
     width=n - 1,
-    offset=((match(align, c('left', 'center', 'right')) - 1) / 2) * (n - 1)
+    offset=((match(align, c('left', 'center', 'right')) - 1) / 2) * (1 - n)
     bounds="[]",
-    partial=FALSE,
     ...
    )
 }\if{html}{\out{</div>}}
@@ -113,9 +109,12 @@ Window element counts correspond to an interval width as \code{n - 1}, e.g.:
 }\if{html}{\out{</div>}}
 
 The \code{align} values correspond to numeric values as follows: "left"
-to \code{0}, "center" to \code{width/2}, and "right" to \code{width}.
+to \code{0}, "center" to \code{-width/2}, and "right" to \code{-width}.  The default window
+alignment is equivalent to "left" for \code{\link{rollby_exec}}, which is different
+than for this function.
 
 [     ]: R:\%20\%20\%20\%20\%20
+\code{\link{rollby_exec}}: R:\%60rollby_exec\%60
 }
 
 \section{Data Elements}{
@@ -135,7 +134,7 @@ for larger values of \code{by}.
 r2c_mean <- r2cq(mean(x))
 with(
   mtcars,
-  rolli_exec(r2c_mean, hp, width=5)
+  rolli_exec(r2c_mean, hp, n=5)
 )
 r2c_len <- r2cq(length(x))
 
