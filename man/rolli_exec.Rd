@@ -28,12 +28,15 @@ similarly to \code{envir} parameter to \code{\link[base:eval]{base::eval}} when 
 \code{enclos}).}
 
 \item{n}{integer number of adjacent data "elements" to compute \code{fun} on.
-This is equivalent to the integer case of \code{width} for \code{zoo::rollapply}, but
-is called \code{n} to emphasize it is a discrete count instead of an interval
-width as in \code{\link{rollby_exec}}.}
+It is called \code{n} and not \code{width} to emphasize it is a discrete count
+instead of an interval width as in \code{\link{rollby_exec}} and friends.  Must be
+scalar, or have as many elements as data (see "Data Elements").  For the
+latter, specifies the element counts of each window.  Coerced to integer if
+numeric.}
 
 \item{by}{strictly positive scalar integer interpreted as the stride to
-increment the "anchor" after each \code{fun} application.}
+increment the "anchor" after each \code{fun} application.  Coerced to integer if
+numeric.}
 
 \item{align}{scalar character one of "center" (default), "left", or "right",
 indicating what part of the window should align to the base index.
@@ -141,6 +144,8 @@ r2c_len <- r2cq(length(x))
 rolli_exec(r2c_len, rep(1, 5), n=5, align='left', partial=TRUE)
 rolli_exec(r2c_len, rep(1, 5), n=5, align='center', partial=TRUE)
 rolli_exec(r2c_len, rep(1, 5), n=5, align='right', partial=TRUE)
+
+rolli_exec(r2c_len, rep(1, 5), n=c(1,2,1,3,1), align='right', partial=TRUE)
 }
 \seealso{
 \code{\link{first_vec}}.

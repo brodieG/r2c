@@ -18,6 +18,49 @@
 // System headers if any go above ^^
 #include "r2c.h"
 #include <R_ext/Rdynload.h>
+
+// This is not super optimized.  There are common special cases (e.g. window
+// fully in bounds) that require less work than those partially out of bounds,
+// so we could split the loop.  In testing though there does not seem to be
+// that much overhead, as it's only a significant portion of the work with big
+// windows, and if windows are big, the actual function evaluation will be
+// slow relative to the bookkeeping of the start/len variables.
+
+#define ROLL_WINDOW_I(NEXP) do {                                               \
+  double * recycle_flag = dp.data[I_STAT] + STAT_RECYCLE;                      \
+  double recycle_warn = 0;      /* stored 1-index */                           \
+                                                                               \
+  for(i = 0; i < imax; i += by) {                                              \
+    int incomplete = 0;                                                        \
+    start = i - o;                                                             \
+    NEXP;                                                                      \
+    if(start < 0) {             /* OOB due to offset */                        \
+      len += start;                                                            \
+      if(len < 0) len = 0;                                                     \
+      start = 0;                                                               \
+      incomplete = 1;                                                          \
+    }                                                                          \
+    if(len + start > d_size) {  /* OOB due to start/n/offset */                \
+      len = d_size - start;                                                    \
+      incomplete = 1;                                                          \
+    }                                                                          \
+    if(part_int || !incomplete) {                                              \
+      for(int j = dp.dat_start; j <= dp.dat_end; ++j) {                        \
+        dp.data[j] = dat_base[j] + start;                                      \
+        dp.lens[j] = len;                                                      \
+      }                                                                        \
+      (*(dp.fun))(dp.data, dp.lens, dp.datai, dp.narg, dp.flags, dp.ctrl);     \
+      /* Windows can have varying number of elements */                        \
+      if(!recycle_warn && *recycle_flag) recycle_warn = (double)i + 1;         \
+      if(dp.lens[I_RES] != 1)                                                  \
+        Rf_error("Window result size is not 1 (is %jd).", dp.lens[I_RES]);     \
+    } else {                                                                   \
+      **(dp.data + I_RES) = NA_REAL;                                           \
+    }                                                                          \
+    ++(*(dp.data + I_RES));                                                    \
+  }                                                                            \
+  return Rf_ScalarReal((double) recycle_warn);                                 \
+} while(0)
 /*
  * Simple Integer Rank Position Implementation
  */
@@ -34,7 +77,7 @@ SEXP R2C_run_window(
   SEXP by_sxp,
   SEXP partial
 ) {
-  if(TYPEOF(n_sxp) != INTSXP || XLENGTH(n_sxp) != 1L)
+  if(TYPEOF(n_sxp) != INTSXP)
     Rf_error("Argument `n` should be scalar integer.");
   if(TYPEOF(offset) != INTSXP || XLENGTH(offset) != 1L)
     Rf_error("Argument `offset` should be scalar integer.");
@@ -43,14 +86,12 @@ SEXP R2C_run_window(
   if(TYPEOF(partial) != LGLSXP || XLENGTH(partial) != 1L)
     Rf_error("Argument `partial` should be scalar logical.");
 
-  int n = Rf_asInteger(n_sxp);
   int o = Rf_asInteger(offset);
   int by = Rf_asInteger(by_sxp);
   int part_int = Rf_asInteger(partial);
 
   // This should be validated R level, but bad if wrong
-  if(n < 0 || by < 1)
-    Rf_error("Internal Error: bad window values n %d o %d b %d.", n, o, by);
+  if(by < 1) Rf_error("Internal Error: by less than 1 (%d).", by);
 
   struct R2C_dat dp = prep_data(dat, dat_cols, ids, flag, ctrl, so);
 
@@ -80,45 +121,27 @@ SEXP R2C_run_window(
   R_xlen_t imax = R_XLEN_T_MAX - by;
   if(d_size < imax) imax = d_size;
 
-  // This is not super optimized.  There are common special cases (e.g. window
-  // fully in bounds) that require less work than those partially out of bounds,
-  // so we could split the loop.  In testing though there does not seem to be
-  // that much overhead, as it's only a significant portion of the work with big
-  // windows, and if windows are big, the actual function evaluation will be
-  // slow relative to the bookkeeping of the start/len variables.
+  // Roll, different case for scalar vs. vector n (is it worth having a
+  // special scalar case?
+  if(XLENGTH(n_sxp) == 1) {
+    int n = Rf_asInteger(n_sxp);
+    if(n < 0 || n == NA_INTEGER)
+      Rf_error("Argument `n` may contain only positive non-NA values.");
 
-  double * recycle_flag = dp.data[I_STAT] + STAT_RECYCLE;
-  double recycle_warn = 0;  // stored 1-index
+    ROLL_WINDOW_I(len = n);
+  } else {
+    if(XLENGTH(n_sxp) != d_size)
+      Rf_error(
+        "Argument `n` must be scalar or have the same element count as `data` "
+        "(%jd vs %jd)", (intmax_t) XLENGTH(n_sxp), (intmax_t) d_size
+      );
+    int * n = INTEGER(n_sxp);
 
-  for(i = 0; i < imax; i += by) {
-    int incomplete = 0;
-    start = i - o;
-    len = n;
-    if(start < 0) {             // OOB due to offset
-      len += start;
-      start = 0;
-      incomplete = 1;
-    }
-    if(len + start > d_size) {  // OOB due to start/width/offset
-      len = d_size - start;
-      incomplete = 1;
-    }
-    if(part_int || !incomplete) {
-      for(int j = dp.dat_start; j <= dp.dat_end; ++j) {
-        dp.data[j] = dat_base[j] + start;
-        dp.lens[j] = len;
-      }
-      (*(dp.fun))(dp.data, dp.lens, dp.datai, dp.narg, dp.flags, dp.ctrl);
-      // Windows can have varying number of elements
-      if(*recycle_flag && !recycle_warn) recycle_warn = (double)i + 1;
-      if(dp.lens[I_RES] != 1)
-        Rf_error("Window result size is not 1 (is %jd).", dp.lens[I_RES]);
-    } else {
-      **(dp.data + I_RES) = NA_REAL;
-    }
-    ++(*(dp.data + I_RES));
+    ROLL_WINDOW_I(
+      if(n[i] >= 0 && n[i] != NA_INTEGER) len = n[i];
+      else Rf_error("Argument `n` contains negative or NA values.");
+    );
   }
-  return Rf_ScalarReal((double) recycle_warn);
 }
 
 struct win_args {

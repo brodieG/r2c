@@ -28,6 +28,7 @@ rsum_p <- lcurry(r2c::rolli_exec, r2c_sum, partial=TRUE)
 ## see _pre/data.R for show_bits and other things
 
 unitizer_sect("window partial", {
+  # Left aligned
   show_bits(rsum_pl(wvec, n=1))
   show_bits(rsum_pl(wvec, n=2))
   show_bits(rsum_pl(wvec, n=3))
@@ -35,7 +36,11 @@ unitizer_sect("window partial", {
   show_bits(rsum_pl(wvec, n=5))
   show_bits(rsum_pl(wvec, n=6))
   show_bits(rsum_pl(wvec, n=.Machine[['integer.max']]))
+  show_bits(rsum_pl(wvec, n=0))
+  # Error
+  show_bits(rsum_pl(wvec, n=.Machine[['integer.max']] + 1))
 
+  # Centered
   show_bits(rsum_pc(wvec, n=1))
   show_bits(rsum_pc(wvec, n=2))
   show_bits(rsum_pc(wvec, n=3))
@@ -46,6 +51,7 @@ unitizer_sect("window partial", {
   show_bits(rsum_pc(wvec, n=9))
   show_bits(rsum_pc(wvec, n=.Machine[['integer.max']]))
 
+  # Right aligned
   show_bits(rsum_pr(wvec, n=1))
   show_bits(rsum_pr(wvec, n=2))
   show_bits(rsum_pr(wvec, n=3))
@@ -88,9 +94,11 @@ unitizer_sect("complete", {
   rolli_exec(r2c_sum, wvec, n=3)
   show_bits(rolli_exec(r2c_sum, wvec, n=3))
 })
-
-unitizer_sect("errors", {
-  show_bits(rsum_pl(wvec, n=0))
-  show_bits(rsum_pl(wvec, n=.Machine[['integer.max']] + 1))
+unitizer_sect("Variable Width", {
+  show_bits(rsum_pl(wvec, n=c(3, 1, 3, 1, 3)))
+  show_bits(rsum_pl(wvec, n=c(3, 1, 0, 1, 3)))
+  # Errors
+  show_bits(rsum_pl(wvec, n=c(3, 1, NA, 1, 3)))
+  show_bits(rsum_pl(wvec, n=c(3, 1, 1, 3)))
 })
 

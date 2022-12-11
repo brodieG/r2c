@@ -55,7 +55,8 @@ contain at least one vector.  Conceptually, this parameter is used
 similarly to \code{envir} parameter to \code{\link[base:eval]{base::eval}} when that is a list (see
 \code{enclos}).}
 
-\item{width}{scalar positive numeric giving the width of the window interval.}
+\item{width}{scalar positive numeric giving the width of the window interval.
+Unlike with \code{\link{rolli_exec}}'s \code{n}, \code{width} must be scalar.}
 
 \item{by}{strictly positive, finite, non-NA scalar numeric, interpreted
 as the stride to increment the anchor by after each \code{fun} application.}
@@ -68,9 +69,9 @@ of the window is aligned with the anchor (i.e. conceptually equivalent to
 different to that for \code{\link{rolli_exec}}.}
 
 \item{x}{finite, non-NA, monotonically increasing numeric vector with as many
-elements as \code{data}.  Each element is the position on the real line of the
-corresponding \code{data} element (see notes).  Integer vectors are coerced to
-numeric.}
+elements as \code{data}.  Each element in \code{x} is the position on the real line
+of the corresponding \code{data} element (see notes).  Integer vectors are
+coerced to numeric.}
 
 \item{start}{non-na, finite scalar numeric position on real line of first
 "anchor".  Windows may extend to the left of \code{start} (or to the right of
@@ -90,8 +91,8 @@ positional matching occurring after the elements in \code{data} are matched.}
 \item{enclos}{environment to use as the \code{enclos} parameter to
 \code{\link[base:eval]{base::eval}} when evaluating expressions or matching calls (see \code{data}).}
 
-\item{at}{non-NA, finite, monotonically increasing numeric vector anchor
-positions on the real line for each window to be computed on (see notes).
+\item{at}{non-NA, finite, monotonically increasing numeric vector of anchor
+positions on the real line for each window (see notes).
 Integer vectors are coerced to numeric.}
 
 \item{left}{non-NA, finite, monotonically increasing numeric
@@ -113,7 +114,7 @@ A numeric vector of length:
 \description{
 Calls the native code associated with \code{fun} on sequential windows along
 \code{data} vector(s) with "elements" positioned on the real line.  Data element
-Positions are given with \code{x} and can be irregularly spaced, so equal sized
+positions are given with \code{x} and can be irregularly spaced, so equal sized
 windows may contain different number of elements.  Each \verb{roll*_exec} function
 provides a different mechanism for defining the space covered by each window.
 All of them will compute \code{fun} for each iteration with the set of data
@@ -216,25 +217,36 @@ The \verb{roll*_exec} functions can be ordered by increasing generality:
 
 Each of the functions can replicate the semantics of any of the less general
 functions, but with increased generality come slight efficiency decreases.
+One exception is that \code{\link{rolli_exec}} supports fully variable width windows.
+\code{rollbw_exec} supports variable width windows, with the constraint that
+window ends must be increase monotonically for each iteration.
 
 \code{rolli_exec} has semantics similar to the simple use case for
-\code{zoo::rollapply}, \verb{data.table::froll*}, and \verb{RcppRoll::roll*}.
-\code{rollat_exec(..., x=x, at=x)} has semantics similar to \code{slider::slide_index}.
+\code{zoo::rollapply}, \verb{data.table::froll*}, \verb{RcppRoll::roll*}, and
+\verb{slider::slide_<fun>}.  \code{rollat_exec(..., x=x, at=x)} has semantics similar
+to \code{slider::slide_index}.
 }
 
 \section{Performance}{
 
 
-In general \code{{r2c}} should perform better than most alternate R window
+In general \code{{r2c}} should perform better than most alternate window
 functions for "arbitrary" statistics (i.e. those that can be composed from
-\code{{r2c}} supported functions).  Some other packages have special algorithms
-that will outperform \code{{r2c}} on wide windows for a small set of simple
-predefined statistics.  For example, for rolling means \code{{data.table}} offers
-the "on-line" algorithm and \code{{slider}} the "segment tree" algorithm, each
-with different performance and precision trade-offs.  In testing with sums
-we've found the "segment tree" algorithm to start outperforming \code{{r2c}} at
-window size ~100.  At that size, the \code{data.table} "on-line" algorithm is
-significantly faster.
+\code{{r2c}} supported functions).  Some packages implement algorithms that will
+outperform \code{{r2c}} on wide windows for a small set of simple predefined
+statistics.  For example, for rolling means \code{{data.table}} offers the
+"on-line" algorithm and \code{{slider}} the "segment tree" algorithm, each with
+different performance and precision trade-offs.
+
+In testing with sums we've found the \code{{slider}} (v0.2.2) "segment tree"
+algorithm to start outperforming \code{{r2c}} at window size ~100 for
+\code{slider::slide_sum} and at window size ~1000 for \code{slider::slide_index_sum}.
+
+The \code{{data.table}} (v1.14.6) "on-line" algorithm is significantly faster than
+either \code{{r2c}} or \code{{slider}}, and at least on systems with 80 bit long
+doubles the precision loss seems tolerable for many applications.  The
+\code{{data.table}} "exact" algorithm in single thread mode has performance near
+identical to \verb{[rolli_exec]}.
 
 For \code{by} values wider than the typical difference between \code{x} values,
 implementations that adjust the search stride along \code{x} taking advantage of

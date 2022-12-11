@@ -104,7 +104,7 @@ bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 #'
 #' Calls the native code associated with `fun` on sequential windows along
 #' `data` vector(s) with "elements" positioned on the real line.  Data element
-#' Positions are given with `x` and can be irregularly spaced, so equal sized
+#' positions are given with `x` and can be irregularly spaced, so equal sized
 #' windows may contain different number of elements.  Each `roll*_exec` function
 #' provides a different mechanism for defining the space covered by each window.
 #' All of them will compute `fun` for each iteration with the set of data
@@ -139,7 +139,8 @@ bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 #'
 #' ```
 #' ## rollby_exec(..., by=1, width=3)
-#'                    +------------- 4th iteration, anchor is 4.0 #'                    V
+#'                    +------------- 4th iteration, anchor is 4.0
+#'                    V
 #' 1.0   2.0   3.0   4.0   5.0   6.0   7.0 | < Real Line
 #'  1     2     3     4     5     6     7  | < Element Position
 #'                    |
@@ -184,10 +185,14 @@ bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 #'
 #' Each of the functions can replicate the semantics of any of the less general
 #' functions, but with increased generality come slight efficiency decreases.
+#' One exception is that [`rolli_exec`] supports fully variable width windows.
+#' `rollbw_exec` supports variable width windows, with the constraint that
+#' window ends must be increase monotonically for each iteration.
 #'
 #' `rolli_exec` has semantics similar to the simple use case for
-#' `zoo::rollapply`, `data.table::froll*`, and `RcppRoll::roll*`.
-#' `rollat_exec(..., x=x, at=x)` has semantics similar to `slider::slide_index`.
+#' `zoo::rollapply`, `data.table::froll*`, `RcppRoll::roll*`, and
+#' `slider::slide_<fun>`.  `rollat_exec(..., x=x, at=x)` has semantics similar
+#' to `slider::slide_index`.
 #'
 #' @section Performance:
 #'
@@ -245,14 +250,15 @@ bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 #'   additional restriction that it must be guaranteed to produce scalar
 #'   results as used with this function.
 #' @param width scalar positive numeric giving the width of the window interval.
+#'   Unlike with [`rolli_exec`]'s `n`, `width` must be scalar.
 #' @param x finite, non-NA, monotonically increasing numeric vector with as many
-#'   elements as `data`.  Each element is the position on the real line of the
-#'   corresponding `data` element (see notes).  Integer vectors are coerced to
-#'   numeric.
+#'   elements as `data`.  Each element in `x` is the position on the real line
+#'   of the corresponding `data` element (see notes).  Integer vectors are
+#'   coerced to numeric.
 #' @param by strictly positive, finite, non-NA scalar numeric, interpreted
 #'   as the stride to increment the anchor by after each `fun` application.
-#' @param at non-NA, finite, monotonically increasing numeric vector anchor
-#'   positions on the real line for each window to be computed on (see notes).
+#' @param at non-NA, finite, monotonically increasing numeric vector of anchor
+#'   positions on the real line for each window (see notes).
 #'   Integer vectors are coerced to numeric.
 #' @param left non-NA, finite, monotonically increasing numeric
 #'   positions of the left end of each window on the real line (see notes).
@@ -466,11 +472,14 @@ rollbw_exec <- function(
 #' @export
 #' @seealso [`first_vec`].
 #' @param n integer number of adjacent data "elements" to compute `fun` on.
-#'   This is equivalent to the integer case of `width` for `zoo::rollapply`, but
-#'   is called `n` to emphasize it is a discrete count instead of an interval
-#'   width as in [`rollby_exec`].
+#'   It is called `n` and not `width` to emphasize it is a discrete count
+#'   instead of an interval width as in [`rollby_exec`] and friends.  Must be
+#'   scalar, or have as many elements as data (see "Data Elements").  For the
+#'   latter, specifies the element counts of each window.  Coerced to integer if
+#'   numeric.
 #' @param by strictly positive scalar integer interpreted as the stride to
-#'   increment the "anchor" after each `fun` application.
+#'   increment the "anchor" after each `fun` application.  Coerced to integer if
+#'   numeric.
 #' @param align scalar character one of "center" (default), "left", or "right",
 #'   indicating what part of the window should align to the base index.
 #'   Alternatively, a scalar integer where `0` is equivalent to "left", `1 - n`
@@ -490,6 +499,8 @@ rollbw_exec <- function(
 #' rolli_exec(r2c_len, rep(1, 5), n=5, align='left', partial=TRUE)
 #' rolli_exec(r2c_len, rep(1, 5), n=5, align='center', partial=TRUE)
 #' rolli_exec(r2c_len, rep(1, 5), n=5, align='right', partial=TRUE)
+#'
+#' rolli_exec(r2c_len, rep(1, 5), n=c(1,2,1,3,1), align='right', partial=TRUE)
 
 rolli_exec <- function(
   fun, data, n, by=1L, align='center', partial=FALSE,
@@ -498,7 +509,7 @@ rolli_exec <- function(
   # FIXME: add validation for shlib
   vetr(
     fun=is.function(.) && inherits(., 'r2c_fun'),
-    n=INT.1.POS.STR && . <= .Machine[['integer.max']],
+    n=(numeric() || integer()),
     data=(
       (numeric() || integer()) ||
       (list() && all(is.num_naked(.)) && length(.) > 0)
@@ -511,7 +522,7 @@ rolli_exec <- function(
     MoreArgs=list(),
     enclos=is.environment(.)
   )
-  n <- as.integer(n)
+  if(!is.integer(n)) n <- as.integer(n)  # more checks in C code
   by <- as.integer(by)
   if(is.character(align)) {
     offset <- integer(length(align))
