@@ -260,6 +260,70 @@ Recall that the less general the \verb{roll*_} function is, the better performan
 it will have (see "Equivalence").
 }
 
+\examples{
+## Simulate transactions occurring ~4 days
+old.opt <- options(digits=3)
+set.seed(1)
+count <- 150
+frequency <- 1/(3600 * 24 * 4)
+time <- as.POSIXct('2022-01-01') - rev(cumsum(rexp(count, frequency)))
+revenue <- runif(count) * 100
+data.frame(time, revenue)[c(1:3,NA,seq(count-2, count)),]
+
+r2c_mean <- r2cq(mean(x))
+
+## Mean trailing quarter revenue, computed/reported "monthly"
+month <- 3600 * 24 * 30  # more or less
+by30 <- rollby_exec(
+  r2c_mean, revenue, x=time, width=3 * month, by=month,
+  start=as.POSIXct('2021-01-01'),
+  offset=-3 * month   # trailing three months
+)
+by30
+
+## Same, but explicit times via `at`; notice these are not exactly monthly
+timeby30 <- seq(as.POSIXct('2021-01-01'), to=max(time), by=month)
+timeby30[1:10]
+at30 <- rollat_exec(
+  r2c_mean, revenue, x=time, width=3 * month, at=timeby30, offset=-3 * month
+)
+at30
+identical(by30, at30)
+
+## Use exact monthly times with `at`
+timebymo <- seq(as.POSIXct('2021-01-01'), to=max(time), by="+1 month")
+timebymo[1:10]
+atmo <- rollat_exec(
+  r2c_mean, revenue, x=time, width=3 * month, at=timebymo, offset=-3 * month
+)
+(rev.90 <- data.frame(time=timesbymo, prev.90=atmo))[1:5,]
+
+## Exact intervals with `rollexec_bw`.
+months <- seq(as.POSIXct('2020-10-01'), to=max(time), by="+1 month")
+left <- head(months, -3)
+right <- tail(months, -3)
+bwmo <- rollbw_exec(r2c_mean, revenue, x=time, left=left, right=right)
+(rev.qtr <- data.frame(time=right, prev.qtr=bwmo))[1:5,]
+
+## These are not exactly the same because -90 days is not always 3 months
+atmo - bwmo
+## Confirm bwmo is what we think it is (recall, right bound open)
+identical(bwmo[1], mean(revenue[time >= '2020-10-01' & time < '2021-01-01']))
+
+## Compare current month to trail quarter
+months2 <- seq(
+  as.POSIXct('2021-01-01'), length.out=nrow(rev.qtr) + 1, by="+1 month"
+)
+left <- months2[-length(months2)]
+right <- months2[-1]
+thismo <- rollbw_exec(r2c_mean, revenue, x=time, left=left, right=right)
+transform(
+  rev.qtr,
+  this.month=thismo,
+  pct.change=round((thismo - prev.qtr)/prev.qtr * 100, 1)
+)
+options(old.opt)
+}
 \seealso{
 \code{\link{r2c}} for more details on the behavior and constraints of
 "r2c_fun" functions, \code{\link[base:eval]{base::eval}} for the semantics of \code{enclos}.

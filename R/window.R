@@ -286,6 +286,69 @@ bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 #'
 #' @family rolling functions
 #' @seealso [`first_vec`].
+#' @examples
+#' ## Simulate transactions occurring ~4 days
+#' old.opt <- options(digits=3)
+#' set.seed(1)
+#' count <- 150
+#' frequency <- 1/(3600 * 24 * 4)
+#' time <- as.POSIXct('2022-01-01') - rev(cumsum(rexp(count, frequency)))
+#' revenue <- runif(count) * 100
+#' data.frame(time, revenue)[c(1:3,NA,seq(count-2, count)),]
+#'
+#' r2c_mean <- r2cq(mean(x))
+#'
+#' ## Mean trailing quarter revenue, computed/reported "monthly"
+#' month <- 3600 * 24 * 30  # more or less
+#' by30 <- rollby_exec(
+#'   r2c_mean, revenue, x=time, width=3 * month, by=month,
+#'   start=as.POSIXct('2021-01-01'),
+#'   offset=-3 * month   # trailing three months
+#' )
+#' by30
+#'
+#' ## Same, but explicit times via `at`; notice these are not exactly monthly
+#' timeby30 <- seq(as.POSIXct('2021-01-01'), to=max(time), by=month)
+#' timeby30[1:10]
+#' at30 <- rollat_exec(
+#'   r2c_mean, revenue, x=time, width=3 * month, at=timeby30, offset=-3 * month
+#' )
+#' at30
+#' identical(by30, at30)
+#'
+#' ## Use exact monthly times with `at`
+#' timebymo <- seq(as.POSIXct('2021-01-01'), to=max(time), by="+1 month")
+#' timebymo[1:10]
+#' atmo <- rollat_exec(
+#'   r2c_mean, revenue, x=time, width=3 * month, at=timebymo, offset=-3 * month
+#' )
+#' (rev.90 <- data.frame(time=timebymo, prev.90=atmo))[1:5,]
+#'
+#' ## Exact intervals with `rollexec_bw`.
+#' months <- seq(as.POSIXct('2020-10-01'), to=max(time), by="+1 month")
+#' left <- head(months, -3)
+#' right <- tail(months, -3)
+#' bwmo <- rollbw_exec(r2c_mean, revenue, x=time, left=left, right=right)
+#' (rev.qtr <- data.frame(time=right, prev.qtr=bwmo))[1:5,]
+#'
+#' ## These are not exactly the same because -90 days is not always 3 months
+#' atmo - bwmo
+#' ## Confirm bwmo is what we think it is (recall, right bound open)
+#' identical(bwmo[1], mean(revenue[time >= '2020-10-01' & time < '2021-01-01']))
+#'
+#' ## Compare current month to trail quarter
+#' months2 <- seq(
+#'   as.POSIXct('2021-01-01'), length.out=nrow(rev.qtr) + 1, by="+1 month"
+#' )
+#' left <- months2[-length(months2)]
+#' right <- months2[-1]
+#' thismo <- rollbw_exec(r2c_mean, revenue, x=time, left=left, right=right)
+#' transform(
+#'   rev.qtr,
+#'   this.month=thismo,
+#'   pct.change=round((thismo - prev.qtr)/prev.qtr * 100, 1)
+#' )
+#' options(old.opt)
 
 rollby_exec <- function(
   fun, data, width, by, offset=0,
@@ -462,6 +525,8 @@ rollbw_exec <- function(
 #' [     ]     |  width = 3 - 1 = 2 = n - 1
 #' ```
 #'
+#' Unlike `rolli_exec`, [`rollby_exec`] only supports fixed width windows.
+#'
 #' The `align` values correspond to numeric values as follows: "left"
 #' to `0`, "center" to `-width/2`, and "right" to `-width`.  The default window
 #' alignment is equivalent to "left" for [`rollby_exec`], which is different
@@ -470,7 +535,8 @@ rollbw_exec <- function(
 #' @inheritParams rollby_exec
 #' @family rolling functions
 #' @export
-#' @seealso [`first_vec`].
+#' @seealso [`r2c`] for more details on the behavior and constraints of
+#'   "r2c_fun" functions, [`base::eval`] for the semantics of `enclos`.
 #' @param n integer number of adjacent data "elements" to compute `fun` on.
 #'   It is called `n` and not `width` to emphasize it is a discrete count
 #'   instead of an interval width as in [`rollby_exec`] and friends.  Must be
@@ -496,11 +562,15 @@ rollbw_exec <- function(
 #' )
 #' r2c_len <- r2cq(length(x))
 #'
-#' rolli_exec(r2c_len, rep(1, 5), n=5, align='left', partial=TRUE)
-#' rolli_exec(r2c_len, rep(1, 5), n=5, align='center', partial=TRUE)
-#' rolli_exec(r2c_len, rep(1, 5), n=5, align='right', partial=TRUE)
+#' ## Effect of align and partial
+#' dat <- runif(5)
+#' rolli_exec(r2c_len, dat, n=5, align='left', partial=TRUE)
+#' rolli_exec(r2c_len, dat, n=5, align='center', partial=TRUE)
+#' rolli_exec(r2c_len, dat, n=5, align='right', partial=TRUE)
+#' rolli_exec(r2c_mean, dat, n=5, align='left')
 #'
-#' rolli_exec(r2c_len, rep(1, 5), n=c(1,2,1,3,1), align='right', partial=TRUE)
+#' ## Variable length windows
+#' rolli_exec(r2c_len, dat, n=c(1,3,1,3,1), align='left', partial=TRUE)
 
 rolli_exec <- function(
   fun, data, n, by=1L, align='center', partial=FALSE,

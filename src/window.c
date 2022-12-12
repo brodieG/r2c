@@ -25,6 +25,12 @@
 // that much overhead, as it's only a significant portion of the work with big
 // windows, and if windows are big, the actual function evaluation will be
 // slow relative to the bookkeeping of the start/len variables.
+//
+// Conversely, we probably don't need a dedicated version for scalar `n` vs
+// vector `n`.  Even with the additional branch it probably doesn't warrant the
+// extra complexity of the macro here.
+//
+// NEXP: set `len` to window width.
 
 #define ROLL_WINDOW_I(NEXP) do {                                               \
   double * recycle_flag = dp.data[I_STAT] + STAT_RECYCLE;                      \
@@ -33,7 +39,7 @@
   for(i = 0; i < imax; i += by) {                                              \
     int incomplete = 0;                                                        \
     start = i - o;                                                             \
-    NEXP;                                                                      \
+    NEXP;                       /* Vector vs Scalar `n` */                     \
     if(start < 0) {             /* OOB due to offset */                        \
       len += start;                                                            \
       if(len < 0) len = 0;                                                     \
@@ -121,8 +127,7 @@ SEXP R2C_run_window(
   R_xlen_t imax = R_XLEN_T_MAX - by;
   if(d_size < imax) imax = d_size;
 
-  // Roll, different case for scalar vs. vector n (is it worth having a
-  // special scalar case?
+  // Roll, different case for scalar vs. vector n.
   if(XLENGTH(n_sxp) == 1) {
     int n = Rf_asInteger(n_sxp);
     if(n < 0 || n == NA_INTEGER)
@@ -135,8 +140,8 @@ SEXP R2C_run_window(
         "Argument `n` must be scalar or have the same element count as `data` "
         "(%jd vs %jd)", (intmax_t) XLENGTH(n_sxp), (intmax_t) d_size
       );
-    int * n = INTEGER(n_sxp);
 
+    int * n = INTEGER(n_sxp);
     ROLL_WINDOW_I(
       if(n[i] >= 0 && n[i] != NA_INTEGER) len = n[i];
       else Rf_error("Argument `n` contains negative or NA values.");

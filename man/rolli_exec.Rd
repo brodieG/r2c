@@ -111,12 +111,15 @@ Window element counts correspond to an interval width as \code{n - 1}, e.g.:
 [     ]     |  width = 3 - 1 = 2 = n - 1
 }\if{html}{\out{</div>}}
 
+Unlike \code{rolli_exec}, \code{\link{rollby_exec}} only supports fixed width windows.
+
 The \code{align} values correspond to numeric values as follows: "left"
 to \code{0}, "center" to \code{-width/2}, and "right" to \code{-width}.  The default window
 alignment is equivalent to "left" for \code{\link{rollby_exec}}, which is different
 than for this function.
 
 [     ]: R:\%20\%20\%20\%20\%20
+\code{\link{rollby_exec}}: R:\%60rollby_exec\%60
 \code{\link{rollby_exec}}: R:\%60rollby_exec\%60
 }
 
@@ -141,14 +144,19 @@ with(
 )
 r2c_len <- r2cq(length(x))
 
-rolli_exec(r2c_len, rep(1, 5), n=5, align='left', partial=TRUE)
-rolli_exec(r2c_len, rep(1, 5), n=5, align='center', partial=TRUE)
-rolli_exec(r2c_len, rep(1, 5), n=5, align='right', partial=TRUE)
+## Effect of align and partial
+dat <- runif(5)
+rolli_exec(r2c_len, dat, n=5, align='left', partial=TRUE)
+rolli_exec(r2c_len, dat, n=5, align='center', partial=TRUE)
+rolli_exec(r2c_len, dat, n=5, align='right', partial=TRUE)
+rolli_exec(r2c_mean, dat, n=5, align='left')
 
-rolli_exec(r2c_len, rep(1, 5), n=c(1,2,1,3,1), align='right', partial=TRUE)
+## Variable length windows
+rolli_exec(r2c_len, dat, n=c(1,3,1,3,1), align='left', partial=TRUE)
 }
 \seealso{
-\code{\link{first_vec}}.
+\code{\link{r2c}} for more details on the behavior and constraints of
+"r2c_fun" functions, \code{\link[base:eval]{base::eval}} for the semantics of \code{enclos}.
 
 Other rolling functions: 
 \code{\link{rollby_exec}()}
