@@ -224,7 +224,7 @@ window ends must be increase monotonically for each iteration.
 \code{rolli_exec} has semantics similar to the simple use case for
 \code{zoo::rollapply}, \verb{data.table::froll*}, \verb{RcppRoll::roll*}, and
 \verb{slider::slide_<fun>}.  \code{rollat_exec(..., x=x, at=x)} has semantics similar
-to \code{slider::slide_index}.
+to \code{slider::slide_index}, but is more flexible because \code{at} need not be \code{x}.
 }
 
 \section{Performance}{
@@ -246,7 +246,7 @@ The \code{{data.table}} (v1.14.6) "on-line" algorithm is significantly faster th
 either \code{{r2c}} or \code{{slider}}, and at least on systems with 80 bit long
 doubles the precision loss seems tolerable for many applications.  The
 \code{{data.table}} "exact" algorithm in single thread mode has performance near
-identical to \verb{[rolli_exec]}.
+identical to \code{\link{rolli_exec}}.
 
 For \code{by} values wider than the typical difference between \code{x} values,
 implementations that adjust the search stride along \code{x} taking advantage of
@@ -296,7 +296,7 @@ timebymo[1:10]
 atmo <- rollat_exec(
   r2c_mean, revenue, x=time, width=3 * month, at=timebymo, offset=-3 * month
 )
-(rev.90 <- data.frame(time=timesbymo, prev.90=atmo))[1:5,]
+(rev.90 <- data.frame(time=timebymo, prev.90=atmo))[1:5,]
 
 ## Exact intervals with `rollexec_bw`.
 months <- seq(as.POSIXct('2020-10-01'), to=max(time), by="+1 month")

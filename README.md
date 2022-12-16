@@ -3,145 +3,75 @@
 **Proof of Concept**.  Experimental, incomplete, with an interface subject to
 change.
 
-Compiles a subset of R into machine code so that expressions composed with that
-subset can be applied repeatedly on varying data without interpreter overhead.
+"Compiles" a subset of R into machine code so that expressions composed with
+that subset can be applied repeatedly on varying data without interpreter
+overhead.  `{r2c}` provides speed ups of up to 100x for iterated statistics,
+with R semantics, and without the challenges of directly compilable languages.
 
-## Background and Motivation
+## "Compiling" R
 
-R is nearly as fast as statically compiled languages for many common numerical
-calculations:
-
-    set.seed(1)
-    n <- 1e7
-    x <- runif(n) * runif(n)
-    y <- runif(n) * runif(n)
-
-    system.time(x + y)
-    ##   user  system elapsed
-    ##  0.023   0.000   0.023
-
-    system.time(sum(x))
-    ##   user  system elapsed
-    ##  0.043   0.000   0.043
-
-On [my system](#notes-on-benchmarking) that's about 2-5 **CPU cycles** for each
-of the 10 million operations and associated loop overhead.  Hard to get much
-faster[^1].  If we maintain a high ratio of native operations to R level calls
-our programs will be fast.
-
-Some tasks require more R-level calls, such as computing group statistics[^7]:
-<span id=in-r></span>
-
-    g <- cumsum(sample(c(TRUE, rep(FALSE, 9)), n, replace=TRUE)) # sorted groups
-    x.split <- split(x, g)
-    y.split <- split(y, g)     # for later
-    length(x.split)            # ~1MM groups
-    ## [1] 1001458
-    mean(lengths(x.split))     # ~10 average size
-    ## [1] 9.99
-
-    system.time(g.sum <- vapply(x.split, sum, 0))
-    ##    user  system elapsed 
-    ##   0.652   0.010   0.664 
-
-Despite the same number of additions, our program **slowed by ~15x**.  And this
-is with a primitive R function that does nothing but go directly to C code:
-
-    sum
-    ## function (..., na.rm = FALSE)  .Primitive("sum")
-
-## What If We Could Compile R?
-
-That would be nice, wouldn't it?  Well, we (at least I) can't compile the
-entirety of R, but a small set we can manage:
+Currently `{r2c}` can "compile" R expressions composed of basic binary operators
+and statistics.  "Compile" is in quotes because `{r2c}` generates an equivalent
+C program, and compiles that.  To compute the slope of a bivariate regression we
+might use:
 
     library(r2c)
-    r2c_sum <- r2cq(sum(x))
-
-And now:
-
-    g.r2c <- process_groups(g, sorted=TRUE)   # pre-compute group sizes, labels
-    system.time(g.sum.r2c <- group_exec(r2c_sum, g.r2c, x))
-    ##   user  system elapsed 
-    ##  0.054   0.001   0.056 
-    identical(g.sum, g.sum.r2c)
-    ## [1] TRUE
-
-Nearly as fast as the simple sum despite the additional overhead of managing the
-groups and the larger result.
-
-## Alternatives
-
-We compare `{r2c}` to various alternatives using pre-sorted and pre-grouped (or
-split) data set as previously.  Pre-sorting and pre-grouping allows us to focus
-timings on the statistic computation[^11].  Notwithstanding, fast group statistic
-calculation benefits from fast sorting, and this is possible in R thanks to
-[`{data.table}`][1] contributing their fast radix sort starting with R 3.3.0.
-
-If you're satisfied with simple expressions such as `sum(x)` then there are
-several alternatives:
-
-<img src='extra/time_gsum_all-vs.png' />
-
-For this specific task [`{collapse}`][4] makes an impressive case for itself[^4].
-[`{FastR}`][2] is an implementation of R that can JIT compile R code to run on
-the [Graal VM][3].  It requires a different runtime (i.e. you can't just run
-your normal R installation) and has other trade-offs, including warm-up cycles
-and compatibility limitations[^3].  But otherwise you type in what [you would
-have in normal R](#in-r) and see some impressive speed-ups.
-
-> The test is unfair to `{data.table}` as there is no method to pre-group the
-> data for it (only pre-sort), and we disallow multi-threading, thus I would not
-> use the above timings to pick alternatives over `{data.table}`.
-
-The key feature that `{r2c}` adds is the  ability to construct complex
-expressions from simple ones.  For example, the slope of a bivariate regression:
-<span id=r2c-slope></span>
-
-    slope <- function(x, y) sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x))^2)
-
-And for this `{r2c}` is fastest[^9]:
-
-<img src='extra/time_glope_all-vs.png' />
-
-`{data.table}` cannot use its Gforce[^2] optimization on the more complex
-expression so falls back to standard evaluation.  `{collapse}` remains close to
-`{r2c}`, but it requires enough knowledge of its workings to craft the
-equivalent expression[^8]:
-
-    library(collapse)
-    g.clp <- GRP(g)    # pre-compute group sizes, labels
-    fmean2 <- function(x, cg) fmean(x, cg, TRA="replace_fill")  # notice TRA=...
-
-    fsum((x - fmean2(x, g.clp)) * (y - fmean2(y, g.clp)), g.clp) / fsum((x - fmean2(x, g.clp))^2, g.clp)
-
-Compare to `{r2c}` and the other options where you compose the expression as
-you would in [base R](#r2c-slope):
-
     r2c_slope <- r2cq(
       sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x))^2)
     )
-    group_exec(r2c_slope, g.r2c, list(x, y))
+    (slope.r2c <- with(iris, r2c_slope(Sepal.Width, Sepal.Length)))
 
-We'll run one last comparison: large groups.  Here we try with average size
-of ~10,000 elements (vs 10 previously):
+This is equivalent to:
 
-<img src='extra/time_gslope_all_1e3-vs.png' />
+    slope <- function(x, y)
+      sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x))^2)
+    (slope.base <- with(iris, slope(Sepal.Width, Sepal.Length)))
+    identical(slope.r2c, slope.base)
 
-In this case the per-group interpreter overhead is no longer noticeable and most
-implementations are competitive.  `{r2c}` likely performs better because it
-re-uses the memory required for intermediate results for every group.  The more
-complex expressions are, the more this benefit should manifest.
+`{r2c}` is able to do this by focusing on a limited set of functions and the
+special case of attribute-less numeric vectors (see [Caveats](#caveats)).
+
+## Iterating `{r2c}` Functions
+
+The primary use case of `{r2c}` functions is iteration. `{r2c}` is fast
+because it avoids the R interpreter overhead otherwise required for each
+iteration.  There are currently two iteration mechanisms available:
+
+* `group_exec`: compute on disjoint groups in data (a.k.a. split-apply-combine).
+* `roll*_exec`: compute on (possibly) overlapping sequential windows in data.
+
+I have not found good alternatives for the general use case of `{r2c}`, as can
+be seen from the timings of computing group and window slopes[^14]:
+
+    <group: plot of 1e6 groups of 10 and 1e6 windows of 10>
+    Need somewhwere to show the reference code
+    Windows:
+    * vapply
+    * zoo::rollapply
+    * data.table::fapply
+    * slider::
+
+`{collapse}` stands out as a possible exception in the grouped statistics case,
+although one must be familiar enough with its semantics to translate a regular R
+expression to one that will be fast in `{collapse}`.  `{fastr}` is also
+interesting, but has other drawbacks.
+
+For the special case of a simple statistic many packages provide dedicated
+pre-compiled alternatives, some of which are faster than {`r2c`}:
+
+    <sum: plot of 1e6 groups of 10 and 1e6 windows of 10>
+
+But these are all limited to a simple pre-defined set of statistics.
 
 To summarize:
 
-> `{r2c}` is fastest at calculating complex expressions group-wise, while also
-> retaining base R semantics for numeric inputs.
+> `{r2c}` is fastest at calculating complex expressions that are iterated
+> repeatedly, while also retaining base R semantics for numeric inputs.
 
-[Code and notes on benchmarking](#notes-on-benchmarking) available at end of
-document.
+See the [Related Work](#related-work) and [Code and notes on
+benchmarking](#notes-on-benchmarking) sections.
 
-## Caveats - Of Course ...
+## Caveats
 
 First is that `r2c` requires compilation.  I have not included that step in
 timings[^6] under the view that the compilation time will be amortized over many
@@ -152,7 +82,7 @@ and for packages to compile `{r2c}` functions at install-time.
 More importantly, we cannot compile and execute arbitrary R expressions:
 
 * Only `{r2c}` implemented counterpart functions may be used (currently: basic
-  arithmetic operators and `sum`/`mean`)
+  arithmetic operators and `sum`/`mean`/`length`)
 * Primary numeric inputs must be attribute-less (e.g. to avoid expectations of
   S3 method dispatch or attribute manipulation), and any `.numeric` methods
   defined will be ignored[^10].
@@ -162,7 +92,7 @@ More importantly, we cannot compile and execute arbitrary R expressions:
 
 Within these constraints `r2c` is flexible.  For example, it is possible to have
 arbitrary R objects for secondary parameters, as well as to reference
-group-invariant data:
+iteration-invariant data:
 
     w <- c(1, NA, 2, 3)
     u <- c(-1, 1, 0)
@@ -184,117 +114,91 @@ particular set of inputs on a particular platform the results might diverge.
 
 In addition to cleaning up the existing code, there are many extensions that can
 be built on this proof of concept.  Some are listed below.  How many I end up
-working on will depend on some interaction of external and my own interest.
+working on will depend on some interaction of external interest and my own.
 
-### Better Grouping Semantics
-
-Implement multi-column grouping and non-integer grouping columns.
-
-### More Functions
-
-Functions that have direct analogues in C or are simple to code in C are the
-best candidates, subject to the previously described restrictions.  Thus the
-following should be straightforward to implement:
-
-* `abs`, unary `+` and `-`.
-* `min`, `max`, `first`, `last`.
-* `cos`, `sin`, and other trigonometric functions.
-* `range`.
-* `length`, `seq_along`.
-* `[[`, `[`, and maybe `$`, likely with limitations on allowable index types.
-* Many others.
-
-More challenging due to code complexity, but otherwise compatible with `{r2c}`:
-
-* `quantile`, and others.
-
-Some other useful functions will require more work:
-
-* `diff`, because the result size of `n - 1` is not currently supported.
-
-Functions that will likely not be implementable:
-
-* `seq`, except perhaps for narrow cases where the parameters are constants or
-  perhaps select expressions such as `length(n)`, but even this becomes
-  complicated.
-* And many more.
-
-### Simple Assignment and Multi-Line Statements
-
-While non-trivial, the existing structure should allow explicit intermediate
-variables and multi-call expressions.  Both of these already exist implicitly as
-part of the call processing logic.
-
-### Other Repetition Structures
-
-#### Window Functions
-
-It will be straightforward to implement a runner that invokes the compiled code
-on a sliding window instead of on groups.  The main complication is accounting
-for incomplete windows at the beginning and end of the data.
-
-#### Loops
-
-More complex but in theory possible are loops that reference read/write vectors
-with subsetting and subset assignment, thus allowing results of previous loop
-iterations to be re-used in later ones.
-
-#### Solvers
-
-It should be possible to build a solver around `r2c` compiled expressions, but
-there already exist similar implementations.  In particular Rich FitzJohn's
-[`{Odin}`](https://github.com/mrc-ide/odin) uses a very similar approach to
-`r2c` to generate C routines for use with `deSolve`.
-
-#### API
-
-There are likely many applications that could benefit from the capabilities
-provided by `{r2c}`.  It should be possible to define an interface for use by
-external code.  Conceivably, `{data.table}` could be extended to run `{r2c}`
-compiled expressions.
-
-Additionally, it should be possible to allow users to define their own C
-routines that integrated into the `{r2c}` framework.
-
-### Re-using Compilation / Cleanup
-
-Ideally once an expression is compiled into an `{r2c}` function it would be
-preserved for re-use in future R sessions.  Doing so within a package would be
-relatively straight-forward, but it should also be possible to create a local
-library to store such objects in.
-
-We'll also need to ensure that the methods we use to access the compiled
-instructions are legal, as what we do now is slightly questionable.  More
-generally, the C internals have been implemented with the sole priority of
-producing a proof of concept rather than robust extensibility, and will need
-cleanup.
-
-### Optimizations
-
-* More aggressive re-use of intermediate memory.
-* Identification of re-used calculations.
-* Reduce per-group/iteration overhead.
-
-And likely more.  So far the focus has been on implementation rather than
-optimization.
+* Expand the set of R functions that can be translated.
+* Additional runners (e.g. an `apply` analogue).
+* Optimizations (identify repeated calculations, re-use memory more
+  aggressively).
+* Preserve previously "compiled" functions.
+* Assignment operator (`<-`).
+* Multi-line expressions.
+* Basic loop support, and maybe logicals and branches.
+* Get on CRAN (there is currently at least one questionable thing we do).
+* API to allow other native code to invoke `{r2c}` functions.
 
 ## Related Work
 
-* [`{Odin}`](https://github.com/mrc-ide/odin), which implements a very similar R
-  to C translation and compilation, but specialized for differential
+### "Compiling" R
+
+[`FastR`][2] an implementation of R that can JIT compile R code to run on the
+[Graal VM][3].  It requires a different runtime (i.e. you can't just run your
+normal R installation) and has other trade-offs, including warm-up cycles and
+compatibility limitations[^3].  But otherwise you type in what you would have
+in normal R and see some impressive speed-ups.
+
+[The Ř virtual machine][19] an academic project that is superficially similar to
+`FastR` (it's [thesis][20] explains differences).  Additionally
+[`renjin`][18] appears to offer similar capabilities and tradeoffs as
+`FastR`.  I have tried neither `Ř` nor `renjin`.
+
+Closer to `{r2c}`, there are at least four packages that operate on the
+principle of translating R code into C (or C++), compiling that, and providing
+access to the resulting native code from R:
+
+* [`{Odin}`](https://github.com/mrc-ide/odin), specialized for differential
   equation solving problems.
-* [`{data.table}`][1]'s Gforce (see `?data.table::datatable.optimize).
-* [`{FastR}`][2] an implementation of R that can JIT compile R code to run on
-  the [Graal VM][3].
-* [`{collapse}`][4]'s specialized group statistic functions.
-* [`{inline}`][7] to allow compilation and access to generated native code
-  directly from R.
+* [`{ast2ast}`](https://github.com/Konrad1991/ast2ast/), also targeting ODE
+  solving and optimization.
+* [`{armacmp}`](https://github.com/dirkschumacher/armacmp), a DSL for
+  formulating linear algebra code in R that is translated into C++.
+* [`{nCompiler}`](https://github.com/nimble-dev/nCompiler), a tool for
+  generating C++ and interfacing it with R.
+
+Most of these seem capable of computing iterated statistics in some form, and
+experienced users can likely achieve it with some work, but it will be difficult
+for someone familiar only with R.
+
+Finally, [`{inline}`][7] and [`{Rcpp}`[16] allow you to write code in C/C++ and
+easily interface it with R.
+
+### Fast Group and Rolling Statistics
+
+I do not know of any packages that compile R expressions to avoid interpreter
+overhead in applying them over groups or windows of data.  The closest is
+packages that recognize expressions they have equivalent pre-compiled code.
+This is limited to single simple statistics:
+
+* [`{data.table}`][1]'s Gforce (see `?data.table::datatable.optimize`).
 * In theory [`{dplyr}`][5]'s Hybrid Eval is similar to Gforce, but AFAICT it was
   [quietly dropped][6] and despite suggestions it might return for v1.1 I see no
   trace of it in the most recent 1.1 candidate development versions (as of
   2022-07-03).
-* The [Hydra Chronicles][9] series of posts on my blog examining group
-  statistics in R.
+
+Additionally, there is [`{collapse}`][4] which provides specialized group
+statistic functions.  These are quite fast, particularly for simple statistics,
+but you have to be familiar with `{collapse}` semantics to compose complex
+statistics from simple ones.
+
+Several packages provide fast dedicated functions for a small set of simple
+rolling window statistics:
+
+* `base::filter` for weighted rolling sums / means.
+* [`{data.table}`][1]'s `froll*` functions.
+* [`{slider}`][14] `slide_<stat>` and `slide_index_<stat>`.
+* [`{roll}`][22], with a good description of the "on-line" algorithm in the
+  README.
+* [`{zoo}`][12] `roll<stat>`.
+* [`{RcppRoll}`][].
+* [`{runner}`][].
+
+`{data.table}`, `{roll}` and `{slider}` distinguish themselves with algorithms
+that avoid recomputing overlapping window sections.  `{data.table}` and `{roll}`
+uses the "on-line" algorithm (see the `{roll}` README for an explanation) and
+`{slider}` the "segment tree" algorithm.  The "on-line" algorithm is fastest,
+but theoretically more susceptible to numerical precision issues[^13].  For
+larger windows, these implementations will be much faster than `{r2c}` which
+naively recomputes each window in full.
 
 ## Acknowledgments
 
@@ -307,15 +211,16 @@ optimization.
 * [Achim Zeileis][11] et al. for `rollapply` in [`{zoo}`][12] from the design of
   which `window_exec` borrows elements.
 * [David Vaughan][13] for ideas on window functions, including the index concept
-  used in `window_i_exec`, borrowed from [`{slider}`].
+  used in `window_i_exec`, borrowed from [`{slider}`][14].
 * Byron Ellis and [Peter Danenberg](https://github.com/klutometis) for the
-  implementation of `functional::Curry`, used in tests.
+  inspiration behind `lcurry` (see [`functional::CurryL`][15]), used in tests.
 * [Hadley Wickham](https://github.com/hadley/) and [Peter
   Danenberg](https://github.com/klutometis) for
   [roxygen2](https://cran.r-project.org/package=roxygen2).
 * [Tomas Kalibera](https://github.com/kalibera) for
   [rchk](https://github.com/kalibera/rchk) and the accompanying vagrant image,
-  and rcnst to help detect errors in compiled code.
+  and rcnst to help detect errors in compiled code.  Tomas also worked on the
+  [precursor to the Oracle `FastR`][21].
 * [Winston Chang](https://github.com/wch) for the
   [r-debug](https://hub.docker.com/r/wch1/r-debug/) docker container, in
   particular because of the valgrind level 2 instrumented version of R.
@@ -349,13 +254,21 @@ Different systems / compilers / settings may produce different results.
 [12]: https://cran.r-project.org/package=zoo
 [13]: https://github.com/DavisVaughan
 [14]: https://github.com/r-lib/slider
+[15]: https://cran.r-project.org/package=functional
+[16]: https://cran.r-project.org/package=Rcpp
+[17]: https://docs.renjin.org/en/latest/package/index.html
+[18]: https://www.renjin.org/index.html
+[19]: https://r-vm.net
+[20]: https://thesis.r-vm.net/main.html
+[21]: https://github.com/allr/purdue-fastr
+[22]: https://github.com/jjf234/roll
 
 [^1]: Depending on your compilation settings and machine, there is room for
   improvement, but not enough that R stands out as being particularly slow at
   this task.
 [^2]: Gforce is available for simple expressions of the form `fun(var)` for
   many of the basic statistic functions (see `?data.table::datatable.optimize).
-[^3]: My limited experience with {`FastR`}is that it is astonishing, but also
+[^3]: My limited experience with `{FastR}`is that it is astonishing, but also
   frustrating.  What it does is amazing, but the compatibility limitations are
   real (e.g.  with the current version neither {`data.table`} nor {`ggplot2`}
   install out of the box, and more), and performance is volatile (e.g. package
@@ -398,4 +311,8 @@ Different systems / compilers / settings may produce different results.
   grouped result fits in CPU cache.  Benchmarking the grouping is out of scope
   of this document for the time being, but it is an important part of group
   statistic computation.
-
+[^13]: On systems with 80bit long double accumulators, it seems likely that the
+  "on-line" algorithm will be sufficiently precise for most applications.
+[^14]: It turns out there is `roll::roll_lm` that can compute slopes, but it
+  cannot handle the general case of composing arbitrary statistics from the
+  ones it implements.

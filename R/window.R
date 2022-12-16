@@ -192,7 +192,7 @@ bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 #' `rolli_exec` has semantics similar to the simple use case for
 #' `zoo::rollapply`, `data.table::froll*`, `RcppRoll::roll*`, and
 #' `slider::slide_<fun>`.  `rollat_exec(..., x=x, at=x)` has semantics similar
-#' to `slider::slide_index`.
+#' to `slider::slide_index`, but is more flexible because `at` need not be `x`.
 #'
 #' @section Performance:
 #'
@@ -212,7 +212,7 @@ bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 #' either `{r2c}` or `{slider}`, and at least on systems with 80 bit long
 #' doubles the precision loss seems tolerable for many applications.  The
 #' `{data.table}` "exact" algorithm in single thread mode has performance near
-#' identical to `[rolli_exec]`.
+#' identical to [`rolli_exec`].
 #'
 #' For `by` values wider than the typical difference between `x` values,
 #' implementations that adjust the search stride along `x` taking advantage of
