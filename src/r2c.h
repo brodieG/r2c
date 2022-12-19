@@ -83,6 +83,7 @@ SEXP R2C_run_window(
   SEXP so, SEXP dat, SEXP dat_cols, SEXP ids, SEXP flag, SEXP ctrl,
   SEXP width, SEXP offset, SEXP by, SEXP partial
 );
+
 SEXP R2C_run_window_by(
   SEXP so, SEXP dat, SEXP dat_cols, SEXP ids, SEXP flag, SEXP ctrl,
   SEXP width, SEXP offset, SEXP by_sxp, SEXP x_sxp,
@@ -97,6 +98,11 @@ SEXP R2C_run_window_bw(
   SEXP so, SEXP dat, SEXP dat_cols, SEXP ids, SEXP flag, SEXP ctrl,
   SEXP left_sxp, SEXP right_sxp, SEXP x_sxp,
   SEXP bounds_sxp
+);
+
+SEXP R2C_size_window_at(
+  SEXP rlen_sxp, SEXP width, SEXP offset, SEXP at_sxp,
+  SEXP x_sxp, SEXP bounds_sxp
 );
 
 #endif  /* R2C_H */

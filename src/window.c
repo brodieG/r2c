@@ -18,6 +18,11 @@
 // System headers if any go above ^^
 #include "r2c.h"
 #include <R_ext/Rdynload.h>
+/*-----------------------------------------------------------------------------\
+|                                                                              |
+|                              DISCRETE ROLL FUN                               |
+|                                                                              |
+\-----------------------------------------------------------------------------*/
 
 // This is not super optimized.  There are common special cases (e.g. window
 // fully in bounds) that require less work than those partially out of bounds,
@@ -148,6 +153,11 @@ SEXP R2C_run_window(
     );
   }
 }
+/*-----------------------------------------------------------------------------\
+|                                                                              |
+|                            ROLL FUN SHARED CODE                              |
+|                                                                              |
+\-----------------------------------------------------------------------------*/
 
 struct win_args {
   double w;         // `width`
@@ -157,7 +167,6 @@ struct win_args {
   double end;
   int partial;
   int bounds;
-  double ** dbase;  // base of `data` pointers
   double * x;       // same as R level `x`
   double * at;      // same as R level `at`
   double * l_end;   // same as R level `left`
@@ -206,7 +215,7 @@ static struct win_args prep_win_args(
   SEXP width, SEXP offset, SEXP x_sxp, SEXP by_sxp,
   SEXP at_sxp, SEXP left_sxp, SEXP right_sxp,
   SEXP start_sxp, SEXP end_sxp, SEXP bounds_sxp, SEXP partial_sxp,
-  struct R2C_dat dp
+  R_xlen_t rlen
 ) {
   struct win_args wa = {.w = 0};
 
@@ -239,16 +248,45 @@ static struct win_args prep_win_args(
     );
 
   wa.xlen = XLENGTH(x_sxp);
-  wa.rlen = dp.lens[I_RES];
-
-  // Make a copy of the base data pointers to use as references as we advance
-  // through the data
-  wa.dbase = (double **) R_alloc(dp.dat_end + 1, sizeof(double *));
-  for(int j = dp.dat_start; j <= dp.dat_end; ++j) wa.dbase[j] = dp.data[j];
-
+  wa.rlen = rlen;
   return wa;
 }
+// Make a copy of the base data pointers to use as references as we advance
+// through the data
 
+static double ** copy_dat(struct R2C_dat dp) {
+  double ** dbase = (double **) R_alloc(dp.dat_end + 1, sizeof(double *));
+  for(int j = dp.dat_start; j <= dp.dat_end; ++j) dbase[j] = dp.data[j];
+  return dbase;
+}
+/*
+ * Actual window application
+ *
+ * IBL_OP determines whether there are any items to the left of the right end of
+ *   the window.  Together with IBR_OP can be used to determine empty windows.
+ * IBR_OP determines whether there are any items to the right of the left end of
+ *   the window.  Together with IBR_OP can be used to determine empty windows.
+ *
+ * See below for params.
+ */
+#define ROLL_CALL(IBL_OP, IBR_OP) do{                                       \
+  if(wa.x[ileft] IBL_OP right && wa.x[iright] IBR_OP left) {                \
+    R_xlen_t len = iright - ileft + 1;                                      \
+    for(int j = dp.dat_start; j <= dp.dat_end; ++j) {                       \
+      dp.data[j] = dbase[j] + ileft;                                     \
+      dp.lens[j] = len;                                                     \
+    }                                                                       \
+  } else {      /* empty window */                                          \
+    for(int j = dp.dat_start; j <= dp.dat_end; ++j) dp.lens[j] = 0;         \
+  }                                                                         \
+  /* RUN r2c FUN */                                                         \
+  (*(dp.fun))(dp.data, dp.lens, dp.datai, dp.narg, dp.flags, dp.ctrl);      \
+  /* Should be debug-mode only check */                                     \
+  if(dp.lens[I_RES] != 1)                                                   \
+    Rf_error("Window result size is not 1 (is %jd).", dp.lens[I_RES]);      \
+  if(*recycle_flag && !recycle_warn) recycle_warn = (double)i + 1;          \
+  ++(*(dp.data + I_RES));                                                   \
+} while(0)
 /*
  * Generate the Window Application Loop
  *
@@ -261,19 +299,24 @@ static struct win_args prep_win_args(
  * All the _OP "variables" are comparison operators in <, >, <=, >=.  See
  * ROLL_WINDOW for more details.
  *
+ * It's arguable whether we should use macros for this or explicit branches.
+ * This started as an experiment to see how to do it with macros out of the
+ * potential concern of having branches nested (L_EXP and R_EXP are evaluated
+ * for each window, L_OP and R_OP are evaualted for every step within every
+ * window).  We haven't gone back and tested the cost of adding those branches,
+ * but it seems likely it could be expensive (e.g. small windows branch pred
+ * will fail often, and big windows you still are evaluating the condition n^2).
+ *
  * R_EXP expression used to define the left end of the window
  * L_EXP expression used to define the right end of the window
  * L_OP operator to compare element position to left end of window
  * R_OP operator to compare element position to right end of window
- * IBL_OP determines whether there are any items to the left of the right end of
- *   the window.  Together with IBR_OP can be used to determine empty windows.
- * IBR_OP determines whether there are any items to the right of the left end of
- *   the window.  Together with IBR_OP can be used to determine empty windows.
+ * F_EXP the function evaluation expression, or we can sub-in the width
+ *   calculation expression for the max window size estimation.
  */
-#define ROLL_BOUND(L_EXP, R_EXP, L_OP, R_OP, IBL_OP, IBR_OP) do {           \
+#define ROLL_BOUND(L_EXP, R_EXP, L_OP, R_OP, F_EXP) do {                    \
   R_xlen_t ileft, iright, iright_prev;  /* indices of ends of window */     \
   ileft = iright = iright_prev = 0;                                         \
-  double * recycle_flag = dp.data[I_STAT] + STAT_RECYCLE;                   \
   /* left/right set by L_EXP and R_EXP respectively */                      \
   double left, right;                                                       \
   R_xlen_t i = 0; /* need initial vals for L_EXP and R_EXP */               \
@@ -292,23 +335,7 @@ static struct win_args prep_win_args(
     } else {      /* ran out of vector */                                   \
       ileft = iright = wa.xlen - 1;                                         \
     }                                                                       \
-    if(wa.x[ileft] IBL_OP right && wa.x[iright] IBR_OP left) {              \
-      R_xlen_t len = iright - ileft + 1;                                    \
-      for(int j = dp.dat_start; j <= dp.dat_end; ++j) {                     \
-        dp.data[j] = wa.dbase[j] + ileft;                                   \
-        dp.lens[j] = len;                                                   \
-      }                                                                     \
-    } else {      /* empty window */                                        \
-      for(int j = dp.dat_start; j <= dp.dat_end; ++j) dp.lens[j] = 0;       \
-    }                                                                       \
-    /* RUN r2c FUN */                                                       \
-    (*(dp.fun))(dp.data, dp.lens, dp.datai, dp.narg, dp.flags, dp.ctrl);    \
-    /* Should be debug-mode only check */                                   \
-    if(dp.lens[I_RES] != 1)                                                 \
-      Rf_error("Window result size is not 1 (is %jd).", dp.lens[I_RES]);    \
-                                                                            \
-    if(*recycle_flag && !recycle_warn) recycle_warn = (double)i + 1;        \
-    ++(*(dp.data + I_RES));                                                 \
+    F_EXP;                                                                  \
   }                                                                         \
 } while (0)
 
@@ -330,103 +357,172 @@ static struct win_args prep_win_args(
  * closedness of the right end.
  */
 
-#define ROLL_WINDOW(L_END, R_END) do {                      \
-  int lclosed, rclosed;                                     \
-  lclosed = wa.bounds & 1;                                  \
-  rclosed = wa.bounds & 2;                                  \
-  /* 1-index, so use double (see assumptions.c) */          \
-  double recycle_warn = 0;                                  \
-                                                            \
-  if(lclosed && !rclosed) {                                 \
-    ROLL_BOUND(left = L_END, right = R_END, <, <, <, >=);   \
-  } else if (!lclosed && rclosed) {                         \
-    ROLL_BOUND(left = L_END, right = R_END, <=, <=, <=, >); \
-  } else if (lclosed && rclosed) {                          \
-    ROLL_BOUND(left = L_END, right = R_END, <, <=, <=, >=); \
-  } else if (!lclosed && !rclosed) {                        \
-    ROLL_BOUND(left = L_END, right = R_END, <, <, <, >);    \
-  }                                                         \
-  return Rf_ScalarReal((double) recycle_warn);              \
+#define ROLL_WINDOW(L_END, R_END) do {                                 \
+  int lclosed, rclosed;                                                \
+  lclosed = wa.bounds & 1;                                             \
+  rclosed = wa.bounds & 2;                                             \
+  /* 1-index, so use double (see assumptions.c) */                     \
+  double recycle_warn = 0;                                             \
+  double * recycle_flag = dp.data[I_STAT] + STAT_RECYCLE;              \
+                                                                       \
+  if(lclosed && !rclosed) {                                            \
+    ROLL_BOUND(left = L_END, right = R_END, <, <, ROLL_CALL(<, >=));   \
+  } else if (!lclosed && rclosed) {                                    \
+    ROLL_BOUND(left = L_END, right = R_END, <=, <=, ROLL_CALL(<=, >)); \
+  } else if (lclosed && rclosed) {                                     \
+    ROLL_BOUND(left = L_END, right = R_END, <, <=, ROLL_CALL(<=, >=)); \
+  } else if (!lclosed && !rclosed) {                                   \
+    ROLL_BOUND(left = L_END, right = R_END, <, <, ROLL_CALL(<, >));    \
+  }                                                                    \
+  return Rf_ScalarReal((double) recycle_warn);                         \
+} while(0)
+/*
+ * Max Window Size Estimation
+ *
+ * This one run first to count maximum number of elements in a window.  We're a
+ * little sloppy because we implicitly assume the smallest possible window size
+ * is 1 (ileft==iright), but it's okay to overestimate here.
+ *
+ * The macro assumes iright >= ileft (should be true).
+ *
+ * See ROLL_WINDOW for L_END, R_END
+ */
+#define WIN_SIZE do{                                           \
+  R_xlen_t len_tmp = iright - ileft;                           \
+  if(len_tmp >= len) len = len_tmp + 1;                        \
 } while(0)
 
-SEXP R2C_run_window_by(
-  SEXP so,
-  SEXP dat,
-  SEXP dat_cols,
-  SEXP ids,
-  SEXP flag,
-  SEXP ctrl,
-  // ^^ See group.c, paramaters above shared with group_exec
-  SEXP width,
-  SEXP offset,
-  SEXP by_sxp,
-  SEXP x_sxp,
-  SEXP start_sxp,
-  SEXP end_sxp,
-  SEXP bounds_sxp
-) {
-  struct R2C_dat dp = prep_data(dat, dat_cols, ids, flag, ctrl, so);
-  struct win_args wa = prep_win_args(
-    width, offset, x_sxp, by_sxp,
-    R_NilValue, R_NilValue, R_NilValue,
-    start_sxp, end_sxp,
-    bounds_sxp, R_NilValue, dp
-  );
-  // Shift start by o, so we can treat window start as the base x
-  double base0 = wa.start - wa.o;
-  double end0 = wa.end - wa.o;
-  if(!isfinite(base0) || !isfinite(end0))
-    Rf_error(
-      "`start`/`end` and `offset` values create infinite bound(s), ",
-      "which is disallowed."
-    );
+#define SIZE_WINDOW(L_END, R_END) do {                         \
+  int lclosed, rclosed;                                        \
+  lclosed = wa.bounds & 1;                                     \
+  rclosed = wa.bounds & 2;                                     \
+  R_xlen_t len = 0;                                            \
+                                                               \
+  if(lclosed && !rclosed) {                                    \
+    ROLL_BOUND(left = L_END, right = R_END, <, <, WIN_SIZE);   \
+  } else if (!lclosed && rclosed) {                            \
+    ROLL_BOUND(left = L_END, right = R_END, <=, <=, WIN_SIZE); \
+  } else if (lclosed && rclosed) {                             \
+    ROLL_BOUND(left = L_END, right = R_END, <, <=, WIN_SIZE);  \
+  } else if (!lclosed && !rclosed) {                           \
+    ROLL_BOUND(left = L_END, right = R_END, <, <, WIN_SIZE);   \
+  }                                                            \
+  return Rf_ScalarReal((double) len);                          \
+} while(0)
 
-  // `+ by * i` instead of `+= by` for precision
-  ROLL_WINDOW(base0 + wa.by * i, left + wa.w);
+ // ROLL_TYPE: one of ROLL_BY, ROLL_AT, ROLL_BW
+
+#define ROLL(ROLL_XX) do{                                                \
+  struct R2C_dat dp = prep_data(dat, dat_cols, ids, flag, ctrl, so);     \
+  double ** dbase = copy_dat(dp);                                        \
+  ROLL_XX;                                                               \
+} while(0)
+
+/*-----------------------------------------------------------------------------\
+|                                                                              |
+|                       CONTINOUS ROLL FUN INTERFACES                          |
+|                                                                              |
+\-----------------------------------------------------------------------------*/
+
+// Macro structure is designed to allow sharing code across similar tasks (I
+// hope I don't end up regretting this...).
+//
+// For each of the roll types (by/at/bw), we need to be able to compute window
+// sizes (SIZE_WINDOW), as well as to run the r2c function on each window
+// (ROLL_WINDOW).  We provide an interface for each of those actions via the
+// R2C_run_window_xx and R2C_size_window_xx.
+//
+// Both actions share the same window seeking code (i.e. identifying which data
+// elements fall within a window).  We use two passes (size and calc) rather
+// because we need to know max rolling window for our temporary vector memory
+// allocations.  We could just guess and then grow when we're wrong, which might
+// be worth it given our currently dumb seeking algorithm could be the bottlneck
+// in some cases.
+//
+// ACTION: one of SIZE_WINDOW or ROLL_WINDOW
+// RLEN: result length
+
+// - By ------------------------------------------------------------------------
+
+#define ROLL_BY(ACTION, RLEN) do {                                    \
+  struct win_args wa = prep_win_args(                                 \
+    width, offset, x_sxp, by_sxp,                                     \
+    R_NilValue, R_NilValue, R_NilValue,                               \
+    start_sxp, end_sxp,                                               \
+    bounds_sxp, R_NilValue, RLEN                                      \
+  );                                                                  \
+  /* Shift start by o, so we can treat window start as the base x */  \
+  double base0 = wa.start - wa.o;                                     \
+  double end0 = wa.end - wa.o;                                        \
+  if(!isfinite(base0) || !isfinite(end0))                             \
+    Rf_error(                                                         \
+      "`start`/`end` and `offset` values create infinite bound(s), ", \
+      "which is disallowed."                                          \
+    );                                                                \
+  /* `+ by * i` instead of `+= by` for precision */                   \
+  ACTION(base0 + wa.by * i, left + wa.w);                             \
+} while (0)
+
+SEXP R2C_run_window_by(
+  SEXP so, SEXP dat, SEXP dat_cols, SEXP ids, SEXP flag, SEXP ctrl,
+  SEXP width, SEXP offset, SEXP by_sxp, SEXP x_sxp, SEXP start_sxp,
+  SEXP end_sxp, SEXP bounds_sxp
+) {
+  ROLL(ROLL_BY(ROLL_WINDOW, dp.lens[I_RES]));
 }
+SEXP R2C_size_window_by(
+  SEXP rlen_sxp, SEXP width, SEXP offset, SEXP by_sxp, SEXP x_sxp,
+  SEXP start_sxp, SEXP end_sxp, SEXP bounds_sxp
+) {
+  ROLL_BY(SIZE_WINDOW, (R_xlen_t) Rf_asReal(rlen_sxp));
+}
+
+// - At ------------------------------------------------------------------------
+
+#define ROLL_AT(ACTION, RLEN) do {      \
+  struct win_args wa = prep_win_args(   \
+    width, offset, x_sxp, R_NilValue    \
+    at_sxp, R_NilValue, R_NilValue,     \
+    R_NilValue, R_NilValue,             \
+    bounds_sxp, R_NilValue, RLEN        \
+  );                                    \
+  ACTION(wa.at[i] - wa.o, left + wa.w); \
+} while (0)
+
 SEXP R2C_run_window_at(
-  SEXP so,
-  SEXP dat,
-  SEXP dat_cols,
-  SEXP ids,
-  SEXP flag,
-  SEXP ctrl,
-  // ^^ See group.c, paramaters above shared with group_exec
-  SEXP width,
-  SEXP offset,
-  SEXP at_sxp,
-  SEXP x_sxp,
+  SEXP so, SEXP dat, SEXP dat_cols, SEXP ids, SEXP flag, SEXP ctrl,
+  SEXP width, SEXP offset, SEXP at_sxp, SEXP x_sxp,
   SEXP bounds_sxp
 ) {
-  struct R2C_dat dp = prep_data(dat, dat_cols, ids, flag, ctrl, so);
-  struct win_args wa = prep_win_args(
-    width, offset, x_sxp, R_NilValue,
-    at_sxp, R_NilValue, R_NilValue,
-    R_NilValue, R_NilValue,
-    bounds_sxp, R_NilValue, dp
-  );
-  ROLL_WINDOW(wa.at[i] - wa.o, left + wa.w);
+  ROLL(ROLL_AT(ROLL_WINDOW, dp.lens[I_RES]));
 }
-SEXP R2C_run_window_bw(
-  SEXP so,
-  SEXP dat,
-  SEXP dat_cols,
-  SEXP ids,
-  SEXP flag,
-  SEXP ctrl,
-  // ^^ See group.c, paramaters above shared with group_exec
-  SEXP left_sxp,
-  SEXP right_sxp,
-  SEXP x_sxp,
-  SEXP bounds_sxp
+SEXP R2C_size_window_at(
+  SEXP rlen_sxp, SEXP width, SEXP offset, SEXP at_sxp,
+  SEXP x_sxp, SEXP bounds_sxp
 ) {
-  struct R2C_dat dp = prep_data(dat, dat_cols, ids, flag, ctrl, so);
-  struct win_args wa = prep_win_args(
-    R_NilValue, R_NilValue, x_sxp, R_NilValue,
-    R_NilValue, left_sxp, right_sxp,
-    R_NilValue, R_NilValue,
-    bounds_sxp, R_NilValue, dp
-  );
-  ROLL_WINDOW(wa.l_end[i], wa.r_end[i]);
+  ROLL_AT(SIZE_WINDOW, (R_xlen_t) Rf_asReal(rlen_sxp));
+}
+// - Between -------------------------------------------------------------------
+
+#define ROLL_BW(ACTION, RLEN) do {      \
+  struct win_args wa = prep_win_args(   \
+    width, offset, x_sxp, by_sxp,       \
+    R_NilValue, R_NilValue, R_NilValue, \
+    start_sxp, end_sxp,                 \
+    bounds_sxp, R_NilValue, RLEN        \
+  );                                    \
+  ACTION(wa.l_end[i], wa.r_end[i]);     \
+} while (0)
+
+SEXP R2C_run_window_bw(
+  SEXP so, SEXP dat, SEXP dat_cols, SEXP ids, SEXP flag, SEXP ctrl,
+  SEXP left_sxp, SEXP right_sxp, SEXP x_sxp, SEXP bounds_sxp
+) {
+  ROLL(ROLL_BW(ROLL_WINDOW, dp.lens[I_RES]));
+}
+SEXP R2C_size_window_bw(
+  SEXP rlen_sxp, SEXP left_sxp, SEXP right_sxp, SEXP x_sxp, SEXP bounds_sxp
+) {
+  ROLL_BW(SIZE_WINDOW, (R_xlen_t) Rf_asReal(rlen_sxp));
 }
 
