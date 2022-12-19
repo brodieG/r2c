@@ -18,7 +18,7 @@
 ## Run steps that share a close resemblance to those in `group_exec`
 
 roll_prep <- function(
-  obj, data, r.len, formals, enclos, call, runner, MoreArgs
+  obj, data, r.len, formals, enclos, call, runner, MoreArgs, wmax
 ) {
   if(!r.len > 0) stop("Internal Error: prep only when there is result length.")
   preproc <- obj[['preproc']]
@@ -30,12 +30,15 @@ roll_prep <- function(
   if(!length(d.len)) stop("`data` may not be empty.")
   if(r.len > 2^48)  # See R_ints 12.1
     stop("Result length exceeds allowed 2^48 (would be ", r.len, ")")
+  if(wmax > 2^48)  # See R_ints 12.1
+    stop("Max window element count of 2^48 exceeded (would be ", wmax, ")")
 
   # - Match Data to Parameters and Allocate ------------------------------------
 
   alloc <- match_and_alloc(
     do=data, MoreArgs=MoreArgs, preproc=preproc, formals=formals,
-    enclos=enclos, gmax=1L, call=call, runner=runner
+    enclos=enclos, call=call, runner=runner,
+    gmax=wmax
   )
   stack <- alloc[['stack']]
 
@@ -72,13 +75,17 @@ roll_finalize <- function(prep, status) {
 ## Allocation computations, running the C code, cleaning up results.
 
 roll_call <- function(
-  r.len, data, fun, enclos, call, runner, crunner, MoreArgs, ...
+  r.len, data, fun, enclos, call, runner, crunner, csizer, MoreArgs, ...
 ) {
   if(r.len) {
+    size <-
+      if(!is.numeric(csizer)) .Call(csizer, r.len, ...)
+      else as.numeric(csizer)
+
     obj <- get_r2c_dat(fun)
     prep <- roll_prep(
       obj, data=data, r.len=r.len, formals=formals(fun), enclos=enclos,
-      call=call, runner=runner, MoreArgs=MoreArgs
+      call=call, runner=runner, MoreArgs=MoreArgs, wmax=size
     )
     status <- .Call(
       crunner,
@@ -390,6 +397,7 @@ rollby_exec <- function(
 
   roll_call(
     runner=r2c::rollby_exec, crunner=R2C_run_window_by,
+    csizer=R2C_size_window_by,
     r.len=r.len, data=data, fun=fun, enclos=enclos, call=call,
     MoreArgs=MoreArgs,
     width, offset, by, x,
@@ -430,6 +438,7 @@ rollat_exec <- function(
 
   roll_call(
     runner=r2c::rollat_exec, crunner=R2C_run_window_at,
+    csizer=R2C_size_window_at,
     r.len=length(at), data=data, fun=fun, enclos=enclos, call=call,
     MoreArgs=MoreArgs,
     width, offset, at, x,
@@ -464,6 +473,7 @@ rollbw_exec <- function(
 
   roll_call(
     runner=r2c::rollbw_exec, crunner=R2C_run_window_bw,
+    csizer=R2C_size_window_bw,
     r.len=length(left), data=data, fun=fun, enclos=enclos, call=call,
     MoreArgs=MoreArgs,
     left, right, x,
@@ -592,7 +602,15 @@ rolli_exec <- function(
     MoreArgs=list(),
     enclos=is.environment(.)
   )
-  if(!is.integer(n)) n <- as.integer(n)  # more checks in C code
+  if(!is.integer(n)) {
+    n <- as.integer(n)
+  }
+  nmax <- max(n)
+  if(is.na(nmax))
+    stop(
+      "Argument `n` contains NAs or values ",
+      "greater than .Machine[['integer.max']]"
+    )
   by <- as.integer(by)
   if(is.character(align)) {
     offset <- integer(length(align))
@@ -610,7 +628,7 @@ rolli_exec <- function(
   r.len <- (d.len - 1L) %/% by + 1L
 
   roll_call(
-    runner=r2c::rolli_exec, crunner=R2C_run_window,
+    runner=r2c::rolli_exec, crunner=R2C_run_window, csizer=nmax,
     r.len=r.len, data=data, fun=fun, enclos=enclos, call=call,
     MoreArgs=MoreArgs,
     n, offset, by, partial

@@ -481,7 +481,7 @@ SEXP R2C_size_window_by(
 
 #define ROLL_AT(ACTION, RLEN) do {      \
   struct win_args wa = prep_win_args(   \
-    width, offset, x_sxp, R_NilValue    \
+    width, offset, x_sxp, R_NilValue,   \
     at_sxp, R_NilValue, R_NilValue,     \
     R_NilValue, R_NilValue,             \
     bounds_sxp, R_NilValue, RLEN        \
@@ -504,14 +504,14 @@ SEXP R2C_size_window_at(
 }
 // - Between -------------------------------------------------------------------
 
-#define ROLL_BW(ACTION, RLEN) do {      \
-  struct win_args wa = prep_win_args(   \
-    width, offset, x_sxp, by_sxp,       \
-    R_NilValue, R_NilValue, R_NilValue, \
-    start_sxp, end_sxp,                 \
-    bounds_sxp, R_NilValue, RLEN        \
-  );                                    \
-  ACTION(wa.l_end[i], wa.r_end[i]);     \
+#define ROLL_BW(ACTION, RLEN) do {             \
+  struct win_args wa = prep_win_args(          \
+    R_NilValue, R_NilValue, x_sxp, R_NilValue, \
+    R_NilValue, left_sxp, right_sxp,           \
+    R_NilValue, R_NilValue,                    \
+    bounds_sxp, R_NilValue, RLEN               \
+  );                                           \
+  ACTION(wa.l_end[i], wa.r_end[i]);            \
 } while (0)
 
 SEXP R2C_run_window_bw(
