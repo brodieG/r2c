@@ -191,10 +191,11 @@ bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 #' [`rolli_exec`] < `rollby_exec` < `rollat_exec` < `rollbw_exec`
 #'
 #' Each of the functions can replicate the semantics of any of the less general
-#' functions, but with increased generality come slight efficiency decreases.
-#' One exception is that [`rolli_exec`] supports fully variable width windows.
-#' `rollbw_exec` supports variable width windows, with the constraint that
-#' window ends must be increase monotonically for each iteration.
+#' functions, but with increased generality come efficiency decreases (see
+#' "Performance").  One exception is that [`rolli_exec`] supports fully variable
+#' width windows.  `rollbw_exec` supports variable width windows, with the
+#' constraint that window ends must be increase monotonically for each
+#' iteration.
 #'
 #' `rolli_exec` has semantics similar to the simple use case for
 #' `zoo::rollapply`, `data.table::froll*`, `RcppRoll::roll*`, and
@@ -230,7 +231,9 @@ bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 #' would complicate the code substantially so is unlikely to get implemented.
 #'
 #' Recall that the less general the `roll*_` function is, the better performance
-#' it will have (see "Equivalence").
+#' it will have (see "Equivalence").  The differences are slight between the
+#' by/at/bw implementations, and also for `rolli_exec` if `by << n`.  If
+#' `by >> n`, `rolli_exec` can be much faster.
 #'
 #' @note For the purposes of this documentation, the first value in a set or the
 #'   lowest value in a range are considered to be the "leftmost" values.
@@ -281,8 +284,8 @@ bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 #'   different to that for [`rolli_exec`].
 #' @param start non-na, finite scalar numeric position on real line of first
 #'   "anchor".  Windows may extend to the left of `start` (or to the right of
-#'   `end`) based on `offset`, and will include any data elements inside the
-#'   window but outside `[start,end]`.
+#'   `end`) based on `offset`, and will include all data elements inside the
+#'   window, even if they are outside `[start,end]`.
 #' @param end non-na, finite scalar numeric position on real line of last
 #'   "anchor", see `start`.
 #' @return A numeric vector of length:
@@ -367,7 +370,7 @@ rollby_exec <- function(
   vetr(
     fun=is.function(.) && inherits(., 'r2c_fun'),
     width=NUM.1.POS,
-    x=numeric() || integer(),
+    x=(numeric() || integer()) && length(.) == length(first_vec(data)),
     data=(
       (numeric() || integer()) ||
       (list() && all(is.num_naked(.)) && length(.) > 0)
@@ -415,7 +418,7 @@ rollat_exec <- function(
   vetr(
     fun=is.function(.) && inherits(., 'r2c_fun'),
     width=NUM.1.POS,
-    x=numeric() || integer(),
+    x=(numeric() || integer()) && length(.) == length(first_vec(data)),
     data=(
       (numeric() || integer()) ||
       (list() && all(is.num_naked(.)) && length(.) > 0)
@@ -455,7 +458,7 @@ rollbw_exec <- function(
 ) {
   vetr(
     fun=is.function(.) && inherits(., 'r2c_fun'),
-    x=numeric() || integer(),
+    x=(numeric() || integer()) && length(.) == length(first_vec(data)),
     data=(
       (numeric() || integer()) ||
       (list() && all(is.num_naked(.)) && length(.) > 0)
@@ -488,7 +491,7 @@ rollbw_exec <- function(
 #' specific data "element" (anchor), and the set of window size `n` contiguous
 #' elements around and including the "anchor" are computed on.  This is a
 #' special case of [`rollby_exec`] intended to mimic the semantics of
-#' [zoo::rollapply] where `width` is a scalar integer, and implicitly the data
+#' `zoo::rollapply` where `width` is a scalar integer, and implicitly the data
 #' elements are equally spaced.
 #'
 #' @inheritSection rollby_exec Data Elements

@@ -1,3 +1,4 @@
+    source('extra/systime2.R')
 
 
     library(r2c)
@@ -31,6 +32,35 @@
     all.equal(res.s, res.r)
     range(res.s - res.r, na.rm=TRUE)
     ## [1] -7.105427e-15  3.552714e-15
+
+    system.time(
+      res.ri <- rolli_exec(r2c_sum, x, n=w, align='left', partial=TRUE)
+    )
+    system.time(
+      res.rb <- rollby_exec(r2c_sum, x, width=w-1, by=1, bounds="[]")
+    )
+    identical(res.rb, res.ri)
+    system.time(
+      res.ra <- rollat_exec(r2c_sum, x, width=w-1, bounds="[]")
+    )
+    identical(res.ra, res.ri)
+    system.time(
+      res.rbw <- rollbw_exec(
+        r2c_sum, x,
+        left=(left <- seq(1, length(x), 1)), right=(left + (w - 1)), bounds="[]"
+      )
+    )
+    identical(res.rbw, res.ri)
+
+    system.time(
+      res.ri10 <- rolli_exec(r2c_sum, x, n=w, align='left', by=10, partial=TRUE)
+    )
+    system.time(
+      res.rb10 <- rollby_exec(r2c_sum, x, width=w-1, by=10, bounds="[]")
+    )
+    identical(res.ri10, res.rb10)
+
+
 
     library(RcppRoll)
     system.time(res.cpp <- roll_sum(x, w, align='center', fill=NA))

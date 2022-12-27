@@ -1,8 +1,22 @@
 # To Do / Questions
 
-* Can we have zero length data?  We should be able to.
-* Ensure partial condition is good on the new implementation (in particular,
-  still feels weird that it doesn't matter what the bounds types are).
+## General
+
+* Release fixed `vetr` version!
+* Doc page for "runner" functions.
+* Numeric group vectors provoke weird error from `group_exec`
+* Should `x` be `x` or `pos`?  `x` feels most correct, but also confusing
+  because of the use of `x` as a data variable.
+
+* Make sure there are interrupts.  Can we use "R_ext/Intermacros.h".  It seems
+  yes generally, but they are not explicitly part of the API, and then there is
+  the question of whether it makes sense to do so, or if we should just be doing
+  this at the group level?
+* Make `group_exec` interface consistent with `roll*_exec`
+* share `lcurry` with klutometis
+  https://github.com/klutometis/R-functional/issues
+* Can we have zero length data.  Both zero length vectors, and empty `data`
+  list?  We should be able to.
 * Make overflow testable.
 * Test that everything works if there is no group varying data (i.e. everything
   fed through MoreArgs).  Not completely trivial to test as we need a function
@@ -13,7 +27,8 @@
   windows, but for the main section we should only need to check once?  This is
   actually significant for the `w=1` case, taking about 40% of the time the
   function evaluation takes (`r2c_sum`).  But probably in the noise for all
-  other cases.
+  other cases.  Similarly, can we get away with not checking return length?
+  Implicitly we probably don't for group functions, so maybe we don't have to?
 
 ## For CRAN
 
@@ -114,10 +129,6 @@
 * Add capability to specify functions in non-standard ways (e.g. `base::sum`, or
   `(get("sum", as.environment("package:base"))`)?  Maybe not, that seems like
   potential trouble.  Certainly document also things like `f <- sum; f(x)`.
-* Make sure there are interrupts.  Can we use "R_ext/Intermacros.h".  It seems
-  yes generally, but they are not explicitly part of the API, and then there is
-  the question of whether it makes sense to do so, or if we should just be doing
-  this at the group level?
 * Is it faster to compute complex expressions pairwise (i.e. full vector scan of
   two vectors), or do each row in full once?
 * Look into using R_GetCCallable (see WRE) instead of what we're doing now.  It
@@ -139,6 +150,25 @@
 
 ## Done
 
+* Figure out segfault in slope window case.
+* Add big tests including the one causing the segfault.  Come up with a more
+  complex expression than the slope.
+* Look into whether we can efficiently iterate over an altrep without expanding
+  it.  Update: We can by partially expanding it using the stuff from iter.h,
+  e.g. iterate by region which would generate and expand small chunks.
+* Decide whether partial should default to TRUE or FALSE.
+* Zero width windows with "[]" bounds.
+* Ensure partial condition is good on the new implementation (in particular,
+  still feels weird that it doesn't matter what the bounds types are).
+* Use `REAL_RO` for `x`, `at`, `left`, `right`?  Performance should be fine?
+  But there is no way that a sequence can give a useful pointer without
+  expanding.  Would have to use `ITERATE_BY_REGION` which AFAICT generates
+  smaller vectors to iterate through so the whole thing doesn't have to be
+  generated.
+    * No, this is way to complicated to embed in the existing loop.
+* Should start/end really do a hard subset?  Starting to feel that's wrong.
+    * No, we won't have them to do a hard subset.  We could add an e.g. `hard`
+      parameter but the use case for it seems tenuous.
 * Be sure to test a window that is wider than the data to see that partial
   windows are computed correctly on both sides?  Should be okay.
 * `DYNLOAD` warnings around `run()`; maybe that function doesn't need to be of

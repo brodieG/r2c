@@ -2,6 +2,25 @@
 
 # Window Implementation
 
+## Offset Direction
+
+It really makes more sense for the offset to be the negative of what it is now.
+
+## Start End
+
+Does partial make sense for `rollby_`?  Should start end really subset, or
+simply set where we start.  The latter is increasingly attractive.  What is the
+correspondence with `rolli`?
+
+We do really consider subsetting to be out of bounds of what this does.
+Although it would be nice and could do it.
+
+Actually, increasingly thinking that partial just doesn't make sense other than
+for the regularly spaced data where you would expect a specific count of
+observations inside the window.  There is the argument that you want windows to
+have the same amount of "eligible space", but that's also achievable by setting
+`start` and `end` at reasonable points wrt to `x`.
+
 ## Incomplete
 
 A window is considered incomplete if the beginning of the data is to the right
@@ -12,8 +31,22 @@ So if:
     ileft == 0 && index[ileft] > left ||
     iright == imax && index[iright] < right
 
+## Rationalize
 
+We can rationalize the integer case to be:
 
+* `width = n - 1`
+* `bounds = "[]"`
+* `index = seq_along(<data>)`
+
+And it will be somewhat slower.  The biggest issue is that `seq_along()` could
+return either numeric or integer, and we don't want to generate that whole
+vector.  Maybe we just let it exist for this reason alone.  It would require a
+bit of contortion to handle the special iterative case?
+
+Maybe not, we would need to check whether the object is altrep sequence starting
+at 1 and with a stride of 1, and then we could, for just the "[]" bounds case,
+make the condition to check for be against the `i` instead of `index[ileft]`.
 
 ## Discrete vs Continuous
 
@@ -127,17 +160,17 @@ too?
 
 
 
-    roll_exec(f, data, n, align, by, partial, MoreArgs, enclos)
+    rolli_exec(f, data, n, align, by, partial, MoreArgs, enclos)
 
     rollby_exec(
-      f, data, width, shift, by, x, start, end, bounds, partial,
+      f, data, width, offset, by, x, start, end, bounds, partial,
       MoreArgs, enclos
     )
     rollat_exec(
-      f, data, width, shift, at, x, bounds, partial, MoreArgs, enclos
+      f, data, width, offset, at, x, bounds, partial, MoreArgs, enclos
     )
     rollin_exec(
-      f, data, width, shift, x, left, right, bounds, partial, MoreArgs, enclos
+      f, data, width, offset, x, left, right, bounds, partial, MoreArgs, enclos
     )
 
 
@@ -190,7 +223,6 @@ too?
 
 What does `partial` mean for the continuous case?
 
-
 ## r2c
 
 Advance: group size -> by
@@ -242,7 +274,7 @@ recognize the possibility for:
 * zoo rollapply
 
 
-## Others
+## Others Window Implementations
 
 ### data.table
 
@@ -1174,6 +1206,7 @@ aggregated.
 
 We can get "vectors" in the sense we're used to in there, but they need to go in
 as matrices (but that's okay, we can just do this with 1D matrices).
+
 
 # Concept
 

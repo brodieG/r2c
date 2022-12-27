@@ -19,23 +19,24 @@ might use:
     r2c_slope <- r2cq(
       sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x))^2)
     )
-    (slope.r2c <- with(iris, r2c_slope(Sepal.Width, Sepal.Length)))
+    with(iris, r2c_slope(Sepal.Width, Sepal.Length))
+    ## [1] -0.2233611
 
 This is equivalent to:
 
     slope <- function(x, y)
       sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x))^2)
-    (slope.base <- with(iris, slope(Sepal.Width, Sepal.Length)))
-    identical(slope.r2c, slope.base)
+    with(iris, slope(Sepal.Width, Sepal.Length))
+    ## [1] -0.2233611
 
-`{r2c}` is able to do this by focusing on a limited set of functions and the
-special case of attribute-less numeric vectors (see [Caveats](#caveats)).
+While "r2c_fun" functions can be called in the same way as normal R functions as
+shown above, there is limited value in doing so.  The primary use case of
+`{r2c}` functions is iteration.
 
 ## Iterating `{r2c}` Functions
 
-The primary use case of `{r2c}` functions is iteration. `{r2c}` is fast
-because it avoids the R interpreter overhead otherwise required for each
-iteration.  There are currently two iteration mechanisms available:
+`{r2c}` is fast because it avoids the R interpreter overhead otherwise required
+for each iteration.  There are currently two iteration mechanisms available:
 
 * `group_exec`: compute on disjoint groups in data (a.k.a. split-apply-combine).
 * `roll*_exec`: compute on (possibly) overlapping sequential windows in data.
@@ -43,25 +44,28 @@ iteration.  There are currently two iteration mechanisms available:
 I have not found good alternatives for the general use case of `{r2c}`, as can
 be seen from the timings of computing group and window slopes[^14]:
 
-    <group: plot of 1e6 groups of 10 and 1e6 windows of 10>
-    Need somewhwere to show the reference code
-    Windows:
-    * vapply
-    * zoo::rollapply
-    * data.table::fapply
-    * slider::
+<img src='extra/time_win-grp_slope.png' />
 
-`{collapse}` stands out as a possible exception in the grouped statistics case,
-although one must be familiar enough with its semantics to translate a regular R
-expression to one that will be fast in `{collapse}`.  `{fastr}` is also
-interesting, but has other drawbacks.
+`{r2c}` is substantially faster, primarily because it does not require calling
+an R function for each iteration.  `{collapse}` does well with group statistics,
+although one must be familiar with its semantics to translate a regular R
+expression to one that will be fast in `{collapse}`.  `{FastR}` is also
+interesting, but has other drawbacks including the need for its own runtime
+application, and multiple warm up runs before reaching fast timings
+(<sup>`*`</sup>times shown are after 4-5 runs).
 
 For the special case of a simple statistic many packages provide dedicated
-pre-compiled alternatives, some of which are faster than {`r2c`}:
+pre-compiled alternatives, some of which are faster than `{r2c}`:
 
-    <sum: plot of 1e6 groups of 10 and 1e6 windows of 10>
+<img src='extra/time_win-grp_sum.png' />
 
-But these are all limited to a simple pre-defined set of statistics.
+Even for the simple statistic case `{r2c}` is competitive with dedicated
+compiled alternatives like those provided by `{RcppRoll}`, and `{data.table}`'s
+`frollsum` in "exact" mode.  Implementations that re-use overlapping window
+sections such as `{data.table}`'s `frollsum` in "fast" mode, `{roll}`, and
+`{slider}`, will outperform `{r2c}`, particularly for larger windows.
+`{data.table}` and `{roll}` use an "on-line" algorithms, and `{slider}` uses a
+"segment tree" algorithm, each with varying speed and precision trade-offs[^13].
 
 To summarize:
 
@@ -156,8 +160,8 @@ access to the resulting native code from R:
   generating C++ and interfacing it with R.
 
 Most of these seem capable of computing iterated statistics in some form, and
-experienced users can likely achieve it with some work, but it will be difficult
-for someone familiar only with R.
+experienced users can likely achieve it with some work, but it will likely be
+difficult for someone familiar only with R.
 
 Finally, [`{inline}`][7] and [`{Rcpp}`[16] allow you to write code in C/C++ and
 easily interface it with R.
@@ -167,7 +171,7 @@ easily interface it with R.
 I do not know of any packages that compile R expressions to avoid interpreter
 overhead in applying them over groups or windows of data.  The closest is
 packages that recognize expressions they have equivalent pre-compiled code.
-This is limited to single simple statistics:
+This is limited to simple statistics:
 
 * [`{data.table}`][1]'s Gforce (see `?data.table::datatable.optimize`).
 * In theory [`{dplyr}`][5]'s Hybrid Eval is similar to Gforce, but AFAICT it was
@@ -186,19 +190,10 @@ rolling window statistics:
 * `base::filter` for weighted rolling sums / means.
 * [`{data.table}`][1]'s `froll*` functions.
 * [`{slider}`][14] `slide_<stat>` and `slide_index_<stat>`.
-* [`{roll}`][22], with a good description of the "on-line" algorithm in the
-  README.
+* [`{roll}`][22].
 * [`{zoo}`][12] `roll<stat>`.
-* [`{RcppRoll}`][].
-* [`{runner}`][].
-
-`{data.table}`, `{roll}` and `{slider}` distinguish themselves with algorithms
-that avoid recomputing overlapping window sections.  `{data.table}` and `{roll}`
-uses the "on-line" algorithm (see the `{roll}` README for an explanation) and
-`{slider}` the "segment tree" algorithm.  The "on-line" algorithm is fastest,
-but theoretically more susceptible to numerical precision issues[^13].  For
-larger windows, these implementations will be much faster than `{r2c}` which
-naively recomputes each window in full.
+* [`{RcppRoll}`][23].
+* [`{runner}`][24].
 
 ## Acknowledgments
 
@@ -262,12 +257,10 @@ Different systems / compilers / settings may produce different results.
 [20]: https://thesis.r-vm.net/main.html
 [21]: https://github.com/allr/purdue-fastr
 [22]: https://github.com/jjf234/roll
+[23]: https://cran.r-project.org/package=RcppRoll
+[24]: https://cran.r-project.org/web/packages/runner/index.html
+[25]: https://cran.r-project.org/web/packages/roll/readme/README.html
 
-[^1]: Depending on your compilation settings and machine, there is room for
-  improvement, but not enough that R stands out as being particularly slow at
-  this task.
-[^2]: Gforce is available for simple expressions of the form `fun(var)` for
-  many of the basic statistic functions (see `?data.table::datatable.optimize).
 [^3]: My limited experience with `{FastR}`is that it is astonishing, but also
   frustrating.  What it does is amazing, but the compatibility limitations are
   real (e.g.  with the current version neither {`data.table`} nor {`ggplot2`}
@@ -276,30 +269,8 @@ Different systems / compilers / settings may produce different results.
   hiccup after the initial warm-up).  At this point it does not seem like a
   viable drop-in replacement to R.  It likely excels at running scalar
   operations in loops and similar, something that R itself struggles at.
-[^4]: Notice that `fsum` with groups is faster than
-  even the straight up `sum` without groups, primarily because it handles the
-  `narm` as a dedicated branch instead of a conditional in the loop (this is an
-  [oddity with `sum`][8] on some platforms).  `fsum` also uses a plain double
-  accumulator and not the long double used by the other implementations so the
-  results are not identical to the other implementations that use long doubles
-  (on systems that support them).  Curiously on my system summing long doubles
-  is faster than summing doubles (absent NAs, inifinities, or denormals, for
-  which long double performance collapses).
-[^5]: We can make `{collapse}` a little faster by computing `mean(x)` once and
-  re-using the result, but at that point the comparison is not apples to apples
-  anymore.
 [^6]: The first compilation can be quite slow as it requires loading the
   compiler, etc.  Subsequent compilations run in tenths of seconds.
-[^7]: For this very specific task R also provides `rowsum`, but as it is limited
-  to sums and we cannot separate the splitting and summing steps for timing we
-  will not discuss it further.
-[^8]: Alternatives involve using `fwithin(x)` as a replacement for
-  `(x - fmean(x, g, TRA="replace_fill"))` and `fgroup_by(g) |> fsummarize(...)`
-  to avoid the need to repeatedly specify groups, although timings are similar
-  with these changes.
-[^9]: In order to make the benchmarks comparable, we use `r2c::mean1` instead of
-  `base::mean`.  This is to ensure that all implementations are using a single
-  pass mean calculation as that is what `fmean` does.
 [^10]: E.g. don't expect S3 dispatch to work if you define `mean.numeric`,
   although why one would do that for functions covered by `{r2c}` is unclear.
 [^11]: Pre-grouping in this case means primarily computing group-offsets in
@@ -311,8 +282,14 @@ Different systems / compilers / settings may produce different results.
   grouped result fits in CPU cache.  Benchmarking the grouping is out of scope
   of this document for the time being, but it is an important part of group
   statistic computation.
-[^13]: On systems with 80bit long double accumulators, it seems likely that the
-  "on-line" algorithm will be sufficiently precise for most applications.
+[^13]: The "segment tree" algorithm will have better precision than the
+  "on-line" algorithm, and while it is slower than the "on-line" algorithm (see
+  the [`{roll}` README][25] for an explanation), it will begin to outperform
+  `{r2c}` at window sizes larger than 100 as its performance scales with the
+  logarithm of window size.  The "on-line" algorithm is most susceptible to
+  precision issues, but on systems with 80bit long double accumulators, it seems
+  likely that the "on-line" algorithm will be sufficiently precise for most
+  applications.
 [^14]: It turns out there is `roll::roll_lm` that can compute slopes, but it
   cannot handle the general case of composing arbitrary statistics from the
   ones it implements.

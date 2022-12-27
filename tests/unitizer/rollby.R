@@ -88,6 +88,22 @@ unitizer_sect('complete coverage', {
   identical(sum(rbs(wvec, width=2, by=2)), sum(wvec))
   identical(sum(rbs(wvec, width=1, by=1)), sum(wvec))
 })
+unitizer_sect('zero lengths', {
+  rbs_W1B1(numeric(), x=numeric())
+  rbs_W1B1(numeric(), x=numeric(), start=0, end=1)
+  rbs_W1B1(numeric(), x=numeric(1), start=0, end=1)
+  rbs_W1B1(numeric(1), x=numeric(), start=0, end=1)
+  rbs_W1B1(list(), x=numeric(), start=0, end=1)
+  rbs_W1B1(list(), x=numeric(1), start=0, end=1)
+  rbs_W1B1(list(numeric(1)), x=numeric(), start=0, end=1)
+  rbs_W1B1(list(numeric()), x=numeric(), start=0, end=1)
+
+  ras(wvec, at=numeric(), width=1, offset=0)
+  ras(numeric(), at=1, width=1, offset=0)
+
+  rbws(wvec, left=numeric(), right=numeric())
+  rbws(numeric(), left=1, right=2)
+})
 unitizer_sect('play with x', {
   # Double width equal to half position
   identical(

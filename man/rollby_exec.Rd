@@ -75,8 +75,8 @@ coerced to numeric.}
 
 \item{start}{non-na, finite scalar numeric position on real line of first
 "anchor".  Windows may extend to the left of \code{start} (or to the right of
-\code{end}) based on \code{offset}, and will include any data elements inside the
-window but outside \verb{[start,end]}.}
+\code{end}) based on \code{offset}, and will include all data elements inside the
+window, even if they are outside \verb{[start,end]}.}
 
 \item{end}{non-na, finite scalar numeric position on real line of last
 "anchor", see \code{start}.}
@@ -167,9 +167,7 @@ and open on the right by default.
 
 As an illustration for \code{rollby_exec} and \code{rollat_exec}, consider the case of
 \code{width = 3} windows at the fourth iteration, with various \code{offset} values.
-The offset is the distance from the left end of the window to the anchor:
-
-\if{html}{\out{<div class="sourceCode">}}\preformatted{## rollby_exec(..., by=1, width=3)
+The offset is the distance from the left end of the window to the anchor:\preformatted{## rollby_exec(..., by=1, width=3)
                    +------------- 4th iteration, anchor is 4.0
                    V
 1.0   2.0   3.0   4.0   5.0   6.0   7.0 | < Real Line
@@ -179,15 +177,13 @@ The offset is the distance from the left end of the window to the anchor:
                    [-----------------)  | o =    0   \{4, 5, 6\}
           [-----------------)           | o = -w/2   \{3, 4, 5\}
  [-----------------)                    | o =   -w   \{1, 2, 3\}
-}\if{html}{\out{</div>}}
+}
 
 In each case we get three elements in the window, although this is only
 because the positions of the elements are on the integers.  Because the
 windows are open on the right, elements that align exactly on the right end
 of the window are excluded.  With irregularly spaced elements, e.g. with
-\code{x = c(1, 1.25, 2.5, 5.3, 7, ...)}, we might see (positions approximate):
-
-\if{html}{\out{<div class="sourceCode">}}\preformatted{## rollby_exec(..., by=1, width=3, x=c(1, 1.25, 2.5, 5.3, 7))
+\code{x = c(1, 1.25, 2.5, 5.3, 7, ...)}, we might see (positions approximate):\preformatted{## rollby_exec(..., by=1, width=3, x=c(1, 1.25, 2.5, 5.3, 7))
                    +------------- 4th iteration, base index is 4.0
                    V
 1.0   2.0   3.0   4.0   5.0   6.0   7.0 | < Real Line
@@ -197,7 +193,7 @@ of the window are excluded.  With irregularly spaced elements, e.g. with
                    [-----------------)  | o =    0   \{4\}
           [-----------------)           | o = -w/2   \{3, 4\}
  [-----------------)                    | o =   -w   \{1, 2, 3\}
-}\if{html}{\out{</div>}}
+}
 
 Unlike with \code{\link{rolli_exec}} there is no \code{partial} parameter as there is no
 expectation of a fixed number of elements in any given window.
@@ -216,10 +212,11 @@ The \verb{roll*_exec} functions can be ordered by increasing generality:
 \code{\link{rolli_exec}} < \code{rollby_exec} < \code{rollat_exec} < \code{rollbw_exec}
 
 Each of the functions can replicate the semantics of any of the less general
-functions, but with increased generality come slight efficiency decreases.
-One exception is that \code{\link{rolli_exec}} supports fully variable width windows.
-\code{rollbw_exec} supports variable width windows, with the constraint that
-window ends must be increase monotonically for each iteration.
+functions, but with increased generality come efficiency decreases (see
+"Performance").  One exception is that \code{\link{rolli_exec}} supports fully variable
+width windows.  \code{rollbw_exec} supports variable width windows, with the
+constraint that window ends must be increase monotonically for each
+iteration.
 
 \code{rolli_exec} has semantics similar to the simple use case for
 \code{zoo::rollapply}, \verb{data.table::froll*}, \verb{RcppRoll::roll*}, and
@@ -257,7 +254,9 @@ will be expanded.  Implementing ALTREP access for them is desirable, but
 would complicate the code substantially so is unlikely to get implemented.
 
 Recall that the less general the \verb{roll*_} function is, the better performance
-it will have (see "Equivalence").
+it will have (see "Equivalence").  The differences are slight between the
+by/at/bw implementations, and also for \code{rolli_exec} if \verb{by << n}.  If
+\verb{by >> n}, \code{rolli_exec} can be much faster.
 }
 
 \examples{

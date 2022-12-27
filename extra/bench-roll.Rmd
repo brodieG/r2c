@@ -1,0 +1,540 @@
+    source('extra/systime2.R')
+    library(r2c)
+    set.seed(1)
+    r2c_sum <- r2cq(sum(x))
+    n <- 1e7
+    w <- 100
+    x <- runif(n) * runif(n)
+    y <- runif(n) * runif(n)
+
+## Basic comparisons
+
+### Self Consistent
+
+    system.time(
+      res.ri <- rolli_exec(r2c_sum, x, n=w, align='left', partial=TRUE)
+    )
+
+    ##   user  system elapsed 
+    ##  0.833   0.004   0.840 
+    system.time(
+      res.rb <- rollby_exec(r2c_sum, x, width=w-1, by=1, bounds="[]")
+    )
+    ##   user  system elapsed 
+    ##  1.022   0.015   1.040 
+    identical(res.rb, res.ri)
+    ## [1] TRUE
+    system.time(
+      res.ra <- rollat_exec(r2c_sum, x, width=w-1, bounds="[]")
+    )
+    ##   user  system elapsed 
+    ##  1.028   0.010   1.040 
+    identical(res.ra, res.ri)
+    ## [1] TRUE
+    system.time(
+      res.rbw <- rollbw_exec(
+        r2c_sum, x,
+        left=(left <- seq(1, length(x), 1)), right=(left + (w - 1)), bounds="[]"
+      )
+    )
+    ##   user  system elapsed 
+    ##  1.148   0.027   1.180 
+    identical(res.rbw, res.ri)
+    ## [1] TRUE
+
+~25% penalty going from i to by, and an additional 15% going to bw.
+
+Let's try the bad case where by > step.
+
+    system.time(
+      res.ri2 <- rolli_exec(r2c_sum, x, n=10, by=50, align='left', partial=TRUE)
+    )
+    ##   user  system elapsed 
+    ##  0.012   0.000   0.012 
+    system.time(
+      res.rb2 <- rollby_exec(r2c_sum, x, width=10-1, by=50, bounds="[]")
+    )
+    ##   user  system elapsed 
+    ##  0.132   0.000   0.132 
+    identical(res.ri2, res.rb2)
+    ## [1] TRUE
+    system.time(
+      res.rbw2 <- rollbw_exec(
+        r2c_sum, x,
+        left=(left <- seq(1, length(x), 50)), right=(left + (10 - 1)), bounds="[]"
+      )
+    )
+    ##   user  system elapsed 
+    ##  0.134   0.001   0.136 
+    identical(res.ri2, res.rbw2)
+    ## [1] TRUE
+
+### Slider
+
+Now vs slider:
+
+    library(slider)
+    system.time(res.s <- slide_sum(x, before=0, after=w - 1, complete=FALSE))
+    ##   user  system elapsed 
+    ##  0.907   0.003   0.913 
+    range(res.s - res.ri)
+    ## [1] -7.105427e-15  3.552714e-15
+    system.time(
+      res.si <- slide_index_sum(
+        x, i=seq(1, length(x), 1), before=0, after=w - 1, complete=FALSE
+      )
+    )
+    ##   user  system elapsed 
+    ##  9.384   0.485   9.940 
+    range(res.si - res.ri)
+    ## [1] -7.105427e-15  3.552714e-15
+
+`slide_index` is terrible!  Why is that?  Let's see how it scales.
+
+    system.time(
+      res.si1 <- slide_index_sum(
+        x, i=seq(1, length(x), 1), before=0, after=0, complete=FALSE
+      )
+    )
+    ##   user  system elapsed 
+    ##  8.656   0.579   9.318 
+
+    system.time(
+      res.si13 <- slide_index_sum(
+        x, i=seq(1, length(x), 1), before=0, after=999, complete=FALSE
+      )
+    )
+    ##    user  system elapsed 
+    ##  10.186   0.763  11.129 
+
+Ok, so it looks like it's the traversing of the data somehow, but once we get to
+the window size itself seems to scale more according to `log` as you might
+expect.
+
+Indeed, it's the `compute_ranges` step that takes most of the time:
+
+                                         seconds
+    slide_index_sum ------------- : 11.47 - 0.00
+        slide_index_summary ----- : 11.47 - 0.00
+            slide_index_info ---- : 10.01 - 0.00
+            |   compute_ranges -- :  9.36 - 0.00
+            |   vec_assert ------ :  0.29 - 0.00
+            |   vec_unrep ------- :  0.28 - 0.28
+            fn_core ------------- :  1.46 - 1.46
+
+## Runner
+
+`{runner}` is slow:
+
+    base::system.time(res.run <- sum_run(x, w, -w+1))
+    ##   user  system elapsed 
+    ## 28.069   0.199  28.744 
+    range(res.ri - res.run)
+    ## [1] -3.552714e-14  3.552714e-14
+
+## Roll
+
+    system.time(res.roll <- roll_sum(x, w, min_obs=1))
+    ##   user  system elapsed 
+    ##  0.089   0.010   0.101 
+    system.time(
+      res.rir <- rolli_exec(r2c_sum, x, n=w, align='right', partial=TRUE)
+    )
+    ##   user  system elapsed 
+    ##  0.898   0.004   0.908 
+    range(res.roll - res.rir)
+    ## [1] -7.105427e-15  7.105427e-15
+
+## RcppRoll
+
+    system.time(res.rccroll <- RcppRoll::roll_suml(x, w))
+    ##   user  system elapsed 
+    ##  0.927   0.010   0.944 
+    system.time(
+      res.rinp <- rolli_exec(r2c_sum, x, n=w, align='left')
+    )
+    ##   user  system elapsed 
+    ##  0.848   0.005   0.856 
+    range(res.rccroll - res.rinp, na.rm=TRUE)
+    ## [1] -3.552714e-14  3.552714e-14
+
+## Data.table
+
+# Big By
+
+Much bigger penalty here, and this is only 10x:
+
+    system.time(
+      res.ri10 <- rolli_exec(r2c_sum, x, n=w, align='left', by=10, partial=TRUE)
+    )
+    ##   user  system elapsed 
+    ##  0.091   0.001   0.092 
+    system.time(
+      res.rb10 <- rollby_exec(r2c_sum, x, width=w-1, by=10, bounds="[]")
+    )
+    ##   user  system elapsed 
+    ##  0.234   0.000   0.236 
+    identical(res.ri10, res.rb10)
+    ## [1] TRUE
+
+If we also make the windows small it is much worse:
+
+    system.time(
+      res.rism <- rolli_exec(r2c_sum, x, n=10, align='left', by=10, partial=TRUE)
+    )
+    ##   user  system elapsed 
+    ##  0.030   0.000   0.031 
+    system.time(
+      res.rbsm <- rollby_exec(r2c_sum, x, width=9, by=10, bounds="[]")
+    )
+    ##   user  system elapsed 
+    ##  0.191   0.001   0.194 
+
+
+    base::system.time(
+      res.ra <- rollat_exec(r2c_sum, x, width=1000-1, bounds="[]")
+    )
+
+# Precision issues?
+
+    library(data.table)
+    system.time(res.dt <- frollsum(y, 10000))
+
+    y <- x * 100
+    y <- y * y
+    base::system.time(
+      res.ri1e4 <- rolli_exec(r2c_sum, y, n=1e4, align='right')
+    )
+    ##    user  system elapsed 
+    ## 121.346   1.116 123.766 
+
+    range(res.ri1e4 - res.dt, na.rm=TRUE)
+    ## [1] -1.862645e-09  1.862645e-09
+    range((res.ri1e4 - res.dt)/res.ri1e4, na.rm=TRUE)
+    ## [1] -1.766551e-16  1.745028e-16
+
+    base::system.time(
+      res.ri1e4 <- rolli_exec(r2c_sum, y, n=1e4, align='right')
+    )
+    system.time(res.dt <- frollsum(y, 100, algo='exact'))
+    ##   user  system elapsed 
+    ##  0.827   0.003   0.835 
+    system.time(
+      res.ri1e2 <- rolli_exec(r2c_sum, y, n=1e2, align='right')
+    )
+    ##   user  system elapsed 
+    ##  0.845   0.004   0.853 
+    identical(res.ri1e2, res.dt)
+    ## [1] TRUE
+
+
+# Slope
+
+## Initial
+
+Timings not precise, just messing around.
+
+    library(r2c)
+    set.seed(1)
+    n <- 1e6
+    w <- 100
+    w1 <- w - 1
+    x <- runif(n) * runif(n)
+    y <- runif(n) * runif(n)
+
+    r2c_slope <- r2cq(
+      sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x))^2)
+    )
+    slope <- function(x, y)
+      sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x))^2)
+
+    system.time(slope.r2c <- rolli_exec(r2c_slope, list(x, y), n=100, align='left'))
+    ##   user  system elapsed 
+    ##  1.062   0.001   1.066 
+
+    system.time(reps=3,
+    slope.base <- vapply(
+      seq(1, n - w1),
+      function(i) { i.n <- i:(i + w1); slope(x[i.n], y[i.n]) },
+      numeric(1)
+    )
+    )
+    ##   user  system elapsed 
+    ## 21.972   1.154  23.166 
+    identical(slope.base, slope.r2c[!is.na(slope.r2c)])
+    ## [1] TRUE
+
+
+    system.time(slope.r2c <- rolli_exec(r2c_slope, list(x, y), n=10, align='left'))
+    ##   user  system elapsed 
+    ##  0.214   0.001   0.216 
+
+    library(roll)
+    RcppParallel::setThreadOptions(numThreads=1)
+    system.time(slope.roll <- roll_lm(x, y, width=w))
+    ##   user  system elapsed 
+    ##  1.235   0.089   1.337 
+    system.time(slope.roll2 <- roll_lm(x, y, width=5 * w))
+    ##   user  system elapsed 
+    ##  1.423   0.110   1.557 
+    
+    system.time(
+      slope.r.r2c <- rolli_exec(r2c_slope, list(x, y), n=w, align='right')
+    )
+    ##   user  system elapsed 
+    ##  1.071   0.003   1.079 
+
+    identical(slope.roll$coefficients[,2], slope.r.r2c)
+    ## [1] FALSE
+    all.equal(slope.roll$coefficients[,2], slope.r.r2c)
+    ## [1] TRUE
+
+Data.table
+
+    system.time(reps=5,
+      slope.dt <- frollapply(seq_along(x), w, \(i) slope(x[i], y[i]))
+    )
+    ##   user  system elapsed 
+    ## 22.887   1.103  24.054 
+    identical(slope.dt, slope.r2c)
+    ## [1] TRUE
+
+Zoo
+
+    system.time(reps=3,
+    slope.zoo <- zoo::rollapply(
+      seq_along(x), w, \(i) slope(x[i], y[i]), align='left', fill=NA
+    )
+    )
+    ##   user  system elapsed 
+    ## 39.751   3.718  43.536 
+    identical(slope.zoo, slope.r2c)
+    ## [1] TRUE
+
+Slider
+
+    system.time(reps=5,
+    slope.slider <- slider::slide_dbl(
+      seq_along(x), \(i) slope(x[i], y[i]), .after=w-1, .complete=TRUE
+    )
+    )
+    ##   user  system elapsed 
+    ## 22.740   1.890  24.663 
+
+    identical(slope.slider, slope.r2c)
+    ## [1] TRUE
+
+
+# Sum
+
+Roll
+
+    r2c_sum <- r2cq(sum(x))
+    system.time(sum.r2c <- rolli_exec(r2c_sum, x, w, align='left'))
+    ##   user  system elapsed 
+    ##  0.094   0.000   0.095 
+    system.time(sumr.r2c <- rolli_exec(r2c_sum, x, w, align='right'))
+    ##   user  system elapsed 
+    ##  0.095   0.001   0.096 
+    system.time(sum.roll <- roll::roll_sum(x, w))
+    ##   user  system elapsed 
+    ##  0.011   0.002   0.012 
+    identical(sum.roll, sumr.r2c)
+    ## [1] FALSE
+    all.equal(sum.roll, sumr.r2c)
+    ## [1] TRUE
+
+Zoo
+
+    system.time(sum.zoo <- zoo::rollsum(x, w, fill=NA, align='left'))
+    ##   user  system elapsed 
+    ##  0.279   0.043   0.322 
+    identical(sum.zoo, sum.r2c)
+    ## [1] FALSE
+    all.equal(sum.zoo, sum.r2c)
+    ## [1] TRUE
+
+data.table
+
+    system.time(sum.dt <- data.table::frollsum(x, w, fill=NA, align='left'))
+    ##   user  system elapsed 
+    ##  0.005   0.000   0.006 
+    identical(sum.dt, sum.r2c)
+    ## [1] FALSE
+    all.equal(sum.dt, sum.r2c)
+    ## [1] TRUE
+    system.time(
+      sum.e.dt <- data.table::frollsum(x, w, fill=NA, algo='exact', align='left')
+    )
+    ##   user  system elapsed 
+    ##  0.093   0.000   0.094 
+    identical(sum.e.dt, sum.r2c)
+    ## [1] TRUE
+
+RcppRoll
+
+    system.time(sum.rcpp <- RcppRoll::roll_suml(x, w, fill=NA))
+    ##   user  system elapsed 
+    ##  0.094   0.000   0.094 
+    identical(sum.dt, sum.r2c)
+    ## [1] FALSE
+    all.equal(sum.dt, sum.r2c)
+    ## [1] TRUE
+
+Slider
+
+    system.time(sum.slide <- slide_sum(x, before=0, after=w - 1, complete=TRUE))
+    all.equal(sum.slide, sum.r2c)
+    ##   user  system elapsed 
+    ##  0.097   0.000   0.097 
+    all.equal(sum.slide, sum.r2c)
+    ## [1] TRUE
+
+base
+
+    system.time(sum.base <- filter(x, rep(1, 100), sides=1))
+    ##   user  system elapsed 
+    ##  0.505   0.003   0.511 
+    identical(c(sum.base), sumr.r2c)
+    ## [1] FALSE
+    all.equal(c(sum.base), sumr.r2c)
+    ## [1] TRUE
+
+    system.time(reps=3,
+    sum2.base <- vapply(
+      seq(1, n - w1),
+      function(i) sum(x[i:(i + w1)]),
+      numeric(1)
+    )
+    )
+    ##   user  system elapsed 
+    ##  3.114   0.664   3.799 
+    identical(sum2.base, sum.r2c[!is.na(sum.r2c)])
+
+Fastr
+
+* vapply sum: c(1.868,2.258, 1.924, 1.639, 1.377, 1.491,1.378, 1.360, 1.379,
+  1.353, 1.281)
+* vapply slope: c(11.08, 6.292, 4.601, 5.259, 4.641, 3.921, 4.255, 4.637, 4.889,
+  4.661, 4.558)
+
+# Plotting
+
+## Slope
+
+    library(ggplot2)
+    d.slope <- c(
+      r2c=1.066, "base::vapply"=23.166, "data.table::frollapply"=24.054,
+      "zoo::rollapply"=43.536, "slider::slide_dbl"=24.663, 
+      "FastR::vapply*"=3.921
+    )
+    d.slope <- sort(d.slope)
+    dat.slope.w <-
+      data.frame(x=factor(names(d.slope), names(d.slope)), y=d.slope)
+    d.slope.g <- c(
+      'base::mapply'=12.570 , 'data.table'=11.519, 'collapse'=.247, 
+      'r2c'=.150, 'FastR::mapply*'=1.15
+    )
+    d.slope.g <- sort(d.slope.g)
+    dat.slope.g <-
+      data.frame(x=factor(names(d.slope.g), names(d.slope.g)), y=d.slope.g)
+    dat.slope <- rbind(
+      cbind(dat.slope.g, calc='Groups (~10 Obs Each)'),
+      cbind(dat.slope.w, calc='Windows (100 Obs Each)')
+    )
+    highlight <- data.frame(xmin=0.5, xmax=1.5, ymin=-Inf, ymax=Inf)
+
+    p.slope <- ggplot(dat.slope) +
+      ggtitle("Slope (1MM Groups / Windows)") +
+      geom_rect(
+        data=highlight,
+        aes(xmin=I(xmin), xmax=I(xmax), ymin=I(ymin), ymax=I(ymax)),
+        fill='#1F6ABF', alpha=.25
+      ) +
+      geom_col(aes(x, y)) +
+      coord_flip(ylim=c(0, max(d.slope) * 1.05)) +
+      geom_text(
+        aes(x=x,y=y, label=sprintf("%.02f", y)), size=3, hjust=-.1
+      ) +
+      theme(
+        panel.grid.major.y=element_blank(), 
+        panel.grid.minor.y=element_blank(),
+        axis.text.y=element_text(family='mono')
+      ) +
+      facet_grid(calc~., scales='free', space='free') +
+      xlab(NULL) +
+      ylab("Time (seconds)")
+    p.slope
+
+
+
+### Sum
+
+    d.sum <- c(
+      r2c::rolli_exec=0.095, 
+      "roll::roll_sum"=0.012, 
+      "zoo::rollsum"=0.332, 
+      "data.table::frollsum\nalgo='fast'"=.006,
+      "data.table::frollsum\nalgo='exact'"=0.094,
+      "RcppRoll::roll_sum"=0.094, 
+      "base::filter"=0.511,
+      "base::vapply"=3.799, 
+      "FastR::vapply"=1.281, 
+      "slider::slide_sum"=.097
+    )
+    d.sum <- sort(d.sum)
+    dat.sum.w <- data.frame(x=factor(names(d.sum), names(d.sum)), y=d.sum)
+    # leading spaces for fator generation
+    d.sum.g <- c(
+      " base::vapply"=0.747, "data.table"=.234,
+      "collapse::fsum"=.032, " FastR::vapply"=.134, "r2c::group_exec"=0.056
+    )
+    d.sum.g <- sort(d.sum.g)
+    dat.sum.g <- data.frame(x=factor(names(d.sum.g), names(d.sum.g)), y=d.sum.g)
+    dat.sum <- rbind(
+      cbind(dat.sum.g, calc='Groups (~10 Obs Each)'),
+      cbind(dat.sum.w, calc='Windows (100 Obs Each)')
+    )
+    highlight <- data.frame(
+      xmin=c(4.5, 1.5), xmax=c(5.5, 2.5), ymin=-Inf, ymax=Inf,
+      calc=c('Windows (100 Obs Each)', 'Groups (~10 Obs Each)')
+    )
+    p.sum <- ggplot(dat.sum) +
+      ggtitle("Sum (1MM Groups / Windows)") +
+      geom_rect(
+        data=highlight,
+        aes(xmin=I(xmin), xmax=I(xmax), ymin=I(ymin), ymax=I(ymax)),
+        fill='#1F6ABF', alpha=.25
+      ) +
+      geom_col(aes(x, y)) +
+      coord_flip(ylim=c(0, max(dat.sum$y) * 1.05)) +
+      geom_text(
+        aes(x=x,y=y, label=sprintf("%.03f", y)), size=3, hjust=-.1
+      ) +
+      theme(
+        panel.grid.major.y=element_blank(),
+        panel.grid.minor.y=element_blank(),
+        axis.text.y=element_text(family='mono')
+      ) +
+      facet_grid(calc~., scales='free', space='free') +
+      xlab(NULL) +
+      ylab("Time (seconds)")
+    p.sum
+
+
+    width <- 6
+    height <- 6
+    ggsave(
+      "extra/time_win-grp_slope.png", p.slope,
+      width=width, 
+      height=height * (nrow(dat.slope) + 1) / (nrow(dat.sum) + 1)
+    )
+    ggsave(
+      "extra/time_win-grp_sum.png", p.sum,
+      width=width, 
+      height=height 
+    )
+
+
+
+

@@ -37,7 +37,8 @@ directory.}
 with the input data and compare that result to the one obtained from the
 \code{r2c} C code evaluation, marking the result with attributes that indicate
 that the result was identical, and if not, also with an attribute with the
-result of an \code{all.equal} comparison.}
+result of an \code{all.equal} comparison.  The check is only carried out when an
+\code{r2c} function is invoked directly (see example).}
 
 \item{quiet}{whether to suppress the compilation output.}
 
@@ -118,6 +119,9 @@ rare.
 r2c_sum_add <- r2cq(sum(x + y))
 r2c_sum_add <- r2c(quote(sum(x + y)))  ## equivalently
 r2c_sum_add(1, runif(10))
+r2c_sum_check <- r2cq(sum(x), check=TRUE)
+r2c_sum_check(1:10)                                 # checked
+group_exec(r2c_sum_check, 1:10, groups=rep(1L, 10)) # not checked
 }
 \seealso{
 \code{\link{group_exec}} to iterate this function groupwise on data,

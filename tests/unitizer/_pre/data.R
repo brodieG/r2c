@@ -51,6 +51,8 @@ x.ovrf.ldbl.na[ldbl.na[1L]] <- NA_real_
 
 # r2c Functions used in multiple places
 
+slope <- function(x, y)
+  sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2)
 r2c_slope <- r2cq(
   sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2),
   check=TRUE
