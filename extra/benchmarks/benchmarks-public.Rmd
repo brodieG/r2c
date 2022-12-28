@@ -25,7 +25,9 @@ print.proc_time2 <- function(x, ...) {
 ) ) }
 ```
 
-## Data
+## Group Benchmarks
+
+### Data
 
 ```{r}
 set.seed(1)
@@ -37,9 +39,9 @@ y <- runif(n) * runif(n)  # for later
 g <- cumsum(sample(c(TRUE, rep(FALSE, gn - 1)), n, replace=TRUE))
 ```
 
-## Sum
+### Sum
 
-### Base R and FastR
+#### Base R and FastR
 
 ```{r}
 x.split <- split(x, g)
@@ -50,7 +52,7 @@ system.time(sum.base <- vapply(x.split, sum, 0))
 `{FastR}` uses the same code, but needs to be run under the `{FastR}`
 implementation of R.
 
-### r2c
+#### r2c
 
 ```{r}
 g.r2c <- process_groups(g, sorted=TRUE)
@@ -59,7 +61,7 @@ system.time(sum.r2c <- group_exec(r2c_sum, g.r2c, x))
 identical(sum.r2c, sum.base)
 ```
 
-### data.table
+#### data.table
 
 ```{r}
 library(data.table); setDTthreads(1)
@@ -70,7 +72,7 @@ identical(sum.dt, unname(sum.base))
 all.equal(sum.dt, unname(sum.base))
 ```
 
-### collapse
+#### collapse
 
 ```{r}
 library(collapse)
@@ -80,7 +82,7 @@ identical(sum.clp, sum.base)
 all.equal(sum.clp, sum.base)
 ```
 
-## Slope
+### Slope
 
 For apples to apples comparison, we use `mean1` instead of `mean` as `mean`
 uses a two-pass calculation for precision, but `{collapse}` uses a single pass
@@ -91,7 +93,7 @@ complaining about it, but it's a white lie -->
 ```{r eval=FALSE}
 mean1 <- function(x) sum(x) / length(x)
 ```
-### Base R and FastR
+#### Base R and FastR
 
 ```{r}
 slope <- function(x, y) sum((x - mean1(x)) * (y - mean1(y))) / sum((x - mean1(x)) ^ 2)
@@ -101,7 +103,7 @@ system.time(slope.base <- mapply(slope, x.split, y.split))
 `{FastR}` uses the same code, but needs to be run under the `{FastR}`
 implementation of R.
 
-### r2c
+#### r2c
 
 ```{r}
 r2c_slope <- r2cq(sum((x - mean1(x)) * (y - mean1(y))) / sum((x - mean1(x)) ^ 2))
@@ -109,7 +111,7 @@ system.time(slope.r2c <- group_exec(r2c_slope, g.r2c, list(x, y)))
 identical(slope.r2c, slope.base)
 ```
 
-### data.table
+#### data.table
 
 ```{r}
 dt <- data.table(x, y, g)
@@ -127,7 +129,7 @@ all.equal(slope.dt, unname(slope.base))
 In this case using `mean1` alone would break Gforce, but it's moot as the
 complex expression would too.
 
-### collapse
+#### collapse
 
 ```{r}
 fmean2 <- function(x, cg) fmean(x, cg, na.rm=FALSE, TRA="replace_fill")
@@ -172,7 +174,7 @@ all.equal(slope.clp.3[['slope']], unname(slope.clp.2))
 Thanks to Sebastian Krantz for pointing out the `TRA="replace_fill"`
 functionality, and for the alternate formulations.
 
-## Bigger Groups
+### Bigger Groups
 
 ```{r}
 set.seed(1)
@@ -187,3 +189,5 @@ g.clp <- GRP(g)
 ```
 
 And repeat above code
+
+## Window Benchmarks

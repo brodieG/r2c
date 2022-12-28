@@ -1,5 +1,12 @@
 # To Do / Questions
 
+## Docs
+
+* Note that groups are pre-sorted.
+* Show example of e.g. `rolli_exec`.
+* Cleanup the benchmark code for group and windows, and post links to them.
+* Avoid repetition from the iteration section and related works sections.
+
 ## General
 
 * Release fixed `vetr` version!

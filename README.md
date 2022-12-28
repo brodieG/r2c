@@ -41,6 +41,10 @@ for each iteration.  There are currently two iteration mechanisms available:
 * `group_exec`: compute on disjoint groups in data (a.k.a. split-apply-combine).
 * `roll*_exec`: compute on (possibly) overlapping sequential windows in data.
 
+For example, to iterate the slope function by groups, we could use:
+
+    with(mtcars, group_exec(r2c_slope, as.integer(am), list(hp, disp)))
+
 I have not found good alternatives for the general use case of `{r2c}`, as can
 be seen from the timings of computing group and window slopes[^14]:
 
