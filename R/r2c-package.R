@@ -17,7 +17,8 @@
 #'
 #' Compiles a subset of R into machine code so that expressions composed with
 #' that subset can be applied repeatedly on varying data without interpreter
-#' overhead.
+#' overhead.  Use [`r2c`] to compile R, and [`group_exec`] or [`rolli_exec`] /
+#' [`rollby_exec`] to run the result on groups or rolling windows of data.
 #'
 #' @docType package
 #' @name r2c-package

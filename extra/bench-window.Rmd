@@ -1,3 +1,4 @@
+    source('extra/systime2.R')
 
 
     library(r2c)
@@ -32,6 +33,35 @@
     range(res.s - res.r, na.rm=TRUE)
     ## [1] -7.105427e-15  3.552714e-15
 
+    system.time(
+      res.ri <- rolli_exec(r2c_sum, x, n=w, align='left', partial=TRUE)
+    )
+    system.time(
+      res.rb <- rollby_exec(r2c_sum, x, width=w-1, by=1, bounds="[]")
+    )
+    identical(res.rb, res.ri)
+    system.time(
+      res.ra <- rollat_exec(r2c_sum, x, width=w-1, bounds="[]")
+    )
+    identical(res.ra, res.ri)
+    system.time(
+      res.rbw <- rollbw_exec(
+        r2c_sum, x,
+        left=(left <- seq(1, length(x), 1)), right=(left + (w - 1)), bounds="[]"
+      )
+    )
+    identical(res.rbw, res.ri)
+
+    system.time(
+      res.ri10 <- rolli_exec(r2c_sum, x, n=w, align='left', by=10, partial=TRUE)
+    )
+    system.time(
+      res.rb10 <- rollby_exec(r2c_sum, x, width=w-1, by=10, bounds="[]")
+    )
+    identical(res.ri10, res.rb10)
+
+
+
     library(RcppRoll)
     system.time(res.cpp <- roll_sum(x, w, align='center', fill=NA))
     ##    user  system elapsed
@@ -44,7 +74,6 @@
     system.time(res.zoo <- rollsum(x, w, align='center', fill=NA))
     ##    user  system elapsed
     ##   5.387   0.569   6.262
-
 
 Pretty volatile timings here, probably need to gc first always.
 
@@ -79,6 +108,8 @@ There is not that much overhead.
 
 ## New Benchmarks
 
+    source('extra/systime2.R')
+
 These are since we cleaned up things a bit.  Not sure if original window calcs
 are slower due to cruft or changes in the code.
 
@@ -110,6 +141,25 @@ Not too bad compared to original:
     identical(res.rp, res.wi)
     ## [1] TRUE
 
+After adding partial:
+
+    system.time(
+      res.wi <- window_i_exec(
+        r2c_sum, data=x, index=i, width=w, align='center', by=1
+      )
+    )
+    ##   user  system elapsed 
+    ##  0.970   0.002   0.976 
+
+    system.time(
+      res.wi <- window_i_exec(
+        r2c_sum, data=x, index=i, width=w, align='center', by=1,
+        partial=TRUE
+      )
+    )
+    ##   user  system elapsed 
+    ##  0.975   0.003   0.982 
+
 Test overhead:
 
     system.time(
@@ -128,6 +178,25 @@ Test overhead:
     ##  0.154   0.001   0.156 
     identical(res.wi1, res.rp1)
     ## [1] TRUE
+
+    res.wi1 <- window_i_exec(
+      r2c_sum, data=x, index=i, width=1, align=0, by=1
+    )
+    x <- 2^(0:2)
+    window_i_exec(
+      r2c_sum, data=x, index=seq_along(x), width=1, align=0, by=1
+    )
+    x <- 2^(0:2)
+    window_i_exec(
+      r2c_sum, data=x, index=seq_along(x), width=1, align=1, by=1
+    )
+    window_i_exec(
+      r2c_sum, data=x, index=seq_along(x), width=1, align=.5, by=1
+    )
+    window_i_exec(
+      r2c_sum, data=x, index=seq_along(x), width=2, align=1, by=1,
+      partial=TRUE
+    )
 
     for(j in 1:20)
       res.wi1 <- window_i_exec(

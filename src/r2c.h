@@ -40,6 +40,11 @@ struct const_dat {const char * name; const int value;};
 typedef SEXP (*r2c_dl_fun) (
   double ** data, R_xlen_t * lens, int ** di, int * narg, int * flag, SEXP ctrl
 );
+
+SEXP R2C_assumptions(void);
+SEXP R2C_constants(void);
+SEXP R2C_group_sizes(SEXP g);
+
 /*
  * Structure containing the varying data in a format for faster access
  */
@@ -58,27 +63,53 @@ struct R2C_dat {
   R_xlen_t * lens; // Length of each of the data vectors
   r2c_dl_fun fun;  // function to apply
 };
-
-SEXP R2C_assumptions(void);
-SEXP R2C_constants(void);
-SEXP R2C_group_sizes(SEXP g);
-
 struct R2C_dat prep_data(
-  SEXP dat, SEXP dat_cols, SEXP ids, SEXP flag, SEXP ctrl, SEXP so
+  SEXP dat,        // the data, comes back in R2C_dat.data
+  SEXP dat_cols,   // how many iteration varying data cols in `data`
+  // List with as many elements as sub-calls in the r2c fun, indicating for each
+  // which elements in `data` should be given to the function
+  SEXP ids,
+  SEXP flag, SEXP ctrl, SEXP so
 );
 
-SEXP R2C_run_window(
-  SEXP so, SEXP dat, SEXP dat_cols, SEXP ids, SEXP flag,
-  SEXP ctrl, SEXP width, SEXP offset, SEXP by, SEXP partial
-);
+
+// See prep_data and R2C_dat above for details of the first 5 parameters
+// for all the R2C_run_* functions
 SEXP R2C_run_group(
-  SEXP so, SEXP dat, SEXP dat_cols, SEXP ids, SEXP flag,
-  SEXP ctrl, SEXP grp_lens, SEXP res_lens
+  SEXP so, SEXP dat, SEXP dat_cols, SEXP ids, SEXP flag, SEXP ctrl,
+  SEXP grp_lens, SEXP res_lens
 );
-SEXP R2C_run_window_i(
-  SEXP so, SEXP dat, SEXP dat_cols, SEXP ids, SEXP flag,
-  SEXP ctrl, SEXP width, SEXP offset,
-  SEXP by_sxp, SEXP index_sxp, SEXP start_sxp, SEXP end_sxp
+SEXP R2C_run_window(
+  SEXP so, SEXP dat, SEXP dat_cols, SEXP ids, SEXP flag, SEXP ctrl,
+  SEXP width, SEXP offset, SEXP by, SEXP partial
+);
+
+SEXP R2C_run_window_by(
+  SEXP so, SEXP dat, SEXP dat_cols, SEXP ids, SEXP flag, SEXP ctrl,
+  SEXP width, SEXP offset, SEXP by_sxp, SEXP x_sxp,
+  SEXP start_sxp, SEXP end_sxp, SEXP bounds_sxp
+);
+SEXP R2C_run_window_at(
+  SEXP so, SEXP dat, SEXP dat_cols, SEXP ids, SEXP flag, SEXP ctrl,
+  SEXP width, SEXP offset, SEXP at_sxp, SEXP x_sxp,
+  SEXP bounds_sxp
+);
+SEXP R2C_run_window_bw(
+  SEXP so, SEXP dat, SEXP dat_cols, SEXP ids, SEXP flag, SEXP ctrl,
+  SEXP left_sxp, SEXP right_sxp, SEXP x_sxp,
+  SEXP bounds_sxp
+);
+
+SEXP R2C_size_window_by(
+  SEXP rlen_sxp, SEXP width, SEXP offset, SEXP by_sxp, SEXP x_sxp,
+  SEXP start_sxp, SEXP end_sxp, SEXP bounds_sxp
+);
+SEXP R2C_size_window_at(
+  SEXP rlen_sxp, SEXP width, SEXP offset, SEXP at_sxp,
+  SEXP x_sxp, SEXP bounds_sxp
+);
+SEXP R2C_size_window_bw(
+  SEXP rlen_sxp, SEXP left_sxp, SEXP right_sxp, SEXP x_sxp, SEXP bounds_sxp
 );
 
 #endif  /* R2C_H */

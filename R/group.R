@@ -64,7 +64,7 @@ group_exec_int <- function(
 
   alloc <- match_and_alloc(
     do=do, MoreArgs=MoreArgs, preproc=preproc, formals=formals,
-    enclos=enclos, gmax=gmax, call=call, fun=r2c::group_exec
+    enclos=enclos, gmax=gmax, call=call, runner=r2c::group_exec
   )
   stack <- alloc[['stack']]
 
@@ -222,23 +222,24 @@ r2c_groups_template <- function() {
 #' @param fun an "r2c_fun" function as produced by [`r2c`].
 #' @param groups an integer vector, or a list of equal-length integer vectors,
 #'   the interaction of which defines individual groups to organize the vectors
-#'   in `data` into.  NA values are considered one group. If a list, the result
-#'   of the calculation will be returned as a "data.frame", otherwise as a named
+#'   in `data` into.  The vectors must be the same length as those in `data`.
+#'   NA values are considered one group. If a list, the result of the
+#'   calculation will be returned as a "data.frame", otherwise as a named
 #'   vector.  Currently only one group vector is allowed, even when using list
 #'   mode.  Support for multiple group vectors and non-integer vectors will be
 #'   added in the future.
-#' @param data a numeric vector, or a list of numeric vectors, each vector the
-#'   same length as the vector(s) in `groups`.  If a named list, the vectors
-#'   will be matched to `fun` parameters by those names.  Elements without names
-#'   are matched positionally.  If a list must contain at least one element.
-#'   Conceptually, this parameter is used similarly to `envir` parameter to
-#'   [`base::eval`] when that is a list (see `enclos`).
-#' @param MoreArgs a list of R objects to pass on as group-invariant arguments
-#'   to `fun`.  Unlike with `data`, each of the objects therein are passed in
-#'   full to the native code for each group.  This is useful for arguments that
-#'   are intended to remain constant group to group.  Matching of these objects
-#'   to `fun` parameters is the same as for `data`, with positional matching
-#'   occurring after the elements in `data` are matched.
+#' @param data a numeric vector, or a list of equal length numeric vectors.  
+#'   If a named list, the vectors will be matched to `fun` parameters by those
+#'   names.  Elements without names are matched positionally.  If a list must
+#'   contain at least one vector.  Conceptually, this parameter is used
+#'   similarly to `envir` parameter to [`base::eval`] when that is a list (see
+#'   `enclos`).
+#' @param MoreArgs a list of R objects to pass on as iteration-invariant
+#'   arguments to `fun`.  Unlike with `data`, each of the objects therein are
+#'   passed in full to the native code for each iteration  This is useful for
+#'   arguments that are intended to remain constant across iterations.  Matching
+#'   of these objects to `fun` parameters is the same as for `data`, with
+#'   positional matching occurring after the elements in `data` are matched.
 #' @param enclos environment to use as the `enclos` parameter to
 #'   [`base::eval`] when evaluating expressions or matching calls (see `data`).
 #' @return If `groups` is an atomic vectors, a named numeric or

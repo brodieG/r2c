@@ -11,10 +11,11 @@ License: GPL-2 | GPL-3
 URL: https://github.com/brodieG/r2c
 BugReports: https://github.com/brodieG/r2c/issues
 Suggests:
-  unitizer
+  unitizer,
+  stats
 Imports:
   utils,
-  vetr
+  vetr (>= 0.2.14.9000)
 RoxygenNote: 7.2.0
 Roxygen: list(markdown = TRUE)
 Encoding: UTF-8

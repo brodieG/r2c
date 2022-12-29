@@ -50,17 +50,17 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' using `R CMD SHLIB`, and returns an interface to that code in the form of an
 #' "r2c_fun" function.  This function will behave like an R function that
 #' has for body the provided `call` and for parameters the free parameter
-#' symbols in the order they appear in the call tree.  Unlike the R function,
+#' symbols in the order they appear in the call tree, so the user must be sure
+#' to check the function's parameter order before use.  Unlike the R function,
 #' it carries out numerical calculations with `r2c` native instructions instead
 #' of with the standard R routines, and most importantly it is compatible with
 #' `r2c` runner functions like [`group_exec`].
 #'
 #' While "r2c_fun" functions can be called in the same way as normal R
 #' functions, there is limited value in doing so.  "r2c_fun" functions are
-#' optimized to be invoked invoked indirectly with runners like [`group_exec`]
-#' (currently the only one implemented).  In many common cases it is likely that
-#' using an "r2c_fun" directly will be slower than evaluating the corresponding
-#' R expression.
+#' optimized to be invoked invoked indirectly with runners like [`group_exec`].
+#' In many common cases it is likely that using an "r2c_fun" directly instead of
+#' with a runner will be slower than evaluating the corresponding R expression.
 #'
 #' The structure of "r2c_fun" objects is subject to change without notice in
 #' future `r2c` releases.  The only supported uses of them are standard
@@ -91,7 +91,8 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' parameters must be attribute-less numeric vectors.  Integer vectors are
 #' supported, but they are coerced to numeric (and thus copied) before use.  If
 #' all data inputs are integer and the R counterpart functions in `call` support
-#' integer output, the result will be returned as integer.  There are no general
+#' integer output, the result will be returned as integer by coercing (thus
+#' copying) the otherwise numeric result to integer.  There are no general
 #' type restrictions on control parameters, but each implemented function will
 #' only accept values for them that would make sense for the R counterparts.
 #'
@@ -119,7 +120,8 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #'   with the input data and compare that result to the one obtained from the
 #'   `r2c` C code evaluation, marking the result with attributes that indicate
 #'   that the result was identical, and if not, also with an attribute with the
-#'   result of an `all.equal` comparison.
+#'   result of an `all.equal` comparison.  The check is only carried out when an
+#'   `r2c` function is invoked directly (see example).
 #' @param clean TRUE or FALSE, whether to remove the `dir` folder containing the
 #'   generated C code and the shared object file after the shared object is
 #'   [`dyn.load`]ed.  Normally this is an auto-generated temporary folder.  This
@@ -136,6 +138,9 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' r2c_sum_add <- r2cq(sum(x + y))
 #' r2c_sum_add <- r2c(quote(sum(x + y)))  ## equivalently
 #' r2c_sum_add(1, runif(10))
+#' r2c_sum_check <- r2cq(sum(x), check=TRUE)
+#' r2c_sum_check(1:10)                                 # checked
+#' group_exec(r2c_sum_check, 1:10, groups=rep(1L, 10)) # not checked
 
 r2c <- function(
   call, dir=NULL, check=getOption('r2c.check.result', FALSE),
@@ -325,6 +330,18 @@ get_so_loc <- function(r2c.fun) get_r2c_dat(r2c.fun)[['so']]
 get_compile_out <- function(r2c.fun) get_r2c_dat(r2c.fun)[['compile.out']]
 
 get_r2c_dat <- function(r2c.fun) {
-  as.list(body(r2c.fun)[[c(2L,3L)]])  # the object is embedded in the function
+  if(!is.function(r2c.fun) || !inherits(r2c.fun, "r2c_fun"))
+    stop("`r2c.fun` must be an r2c function.")
+  dat <- try(body(r2c.fun)[[c(2L,3L)]])
+  if(inherits(try, "try-error"))
+    stop("`r2c.fun` does not appear to be structured like an r2c function.")
+  if(!is.environment(dat))
+    stop("Could not find data environment in `r2c.fun`")
+
+  dat <- as.list(dat)
+  if(!all(c('preproc', 'call', 'so', 'compile.out') %in% names(dat)))
+    stop("`r2c.fun` missing some expected components.")
+
+  dat
 }
 

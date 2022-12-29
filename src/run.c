@@ -91,10 +91,10 @@ struct R2C_dat prep_data(
         "Internal Error: non-integer data at %jd (%s).\n",
         (intmax_t) i, Rf_type2char(TYPEOF(elt))
       );
-    // Each call accesses some numbers of elements from data, where the last
-    // accessed element receives the result of the call (by convention)
+    // Each call accesses elements from data, where the last element receives
+    // the result of the call (by convention).  datai is 0-indexed.
     *(datai + i) = INTEGER(elt);
-    *(narg + i) = (int) XLENGTH(elt) - 1;
+    *(narg + i) = (int) XLENGTH(elt) - 1; // last elt result, so exclude
   }
   struct R2C_dat res = {
     .data = data,

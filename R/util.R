@@ -13,8 +13,6 @@
 ##
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
-## Used to be an S3 method, but that makes reloading package a problem.
-
 #' Basic Split Apply Combine
 #'
 #' Evaluates quoted expressions in the context of data split by group.  Intended
@@ -36,7 +34,30 @@ bsac <- function(call, groups, data, MoreArgs=list(), enclos=parent.frame()) {
   )
   unlist(res)
 }
+#' Retrieve First Vector from Data
+#'
+#' Designed to handle the case where `data` can be either a numeric vector or a
+#' list of numeric vectors.
+#'
+#' @export
+#' @param x a numeric vector, or a (possibly empty) list of numeric vectors.
+#' @return if `data` is a list, the first element if it is a numeric vector, or
+#'   an empty numeric vector if the list is empty.  If `data` is a numeric
+#'   vector, then `data`.  Otherwise an error is thrown.
+#' @examples
+#' first_vec(1:5)
+#' first_vec(runif(5))
+#' first_vec(mtcars)
+#' first_vec(matrix(1:4, 2))  # matrices treated as vectors
 
+first_vec <- function(x) {
+  vetr(is.list(.) || is.numeric(.))
+  if(is.list(x) && !length(x)) x <- numeric()
+  if(is.list(x)) x <- x[[1L]]
+  if(!is.numeric(x))
+    stop("Argument `data` must be numeric, or a list containing numeric vectors.")
+  x
+}
 
 is.num_naked <- function(x)
   vapply(x, is.vector, TRUE, "numeric") |
@@ -70,4 +91,37 @@ without_seed <- function(expr, env=parent.frame()) {
   expr
 }
 
+#' Pre-Set Function Parameters
+#'
+#' Create a new function from an existing function, but with parameters pre-set.
+#' This is a function intended for testing to simplify complex expressions
+#' involving the `_exec` functions.  It merely stores the function expression to
+#' execute in the lexical environment it was created in.  All symbols will be
+#' resolved at evaluation time, not at creation time.
+#'
+#' This is inspired by a function originally from Byron Ellis, adapted by Jamie
+#' F Olson, and discovered by me via Peter Danenberg's `{functional}` (see
+#' packages `?functional::Curry` and `functional::CurryL`).  The implementation
+#' here is different, in particular it makes it easy to see what the intended
+#' call is by displaying the function contents (see examples).
+#'
+#' @export
+#' @param FUN the function to pre-set parameters for
+#' @param ... parameters to pre-set
+#' @return `FUN` wrapped with pre-set parameters
+#' @examples
+#' sum_nona <- lcurry(sum, na.rm=TRUE)
+#' sum_nona(c(1, NA, 2))
+#' sum_nona
+
+lcurry <- function (FUN, ...) {
+  call <- match.call()
+  call[[1]] <- call[[2]]
+  call[[2]] <- NULL
+  call[[length(call) + 1]] <- quote(...)
+  f <- function(...) NULL
+  body(f) <- call
+  environment(f) <- parent.frame()
+  f
+}
 

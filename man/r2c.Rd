@@ -37,7 +37,8 @@ directory.}
 with the input data and compare that result to the one obtained from the
 \code{r2c} C code evaluation, marking the result with attributes that indicate
 that the result was identical, and if not, also with an attribute with the
-result of an \code{all.equal} comparison.}
+result of an \code{all.equal} comparison.  The check is only carried out when an
+\code{r2c} function is invoked directly (see example).}
 
 \item{quiet}{whether to suppress the compilation output.}
 
@@ -65,10 +66,9 @@ of with the standard R routines, and most importantly it is compatible with
 \details{
 While "r2c_fun" functions can be called in the same way as normal R
 functions, there is limited value in doing so.  "r2c_fun" functions are
-optimized to be invoked invoked indirectly with runners like \code{\link{group_exec}}
-(currently the only one implemented).  In many common cases it is likely that
-using an "r2c_fun" directly will be slower than evaluating the corresponding
-R expression.
+optimized to be invoked invoked indirectly with runners like \code{\link{group_exec}}.
+In many common cases it is likely that using an "r2c_fun" directly instead of
+with a runner will be slower than evaluating the corresponding R expression.
 
 The structure of "r2c_fun" objects is subject to change without notice in
 future \code{r2c} releases.  The only supported uses of them are standard
@@ -100,7 +100,8 @@ is considered a data parameter and \code{na.rm} a control parameter.  All data
 parameters must be attribute-less numeric vectors.  Integer vectors are
 supported, but they are coerced to numeric (and thus copied) before use.  If
 all data inputs are integer and the R counterpart functions in \code{call} support
-integer output, the result will be returned as integer.  There are no general
+integer output, the result will be returned as integer by coercing (thus
+copying) the otherwise numeric result to integer.  There are no general
 type restrictions on control parameters, but each implemented function will
 only accept values for them that would make sense for the R counterparts.
 
@@ -118,6 +119,9 @@ rare.
 r2c_sum_add <- r2cq(sum(x + y))
 r2c_sum_add <- r2c(quote(sum(x + y)))  ## equivalently
 r2c_sum_add(1, runif(10))
+r2c_sum_check <- r2cq(sum(x), check=TRUE)
+r2c_sum_check(1:10)                                 # checked
+group_exec(r2c_sum_check, 1:10, groups=rep(1L, 10)) # not checked
 }
 \seealso{
 \code{\link{group_exec}} to iterate this function groupwise on data,

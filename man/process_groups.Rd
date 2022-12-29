@@ -9,8 +9,9 @@ process_groups(groups, sorted = FALSE)
 \arguments{
 \item{groups}{an integer vector, or a list of equal-length integer vectors,
 the interaction of which defines individual groups to organize the vectors
-in \code{data} into.  NA values are considered one group. If a list, the result
-of the calculation will be returned as a "data.frame", otherwise as a named
+in \code{data} into.  The vectors must be the same length as those in \code{data}.
+NA values are considered one group. If a list, the result of the
+calculation will be returned as a "data.frame", otherwise as a named
 vector.  Currently only one group vector is allowed, even when using list
 mode.  Support for multiple group vectors and non-integer vectors will be
 added in the future.}

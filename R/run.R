@@ -26,11 +26,11 @@
 ## @param enclos environment to use as enclosure for data
 ## @param gmax scalar largest group size
 ## @param call original call
-## @param fun function this is being called by, e.g. `group_exec` (maybe could
-##   extract from `call`, but don't bother to).
+## @param runner function this is being called by, e.g. `group_exec` (maybe
+##   could extract from `call`, but don't bother to).
 
 match_and_alloc <- function(
-  do, MoreArgs, preproc, formals, enclos, gmax, call, fun
+  do, MoreArgs, preproc, formals, enclos, gmax, call, runner
 ) {
   # Trick here is data is split across `data` and `MoreArgs` so we have to merge
   # together to match, but then split the data back into the two parameters
@@ -63,7 +63,7 @@ match_and_alloc <- function(
       # contains something like list(x = y), where we want to report the
       # unevaluated expression an not e.g. the value of `y`.
 
-      call.m <- match.call(fun, call, expand.dots=FALSE, envir=enclos)
+      call.m <- match.call(runner, call, expand.dots=FALSE, envir=enclos)
       data.2 <-
         if(is.call(call.m[['data']])) as.list(call.m[['data']])[-1L]
         else do  # note this is not in original order
@@ -125,6 +125,8 @@ prep_alloc <- function(alloc, res.size) {
   ids <- lapply(ids, "-", 1L) # 0-index for C
 
   dat_cols <- sum(alloc[['alloc']][['type']] == "grp")
-  list(dat=dat, dat_cols=dat_cols, ids=ids, control=control, flag=flag)
+  list(
+    dat=dat, dat_cols=dat_cols, ids=ids, control=control, flag=flag, alloc=alloc
+  )
 }
 

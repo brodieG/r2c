@@ -139,7 +139,9 @@ preprocess <- function(call) {
     seq_along(which(calls.keep)),
     function(i)
       c(
-        if(i > 1) "", paste("//", r.calls.dep.keep[i]), c.calls.keep[i],
+        if(i > 1) "",
+        paste("//", unlist(strsplit(r.calls.dep.keep[i], "\n"))),
+        c.calls.keep[i],
         if(any(any.inc))
           sprintf(
             "%s;",
@@ -258,7 +260,7 @@ pp_internal <- function(call, depth, x, argn="") {
 record_call_dat <- function(
   x, call, depth, argn, type, code, sym.free=sym_free(x, call)
 ) {
-  # list dataj
+  # list data
   x[['call']] <- c(
     x[['call']],
     # Undo the dots replacement
