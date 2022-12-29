@@ -2,7 +2,7 @@
 
 ## 0.1.0
 
-* `window_exec` to apply `r2c` functions on sliding windows of data.
+* `roll*_exec` to apply `r2c` functions on sliding windows of data.
 
 ## 0.0.1
 
