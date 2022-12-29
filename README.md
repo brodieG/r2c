@@ -12,8 +12,8 @@ with R semantics, and without the challenges of directly compilable languages.
 
 Currently `{r2c}` can "compile" R expressions composed of basic binary operators
 and statistics.  "Compile" is in quotes because `{r2c}` generates an equivalent
-C program, and compiles that.  To compute the slope of a bivariate regression we
-might use:
+C program, and compiles that.  To compute the slope of a single variable
+regression we might use:
 
     library(r2c)
     r2c_slope <- r2cq(
@@ -41,22 +41,28 @@ for each iteration.  There are currently two iteration mechanisms available:
 * `group_exec`: compute on disjoint groups in data (a.k.a. split-apply-combine).
 * `roll*_exec`: compute on (possibly) overlapping sequential windows in data.
 
-For example, to iterate the slope function by groups, we could use:
+For example, to iterate the slope function by groups, we could use
+(character/factor group variables will be implemented in the future):
 
-    with(mtcars, group_exec(r2c_slope, as.integer(am), list(hp, disp)))
+    with(
+      iris,
+      group_exec(r2c_slope, as.integer(Species), list(Sepal.Width, Sepal.Length))
+    )
+    ##         1         2         3 
+    ## 0.6904897 0.8650777 0.9015345 
 
-I have not found good alternatives for the general use case of `{r2c}`, as can
-be seen from the timings of computing group and window slopes[^14]:
+I have not found good alternatives for the general[^14] use case of `{r2c}`, as
+can be seen from the timings of computing group and window slopes on [larger
+data][26] [sets][27]:
 
 <img src='extra/time_win-grp_slope.png' />
 
 `{r2c}` is substantially faster, primarily because it does not require calling
-an R function for each iteration.  `{collapse}` does well with group statistics,
-although one must be familiar with its semantics to translate a regular R
-expression to one that will be fast in `{collapse}`.  `{FastR}` is also
-interesting, but has other drawbacks including the need for its own runtime
-application, and multiple warm up runs before reaching fast timings
-(<sup>`*`</sup>times shown are after 4-5 runs).
+an R function for each iteration.  `{collapse}` does well with group statistics
+if you can translate a regular R expression to one that will be fast with it.
+`{FastR}` is also interesting, but has other drawbacks including the need for
+its own runtime application, and multiple warm up runs before reaching fast
+timings (<sup>`*`</sup>times shown are after 4-5 runs).
 
 For the special case of a simple statistic many packages provide dedicated
 pre-compiled alternatives, some of which are faster than `{r2c}`:
@@ -68,16 +74,16 @@ compiled alternatives like those provided by `{RcppRoll}`, and `{data.table}`'s
 `frollsum` in "exact" mode.  Implementations that re-use overlapping window
 sections such as `{data.table}`'s `frollsum` in "fast" mode, `{roll}`, and
 `{slider}`, will outperform `{r2c}`, particularly for larger windows.
-`{data.table}` and `{roll}` use an "on-line" algorithms, and `{slider}` uses a
+`{data.table}` and `{roll}` use "on-line" algorithms, and `{slider}` uses a
 "segment tree" algorithm, each with varying speed and precision trade-offs[^13].
+
+See [Related Work](#related-work) and [benchmark details][10].
 
 To summarize:
 
-> `{r2c}` is fastest at calculating complex expressions that are iterated
-> repeatedly, while also retaining base R semantics for numeric inputs.
-
-See the [Related Work](#related-work) and [Code and notes on
-benchmarking](#notes-on-benchmarking) sections.
+> For iterated calculations, `{r2c}` is fastest at calculating complex
+> expressions, competitive with specialized pre-compiled alternatives for simple
+> expressions, while also retaining base R semantics for numeric inputs.
 
 ## Caveats
 
@@ -125,12 +131,13 @@ be built on this proof of concept.  Some are listed below.  How many I end up
 working on will depend on some interaction of external interest and my own.
 
 * Expand the set of R functions that can be translated.
+* Multi/character/factor grouping variables.
 * Additional runners (e.g. an `apply` analogue).
 * Optimizations (identify repeated calculations, re-use memory more
   aggressively).
 * Preserve previously "compiled" functions.
 * Assignment operator (`<-`).
-* Multi-line expressions.
+* Multi-line expressions (and also functions composed of compatible functions).
 * Basic loop support, and maybe logicals and branches.
 * Get on CRAN (there is currently at least one questionable thing we do).
 * API to allow other native code to invoke `{r2c}` functions.
@@ -167,7 +174,7 @@ Most of these seem capable of computing iterated statistics in some form, and
 experienced users can likely achieve it with some work, but it will likely be
 difficult for someone familiar only with R.
 
-Finally, [`{inline}`][7] and [`{Rcpp}`[16] allow you to write code in C/C++ and
+Finally, [`{inline}`][7] and [`{Rcpp}`][16] allow you to write code in C/C++ and
 easily interface it with R.
 
 ### Fast Group and Rolling Statistics
@@ -208,7 +215,7 @@ rolling window statistics:
 * [Sebastian Krantz](https://github.com/SebKrantz) for the idea of pre-computing
   group meta data for possible re-use (taken from `collapse::GRP`).
 * [Achim Zeileis][11] et al. for `rollapply` in [`{zoo}`][12] from the design of
-  which `window_exec` borrows elements.
+  which `roll*_exec` borrows elements.
 * [David Vaughan][13] for ideas on window functions, including the index concept
   used in `window_i_exec`, borrowed from [`{slider}`][14].
 * Byron Ellis and [Peter Danenberg](https://github.com/klutometis) for the
@@ -226,18 +233,6 @@ rolling window statistics:
 * [Hadley Wickham](https://github.com/hadley/) et al. for
   [ggplot2](https://ggplot2.tidyverse.org/).
 
-## Notes on Benchmarking
-
-[Benchmarks][10] are under:
-
-    R version 4.2.1 (2022-06-23)
-    Platform: x86_64-apple-darwin17.0 (64-bit)
-    Running under: macOS Big Sur ... 10.16
-
-On an Intel(R) Core(TM) m5-6Y54 CPU @ 1.20GHz (early 2016 Macbook), using the
-average of 11 iterations run after one `gc()` call, and -O2 optimization level.
-Different systems / compilers / settings may produce different results.
-
 
 [1]: https://github.com/Rdatatable
 [2]: https://github.com/oracle/fastr
@@ -248,7 +243,7 @@ Different systems / compilers / settings may produce different results.
 [7]: https://github.com/eddelbuettel/inline
 [8]: https://twitter.com/BrodieGaslam/status/1527829442374025219?s=20&t=rg6aybJlGxPEUwBsI0ii1Q
 [9]: https://www.brodieg.com/tags/hydra/
-[10]: https://github.com/brodieG/r2c/blob/logo-old-method/extra/benchmarks-public.Rmd
+[10]: extra/benchmarks/benchmarks-public.html
 [11]: https://www.zeileis.org/
 [12]: https://cran.r-project.org/package=zoo
 [13]: https://github.com/DavisVaughan
@@ -264,28 +259,21 @@ Different systems / compilers / settings may produce different results.
 [23]: https://cran.r-project.org/package=RcppRoll
 [24]: https://cran.r-project.org/web/packages/runner/index.html
 [25]: https://cran.r-project.org/web/packages/roll/readme/README.html
+[26]: extra/benchmarks/benchmarks-public.html#group-data
+[27]: extra/benchmarks/benchmarks-public.html#window-data
 
 [^3]: My limited experience with `{FastR}`is that it is astonishing, but also
   frustrating.  What it does is amazing, but the compatibility limitations are
-  real (e.g.  with the current version neither {`data.table`} nor {`ggplot2`}
-  install out of the box, and more), and performance is volatile (e.g. package
-  installation and some other tasks are painfully slow, some expressions will
-  hiccup after the initial warm-up).  At this point it does not seem like a
-  viable drop-in replacement to R.  It likely excels at running scalar
-  operations in loops and similar, something that R itself struggles at.
+  real (e.g.  with the current (c.a. Summer 2022) version neither `{data.table}`
+  nor `{ggplot2}` install out of the box, and more), and performance is volatile
+  (e.g. package installation and some other tasks are painfully slow, some
+  expressions will hiccup after the initial warm-up).  At this point it does not
+  seem like a viable drop-in replacement to R.  It likely excels at running
+  scalar operations in loops and similar, something that R itself struggles at.
 [^6]: The first compilation can be quite slow as it requires loading the
   compiler, etc.  Subsequent compilations run in tenths of seconds.
 [^10]: E.g. don't expect S3 dispatch to work if you define `mean.numeric`,
   although why one would do that for functions covered by `{r2c}` is unclear.
-[^11]: Pre-grouping in this case means primarily computing group-offsets in
-  data already sorted by group.  Depending on the data, sorting and grouping can
-  be a significant part of the computational cost, although it is similar for
-  all all implementations tested here.  `{r2c}`, `{data.table}`, `{collapse}`
-  all use radix sort, although `{collapse}` also has a hash-based grouping
-  algorithm that is particularly effective for integer groups in which the
-  grouped result fits in CPU cache.  Benchmarking the grouping is out of scope
-  of this document for the time being, but it is an important part of group
-  statistic computation.
 [^13]: The "segment tree" algorithm will have better precision than the
   "on-line" algorithm, and while it is slower than the "on-line" algorithm (see
   the [`{roll}` README][25] for an explanation), it will begin to outperform

@@ -39,7 +39,7 @@
 
 ## For CRAN
 
-* Image links from README should be to raw github URLs.
+* Fix README links so they all work e.g. raw github URLs.
 * Figure out why winbuilder doesn't work.
 * Errors in `match.call` that show the deparsed argument might deparse
   differently on different systems (`group_sum` error tests).
