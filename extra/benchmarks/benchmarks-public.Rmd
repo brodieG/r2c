@@ -53,8 +53,6 @@ x <- runif(n) * runif(n)  # full 64 bit precision randomness
 y <- runif(n) * runif(n)  # for later
 # pre-sorted groups
 g <- cumsum(sample(c(TRUE, rep(FALSE, gn - 1)), n, replace=TRUE))
-
-
 ```
 
 ## Group Slope
@@ -72,7 +70,7 @@ mean1 <- function(x) sum(x) / length(x)
 
 ```{r}
 library(r2c)
-g.r2c <- process_groups(g, sorted=TRUE)  # pre-grouping
+system.time(g.r2c <- process_groups(g, sorted=TRUE))  # pre-grouping
 r2c_slope1 <- r2cq(
   sum((x - mean1(x)) * (y - mean1(y))) / sum((x - mean1(x))^2)
 )
@@ -82,7 +80,7 @@ system.time(slope.r2c <- group_exec(r2c_slope1, g.r2c, list(x, y)))
 ### Base R and FastR
 
 ```{r}
-x.split <- split(x, g)    # pre-group
+system.time(x.split <- split(x, g))    # pre-group
 y.split <- split(y, g)    # pre-group
 slope <- function(x, y) sum((x - mean1(x)) * (y - mean1(y))) / sum((x - mean1(x)) ^ 2)
 system.time(slope.base <- mapply(slope, x.split, y.split))
@@ -97,7 +95,7 @@ implementation of R.
 ```{r}
 data.table::setDTthreads(1)
 dt <- data.table::data.table(x, y, g)
-data.table::setkey(dt, g)  # pre-sorting
+system.time(data.table::setkey(dt, g), reps=1)  # pre-sorting
 mean <- mean1  # so name change alone doesn't break Gforce
 system.time(
   slope.dt <- dt[,
@@ -166,7 +164,6 @@ Ed: don't recall why this isn't working correctly now.
 
 ```{r}
 library(r2c)
-system.time(g.r2c <- process_groups(g, sorted=TRUE))  # pre-group
 r2c_sum <- r2cq(sum(x))
 system.time(sum.r2c <- group_exec(r2c_sum, g.r2c, x))
 ```
@@ -179,7 +176,7 @@ identical(sum.r2c, sum.base)
 ```
 
 `{FastR}` uses the same code, but needs to be run under the `{FastR}`
-implementation of R.  Times for `{FastR}` not reported.}
+implementation of R.  Times for `{FastR}` not reported.
 
 
 ### data.table
@@ -197,7 +194,6 @@ all.equal(sum.dt, unname(sum.base))
 
 ```{r}
 library(collapse)
-g.clp <- GRP(g)
 system.time(sum.clp <- fsum(x, g.clp, na.rm=FALSE))
 identical(sum.clp, sum.base)
 all.equal(sum.clp, sum.base)
@@ -211,10 +207,10 @@ gn <- 1e3
 ng <- n/gn
 g <- cumsum(sample(c(TRUE, rep(FALSE, gn - 1)), n, replace=TRUE))
 
-x.split <- split(x, g)
-y.split <- split(y, g)    # for later
-g.r2c <- process_groups(g, sorted=TRUE)
-g.clp <- GRP(g)
+system.time(x.split <- split(x, g))
+y.split <- split(y, g)
+system.time(g.r2c <- process_groups(g, sorted=TRUE))
+system.time(g.clp <- GRP(g))
 ```
 
 And rerun the same code from before:
