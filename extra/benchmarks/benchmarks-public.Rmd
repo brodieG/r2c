@@ -95,6 +95,7 @@ implementation of R.
 ### data.table
 
 ```{r}
+data.table::setDTthreads(1)
 dt <- data.table::data.table(x, y, g)
 data.table::setkey(dt, g)  # pre-sorting
 mean <- mean1  # so name change alone doesn't break Gforce
@@ -116,7 +117,7 @@ does not pre-group like `{collapse}`/`{r2c}`
 
 ```{r}
 library(collapse)
-g.clp <- GRP(g)   # pre-sort/group
+system.time(g.clp <- GRP(g))   # pre-sort/group
 fmean2 <- function(x, cg) fmean(x, cg, na.rm=FALSE, TRA="replace_fill")
 system.time(
   slope.clp <-
@@ -165,7 +166,7 @@ Ed: don't recall why this isn't working correctly now.
 
 ```{r}
 library(r2c)
-g.r2c <- process_groups(g, sorted=TRUE)  # pre-group
+system.time(g.r2c <- process_groups(g, sorted=TRUE))  # pre-group
 r2c_sum <- r2cq(sum(x))
 system.time(sum.r2c <- group_exec(r2c_sum, g.r2c, x))
 ```
@@ -218,8 +219,8 @@ g.clp <- GRP(g)
 
 And rerun the same code from before:
 
-```
-system.time(slope.r2c <- group_exec(r2c_slope, g.r2c, list(x, y)))
+```{r}
+system.time(slope.r2c <- group_exec(r2c_slope1, g.r2c, list(x, y)))
 system.time(slope.base <- mapply(slope, x.split, y.split))
 dt <- data.table(x, y, g)
 setkey(dt, g)
