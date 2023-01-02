@@ -203,7 +203,7 @@ process_groups <- function(groups, sorted=FALSE) {
     if(is.factor(g)) {
       levels[[i]] <- levels(g)
     }
-    if(!is.integer(g)) groups[[i]] <- as.integer(g)
+    if(typeof(g) != "integer") groups[[i]] <- as.integer(g)
   }
   if(!sorted) {
     o <- do.call(order, groups)
@@ -237,15 +237,17 @@ r2c_groups_template <- function() {
 #' @seealso [`r2c`] for more details on the behavior and constraints of
 #'   "r2c_fun" functions, [`base::eval`] for the semantics of `enclos`.
 #' @param fun an "r2c_fun" function as produced by [`r2c`].
-#' @param groups an integer, numeric, or factor vector.  Numeric and factor
-#'   vectors are coerced to integer, thus copied.  Alternatively, a list of
-#'   equal-length such vectors, the interaction of which defines individual
-#'   groups to organize the vectors in `data` into.  The vectors must be the
-#'   same length as those in `data`.  NA values are considered one group. If a
-#'   list, the result of the calculation will be returned as a "data.frame",
-#'   otherwise as a named vector.  Currently only one group vector is allowed,
-#'   even when using list mode.  Support for multiple group vectors and other
-#'   types of vectors will be added in the future.
+#' @param groups an integer, numeric, or factor vector.  Alternatively, a list
+#'   of equal-length such vectors, the interaction of which defines individual
+#'   groups to organize the vectors in `data` into.  Numeric vectors are coerced
+#'   to integer, thus copied.  Vectors of integer type, but with different
+#'   classes/attributes (other than factors) will be treated as integer vectors.
+#'   The vectors must be the same length as those in `data`.  NA values are
+#'   considered one group. If a list, the result of the calculation will be
+#'   returned as a "data.frame", otherwise as a named vector.  Currently only
+#'   one group vector is allowed, even when using list mode.  Support for
+#'   multiple group vectors and other types of vectors will be added in the
+#'   future.
 #' @param data a numeric vector, or a list of equal length numeric
 #'   vectors.  If a named list, the vectors will be matched to `fun` parameters
 #'   by those names.  Elements without names are matched positionally.  If a
@@ -260,10 +262,10 @@ r2c_groups_template <- function() {
 #'   positional matching occurring after the elements in `data` are matched.
 #' @param enclos environment to use as the `enclos` parameter to
 #'   [`base::eval`] when evaluating expressions or matching calls (see `data`).
-#' @return If `groups` is an atomic vectors, a named numeric or
-#'   integer vector with the results of executing `fun` on each group and the
-#'   names set to the groups.  Otherwise, a "data.frame" with the group vectors
-#'   as columns and the result of the computation as the last column.
+#' @return If `groups` is an atomic vector, a named numeric or integer vector
+#'   with the results of executing `fun` on each group and the names set to the
+#'   groups.  Otherwise, a "data.frame" with the group vectors as columns and
+#'   the result of the computation as the last column.
 #' @examples
 #' r2c_mean <- r2cq(mean(x))
 #' with(mtcars, group_exec(r2c_mean, hp, groups=cyl))
@@ -291,11 +293,11 @@ r2c_groups_template <- function() {
 #' g <- rep(1:2, each=5)
 #' group_exec(
 #'   r2c_sum_add_na, a, groups=g,
-#'   list(y=weights, na.rm=TRUE)  ## use MoreArgs for group-invariant
+#'   MoreArgs=list(y=weights, na.rm=TRUE)  ## use MoreArgs for group-invariant
 #' )
 #' group_exec(
 #'   r2c_sum_add_na, a, groups=g,
-#'   list(y=-weights, na.rm=FALSE)
+#'   MoreArgs=list(y=-weights, na.rm=FALSE)
 #' )
 #'
 #' ## Groups known to be sorted can save substantial time

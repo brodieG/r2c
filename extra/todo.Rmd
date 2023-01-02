@@ -6,18 +6,18 @@
 * Show example of e.g. `rolli_exec`.
 * Cleanup the benchmark code for group and windows, and post links to them.
 * Avoid repetition from the iteration section and related works sections.
+* Remove benchmarks from `roll*_exec` docs.
 
 ## General
 
 * Release fixed `vetr` version!
 * Doc page for "runner" functions.
-* Numeric group vectors provoke weird error from `group_exec`
+* UBSAN / valgrind, and more.
 
 * Make sure there are interrupts.  Can we use "R_ext/Intermacros.h".  It seems
   yes generally, but they are not explicitly part of the API, and then there is
   the question of whether it makes sense to do so, or if we should just be doing
   this at the group level?
-* Make `group_exec` interface consistent with `roll*_exec`
 * share `lcurry` with klutometis
   https://github.com/klutometis/R-functional/issues
 * Can we have zero length data.  Both zero length vectors, and empty `data`
@@ -28,12 +28,9 @@
   that allows us to specify a `data` parameter, but then uses it as a control
   instead of data (at least for `group_exec`).  We just need the group varying
   data to be referenced somewhere in the call, which ...
-* Recycle warning for windows, does it make sense?  It might with the partial
-  windows, but for the main section we should only need to check once?  This is
-  actually significant for the `w=1` case, taking about 40% of the time the
-  function evaluation takes (`r2c_sum`).  But probably in the noise for all
-  other cases.  Similarly, can we get away with not checking return length?
-  Implicitly we probably don't for group functions, so maybe we don't have to?
+* Group label generation should potentially return position of vector rather
+  than actual label to allow flexible re-use of labels beyond just factors (i.e.
+  we subset the input vector to generate the labels).
 
 ## For CRAN
 
@@ -46,6 +43,8 @@
 
 ## Other
 
+* Make `group_exec` interface consistent with `roll*_exec`
+* Numeric group vectors provoke weird error from `group_exec`
 * Special case of constant result lengths could be an optimization for group
   where we don't have to generate the vector, although there should always be
   few groups relative to vector elements, so complexity not worth it?
@@ -156,6 +155,13 @@
 
 ## Done
 
+* Recycle warning for windows, does it make sense?  It might with the partial
+  windows, but for the main section we should only need to check once?  This is
+  actually significant for the `w=1` case, taking about 40% of the time the
+  function evaluation takes (`r2c_sum`).  But probably in the noise for all
+  other cases.  Similarly, can we get away with not checking return length?
+  Implicitly we probably don't for group functions, so maybe we don't have to?
+  IIRC we settled on whatever we do ATM.
 * Should `x` be `x` or `pos`?  `x` feels most correct, but also confusing
   because of the use of `x` as a data variable.
 * Figure out segfault in slope window case.

@@ -16,15 +16,17 @@ list must contain at least one vector.  Conceptually, this parameter is
 used similarly to \code{envir} parameter to \code{\link[base:eval]{base::eval}} when that is a list
 (see \code{enclos}).}
 
-\item{groups}{an integer, numeric, or factor vector.  Numeric and factor
-vectors are coerced to integer, thus copied.  Alternatively, a list of
-equal-length such vectors, the interaction of which defines individual
-groups to organize the vectors in \code{data} into.  The vectors must be the
-same length as those in \code{data}.  NA values are considered one group. If a
-list, the result of the calculation will be returned as a "data.frame",
-otherwise as a named vector.  Currently only one group vector is allowed,
-even when using list mode.  Support for multiple group vectors and other
-types of vectors will be added in the future.}
+\item{groups}{an integer, numeric, or factor vector.  Alternatively, a list
+of equal-length such vectors, the interaction of which defines individual
+groups to organize the vectors in \code{data} into.  Numeric vectors are coerced
+to integer, thus copied.  Vectors of integer type, but with different
+classes/attributes (other than factors) will be treated as integer vectors.
+The vectors must be the same length as those in \code{data}.  NA values are
+considered one group. If a list, the result of the calculation will be
+returned as a "data.frame", otherwise as a named vector.  Currently only
+one group vector is allowed, even when using list mode.  Support for
+multiple group vectors and other types of vectors will be added in the
+future.}
 
 \item{MoreArgs}{a list of R objects to pass on as iteration-invariant
 arguments to \code{fun}.  Unlike with \code{data}, each of the objects therein are
@@ -37,10 +39,10 @@ positional matching occurring after the elements in \code{data} are matched.}
 \code{\link[base:eval]{base::eval}} when evaluating expressions or matching calls (see \code{data}).}
 }
 \value{
-If \code{groups} is an atomic vectors, a named numeric or
-integer vector with the results of executing \code{fun} on each group and the
-names set to the groups.  Otherwise, a "data.frame" with the group vectors
-as columns and the result of the computation as the last column.
+If \code{groups} is an atomic vector, a named numeric or integer vector
+with the results of executing \code{fun} on each group and the names set to the
+groups.  Otherwise, a "data.frame" with the group vectors as columns and
+the result of the computation as the last column.
 }
 \description{
 Organizes \code{data} according to \code{groups}, and calls the native code associated
@@ -76,11 +78,11 @@ weights <- c(.1, .1, .2, .2, .4)
 g <- rep(1:2, each=5)
 group_exec(
   r2c_sum_add_na, a, groups=g,
-  list(y=weights, na.rm=TRUE)  ## use MoreArgs for group-invariant
+  MoreArgs=list(y=weights, na.rm=TRUE)  ## use MoreArgs for group-invariant
 )
 group_exec(
   r2c_sum_add_na, a, groups=g,
-  list(y=-weights, na.rm=FALSE)
+  MoreArgs=list(y=-weights, na.rm=FALSE)
 )
 
 ## Groups known to be sorted can save substantial time
