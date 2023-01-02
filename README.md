@@ -44,7 +44,7 @@ for each iteration.  There are currently two iteration mechanisms available:
 For example, to iterate the slope function by groups, we could use
 (character/factor group variables will be implemented in the future):
 
-    with(iris, group_exec(r2c_slope, Species, list(Sepal.Width, Sepal.Length)))
+    with(iris, group_exec(r2c_slope, list(Sepal.Width, Sepal.Length), Species))
     ##    setosa versicolor  virginica
     ## 0.6904897  0.8650777  0.9015345
 
@@ -111,7 +111,7 @@ iteration-invariant data:
     h <- rep(1:2, each=2)
 
     r2c_fun <- r2cq(sum(x, na.rm=TRUE) * y)
-    group_exec(r2c_fun, groups=h, data=list(x=w), MoreArgs=list(y=u))
+    group_exec(r2c_fun, data=list(x=w), groups=h, MoreArgs=list(y=u))
     ##  1  1  1  2  2  2
     ## -1  1  0 -5  5  0
 

@@ -4,10 +4,17 @@
 \alias{group_exec}
 \title{Execute r2c Function Iteratively on Groups in Data}
 \usage{
-group_exec(fun, groups, data, MoreArgs = list(), enclos = parent.frame())
+group_exec(fun, data, groups, MoreArgs = list(), enclos = parent.frame())
 }
 \arguments{
 \item{fun}{an "r2c_fun" function as produced by \code{\link{r2c}}.}
+
+\item{data}{a numeric vector, or a list of equal length numeric
+vectors.  If a named list, the vectors will be matched to \code{fun} parameters
+by those names.  Elements without names are matched positionally.  If a
+list must contain at least one vector.  Conceptually, this parameter is
+used similarly to \code{envir} parameter to \code{\link[base:eval]{base::eval}} when that is a list
+(see \code{enclos}).}
 
 \item{groups}{an integer, numeric, or factor vector.  Numeric and factor
 vectors are coerced to integer, thus copied.  Alternatively, a list of
@@ -18,13 +25,6 @@ list, the result of the calculation will be returned as a "data.frame",
 otherwise as a named vector.  Currently only one group vector is allowed,
 even when using list mode.  Support for multiple group vectors and other
 types of vectors will be added in the future.}
-
-\item{data}{a numeric vector, or a list of equal length numeric
-vectors.  If a named list, the vectors will be matched to \code{fun} parameters
-by those names.  Elements without names are matched positionally.  If a
-list must contain at least one vector.  Conceptually, this parameter is
-used similarly to \code{envir} parameter to \code{\link[base:eval]{base::eval}} when that is a list
-(see \code{enclos}).}
 
 \item{MoreArgs}{a list of R objects to pass on as iteration-invariant
 arguments to \code{fun}.  Unlike with \code{data}, each of the objects therein are
@@ -51,15 +51,12 @@ native code and thus avoids R interpreter overhead.
 }
 \examples{
 r2c_mean <- r2cq(mean(x))
-with(
-  mtcars,
-  group_exec(r2c_mean, cyl, hp)
-)
+with(mtcars, group_exec(r2c_mean, hp, groups=cyl))
 
 r2c_slope <- r2cq(
   sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2)
 )
-with(mtcars, group_exec(r2c_slope, cyl, list(hp, qsec)))
+with(mtcars, group_exec(r2c_slope, list(hp, qsec), groups=cyl))
 
 ## Parameters are generated in the order they are encountered
 str(formals(r2c_slope))
@@ -67,7 +64,7 @@ str(formals(r2c_slope))
 ## Data frame output, re-order arguments
 with(
   mtcars,
-  group_exec(r2c_slope, list(cyl), list(y=hp, x=qsec))
+  group_exec(r2c_slope, list(y=hp, x=qsec), groups=list(cyl))
 )
 
 ## We can provide group=invariant parameters:
@@ -78,10 +75,12 @@ a[8] <- NA
 weights <- c(.1, .1, .2, .2, .4)
 g <- rep(1:2, each=5)
 group_exec(
-  r2c_sum_add_na,
-  g,
-  a,
+  r2c_sum_add_na, a, groups=g,
   list(y=weights, na.rm=TRUE)  ## use MoreArgs for group-invariant
+)
+group_exec(
+  r2c_sum_add_na, a, groups=g,
+  list(y=-weights, na.rm=FALSE)
 )
 
 ## Groups known to be sorted can save substantial time
@@ -89,16 +88,16 @@ n <- 1e7
 x <- runif(1e7)
 g <- cumsum(sample(c(TRUE, rep(FALSE, 99)), n, replace=TRUE))
 identical(g, sort(g))  # sorted already!
-system.time(res1 <- group_exec(r2c_mean, g, x))
-system.time(res2 <- group_exec(r2c_mean, process_groups(g, sorted=TRUE), x))
+system.time(res1 <- group_exec(r2c_mean, x, g))
+system.time(res2 <- group_exec(r2c_mean, x, process_groups(g, sorted=TRUE)))
 identical(res1, res2)
 
-## We can also group by runs with `sorted`
+## We can also group by runs by lying about `sorted` status
 x <- 1:8
 g <- rep(rep(1:2, each=2), 2)
 g
-group_exec(r2c_mean, list(g), x)
-group_exec(r2c_mean, process_groups(list(g), sorted=FALSE), x)
+group_exec(r2c_mean, x, groups=list(g))
+group_exec(r2c_mean, x, groups=process_groups(list(g), sorted=TRUE))
 }
 \seealso{
 \code{\link{r2c}} for more details on the behavior and constraints of
