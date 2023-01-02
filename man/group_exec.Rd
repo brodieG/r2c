@@ -9,21 +9,22 @@ group_exec(fun, groups, data, MoreArgs = list(), enclos = parent.frame())
 \arguments{
 \item{fun}{an "r2c_fun" function as produced by \code{\link{r2c}}.}
 
-\item{groups}{an integer vector, or a list of equal-length integer vectors,
-the interaction of which defines individual groups to organize the vectors
-in \code{data} into.  The vectors must be the same length as those in \code{data}.
-NA values are considered one group. If a list, the result of the
-calculation will be returned as a "data.frame", otherwise as a named
-vector.  Currently only one group vector is allowed, even when using list
-mode.  Support for multiple group vectors and non-integer vectors will be
-added in the future.}
+\item{groups}{an integer, numeric, or factor vector.  Numeric and factor
+vectors are coerced to integer, thus copied.  Alternatively, a list of
+equal-length such vectors, the interaction of which defines individual
+groups to organize the vectors in \code{data} into.  The vectors must be the
+same length as those in \code{data}.  NA values are considered one group. If a
+list, the result of the calculation will be returned as a "data.frame",
+otherwise as a named vector.  Currently only one group vector is allowed,
+even when using list mode.  Support for multiple group vectors and other
+types of vectors will be added in the future.}
 
-\item{data}{a numeric vector, or a list of equal length numeric vectors.
-If a named list, the vectors will be matched to \code{fun} parameters by those
-names.  Elements without names are matched positionally.  If a list must
-contain at least one vector.  Conceptually, this parameter is used
-similarly to \code{envir} parameter to \code{\link[base:eval]{base::eval}} when that is a list (see
-\code{enclos}).}
+\item{data}{a numeric vector, or a list of equal length numeric
+vectors.  If a named list, the vectors will be matched to \code{fun} parameters
+by those names.  Elements without names are matched positionally.  If a
+list must contain at least one vector.  Conceptually, this parameter is
+used similarly to \code{envir} parameter to \code{\link[base:eval]{base::eval}} when that is a list
+(see \code{enclos}).}
 
 \item{MoreArgs}{a list of R objects to pass on as iteration-invariant
 arguments to \code{fun}.  Unlike with \code{data}, each of the objects therein are
@@ -52,23 +53,21 @@ native code and thus avoids R interpreter overhead.
 r2c_mean <- r2cq(mean(x))
 with(
   mtcars,
-  group_exec(r2c_mean, as.integer(cyl), hp)
+  group_exec(r2c_mean, cyl, hp)
 )
 
 r2c_slope <- r2cq(
   sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2)
 )
-with(
-  mtcars,
-  group_exec(r2c_slope, as.integer(cyl), list(hp, qsec))
-)
+with(mtcars, group_exec(r2c_slope, cyl, list(hp, qsec)))
+
 ## Parameters are generated in the order they are encountered
 str(formals(r2c_slope))
 
 ## Data frame output, re-order arguments
 with(
   mtcars,
-  group_exec(r2c_slope, list(as.integer(cyl)), list(y=hp, x=qsec))
+  group_exec(r2c_slope, list(cyl), list(y=hp, x=qsec))
 )
 
 ## We can provide group=invariant parameters:

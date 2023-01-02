@@ -71,6 +71,11 @@ unitizer_sect("group_slope", {
     bsac(slope, g, list(y=y), list(x=1:110))
   )
 })
+unitizer_sect("factor groups", {
+  fg.r2c <- with(iris, group_exec(r2c_sum, groups=Species, Sepal.Width))
+  fg.base <- with(iris, tapply(Sepal.Width, Species, sum))
+  identical(fg.r2c, c(fg.base))
+})
 unitizer_sect('weird groups', {
   # Testing non sequential groups
   g2 <- g

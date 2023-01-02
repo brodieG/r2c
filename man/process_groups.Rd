@@ -7,14 +7,15 @@
 process_groups(groups, sorted = FALSE)
 }
 \arguments{
-\item{groups}{an integer vector, or a list of equal-length integer vectors,
-the interaction of which defines individual groups to organize the vectors
-in \code{data} into.  The vectors must be the same length as those in \code{data}.
-NA values are considered one group. If a list, the result of the
-calculation will be returned as a "data.frame", otherwise as a named
-vector.  Currently only one group vector is allowed, even when using list
-mode.  Support for multiple group vectors and non-integer vectors will be
-added in the future.}
+\item{groups}{an integer, numeric, or factor vector.  Numeric and factor
+vectors are coerced to integer, thus copied.  Alternatively, a list of
+equal-length such vectors, the interaction of which defines individual
+groups to organize the vectors in \code{data} into.  The vectors must be the
+same length as those in \code{data}.  NA values are considered one group. If a
+list, the result of the calculation will be returned as a "data.frame",
+otherwise as a named vector.  Currently only one group vector is allowed,
+even when using list mode.  Support for multiple group vectors and other
+types of vectors will be added in the future.}
 
 \item{sorted}{TRUE or FALSE (default), whether the vectors in \code{groups} are
 already sorted.  If set to TRUE, no sorting will be done on the groups, nor
@@ -26,7 +27,7 @@ runs it contains, which might be useful in some circumstances.}
 \value{
 an "r2c.groups" object, which is a list containing group sizes,
 labels, and group count, along with other meta data such as the group
-ordering vector.  The contents and structure of this
+ordering vector.
 }
 \description{
 Use by \code{\link{group_exec}} to organize group data, and made available as an

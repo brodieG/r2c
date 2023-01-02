@@ -44,12 +44,9 @@ for each iteration.  There are currently two iteration mechanisms available:
 For example, to iterate the slope function by groups, we could use
 (character/factor group variables will be implemented in the future):
 
-    with(
-      iris,
-      group_exec(r2c_slope, as.integer(Species), list(Sepal.Width, Sepal.Length))
-    )
-    ##         1         2         3 
-    ## 0.6904897 0.8650777 0.9015345 
+    with(iris, group_exec(r2c_slope, Species, list(Sepal.Width, Sepal.Length)))
+    ##    setosa versicolor  virginica
+    ## 0.6904897  0.8650777  0.9015345
 
 I have not found good alternatives for the general[^14] use case of `{r2c}`, as
 can be seen from the timings of computing group and window slopes on [larger

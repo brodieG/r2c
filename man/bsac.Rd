@@ -9,21 +9,22 @@ bsac(call, groups, data, MoreArgs = list(), enclos = parent.frame())
 \arguments{
 \item{call}{quoted R call to apply to each group.}
 
-\item{groups}{an integer vector, or a list of equal-length integer vectors,
-the interaction of which defines individual groups to organize the vectors
-in \code{data} into.  The vectors must be the same length as those in \code{data}.
-NA values are considered one group. If a list, the result of the
-calculation will be returned as a "data.frame", otherwise as a named
-vector.  Currently only one group vector is allowed, even when using list
-mode.  Support for multiple group vectors and non-integer vectors will be
-added in the future.}
+\item{groups}{an integer, numeric, or factor vector.  Numeric and factor
+vectors are coerced to integer, thus copied.  Alternatively, a list of
+equal-length such vectors, the interaction of which defines individual
+groups to organize the vectors in \code{data} into.  The vectors must be the
+same length as those in \code{data}.  NA values are considered one group. If a
+list, the result of the calculation will be returned as a "data.frame",
+otherwise as a named vector.  Currently only one group vector is allowed,
+even when using list mode.  Support for multiple group vectors and other
+types of vectors will be added in the future.}
 
-\item{data}{a numeric vector, or a list of equal length numeric vectors.
-If a named list, the vectors will be matched to \code{fun} parameters by those
-names.  Elements without names are matched positionally.  If a list must
-contain at least one vector.  Conceptually, this parameter is used
-similarly to \code{envir} parameter to \code{\link[base:eval]{base::eval}} when that is a list (see
-\code{enclos}).}
+\item{data}{a numeric vector, or a list of equal length numeric
+vectors.  If a named list, the vectors will be matched to \code{fun} parameters
+by those names.  Elements without names are matched positionally.  If a
+list must contain at least one vector.  Conceptually, this parameter is
+used similarly to \code{envir} parameter to \code{\link[base:eval]{base::eval}} when that is a list
+(see \code{enclos}).}
 
 \item{MoreArgs}{a list of R objects to pass on as iteration-invariant
 arguments to \code{fun}.  Unlike with \code{data}, each of the objects therein are
