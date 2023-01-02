@@ -48,12 +48,12 @@ rollbw_exec(
 additional restriction that it must be guaranteed to produce scalar
 results as used with this function.}
 
-\item{data}{a numeric vector, or a list of equal length numeric vectors.
-If a named list, the vectors will be matched to \code{fun} parameters by those
-names.  Elements without names are matched positionally.  If a list must
-contain at least one vector.  Conceptually, this parameter is used
-similarly to \code{envir} parameter to \code{\link[base:eval]{base::eval}} when that is a list (see
-\code{enclos}).}
+\item{data}{a numeric vector, or a list of equal length numeric
+vectors.  If a named list, the vectors will be matched to \code{fun} parameters
+by those names.  Elements without names are matched positionally.  If a
+list must contain at least one vector.  Conceptually, this parameter is
+used similarly to \code{envir} parameter to \code{\link[base:eval]{base::eval}} when that is a list
+(see \code{enclos}).}
 
 \item{width}{scalar positive numeric giving the width of the window interval.
 Unlike with \code{\link{rolli_exec}}'s \code{n}, \code{width} must be scalar.}

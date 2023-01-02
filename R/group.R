@@ -19,9 +19,10 @@ r2c_group_obj <- function(sizes, order, group.o, sorted, mode) {
     class="r2c.groups"
   )
 }
-group_sizes <- function(go) {
+group_sizes <- function(go, levels=vector(mode='list', length(go))) {
   res <- .Call(R2C_group_sizes, go)
   names(res) <- c('gsizes', 'glabs', 'gmax')
+  res[['glevels']] <- levels  # won't work for list inputs
   res
 }
 group_exec_int <- function(
@@ -121,7 +122,9 @@ group_exec_int <- function(
 
   # Generate and attach group labels, small optimization for predictable groups
   if(mode != "ungrouped") {
-    g.lab.raw <- group.sizes[['glabs']]
+    g.lab.raw <- if(!is.null(group.sizes[['glevels']][[1L]])) {
+      group.sizes[['glevels']][[1L]]
+    } else group.sizes[['glabs']]
     g.lab <-
       if(res.size.type == "scalar") g.lab.raw
       else if(res.size.type == "constant")
@@ -143,7 +146,6 @@ group_exec_int <- function(
   }
   res
 }
-
 #' Compute Group Meta Data
 #'
 #' Use by [`group_exec`] to organize group data, and made available as an
@@ -162,7 +164,7 @@ group_exec_int <- function(
 #'   runs it contains, which might be useful in some circumstances.
 #' @return an "r2c.groups" object, which is a list containing group sizes,
 #'   labels, and group count, along with other meta data such as the group
-#'   ordering vector.  The contents and structure of this 
+#'   ordering vector.
 #' @examples
 #' ## Use same group data for different but same length data.
 #' ## (alternatively, could use two functions on same data).
@@ -176,18 +178,33 @@ group_exec_int <- function(
 
 process_groups <- function(groups, sorted=FALSE) {
   vetr(
-    integer() || (list() && all(vapply(., is.integer, TRUE))),
+    integer() || numeric() || list(),
     LGL.1
   )
   mode <- "list"
-  if(is.integer(groups)) {
+  if(!is.list(groups)) {
     groups <- list(groups)
     mode <- "vec"
   }
+  levels <- vector(mode='list', length(groups))
   if(length(unique(lengths(groups))) != 1L)
     stop("All `groups` vectors must be the same length.")
   if(length(groups) != 1L)
     stop("Only one grouping variable supported at the moment.")
+
+  for(i in seq_along(groups)) {
+    g <- groups[[i]]
+    if(!is.factor(g) && !is.numeric(g) && !is.integer(g)) {
+      stop(
+        "`groups[[", i, "]]` is of invalid type \"", class(g)[1L],
+        "\", should be integer, numeric, or factor."
+      )
+    }
+    if(is.factor(g)) {
+      levels[[i]] <- levels(g)
+    }
+    if(!is.integer(g)) groups[[i]] <- as.integer(g)
+  }
   if(!sorted) {
     o <- do.call(order, groups)
     go <- lapply(groups, "[", o)
@@ -197,7 +214,7 @@ process_groups <- function(groups, sorted=FALSE) {
   }
 
   r2c_group_obj(
-    group_sizes(go[[1L]]), # UPDATE IF ALLOW MORE GROUP VECS
+    group_sizes(go[[1L]], levels=levels), # UPDATE IF ALLOW MORE GROUP VECS
     order=o, group.o=go, sorted=sorted, mode=mode
   )
 }
@@ -220,20 +237,21 @@ r2c_groups_template <- function() {
 #' @seealso [`r2c`] for more details on the behavior and constraints of
 #'   "r2c_fun" functions, [`base::eval`] for the semantics of `enclos`.
 #' @param fun an "r2c_fun" function as produced by [`r2c`].
-#' @param groups an integer vector, or a list of equal-length integer vectors,
-#'   the interaction of which defines individual groups to organize the vectors
-#'   in `data` into.  The vectors must be the same length as those in `data`.
-#'   NA values are considered one group. If a list, the result of the
-#'   calculation will be returned as a "data.frame", otherwise as a named
-#'   vector.  Currently only one group vector is allowed, even when using list
-#'   mode.  Support for multiple group vectors and non-integer vectors will be
-#'   added in the future.
-#' @param data a numeric vector, or a list of equal length numeric vectors.  
-#'   If a named list, the vectors will be matched to `fun` parameters by those
-#'   names.  Elements without names are matched positionally.  If a list must
-#'   contain at least one vector.  Conceptually, this parameter is used
-#'   similarly to `envir` parameter to [`base::eval`] when that is a list (see
-#'   `enclos`).
+#' @param groups an integer, numeric, or factor vector.  Numeric and factor
+#'   vectors are coerced to integer, thus copied.  Alternatively, a list of
+#'   equal-length such vectors, the interaction of which defines individual
+#'   groups to organize the vectors in `data` into.  The vectors must be the
+#'   same length as those in `data`.  NA values are considered one group. If a
+#'   list, the result of the calculation will be returned as a "data.frame",
+#'   otherwise as a named vector.  Currently only one group vector is allowed,
+#'   even when using list mode.  Support for multiple group vectors and other
+#'   types of vectors will be added in the future.
+#' @param data a numeric vector, or a list of equal length numeric
+#'   vectors.  If a named list, the vectors will be matched to `fun` parameters
+#'   by those names.  Elements without names are matched positionally.  If a
+#'   list must contain at least one vector.  Conceptually, this parameter is
+#'   used similarly to `envir` parameter to [`base::eval`] when that is a list
+#'   (see `enclos`).
 #' @param MoreArgs a list of R objects to pass on as iteration-invariant
 #'   arguments to `fun`.  Unlike with `data`, each of the objects therein are
 #'   passed in full to the native code for each iteration  This is useful for
@@ -250,23 +268,21 @@ r2c_groups_template <- function() {
 #' r2c_mean <- r2cq(mean(x))
 #' with(
 #'   mtcars,
-#'   group_exec(r2c_mean, as.integer(cyl), hp)
+#'   group_exec(r2c_mean, cyl, hp)
 #' )
 #'
 #' r2c_slope <- r2cq(
 #'   sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2)
 #' )
-#' with(
-#'   mtcars,
-#'   group_exec(r2c_slope, as.integer(cyl), list(hp, qsec))
-#' )
+#' with(mtcars, group_exec(r2c_slope, cyl, list(hp, qsec)))
+#'
 #' ## Parameters are generated in the order they are encountered
 #' str(formals(r2c_slope))
 #'
 #' ## Data frame output, re-order arguments
 #' with(
 #'   mtcars,
-#'   group_exec(r2c_slope, list(as.integer(cyl)), list(y=hp, x=qsec))
+#'   group_exec(r2c_slope, list(cyl), list(y=hp, x=qsec))
 #' )
 #'
 #' ## We can provide group=invariant parameters:
