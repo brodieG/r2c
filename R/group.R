@@ -262,10 +262,10 @@ r2c_groups_template <- function() {
 #'   positional matching occurring after the elements in `data` are matched.
 #' @param enclos environment to use as the `enclos` parameter to
 #'   [`base::eval`] when evaluating expressions or matching calls (see `data`).
-#' @return If `groups` is an atomic vectors, a named numeric or
-#'   integer vector with the results of executing `fun` on each group and the
-#'   names set to the groups.  Otherwise, a "data.frame" with the group vectors
-#'   as columns and the result of the computation as the last column.
+#' @return If `groups` is an atomic vector, a named numeric or integer vector
+#'   with the results of executing `fun` on each group and the names set to the
+#'   groups.  Otherwise, a "data.frame" with the group vectors as columns and
+#'   the result of the computation as the last column.
 #' @examples
 #' r2c_mean <- r2cq(mean(x))
 #' with(mtcars, group_exec(r2c_mean, hp, groups=cyl))
@@ -293,11 +293,11 @@ r2c_groups_template <- function() {
 #' g <- rep(1:2, each=5)
 #' group_exec(
 #'   r2c_sum_add_na, a, groups=g,
-#'   list(y=weights, na.rm=TRUE)  ## use MoreArgs for group-invariant
+#'   MoreArgs=list(y=weights, na.rm=TRUE)  ## use MoreArgs for group-invariant
 #' )
 #' group_exec(
 #'   r2c_sum_add_na, a, groups=g,
-#'   list(y=-weights, na.rm=FALSE)
+#'   MoreArgs=list(y=-weights, na.rm=FALSE)
 #' )
 #'
 #' ## Groups known to be sorted can save substantial time

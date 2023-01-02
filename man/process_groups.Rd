@@ -7,15 +7,17 @@
 process_groups(groups, sorted = FALSE)
 }
 \arguments{
-\item{groups}{an integer, numeric, or factor vector.  Numeric and factor
-vectors are coerced to integer, thus copied.  Alternatively, a list of
-equal-length such vectors, the interaction of which defines individual
-groups to organize the vectors in \code{data} into.  The vectors must be the
-same length as those in \code{data}.  NA values are considered one group. If a
-list, the result of the calculation will be returned as a "data.frame",
-otherwise as a named vector.  Currently only one group vector is allowed,
-even when using list mode.  Support for multiple group vectors and other
-types of vectors will be added in the future.}
+\item{groups}{an integer, numeric, or factor vector.  Alternatively, a list
+of equal-length such vectors, the interaction of which defines individual
+groups to organize the vectors in \code{data} into.  Numeric vectors are coerced
+to integer, thus copied.  Vectors of integer type, but with different
+classes/attributes (other than factors) will be treated as integer vectors.
+The vectors must be the same length as those in \code{data}.  NA values are
+considered one group. If a list, the result of the calculation will be
+returned as a "data.frame", otherwise as a named vector.  Currently only
+one group vector is allowed, even when using list mode.  Support for
+multiple group vectors and other types of vectors will be added in the
+future.}
 
 \item{sorted}{TRUE or FALSE (default), whether the vectors in \code{groups} are
 already sorted.  If set to TRUE, no sorting will be done on the groups, nor
