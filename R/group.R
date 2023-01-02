@@ -203,7 +203,7 @@ process_groups <- function(groups, sorted=FALSE) {
     if(is.factor(g)) {
       levels[[i]] <- levels(g)
     }
-    if(!is.integer(g)) groups[[i]] <- as.integer(g)
+    if(typeof(g) != "integer") groups[[i]] <- as.integer(g)
   }
   if(!sorted) {
     o <- do.call(order, groups)
@@ -237,15 +237,17 @@ r2c_groups_template <- function() {
 #' @seealso [`r2c`] for more details on the behavior and constraints of
 #'   "r2c_fun" functions, [`base::eval`] for the semantics of `enclos`.
 #' @param fun an "r2c_fun" function as produced by [`r2c`].
-#' @param groups an integer, numeric, or factor vector.  Numeric and factor
-#'   vectors are coerced to integer, thus copied.  Alternatively, a list of
-#'   equal-length such vectors, the interaction of which defines individual
-#'   groups to organize the vectors in `data` into.  The vectors must be the
-#'   same length as those in `data`.  NA values are considered one group. If a
-#'   list, the result of the calculation will be returned as a "data.frame",
-#'   otherwise as a named vector.  Currently only one group vector is allowed,
-#'   even when using list mode.  Support for multiple group vectors and other
-#'   types of vectors will be added in the future.
+#' @param groups an integer, numeric, or factor vector.  Alternatively, a list
+#'   of equal-length such vectors, the interaction of which defines individual
+#'   groups to organize the vectors in `data` into.  Numeric vectors are coerced
+#'   to integer, thus copied.  Vectors of integer type, but with different
+#'   classes/attributes (other than factors) will be treated as integer vectors.
+#'   The vectors must be the same length as those in `data`.  NA values are
+#'   considered one group. If a list, the result of the calculation will be
+#'   returned as a "data.frame", otherwise as a named vector.  Currently only
+#'   one group vector is allowed, even when using list mode.  Support for
+#'   multiple group vectors and other types of vectors will be added in the
+#'   future.
 #' @param data a numeric vector, or a list of equal length numeric
 #'   vectors.  If a named list, the vectors will be matched to `fun` parameters
 #'   by those names.  Elements without names are matched positionally.  If a
