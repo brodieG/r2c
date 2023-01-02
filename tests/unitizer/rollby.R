@@ -89,14 +89,14 @@ unitizer_sect('complete coverage', {
   identical(sum(rbs(wvec, width=1, by=1)), sum(wvec))
 })
 unitizer_sect('zero lengths', {
-  rbs_W1B1(numeric(), x=numeric())
-  rbs_W1B1(numeric(), x=numeric(), start=0, end=1)
-  rbs_W1B1(numeric(), x=numeric(1), start=0, end=1)
-  rbs_W1B1(numeric(1), x=numeric(), start=0, end=1)
-  rbs_W1B1(list(), x=numeric(), start=0, end=1)
-  rbs_W1B1(list(), x=numeric(1), start=0, end=1)
-  rbs_W1B1(list(numeric(1)), x=numeric(), start=0, end=1)
-  rbs_W1B1(list(numeric()), x=numeric(), start=0, end=1)
+  rbs_W1B1(numeric(), position=numeric())
+  rbs_W1B1(numeric(), position=numeric(), start=0, end=1)
+  rbs_W1B1(numeric(), position=numeric(1), start=0, end=1)
+  rbs_W1B1(numeric(1), position=numeric(), start=0, end=1)
+  rbs_W1B1(list(), position=numeric(), start=0, end=1)
+  rbs_W1B1(list(), position=numeric(1), start=0, end=1)
+  rbs_W1B1(list(numeric(1)), position=numeric(), start=0, end=1)
+  rbs_W1B1(list(numeric()), position=numeric(), start=0, end=1)
 
   ras(wvec, at=numeric(), width=1, offset=0)
   ras(numeric(), at=1, width=1, offset=0)
@@ -107,11 +107,11 @@ unitizer_sect('zero lengths', {
 unitizer_sect('play with x', {
   # Double width equal to half position
   identical(
-    rbs(wvec, width = 2, by = 2),
-    rbs(wvec, width = 1, by = 1, x = seq_along(wvec)/2)
+    rbs(wvec, width=2, by=2),
+    rbs(wvec, width=1, by=1, position=seq_along(wvec)/2)
   )
-  show_bits(rbs_W1B1(wvec, x=c(1, 1.25, 2, 3.25, 5)))
-  show_bits(rbs_W1B1(wvec, x=rev(6 - c(1, 1.25, 2, 3.25, 5))))
+  show_bits(rbs_W1B1(wvec, position=c(1, 1.25, 2, 3.25, 5)))
+  show_bits(rbs_W1B1(wvec, position=rev(6 - c(1, 1.25, 2, 3.25, 5))))
 })
 unitizer_sect('rollat', {
   show_bits(ras(wvec, at=c(1, 5), width=4, offset=-2))

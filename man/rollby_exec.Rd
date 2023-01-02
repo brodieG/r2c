@@ -12,9 +12,9 @@ rollby_exec(
   width,
   by,
   offset = 0,
-  x = seq(1, length(first_vec(data)), 1),
-  start = x[1L],
-  end = x[length(x)],
+  position = seq(1, length(first_vec(data)), 1),
+  start = position[1L],
+  end = position[length(position)],
   bounds = "[)",
   MoreArgs = list(),
   enclos = parent.frame()
@@ -24,9 +24,9 @@ rollat_exec(
   fun,
   data,
   width,
-  at = x,
+  at = position,
   offset = 0,
-  x = seq(1, length(first_vec(data)), 1),
+  position = seq(1, length(first_vec(data)), 1),
   bounds = "[)",
   MoreArgs = list(),
   enclos = parent.frame()
@@ -37,7 +37,7 @@ rollbw_exec(
   data,
   left,
   right,
-  x = seq(1, length(first_vec(data)), 1),
+  position = seq(1, length(first_vec(data)), 1),
   bounds = "[)",
   MoreArgs = list(),
   enclos = parent.frame()
@@ -68,8 +68,8 @@ of the window is aligned with the anchor (i.e. conceptually equivalent to
 \code{-width} for right aligned.  See "Intervals".  Note this default is
 different to that for \code{\link{rolli_exec}}.}
 
-\item{x}{finite, non-NA, monotonically increasing numeric vector with as many
-elements as \code{data}.  Each element in \code{x} is the position on the real line
+\item{position}{finite, non-NA, monotonically increasing numeric vector with as many
+elements as \code{data}.  Each element in \code{position} is the position on the real line
 of the corresponding \code{data} element (see notes).  Integer vectors are
 coerced to numeric.}
 
@@ -114,16 +114,20 @@ A numeric vector of length:
 \description{
 Calls the native code associated with \code{fun} on sequential windows along
 \code{data} vector(s) with "elements" positioned on the real line.  Data element
-positions are given with \code{x} and can be irregularly spaced, so equal sized
-windows may contain different number of elements.  Each \verb{roll*_exec} function
-provides a different mechanism for defining the space covered by each window.
-All of them will compute \code{fun} for each iteration with the set of data
-"elements" that fall within that window.
+positions can be specified and irregular, so equal sized windows may contain
+different number of elements.  Window positions may be specified independent
+of data element positions.  Each \verb{roll*_exec} function provides a different
+mechanism for defining the space covered by each window.  All of them will
+compute \code{fun} for each iteration with the set of data "elements" that fall
+within that window.
 \itemize{
 \item \code{rollby_exec}: equal width windows spaced \code{by} apart.
 \item \code{rollat_exec}: equal width windows at specific positions given in \code{at}.
 \item \code{rollbw_exec}: windows with ends defined explicitly in \code{left} and \code{right}.
 }
+
+Additionally, \code{\link{rolli_exec}} is available for variable integer-width windows
+spaced \code{by} apart, but \code{data} elements are rank-positioned only.
 }
 \note{
 For the purposes of this documentation, the first value in a set or the
@@ -149,11 +153,11 @@ position vectors.
 \code{data} is made up of "elements", where an "element" is a vector element if
 \code{data} is an atomic vector, or a "row" if it is a "data.frame" / list of
 equal-length atomic vectors.  Elements of \code{data} are arrayed on the real line
-at positions specified by \code{x}.  The default is for each element to be located
-at its integer rank, i.e. the first element is at 1, the second at 2, and so
-on.  Rank position is the sole and implicit option for \code{\link{rolli_exec}}, which
-will be more efficient for that case, slightly so for \code{by = 1}, and more so
-for larger values of \code{by}.
+by \code{position}.  The default is for each element to be located at its integer
+rank, i.e. the first element is at 1, the second at 2, and so on.  Rank
+position is the sole and implicit option for \code{\link{rolli_exec}}, which will be
+more efficient for that case, slightly so for \code{by = 1}, and more so for
+larger values of \code{by}.
 }
 
 \section{Windows}{
@@ -167,33 +171,37 @@ and open on the right by default.
 
 As an illustration for \code{rollby_exec} and \code{rollat_exec}, consider the case of
 \code{width = 3} windows at the fourth iteration, with various \code{offset} values.
-The offset is the distance from the left end of the window to the anchor:\preformatted{## rollby_exec(..., by=1, width=3)
+The offset is the distance from the left end of the window to the anchor:
+
+\if{html}{\out{<div class="sourceCode">}}\preformatted{## rollby_exec(..., by=1, width=3)
                    +------------- 4th iteration, anchor is 4.0
                    V
 1.0   2.0   3.0   4.0   5.0   6.0   7.0 | < Real Line
  1     2     3     4     5     6     7  | < Element Position
                    |
                    |                      Offset     In-window Elements
-                   [-----------------)  | o =    0   \{4, 5, 6\}
-          [-----------------)           | o = -w/2   \{3, 4, 5\}
- [-----------------)                    | o =   -w   \{1, 2, 3\}
-}
+                   [-----------------)  |     0      \{4, 5, 6\}
+          [-----------------)           |  -w/2      \{3, 4, 5\}
+ [-----------------)                    |    -w      \{1, 2, 3\}
+}\if{html}{\out{</div>}}
 
 In each case we get three elements in the window, although this is only
 because the positions of the elements are on the integers.  Because the
 windows are open on the right, elements that align exactly on the right end
 of the window are excluded.  With irregularly spaced elements, e.g. with
-\code{x = c(1, 1.25, 2.5, 5.3, 7, ...)}, we might see (positions approximate):\preformatted{## rollby_exec(..., by=1, width=3, x=c(1, 1.25, 2.5, 5.3, 7))
+\code{position = c(1, 1.25, 2.5, 5.3, 7, ...)}, we might see (positions approximate):
+
+\if{html}{\out{<div class="sourceCode">}}\preformatted{## rollby_exec(..., by=1, width=3, position=c(1, 1.25, 2.5, 5.3, 7))
                    +------------- 4th iteration, base index is 4.0
                    V
 1.0   2.0   3.0   4.0   5.0   6.0   7.0 | < Real Line
- 1 2      3        |       4         5  | < Element ~Position
+ 1 2      3        |       4         5  | < Element ~Position Elements
                    |
                    |                      Offset     In-window
-                   [-----------------)  | o =    0   \{4\}
-          [-----------------)           | o = -w/2   \{3, 4\}
- [-----------------)                    | o =   -w   \{1, 2, 3\}
-}
+                   [-----------------)  |     0      \{4\}
+          [-----------------)           |  -w/2      \{3, 4\}
+ [-----------------)                    |    -w      \{1, 2, 3\}
+}\if{html}{\out{</div>}}
 
 Unlike with \code{\link{rolli_exec}} there is no \code{partial} parameter as there is no
 expectation of a fixed number of elements in any given window.
@@ -220,8 +228,9 @@ iteration.
 
 \code{rolli_exec} has semantics similar to the simple use case for
 \code{zoo::rollapply}, \verb{data.table::froll*}, \verb{RcppRoll::roll*}, and
-\verb{slider::slide_<fun>}.  \code{rollat_exec(..., x=x, at=x)} has semantics similar
-to \code{slider::slide_index}, but is more flexible because \code{at} need not be \code{x}.
+\verb{slider::slide_<fun>}.  \code{rollat_exec(..., position=x, at=x)} has semantics
+similar to \code{slider::slide_index}, but is more flexible because \code{at} need not
+be \code{position}.
 }
 
 \section{Performance}{
@@ -231,25 +240,25 @@ In general \code{{r2c}} should perform better than most alternate window
 functions for "arbitrary" statistics (i.e. those that can be composed from
 \code{{r2c}} supported functions).  Some packages implement algorithms that will
 outperform \code{{r2c}} on wide windows for a small set of simple predefined
-statistics.  For example, for rolling means \code{{data.table}} offers the
-"on-line" algorithm and \code{{slider}} the "segment tree" algorithm, each with
-different performance and precision trade-offs.
+statistics.  For example, for rolling means \code{{data.table}} and \code{{roll}} offer
+the "on-line" algorithm, and \code{{slider}} the "segment tree" algorithm, each
+with different performance and precision trade-offs.
 
 In testing with sums we've found the \code{{slider}} (v0.2.2) "segment tree"
 algorithm to start outperforming \code{{r2c}} at window size ~100 for
 \code{slider::slide_sum} and at window size ~1000 for \code{slider::slide_index_sum}.
 
-The \code{{data.table}} (v1.14.6) "on-line" algorithm is significantly faster than
-either \code{{r2c}} or \code{{slider}}, and at least on systems with 80 bit long
-doubles the precision loss seems tolerable for many applications.  The
-\code{{data.table}} "exact" algorithm in single thread mode has performance near
-identical to \code{\link{rolli_exec}}.
+The "on-line" algorithms are significantly faster than either \code{{r2c}} or
+\code{{slider}}, and at least on systems with 80 bit long doubles the precision
+loss (tested on \code{{data.table}} 1.4.16) seems tolerable for many applications.
+The \code{{data.table}} "exact" algorithm in single thread mode has performance
+near identical to \code{\link{rolli_exec}}.
 
-For \code{by} values wider than the typical difference between \code{x} values,
-implementations that adjust the search stride along \code{x} taking advantage of
+For \code{by} values wider than the typical difference between \code{position} values,
+implementations that adjust the search stride along \code{position} taking advantage of
 its ordered nature will likely be faster.  \code{\link{rolli_exec}} does this.
 
-Any ALTREP objects generated for use in \code{x}, \code{at}, \code{left}, or \code{right}
+Any ALTREP objects generated for use in \code{position}, \code{at}, \code{left}, or \code{right}
 will be expanded.  Implementing ALTREP access for them is desirable, but
 would complicate the code substantially so is unlikely to get implemented.
 
@@ -257,6 +266,8 @@ Recall that the less general the \verb{roll*_} function is, the better performan
 it will have (see "Equivalence").  The differences are slight between the
 by/at/bw implementations, and also for \code{rolli_exec} if \verb{by << n}.  If
 \verb{by >> n}, \code{rolli_exec} can be much faster.
+
+Testing was done on a 6th generation Skylake.
 }
 
 \examples{
@@ -274,7 +285,7 @@ r2c_mean <- r2cq(mean(x))
 ## Mean trailing quarter revenue, computed/reported "monthly"
 month <- 3600 * 24 * 30  # more or less
 by30 <- rollby_exec(
-  r2c_mean, revenue, x=time, width=3 * month, by=month,
+  r2c_mean, revenue, position=time, width=3 * month, by=month,
   start=as.POSIXct('2021-01-01'),
   offset=-3 * month   # trailing three months
 )
@@ -284,7 +295,8 @@ by30
 timeby30 <- seq(as.POSIXct('2021-01-01'), to=max(time), by=month)
 timeby30[1:10]
 at30 <- rollat_exec(
-  r2c_mean, revenue, x=time, width=3 * month, at=timeby30, offset=-3 * month
+  r2c_mean, revenue, position=time, width=3 * month,
+  at=timeby30, offset=-3 * month
 )
 at30
 identical(by30, at30)
@@ -293,7 +305,8 @@ identical(by30, at30)
 timebymo <- seq(as.POSIXct('2021-01-01'), to=max(time), by="+1 month")
 timebymo[1:10]
 atmo <- rollat_exec(
-  r2c_mean, revenue, x=time, width=3 * month, at=timebymo, offset=-3 * month
+  r2c_mean, revenue, position=time, width=3 * month,
+  at=timebymo, offset=-3 * month
 )
 (rev.90 <- data.frame(time=timebymo, prev.90=atmo))[1:5,]
 
@@ -301,7 +314,7 @@ atmo <- rollat_exec(
 months <- seq(as.POSIXct('2020-10-01'), to=max(time), by="+1 month")
 left <- head(months, -3)
 right <- tail(months, -3)
-bwmo <- rollbw_exec(r2c_mean, revenue, x=time, left=left, right=right)
+bwmo <- rollbw_exec(r2c_mean, revenue, position=time, left=left, right=right)
 (rev.qtr <- data.frame(time=right, prev.qtr=bwmo))[1:5,]
 
 ## These are not exactly the same because -90 days is not always 3 months
@@ -315,7 +328,7 @@ months2 <- seq(
 )
 left <- months2[-length(months2)]
 right <- months2[-1]
-thismo <- rollbw_exec(r2c_mean, revenue, x=time, left=left, right=right)
+thismo <- rollbw_exec(r2c_mean, revenue, position=time, left=left, right=right)
 transform(
   rev.qtr,
   this.month=thismo,
