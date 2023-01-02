@@ -266,15 +266,12 @@ r2c_groups_template <- function() {
 #'   as columns and the result of the computation as the last column.
 #' @examples
 #' r2c_mean <- r2cq(mean(x))
-#' with(
-#'   mtcars,
-#'   group_exec(r2c_mean, cyl, hp)
-#' )
+#' with(mtcars, group_exec(r2c_mean, hp, groups=cyl))
 #'
 #' r2c_slope <- r2cq(
 #'   sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2)
 #' )
-#' with(mtcars, group_exec(r2c_slope, cyl, list(hp, qsec)))
+#' with(mtcars, group_exec(r2c_slope, list(hp, qsec), groups=cyl))
 #'
 #' ## Parameters are generated in the order they are encountered
 #' str(formals(r2c_slope))
@@ -282,7 +279,7 @@ r2c_groups_template <- function() {
 #' ## Data frame output, re-order arguments
 #' with(
 #'   mtcars,
-#'   group_exec(r2c_slope, list(cyl), list(y=hp, x=qsec))
+#'   group_exec(r2c_slope, list(y=hp, x=qsec), groups=list(cyl))
 #' )
 #'
 #' ## We can provide group=invariant parameters:
@@ -293,10 +290,12 @@ r2c_groups_template <- function() {
 #' weights <- c(.1, .1, .2, .2, .4)
 #' g <- rep(1:2, each=5)
 #' group_exec(
-#'   r2c_sum_add_na,
-#'   g,
-#'   a,
+#'   r2c_sum_add_na, a, groups=g,
 #'   list(y=weights, na.rm=TRUE)  ## use MoreArgs for group-invariant
+#' )
+#' group_exec(
+#'   r2c_sum_add_na, a, groups=g,
+#'   list(y=-weights, na.rm=FALSE)
 #' )
 #'
 #' ## Groups known to be sorted can save substantial time
@@ -304,19 +303,19 @@ r2c_groups_template <- function() {
 #' x <- runif(1e7)
 #' g <- cumsum(sample(c(TRUE, rep(FALSE, 99)), n, replace=TRUE))
 #' identical(g, sort(g))  # sorted already!
-#' system.time(res1 <- group_exec(r2c_mean, g, x))
-#' system.time(res2 <- group_exec(r2c_mean, process_groups(g, sorted=TRUE), x))
+#' system.time(res1 <- group_exec(r2c_mean, x, g))
+#' system.time(res2 <- group_exec(r2c_mean, x, process_groups(g, sorted=TRUE)))
 #' identical(res1, res2)
 #'
-#' ## We can also group by runs with `sorted`
+#' ## We can also group by runs by lying about `sorted` status
 #' x <- 1:8
 #' g <- rep(rep(1:2, each=2), 2)
 #' g
-#' group_exec(r2c_mean, list(g), x)
-#' group_exec(r2c_mean, process_groups(list(g), sorted=FALSE), x)
+#' group_exec(r2c_mean, x, groups=list(g))
+#' group_exec(r2c_mean, x, groups=process_groups(list(g), sorted=TRUE))
 
 group_exec <- function(
-  fun, groups, data, MoreArgs=list(), enclos=parent.frame()
+  fun, data, groups, MoreArgs=list(), enclos=parent.frame()
 ) {
   # FIXME: add validation for shlib
   vetr(

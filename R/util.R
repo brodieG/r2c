@@ -23,7 +23,7 @@
 #' @param call quoted R call to apply to each group.
 #' @return numeric vector
 
-bsac <- function(call, groups, data, MoreArgs=list(), enclos=parent.frame()) {
+bsac <- function(call, data, groups, MoreArgs=list(), enclos=parent.frame()) {
   data <- if(!is.data.frame(data)) as.data.frame(data) else data
   d.s <- split(data, groups)
 
