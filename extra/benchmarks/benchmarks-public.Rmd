@@ -3,6 +3,7 @@ title: "Benchmarks for r2c and Alternatives"
 output:
   html_vignette:
     toc: true
+    mathjax: NULL
 ---
 
 # Prelude
