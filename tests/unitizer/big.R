@@ -26,10 +26,10 @@ unitizer_sect("Big Tests", {
   round(range(ri.slope, na.rm=TRUE), 4)
   pos <- cumsum(x)
   # Check entry distribution
-  rby.pos <- rollby_exec(r2c_len, x, x=pos, by=1, width=2)
+  rby.pos <- rollby_exec(r2c_len, x, position=pos, by=1, width=2)
   table(rby.pos)
   # Should be ~8 entries per window
-  rby.slope <- rbslope(list(x, y), x=pos, by=1, width=2)
+  rby.slope <- rbslope(list(x, y), position=pos, by=1, width=2)
   round(range(rby.slope, na.rm=TRUE), 4)
   length(rby.slope)
   # spot check

@@ -3,6 +3,7 @@ title: "Benchmarks for r2c and Alternatives"
 output:
   html_vignette:
     toc: true
+    mathjax: NULL
 ---
 
 # Prelude
@@ -68,15 +69,22 @@ mean1 <- function(x) sum(x) / length(x)
 ### r2c Baseline
 
 ```{r}
-system.time(slope.r2c <- group_exec(r2c_slope, g.r2c, list(x, y)))
-identical(slope.r2c, slope.base)
+library(r2c)
+system.time(g.r2c <- process_groups(g, sorted=TRUE))  # pre-grouping
+r2c_slope1 <- r2cq(
+  sum((x - mean1(x)) * (y - mean1(y))) / sum((x - mean1(x))^2)
+)
+system.time(slope.r2c <- group_exec(r2c_slope1, g.r2c, list(x, y)))
 ```
 
 ### Base R and FastR
 
 ```{r}
+system.time(x.split <- split(x, g))    # pre-group
+y.split <- split(y, g)    # pre-group
 slope <- function(x, y) sum((x - mean1(x)) * (y - mean1(y))) / sum((x - mean1(x)) ^ 2)
 system.time(slope.base <- mapply(slope, x.split, y.split))
+identical(slope.r2c, slope.base)
 ```
 
 `{FastR}` uses the same code, but needs to be run under the `{FastR}`
@@ -85,8 +93,9 @@ implementation of R.
 ### data.table
 
 ```{r}
-dt <- data.table(x, y, g)
-setkey(dt, g)
+data.table::setDTthreads(1)
+dt <- data.table::data.table(x, y, g)
+system.time(data.table::setkey(dt, g), reps=1)  # pre-sorting
 mean <- mean1  # so name change alone doesn't break Gforce
 system.time(
   slope.dt <- dt[,
@@ -99,11 +108,14 @@ rm(mean)
 ```
 
 In this case using `mean1` alone would break Gforce, but it's moot as the
-complex expression would too.
+complex expression would too.  This is not entirely fair to `{data.table}` as it
+does not pre-group like `{collapse}`/`{r2c}`
 
 ### collapse
 
 ```{r}
+library(collapse)
+system.time(g.clp <- GRP(g))   # pre-sort/group
 fmean2 <- function(x, cg) fmean(x, cg, na.rm=FALSE, TRA="replace_fill")
 system.time(
   slope.clp <-
@@ -152,22 +164,19 @@ Ed: don't recall why this isn't working correctly now.
 
 ```{r}
 library(r2c)
-g.r2c <- process_groups(g, sorted=TRUE)  # pre-group
 r2c_sum <- r2cq(sum(x))
 system.time(sum.r2c <- group_exec(r2c_sum, g.r2c, x))
-identical(sum.r2c, sum.base)
 ```
 
 ### Base R and FastR
 
 ```{r}
-x.split <- split(x, g)
-y.split <- split(y, g)    # for later
 system.time(sum.base <- vapply(x.split, sum, 0))
+identical(sum.r2c, sum.base)
 ```
 
 `{FastR}` uses the same code, but needs to be run under the `{FastR}`
-implementation of R.  Times for `{FastR}` not reported.}
+implementation of R.  Times for `{FastR}` not reported.
 
 
 ### data.table
@@ -185,7 +194,6 @@ all.equal(sum.dt, unname(sum.base))
 
 ```{r}
 library(collapse)
-g.clp <- GRP(g)
 system.time(sum.clp <- fsum(x, g.clp, na.rm=FALSE))
 identical(sum.clp, sum.base)
 all.equal(sum.clp, sum.base)
@@ -199,16 +207,16 @@ gn <- 1e3
 ng <- n/gn
 g <- cumsum(sample(c(TRUE, rep(FALSE, gn - 1)), n, replace=TRUE))
 
-x.split <- split(x, g)
-y.split <- split(y, g)    # for later
-g.r2c <- process_groups(g, sorted=TRUE)
-g.clp <- GRP(g)
+system.time(x.split <- split(x, g))
+y.split <- split(y, g)
+system.time(g.r2c <- process_groups(g, sorted=TRUE))
+system.time(g.clp <- GRP(g))
 ```
 
 And rerun the same code from before:
 
-```
-system.time(slope.r2c <- group_exec(r2c_slope, g.r2c, list(x, y)))
+```{r}
+system.time(slope.r2c <- group_exec(r2c_slope1, g.r2c, list(x, y)))
 system.time(slope.base <- mapply(slope, x.split, y.split))
 dt <- data.table(x, y, g)
 setkey(dt, g)
@@ -247,7 +255,8 @@ y <- runif(n) * runif(n)
 ### Baselines
 
 We need a left and right aligned version because different alternatives use
-different alignments (and some are not adjustable).
+different alignments (and some are not adjustable).  Here we use `mean` instead
+of `mean1` since we're not comparing against `collapse`.
 
 ```{r}
 r2c_slope <- r2cq(

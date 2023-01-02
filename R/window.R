@@ -111,26 +111,30 @@ bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 #'
 #' Calls the native code associated with `fun` on sequential windows along
 #' `data` vector(s) with "elements" positioned on the real line.  Data element
-#' positions are given with `x` and can be irregularly spaced, so equal sized
-#' windows may contain different number of elements.  Each `roll*_exec` function
-#' provides a different mechanism for defining the space covered by each window.
-#' All of them will compute `fun` for each iteration with the set of data
-#' "elements" that fall within that window.
+#' positions can be specified and irregular, so equal sized windows may contain
+#' different number of elements.  Window positions may be specified independent
+#' of data element positions.  Each `roll*_exec` function provides a different
+#' mechanism for defining the space covered by each window.  All of them will
+#' compute `fun` for each iteration with the set of data "elements" that fall
+#' within that window.
 #'
 #' * `rollby_exec`: equal width windows spaced `by` apart.
 #' * `rollat_exec`: equal width windows at specific positions given in `at`.
 #' * `rollbw_exec`: windows with ends defined explicitly in `left` and `right`.
+#'
+#' Additionally, [`rolli_exec`] is available for variable integer-width windows
+#' spaced `by` apart, but `data` elements are rank-positioned only.
 #'
 #' @section Data Elements:
 #'
 #' `data` is made up of "elements", where an "element" is a vector element if
 #' `data` is an atomic vector, or a "row" if it is a "data.frame" / list of
 #' equal-length atomic vectors.  Elements of `data` are arrayed on the real line
-#' at positions specified by `x`.  The default is for each element to be located
-#' at its integer rank, i.e. the first element is at 1, the second at 2, and so
-#' on.  Rank position is the sole and implicit option for [`rolli_exec`], which
-#' will be more efficient for that case, slightly so for `by = 1`, and more so
-#' for larger values of `by`.
+#' by `position`.  The default is for each element to be located at its integer
+#' rank, i.e. the first element is at 1, the second at 2, and so on.  Rank
+#' position is the sole and implicit option for [`rolli_exec`], which will be
+#' more efficient for that case, slightly so for `by = 1`, and more so for
+#' larger values of `by`.
 #'
 #' @section Windows:
 #'
@@ -152,28 +156,28 @@ bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 #'  1     2     3     4     5     6     7  | < Element Position
 #'                    |
 #'                    |                      Offset     In-window Elements
-#'                    [-----------------)  | o =    0   {4, 5, 6}
-#'           [-----------------)           | o = -w/2   {3, 4, 5}
-#'  [-----------------)                    | o =   -w   {1, 2, 3}
+#'                    [-----------------)  |     0      {4, 5, 6}
+#'           [-----------------)           |  -w/2      {3, 4, 5}
+#'  [-----------------)                    |    -w      {1, 2, 3}
 #' ```
 #'
 #' In each case we get three elements in the window, although this is only
 #' because the positions of the elements are on the integers.  Because the
 #' windows are open on the right, elements that align exactly on the right end
 #' of the window are excluded.  With irregularly spaced elements, e.g. with
-#' `x = c(1, 1.25, 2.5, 5.3, 7, ...)`, we might see (positions approximate):
+#' `position = c(1, 1.25, 2.5, 5.3, 7, ...)`, we might see (positions approximate):
 #'
 #' ```
-#' ## rollby_exec(..., by=1, width=3, x=c(1, 1.25, 2.5, 5.3, 7))
+#' ## rollby_exec(..., by=1, width=3, position=c(1, 1.25, 2.5, 5.3, 7))
 #'                    +------------- 4th iteration, base index is 4.0
 #'                    V
 #' 1.0   2.0   3.0   4.0   5.0   6.0   7.0 | < Real Line
-#'  1 2      3        |       4         5  | < Element ~Position
+#'  1 2      3        |       4         5  | < Element ~Position Elements
 #'                    |
 #'                    |                      Offset     In-window
-#'                    [-----------------)  | o =    0   {4}
-#'           [-----------------)           | o = -w/2   {3, 4}
-#'  [-----------------)                    | o =   -w   {1, 2, 3}
+#'                    [-----------------)  |     0      {4}
+#'           [-----------------)           |  -w/2      {3, 4}
+#'  [-----------------)                    |    -w      {1, 2, 3}
 #' ```
 #'
 #' Unlike with [`rolli_exec`] there is no `partial` parameter as there is no
@@ -199,8 +203,9 @@ bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 #'
 #' `rolli_exec` has semantics similar to the simple use case for
 #' `zoo::rollapply`, `data.table::froll*`, `RcppRoll::roll*`, and
-#' `slider::slide_<fun>`.  `rollat_exec(..., x=x, at=x)` has semantics similar
-#' to `slider::slide_index`, but is more flexible because `at` need not be `x`.
+#' `slider::slide_<fun>`.  `rollat_exec(..., position=x, at=x)` has semantics
+#' similar to `slider::slide_index`, but is more flexible because `at` need not
+#' be `position`.
 #'
 #' @section Performance:
 #'
@@ -208,25 +213,25 @@ bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 #' functions for "arbitrary" statistics (i.e. those that can be composed from
 #' `{r2c}` supported functions).  Some packages implement algorithms that will
 #' outperform `{r2c}` on wide windows for a small set of simple predefined
-#' statistics.  For example, for rolling means `{data.table}` offers the
-#' "on-line" algorithm and `{slider}` the "segment tree" algorithm, each with
-#' different performance and precision trade-offs.
+#' statistics.  For example, for rolling means `{data.table}` and `{roll}` offer
+#' the "on-line" algorithm, and `{slider}` the "segment tree" algorithm, each
+#' with different performance and precision trade-offs.
 #'
 #' In testing with sums we've found the `{slider}` (v0.2.2) "segment tree"
 #' algorithm to start outperforming `{r2c}` at window size ~100 for
 #' `slider::slide_sum` and at window size ~1000 for `slider::slide_index_sum`.
 #'
-#' The `{data.table}` (v1.14.6) "on-line" algorithm is significantly faster than
-#' either `{r2c}` or `{slider}`, and at least on systems with 80 bit long
-#' doubles the precision loss seems tolerable for many applications.  The
-#' `{data.table}` "exact" algorithm in single thread mode has performance near
-#' identical to [`rolli_exec`].
+#' The "on-line" algorithms are significantly faster than either `{r2c}` or
+#' `{slider}`, and at least on systems with 80 bit long doubles the precision
+#' loss (tested on `{data.table}` 1.4.16) seems tolerable for many applications.
+#' The `{data.table}` "exact" algorithm in single thread mode has performance
+#' near identical to [`rolli_exec`].
 #'
-#' For `by` values wider than the typical difference between `x` values,
-#' implementations that adjust the search stride along `x` taking advantage of
+#' For `by` values wider than the typical difference between `position` values,
+#' implementations that adjust the search stride along `position` taking advantage of
 #' its ordered nature will likely be faster.  [`rolli_exec`] does this.
 #'
-#' Any ALTREP objects generated for use in `x`, `at`, `left`, or `right`
+#' Any ALTREP objects generated for use in `position`, `at`, `left`, or `right`
 #' will be expanded.  Implementing ALTREP access for them is desirable, but
 #' would complicate the code substantially so is unlikely to get implemented.
 #'
@@ -234,6 +239,8 @@ bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 #' it will have (see "Equivalence").  The differences are slight between the
 #' by/at/bw implementations, and also for `rolli_exec` if `by << n`.  If
 #' `by >> n`, `rolli_exec` can be much faster.
+#'
+#' Testing was done on a 6th generation Skylake.
 #'
 #' @note For the purposes of this documentation, the first value in a set or the
 #'   lowest value in a range are considered to be the "leftmost" values.
@@ -261,8 +268,8 @@ bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 #'   results as used with this function.
 #' @param width scalar positive numeric giving the width of the window interval.
 #'   Unlike with [`rolli_exec`]'s `n`, `width` must be scalar.
-#' @param x finite, non-NA, monotonically increasing numeric vector with as many
-#'   elements as `data`.  Each element in `x` is the position on the real line
+#' @param position finite, non-NA, monotonically increasing numeric vector with as many
+#'   elements as `data`.  Each element in `position` is the position on the real line
 #'   of the corresponding `data` element (see notes).  Integer vectors are
 #'   coerced to numeric.
 #' @param by strictly positive, finite, non-NA scalar numeric, interpreted
@@ -311,7 +318,7 @@ bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 #' ## Mean trailing quarter revenue, computed/reported "monthly"
 #' month <- 3600 * 24 * 30  # more or less
 #' by30 <- rollby_exec(
-#'   r2c_mean, revenue, x=time, width=3 * month, by=month,
+#'   r2c_mean, revenue, position=time, width=3 * month, by=month,
 #'   start=as.POSIXct('2021-01-01'),
 #'   offset=-3 * month   # trailing three months
 #' )
@@ -321,7 +328,8 @@ bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 #' timeby30 <- seq(as.POSIXct('2021-01-01'), to=max(time), by=month)
 #' timeby30[1:10]
 #' at30 <- rollat_exec(
-#'   r2c_mean, revenue, x=time, width=3 * month, at=timeby30, offset=-3 * month
+#'   r2c_mean, revenue, position=time, width=3 * month,
+#'   at=timeby30, offset=-3 * month
 #' )
 #' at30
 #' identical(by30, at30)
@@ -330,7 +338,8 @@ bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 #' timebymo <- seq(as.POSIXct('2021-01-01'), to=max(time), by="+1 month")
 #' timebymo[1:10]
 #' atmo <- rollat_exec(
-#'   r2c_mean, revenue, x=time, width=3 * month, at=timebymo, offset=-3 * month
+#'   r2c_mean, revenue, position=time, width=3 * month,
+#'   at=timebymo, offset=-3 * month
 #' )
 #' (rev.90 <- data.frame(time=timebymo, prev.90=atmo))[1:5,]
 #'
@@ -338,7 +347,7 @@ bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 #' months <- seq(as.POSIXct('2020-10-01'), to=max(time), by="+1 month")
 #' left <- head(months, -3)
 #' right <- tail(months, -3)
-#' bwmo <- rollbw_exec(r2c_mean, revenue, x=time, left=left, right=right)
+#' bwmo <- rollbw_exec(r2c_mean, revenue, position=time, left=left, right=right)
 #' (rev.qtr <- data.frame(time=right, prev.qtr=bwmo))[1:5,]
 #'
 #' ## These are not exactly the same because -90 days is not always 3 months
@@ -352,7 +361,7 @@ bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 #' )
 #' left <- months2[-length(months2)]
 #' right <- months2[-1]
-#' thismo <- rollbw_exec(r2c_mean, revenue, x=time, left=left, right=right)
+#' thismo <- rollbw_exec(r2c_mean, revenue, position=time, left=left, right=right)
 #' transform(
 #'   rev.qtr,
 #'   this.month=thismo,
@@ -362,15 +371,15 @@ bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 
 rollby_exec <- function(
   fun, data, width, by, offset=0,
-  x=seq(1, length(first_vec(data)), 1),
-  start=x[1L], end=x[length(x)],
+  position=seq(1, length(first_vec(data)), 1),
+  start=position[1L], end=position[length(position)],
   bounds="[)", MoreArgs=list(), enclos=parent.frame()
 ) {
   # FIXME: add validation for shlib
   vetr(
     fun=is.function(.) && inherits(., 'r2c_fun'),
     width=NUM.1.POS,
-    x=(numeric() || integer()) && length(.) == length(first_vec(data)),
+    position=(numeric() || integer()) && length(.) == length(first_vec(data)),
     data=(
       (numeric() || integer()) ||
       (list() && all(is.num_naked(.)) && length(.) > 0)
@@ -391,7 +400,7 @@ rollby_exec <- function(
   start <- as.numeric(start)   # Coerce to avoid e.g. date arithmetic
   end <- as.numeric(end)
   # Don't coerce underlying numeric vectors (e.g. POSIXct)
-  if(typeof(x) != "numeric") x <- as.numeric(x)
+  if(typeof(position) != "numeric") position <- as.numeric(position)
   r.len <- (end - start) %/% by + 1
   if(!is.finite(r.len))
     stop("`end`/`start`/`by` combine to produce a too-long result vector.")
@@ -403,7 +412,7 @@ rollby_exec <- function(
     csizer=R2C_size_window_by,
     r.len=r.len, data=data, fun=fun, enclos=enclos, call=call,
     MoreArgs=MoreArgs,
-    width, offset, by, x,
+    width, offset, by, position,
     start, end, bounds_num(bounds)
   )
 }
@@ -411,14 +420,14 @@ rollby_exec <- function(
 #' @name rollby_exec
 
 rollat_exec <- function(
-  fun, data, width, at=x, offset=0,
-  x=seq(1, length(first_vec(data)), 1),
+  fun, data, width, at=position, offset=0,
+  position=seq(1, length(first_vec(data)), 1),
   bounds="[)", MoreArgs=list(), enclos=parent.frame()
 ) {
   vetr(
     fun=is.function(.) && inherits(., 'r2c_fun'),
     width=NUM.1.POS,
-    x=(numeric() || integer()) && length(.) == length(first_vec(data)),
+    position=(numeric() || integer()) && length(.) == length(first_vec(data)),
     data=(
       (numeric() || integer()) ||
       (list() && all(is.num_naked(.)) && length(.) > 0)
@@ -435,7 +444,7 @@ rollat_exec <- function(
   offset <- -as.numeric(offset)
   # Don't coerce underlying numeric vectors (e.g. POSIXct)
   if(typeof(at) != "numeric") at <- as.numeric(at)
-  if(typeof(x) != "numeric") x <- as.numeric(x)
+  if(typeof(position) != "numeric") position <- as.numeric(position)
 
   call <- sys.call()
 
@@ -444,7 +453,7 @@ rollat_exec <- function(
     csizer=R2C_size_window_at,
     r.len=length(at), data=data, fun=fun, enclos=enclos, call=call,
     MoreArgs=MoreArgs,
-    width, offset, at, x,
+    width, offset, at, position,
     bounds_num(bounds)
   )
 }
@@ -453,12 +462,12 @@ rollat_exec <- function(
 
 rollbw_exec <- function(
   fun, data, left, right,
-  x=seq(1, length(first_vec(data)), 1),
+  position=seq(1, length(first_vec(data)), 1),
   bounds="[)", MoreArgs=list(), enclos=parent.frame()
 ) {
   vetr(
     fun=is.function(.) && inherits(., 'r2c_fun'),
-    x=(numeric() || integer()) && length(.) == length(first_vec(data)),
+    position=(numeric() || integer()) && length(.) == length(first_vec(data)),
     data=(
       (numeric() || integer()) ||
       (list() && all(is.num_naked(.)) && length(.) > 0)
@@ -468,7 +477,7 @@ rollbw_exec <- function(
     bounds=CHR.1 && . %in% c("()", "[)", "(]", "[]")
   )
   # Don't coerce underlying numeric vectors (e.g. POSIXct)
-  if(typeof(x) != "numeric") x <- as.numeric(x)
+  if(typeof(position) != "numeric") position <- as.numeric(position)
   if(typeof(left) != "numeric") left <- as.numeric(left)
   if(typeof(right) != "numeric") right <- as.numeric(right)
 
@@ -479,7 +488,7 @@ rollbw_exec <- function(
     csizer=R2C_size_window_bw,
     r.len=length(left), data=data, fun=fun, enclos=enclos, call=call,
     MoreArgs=MoreArgs,
-    left, right, x,
+    left, right, position,
     bounds_num(bounds)
   )
 }

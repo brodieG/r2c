@@ -58,7 +58,8 @@ Translates eligible R calls into C, compiles them into native instructions
 using \verb{R CMD SHLIB}, and returns an interface to that code in the form of an
 "r2c_fun" function.  This function will behave like an R function that
 has for body the provided \code{call} and for parameters the free parameter
-symbols in the order they appear in the call tree.  Unlike the R function,
+symbols in the order they appear in the call tree, so the user must be sure
+to check the function's parameter order before use.  Unlike the R function,
 it carries out numerical calculations with \code{r2c} native instructions instead
 of with the standard R routines, and most importantly it is compatible with
 \code{r2c} runner functions like \code{\link{group_exec}}.

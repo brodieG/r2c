@@ -439,6 +439,8 @@ static double ** copy_dat(struct R2C_dat dp) {
 // be worth it given our currently dumb seeking algorithm could be the bottlneck
 // in some cases.
 //
+// `x_sxp` corresponds to `position` at the R level.
+//
 // ACTION: one of SIZE_WINDOW or ROLL_WINDOW
 // RLEN: result length
 

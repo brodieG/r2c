@@ -81,9 +81,10 @@ See [Related Work](#related-work) and [benchmark details][10].
 
 To summarize:
 
-> For iterated calculations, `{r2c}` is fastest at calculating complex
-> expressions, competitive with specialized pre-compiled alternatives for simple
-> expressions, while also retaining base R semantics for numeric inputs.
+> For iterated calculations on numeric data, `{r2c}` is fastest at complex
+> expressions, and competitive with specialized pre-compiled alternatives for
+> simple expressions.  Additionally, `{r2c}` observes base R semantics for the
+> expressions it evaluates; if you know R you can easily use `{r2c}`.
 
 ## Caveats
 
@@ -153,9 +154,9 @@ compatibility limitations[^3].  But otherwise you type in what you would have
 in normal R and see some impressive speed-ups.
 
 [The Ř virtual machine][19] an academic project that is superficially similar to
-`FastR` (it's [thesis][20] explains differences).  Additionally
-[`renjin`][18] appears to offer similar capabilities and tradeoffs as
-`FastR`.  I have tried neither `Ř` nor `renjin`.
+`FastR` (its [thesis][20] explains differences).  Additionally [`renjin`][18]
+appears to offer similar capabilities and tradeoffs as `FastR`.  I have tried
+neither `Ř` nor `renjin`.
 
 Closer to `{r2c}`, there are at least four packages that operate on the
 principle of translating R code into C (or C++), compiling that, and providing
