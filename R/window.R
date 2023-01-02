@@ -240,6 +240,8 @@ bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 #' by/at/bw implementations, and also for `rolli_exec` if `by << n`.  If
 #' `by >> n`, `rolli_exec` can be much faster.
 #'
+#' Testing was done on a 6th generation Skylake.
+#'
 #' @note For the purposes of this documentation, the first value in a set or the
 #'   lowest value in a range are considered to be the "leftmost" values.
 #'   We think of vectors as starting on the "left" and ending on the "right",
