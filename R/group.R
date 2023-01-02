@@ -323,9 +323,13 @@ group_exec <- function(
     fun=is.function(.) && inherits(., 'r2c_fun'),
     groups=
       # Simple group vector
-      integer() ||
+      integer() || numeric() ||
       # List of group vectors
-      (list() && all(vapply(., is.integer, TRUE))) ||
+      (
+        list() && 
+        all(
+          vapply(., \(x) is.numeric(x) || is.integer(x) || is.factor(x), TRUE))
+      ) ||
       # An object produced by process_groups
       r2c_groups_template(),
     data=(
