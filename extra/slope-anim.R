@@ -48,10 +48,10 @@ w.anchor <- seq(x.min, x.max, by)
 #   side
 
 dev.off()
-dev.new(width=3, height=3)
+dev.new(width=5, height=5)
 par(bg='white', mai=numeric(4))
-slope.x <- numeric()
-slope.y <- numeric()
+slope.x <- matrix(numeric(), nrow=3)
+slope.y <- matrix(numeric(), nrow=3)
 for(i in seq_along(w.anchor)) {
   plot.new()
   x.i <- w.vals[[i]][,1]
@@ -66,15 +66,33 @@ for(i in seq_along(w.anchor)) {
   x.plot <- w.anchor[i] + c(-w,w)
   y.plot <- y.u + y.rng * c(-1,1)/2
   plot.window(x.plot, y.plot)
-  slope.x <- c(slope.x, NA, w.anchor[i] + c(-w,w)/2)
-  slope.y <- c(slope.y, NA,
-    y.u - (w/2 + (x.u - w.anchor[i])) * slope.i,
-    y.u + (w/2 - (x.u - w.anchor[i])) * slope.i
+  slope.x <- cbind(c(w.anchor[i] + c(-w,w)/2, NA), slope.x)
+  slope.y <- cbind(
+    c(
+      y.u - (w/2 + (x.u - w.anchor[i])) * slope.i,
+      y.u + (w/2 - (x.u - w.anchor[i])) * slope.i,
+      NA
+    ),
+    slope.y
   )
+  show.lines <- 20
+  in.frame <- slope.x[2,] > w.anchor[i] - w
+  in.frame <- in.frame & seq_along(in.frame) <= show.lines
+  slope.x <- slope.x[, in.frame, drop=FALSE]
+  slope.y <- slope.y[, in.frame, drop=FALSE]
+  line.n <- ncol(slope.x)
+  for(i in seq_len(line.n)) {
+    lines(
+      slope.x[, i, drop=TRUE], slope.y[, i, drop=TRUE],
+      col=grey(
+        ((show.lines - 1) - (i + (show.lines - line.n) - 1)) /
+        (show.lines - 1)
+      )
+    )
+  }
   # if(!is.na(slope.i)) abline(w.anchor[i], slope.i)
-  lines(slope.x, slope.y)
   points(x.j, y.j, col='grey')
   points(x.i, y.i)
-  Sys.sleep(.025)
+  Sys.sleep(.05)
 }
 
