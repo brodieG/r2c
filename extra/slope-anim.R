@@ -41,9 +41,6 @@ w.vals2 <- roll_list(
   cbind,
   x, y, pos=x - offset, start=x.min, end=x.max, by=by, w=pw
 )
-
-d.centers <- vapply(w.vals, colMeans, numeric(2))
-d.centers[is.na(d.centers)] <- 0
 w.anchor <- seq(x.min, x.max, by)
 
 # Want a random walk.
@@ -122,5 +119,82 @@ file.base <- '~/Downloads/r2c/slope-anim/img-%04d.png'
   }
   cat('\n')
 }
+# Add the Logo Frames.
+
+# source('extra/logo-slope.R')
+
+r2c.points <- r2c.points.raw
+r2c.points[,1] <- r2c.points * pw / diff(range(r2c.points[,1]))
+r2c.points[,2] <- r2c.points * pw / diff(range(r2c.points[,1]))
+
+r2c.points.scale <- r2c.points * pw / diff(range(r2c.points[,1]))
+r2c.points.scale[,2] <- r2c.points.scale[,2] - mean(r2c.points.scale[,2]) + y.u
+r2c.points.scale[,1] <- r2c.points.scale[,1] + x.max
+
+x.min <- min(r2c.points.scale[,1])
+x.max <- x.min + pw
+
+# Points to compute the slope off
+w.vals <- roll_list(
+  cbind,
+  r2c.points.scale[,1], r2c.points.scale[,2],
+  pos=r2c.points.scale[,1], start=x.min, end=x.max, by=by, w=w
+)
+# Background points
+w.vals2 <- roll_list(
+  cbind,
+  r2c.points.scale[,1], r2c.points.scale[,2],
+  pos=r2c.points.scale[,1] - offset, start=x.min, end=x.max, by=by, w=pw
+)
+w.anchor <- seq(x.min, x.max, by)
+
+{
+  j <- i
+  for(i in seq_along(w.anchor)) {
+    cat(sprintf("Frame %04d\r", j + i))
+    png(sprintf(file.base, j + i), width=480, height=480)
+    par(mai=numeric(4))
+    plot.new()
+    y.u.prev <- y.u
+    x.u.prev <- x.u
+    anc <- w.anchor[i]
+    x.i <- w.vals[[i]][,1] - anc
+    y.i <- w.vals[[i]][,2]
+    x.j <- w.vals2[[i]][,1] - anc
+    y.j <- w.vals2[[i]][,2]
+    y.u <- mean(y.i)
+    x.u <- mean(x.i)
+    if(is.na(y.u)) y.u <- y.u.prev
+    if(is.na(x.u)) x.u <- x.u.prev
+    slope.i <- slope(x.i, y.i)
+
+    x.plot <- c(offset - w, offset + w)
+    y.plot <- y.u + y.rng * c(-1, 1)/2
+    plot.window(x.plot, y.plot, xaxs='i', yaxs='i')
+    rect(-w/2, y.plot[1], w/2, y.plot[2], col='#EEEEEE', border=NA)
+
+    slope.x <- cbind(slope.x - by, c(-w, w) / 2)
+    slope.y <- cbind(
+      slope.y,
+      c(y.u - (x.u + w/2) * slope.i,
+      y.u + (-x.u + w/2) * slope.i)
+    )
+    in.frame <- seq_len(ncol(slope.x)) > length(in.frame) - show.lines
+    slope.x <- slope.x[, in.frame, drop=FALSE]
+    slope.y <- slope.y[, in.frame, drop=FALSE]
+    line.n <- ncol(slope.x)
+
+    if(!all(is.na(slope.y[1,])))
+      matlines(
+        slope.x, slope.y, type='l', col=rev(colors[seq_len(line.n)]), lty=1
+      )
+    # if(!is.na(slope.i)) abline(w.anchor[i], slope.i)
+    points(x.j, y.j, col='grey')
+    points(x.i, y.i)
+    dev.off()
+  }
+  cat('\n')
+}
+
 # ffmpeg -pattern_type glob -i '*.png' -r 30 -pix_fmt yuv420p out.mp4
 

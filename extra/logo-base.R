@@ -35,6 +35,19 @@ interpolate_longest <- function(x, n) {
       if(longest + 1 < ncol(a)) a[,seq(longest + 2, ncol(a)), drop=FALSE]
   ) )
 }
+# Keep applying interpolate_longest until no segment is longer than `threshold`
+
+interpolate_threshold <- function(x, threshold) {
+  stopifnot(is.matrix(x), nrow(x) > 1)
+  repeat {
+    dists <- sqrt(rowSums((x[-1,] - x[-nrow(x),]) ^ 2))
+    if(any(dists > threshold * 1.1))
+      x <- interpolate_longest(x, ceiling(max(dists) / threshold) + 1)
+    else break
+  }
+  x
+}
+
 # Reduce observations to target obs count by computing total distance of
 # original path (if path is detailed enough, first every second obs is removed
 # to smooth right angle pixel patterns) and interpolating along the path
