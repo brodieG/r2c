@@ -124,73 +124,59 @@ file.base <- '~/Downloads/r2c/slope-anim/img-%04d.png'
 # source('extra/logo-slope.R')
 
 r2c.points <- r2c.points.raw
-r2c.points.scale[,1] <- r2c.points[,1] * pw / diff(range(r2c.points[,1]))
-r2c.points.scale[,2] <- r2c.points[,2] *
-  y.rng / diff(range(r2c.points[,2])) * 1 / (3 * r2c.char.width)
+x.scale <- pw / diff(range(r2c.points[,1]))
+y.scale <- y.rng / diff(range(r2c.points[,2])) * 1 / (3 * r2c.char.width)
 
-r2c.points.scale[,2] <- r2c.points.scale[,2] - mean(r2c.points.scale[,2]) + y.u
-r2c.points.scale[,1] <- r2c.points.scale[,1] + x.max
+r2c.r <- rbind(r2c.dat.raw[[1]], c(NA, NA), r2c.dat.raw[[2]])
+r2c.c <- rbind(r2c.dat.raw[[3]], r2c.dat.raw[[4]][nrow(r2c.dat.raw[[4]]):1,])
+r2c.2 <- rbind(r2c.dat.raw[[5]], r2c.dat.raw[[6]])
 
-x.min <- min(r2c.points.scale[,1]) - w/2 + offset
+r2c.dat.scale <- lapply(
+  list(r2c.r, r2c.2, r2c.c),
+  function(x, x.scale, y.scale, x.shift, y.shift) {
+    x[,1] <- x[,1] * x.scale + x.shift
+    x[,2] <- (x[,2] - .5) * y.scale + y.shift
+    x
+  },
+  x.scale, y.scale,
+  0, y.u
+)
+x.min <- x.max
 x.max <- x.min + 2 * pw
+w.anchor.2 <- seq(x.min, x.max, by)
+prev.frames <- length(w.anchor)
+# prev.frames <- 0
 
-# Points to compute the slope off
-w.vals <- roll_list(
-  cbind,
-  r2c.points.scale[,1], r2c.points.scale[,2],
-  pos=r2c.points.scale[,1], start=x.min, end=x.max, by=by, w=w
-)
-# Background points
-w.vals2 <- roll_list(
-  cbind,
-  r2c.points.scale[,1], r2c.points.scale[,2],
-  pos=r2c.points.scale[,1] - offset, start=x.min, end=x.max, by=by, w=pw
-)
-w.anchor <- seq(x.min, x.max, by)
+C.color <-  "#7DB3DC"
+hoop.color <- "#A8A8A8"
+R.color <- "#1E64B6"
+
+# Next steps
+# Merge the last set of data with this
+# Have the R2C slowdown as it comes into frame
+# Have the rectangle fade away
+# Have the R2C fade away
 
 {
-  j <- i
-  for(i in seq_along(w.anchor)) {
-    cat(sprintf("Frame %04d\r", j + i))
-    png(sprintf(file.base, j + i), width=480, height=480)
+  for(i in seq_along(w.anchor.2)) {
+    cat(sprintf("Frame %04d\r", prev.frames + i))
+    png(sprintf(file.base, i + prev.frames), width=480, height=480)
     par(mai=numeric(4))
     plot.new()
-    y.u.prev <- y.u
-    x.u.prev <- x.u
-    anc <- w.anchor[i]
-    x.i <- w.vals[[i]][,1] - anc
-    y.i <- w.vals[[i]][,2]
-    x.j <- w.vals2[[i]][,1] - anc
-    y.j <- w.vals2[[i]][,2]
-    y.u <- mean(y.i)
-    x.u <- mean(x.i)
-    if(is.na(y.u)) y.u <- y.u.prev
-    if(is.na(x.u)) x.u <- x.u.prev
-    slope.i <- slope(x.i, y.i)
-
-    x.plot <- c(offset - w, offset + w)
+    x.plot <- c(offset - w, offset + w) + w.anchor.2[1]
     y.plot <- y.u + y.rng * c(-1, 1)/2
     plot.window(x.plot, y.plot, xaxs='i', yaxs='i')
-    rect(-w/2, y.plot[1], w/2, y.plot[2], col='#EEEEEE', border=NA)
-
-    slope.x <- cbind(slope.x - by, c(-w, w) / 2)
-    slope.y <- cbind(
-      slope.y,
-      c(y.u - (x.u + w/2) * slope.i,
-      y.u + (-x.u + w/2) * slope.i)
+    shift0 <- x.min - (w.anchor.2[i] - x.min)
+    shift1 <- shift0 + w/2 - offset
+    shift0 <- x.min
+    rect(
+      -w/2 + shift0, 
+      y.plot[1], w/2 + shift0, y.plot[2], col='#EEEEEE', border=NA
     )
-    in.frame <- seq_len(ncol(slope.x)) > length(in.frame) - show.lines
-    slope.x <- slope.x[, in.frame, drop=FALSE]
-    slope.y <- slope.y[, in.frame, drop=FALSE]
-    line.n <- ncol(slope.x)
-
-    if(!all(is.na(slope.y[1,])))
-      matlines(
-        slope.x, slope.y, type='l', col=rev(colors[seq_len(line.n)]), lty=1
-      )
-    # if(!is.na(slope.i)) abline(w.anchor[i], slope.i)
-    points(x.j, y.j, col='grey')
-    points(x.i, y.i)
+    r2c.dat <- lapply(r2c.dat.scale, function(x) {x[,1] <- x[,1] + shift1; x})
+    polypath(r2c.dat[[1]], col=R.color, border=NA)
+    polypath(r2c.dat[[2]], col=hoop.color, border=NA)
+    polypath(r2c.dat[[3]], col=C.color, border=NA)
     dev.off()
   }
   cat('\n')

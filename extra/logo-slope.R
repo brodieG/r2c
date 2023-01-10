@@ -44,30 +44,36 @@ Rmx.in.raw <- Rmx[(Rsplit + 1):nrow(Rmx),]
 Rmx.out <- interpolate_threshold(Rmx.out.raw, .025)
 Rmx.in <- interpolate_threshold(Rmx.in.raw, .025)
 
-dev.off()
-height <- 3
-dev.new(r2c.char.width=height * r2c.char.width * 3, height=height)
-par(mai=numeric(4))
-plot.new()
-plot.window(0:1*3, 0:1, asp=1)
-
-lines(Rmx.out, col='blue')
-lines(Rmx.in, col='blue')
-lines(C.ins.scale, col='green')
-lines(C.out.scale, col='green')
-lines(Two.ins.scale, col='yellow')
-lines(Two.out.scale, col='yellow')
-
-points(Rmx.out, col='blue')
-points(Rmx.in, col='blue')
-points(C.ins.scale, col='green')
-points(C.out.scale, col='green')
-points(Two.ins.scale, col='yellow')
-points(Two.out.scale, col='yellow')
+# dev.off()
+# height <- 3
+# dev.new(r2c.char.width=height * r2c.char.width * 3, height=height)
+# par(mai=numeric(4))
+# plot.new()
+# plot.window(0:1*3, 0:1, asp=1)
+# 
+# lines(Rmx.out, col='blue')
+# lines(Rmx.in, col='blue')
+# lines(C.ins.scale, col='green')
+# lines(C.out.scale, col='green')
+# lines(Two.ins.scale, col='yellow')
+# lines(Two.out.scale, col='yellow')
+# 
+# points(Rmx.out, col='blue')
+# points(Rmx.in, col='blue')
+# points(C.ins.scale, col='green')
+# points(C.out.scale, col='green')
+# points(Two.ins.scale, col='yellow')
+# points(Two.out.scale, col='yellow')
 
 r2c.points.raw <- rbind(
   Rmx.out, Rmx.in,
   C.ins.scale, C.out.scale,
   Two.ins.scale, Two.out.scale
 )
+r2c.dat.raw <- list(
+  Rmx.out, Rmx.in,
+  C.ins.scale, C.out.scale,
+  Two.ins.scale, Two.out.scale
+)
+
 
