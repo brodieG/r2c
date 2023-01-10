@@ -124,15 +124,15 @@ file.base <- '~/Downloads/r2c/slope-anim/img-%04d.png'
 # source('extra/logo-slope.R')
 
 r2c.points <- r2c.points.raw
-r2c.points[,1] <- r2c.points * pw / diff(range(r2c.points[,1]))
-r2c.points[,2] <- r2c.points * pw / diff(range(r2c.points[,1]))
+r2c.points.scale[,1] <- r2c.points[,1] * pw / diff(range(r2c.points[,1]))
+r2c.points.scale[,2] <- r2c.points[,2] *
+  y.rng / diff(range(r2c.points[,2])) * 1 / (3 * r2c.char.width)
 
-r2c.points.scale <- r2c.points * pw / diff(range(r2c.points[,1]))
 r2c.points.scale[,2] <- r2c.points.scale[,2] - mean(r2c.points.scale[,2]) + y.u
 r2c.points.scale[,1] <- r2c.points.scale[,1] + x.max
 
-x.min <- min(r2c.points.scale[,1])
-x.max <- x.min + pw
+x.min <- min(r2c.points.scale[,1]) - w/2 + offset
+x.max <- x.min + 2 * pw
 
 # Points to compute the slope off
 w.vals <- roll_list(
