@@ -15,7 +15,7 @@ y <- cumsum(c(0, y.raw + c(0, y.raw[-1])))
 # The irony I haven't implemented yet what would allow me to do this easily.
 
 extra <- w
-x.max <- ceiling(max(x)) + pw + offset
+x.max <- ceiling(max(x)) + w/2
 x.min <- floor(min(x)) + offset - w/2
 by <- mean(diff(x)) * 2
 show.lines <- 50
@@ -67,7 +67,7 @@ colors <- rgb(
   ),
   maxColorValue=255
 )
-file.base <- '~/Downloads/r2c/slope-anim/img-%04d.png'
+file.base <- '~/../Shared/tmp/img-%04d.png'
 {
   slope.x <- matrix(numeric(), nrow=2)
   slope.y <- matrix(numeric(), nrow=2)
@@ -103,7 +103,7 @@ file.base <- '~/Downloads/r2c/slope-anim/img-%04d.png'
       c(y.u - (x.u + w/2) * slope.i,
       y.u + (-x.u + w/2) * slope.i)
     )
-    in.frame <- seq_len(ncol(slope.x)) > length(in.frame) - show.lines
+    in.frame <- seq_len(ncol(slope.x)) > length(slope.x) - show.lines
     slope.x <- slope.x[, in.frame, drop=FALSE]
     slope.y <- slope.y[, in.frame, drop=FALSE]
     line.n <- ncol(slope.x)
@@ -124,11 +124,12 @@ file.base <- '~/Downloads/r2c/slope-anim/img-%04d.png'
 # source('extra/logo-slope.R')
 
 r2c.points <- r2c.points.raw
-x.scale <- pw / diff(range(r2c.points[,1]))
-y.scale <- y.rng / diff(range(r2c.points[,2])) * 1 / (3 * r2c.char.width)
+scale2 <- .9
+x.scale <- pw / diff(range(r2c.points[,1])) * scale2
+y.scale <- y.rng / diff(range(r2c.points[,2])) * 1 / (3 * r2c.char.width) * scale2
 
 r2c.r <- rbind(r2c.dat.raw[[1]], c(NA, NA), r2c.dat.raw[[2]])
-r2c.c <- rbind(r2c.dat.raw[[3]], r2c.dat.raw[[4]][nrow(r2c.dat.raw[[4]]):1,])
+r2c.c <- rbind(r2c.dat.raw[[3]], r2c.dat.raw[[4]])
 r2c.2 <- rbind(r2c.dat.raw[[5]], r2c.dat.raw[[6]])
 
 r2c.dat.scale <- lapply(
@@ -147,6 +148,15 @@ w.anchor.2 <- seq(x.min, x.max, by)
 prev.frames <- length(w.anchor)
 # prev.frames <- 0
 
+x.plot <- c(offset - w, offset + w) + w.anchor.2[1]
+y.plot <- y.u + y.rng * c(-1, 1)/2
+
+shift.r2c.0 <- x.min + w/2 - offset
+shift.r2c.n <- x.min + w/2 - offset - pw + 2
+shift.r2c <-
+  shift.r2c.0 + (shift.r2c.n - shift.r2c.0) *
+  seq(0, 1, length.out=length(w.anchor.2))^(1/2)
+
 C.color <-  "#7DB3DC"
 hoop.color <- "#A8A8A8"
 R.color <- "#1E64B6"
@@ -155,7 +165,7 @@ R.color <- "#1E64B6"
 # Merge the last set of data with this
 # Have the R2C slowdown as it comes into frame
 # Have the rectangle fade away
-# Have the R2C fade away
+# Have the R2C fade away or cut to white
 
 {
   for(i in seq_along(w.anchor.2)) {
@@ -163,17 +173,37 @@ R.color <- "#1E64B6"
     png(sprintf(file.base, i + prev.frames), width=480, height=480)
     par(mai=numeric(4))
     plot.new()
-    x.plot <- c(offset - w, offset + w) + w.anchor.2[1]
-    y.plot <- y.u + y.rng * c(-1, 1)/2
     plot.window(x.plot, y.plot, xaxs='i', yaxs='i')
     shift0 <- x.min - (w.anchor.2[i] - x.min)
     shift1 <- shift0 + w/2 - offset
-    shift0 <- x.min
+    shift2 <- x.min
+    # Original stuff
     rect(
-      -w/2 + shift0, 
-      y.plot[1], w/2 + shift0, y.plot[2], col='#EEEEEE', border=NA
+      -w/2 + shift2,
+      y.plot[1], w/2 + shift2,
+      y.plot[2],
+      col=rgb(
+        238, 238, 238,
+        alpha=255 - min(c(255, (255 * (i - 1) / (length(w.anchor.2) / 4 - 1)))),
+        maxColorValue=255
+      ),
+      border=NA
     )
-    r2c.dat <- lapply(r2c.dat.scale, function(x) {x[,1] <- x[,1] + shift1; x})
+    slope.x.shift <- slope.x + shift0 - by
+    line.n <- ncol(slope.x)
+    if(!all(is.na(slope.y[1,])))
+      matlines(
+        slope.x.shift, slope.y, type='l', col=rev(colors[seq_len(line.n)]), lty=1
+      )
+    # if(!is.na(slope.i)) abline(w.anchor[i], slope.i)
+    points(x.j + shift0 - by, y.j, col='grey')
+    points(x.i + shift0 - by, y.i)
+
+    # logo
+    r2c.dat <- lapply(
+      r2c.dat.scale,
+      function(x) {x[,1] <- x[,1] + shift.r2c[i]; x}
+    )
     polypath(r2c.dat[[1]], col=R.color, border=NA)
     polypath(r2c.dat[[2]], col=hoop.color, border=NA)
     polypath(r2c.dat[[3]], col=C.color, border=NA)
