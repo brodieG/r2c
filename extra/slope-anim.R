@@ -3,7 +3,7 @@ slope <- function(x, y)
 
 library(r2c)
 set.seed(2)
-n <- 300
+n <- 250
 w <- 20
 pw <- w * 2
 offset <- -w/4
@@ -67,7 +67,8 @@ colors <- rgb(
   ),
   maxColorValue=255
 )
-file.base <- '~/../Shared/tmp/img-%04d.png'
+# file.base <- '~/../Shared/tmp/img-%04d.png'
+file.base <- '~/Downloads/r2c/slope-anim/img-%04d.png'
 {
   slope.x <- matrix(numeric(), nrow=2)
   slope.y <- matrix(numeric(), nrow=2)
@@ -129,7 +130,9 @@ x.scale <- pw / diff(range(r2c.points[,1])) * scale2
 y.scale <- y.rng / diff(range(r2c.points[,2])) * 1 / (3 * r2c.char.width) * scale2
 
 r2c.r <- rbind(r2c.dat.raw[[1]], c(NA, NA), r2c.dat.raw[[2]])
-r2c.c <- rbind(r2c.dat.raw[[3]], r2c.dat.raw[[4]])
+# r2c.c <- rbind(r2c.dat.raw[[3]], r2c.dat.raw[[4]])
+# r2c.c <- rbind(r2c.dat.raw[[3]], r2c.dat.raw[[4]][rev(seq_len(nrow(r2c.dat.raw[[4]]))),])
+r2c.c <- rbind(r2c.dat.raw[[3]], r2c.dat.raw[[4]][rev(seq_len(nrow(r2c.dat.raw[[4]]))),])
 r2c.2 <- rbind(r2c.dat.raw[[5]], r2c.dat.raw[[6]])
 
 r2c.dat.scale <- lapply(
@@ -234,6 +237,27 @@ R.color <- "#1E64B6"
   }
   cat('\n')
 }
+col_w_alpha <- function(color, fraction) {
+  rgb <- col2rgb(color)
+  rgb(rgb[1], rgb[2], rgb[3], 255 * fraction, maxColorValue=255)
+}
+{
+  prev.frames <- i + prev.frames
+  fade.frames <- 10
+  for(i in seq_len(fade.frames)) {
+    cat(sprintf("Frame %04d\r", prev.frames + i))
+    png(sprintf(file.base, i + prev.frames), width=480, height=480)
+    par(mai=numeric(4))
+    plot.new()
+    plot.window(x.plot, y.plot, xaxs='i', yaxs='i')
+    alpha <- (fade.frames - i) / (fade.frames - 1)
+    polypath(r2c.dat[[1]], col=col_w_alpha(R.color, alpha), border=NA)
+    polypath(r2c.dat[[2]], col=col_w_alpha(hoop.color, alpha), border=NA)
+    polypath(r2c.dat[[3]], col=col_w_alpha(C.color, alpha), border=NA)
+    dev.off()
+  }
+  cat('\n')
+}
 
-# ffmpeg -pattern_type glob -i '*.png' -r 30 -pix_fmt yuv420p out.mp4
+# ffmpeg -framerate 30 -pattern_type glob -i '*.png' -pix_fmt yuv420p out.mp
 
