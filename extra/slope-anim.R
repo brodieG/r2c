@@ -151,12 +151,35 @@ prev.frames <- length(w.anchor)
 x.plot <- c(offset - w, offset + w) + w.anchor.2[1]
 y.plot <- y.u + y.rng * c(-1, 1)/2
 
+# Regular speed for first 3/4, then constant acceleration to 0
 shift.r2c.0 <- x.min + w/2 - offset
 shift.r2c.n <- x.min + w/2 - offset - pw + 2
-shift.r2c <-
-  shift.r2c.0 + (shift.r2c.n - shift.r2c.0) *
-  seq(0, 1, length.out=length(w.anchor.2))^(1/2)
+shift.dist <- shift.r2c.n - shift.r2c.0
+coast.frac <- 2/4
+shift.coast <- seq(shift.r2c.0, shift.r2c.0 + shift.dist * coast.frac, by=-by)
+steps.left <- length(w.anchor.2) - length(shift.coast)
+if(steps.left < 2) stop("Can't coast this long!")
+# For last bit figure out average speed required, and how many steps we have
+shift.left <- shift.dist + diff(range(shift.coast))
 
+# * starting at known speed x/i
+# * end at 0
+# * subject to sum(seq(x, 0, by=)) = dist
+#
+# We know exactly what distance we'll cover linearly, find the deficit/excess,
+# and distribute that to each of the steps.
+
+speed.ini <- by
+speed.end <- 0
+speeds <- seq(by, 0, length.out=steps.left)
+speed.mult <- seq(1, 0, length.out=steps.left)
+fn <- function(x) abs(sum(speeds * speed.mult ^ x) + shift.left)
+speed.pow <- optimize(fn, c(0, 10))$minimum
+shift.break <- cumsum(
+  c(shift.coast[length(shift.coast)], -speeds * speed.mult ^ speed.pow)
+)[-1]
+
+shift.r2c <- c(shift.coast, shift.break)
 C.color <-  "#7DB3DC"
 hoop.color <- "#A8A8A8"
 R.color <- "#1E64B6"
