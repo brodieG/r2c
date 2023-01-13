@@ -67,8 +67,8 @@ colors <- rgb(
   ),
   maxColorValue=255
 )
-# file.base <- '~/../Shared/tmp/img-%04d.png'
-file.base <- '~/Downloads/r2c/slope-anim/img-%04d.png'
+file.base <- '~/../Shared/tmp/img-%04d.png'
+# file.base <- '~/Downloads/r2c/slope-anim/img-%04d.png'
 {
   slope.x <- matrix(numeric(), nrow=2)
   slope.y <- matrix(numeric(), nrow=2)
@@ -130,9 +130,8 @@ x.scale <- pw / diff(range(r2c.points[,1])) * scale2
 y.scale <- y.rng / diff(range(r2c.points[,2])) * 1 / (3 * r2c.char.width) * scale2
 
 r2c.r <- rbind(r2c.dat.raw[[1]], c(NA, NA), r2c.dat.raw[[2]])
-# r2c.c <- rbind(r2c.dat.raw[[3]], r2c.dat.raw[[4]])
+r2c.c <- rbind(r2c.dat.raw[[3]], r2c.dat.raw[[4]])
 # r2c.c <- rbind(r2c.dat.raw[[3]], r2c.dat.raw[[4]][rev(seq_len(nrow(r2c.dat.raw[[4]]))),])
-r2c.c <- rbind(r2c.dat.raw[[3]], r2c.dat.raw[[4]][rev(seq_len(nrow(r2c.dat.raw[[4]]))),])
 r2c.2 <- rbind(r2c.dat.raw[[5]], r2c.dat.raw[[6]])
 
 r2c.dat.scale <- lapply(
