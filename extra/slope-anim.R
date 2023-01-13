@@ -96,8 +96,16 @@ file.base <- '~/../Shared/tmp/img-%04d.png'
     x.plot <- c(offset - w, offset + w)
     y.plot <- y.u + y.rng * c(-1, 1)/2
     plot.window(x.plot, y.plot, xaxs='i', yaxs='i')
-    rect(-w/2, y.plot[1], w/2, y.plot[2], col='#EEEEEE', border=NA)
-
+    # Fade in over 10 frames
+    rect(
+      -w/2, y.plot[1], w/2, y.plot[2],
+      col=rgb(
+        238, 238, 238,
+        alpha=min(c(255, (255 * (i - 1) / (9)))),
+        maxColorValue=255
+      ),
+      border=NA
+    )
     slope.x <- cbind(slope.x - by, c(-w, w) / 2)
     slope.y <- cbind(
       slope.y,
@@ -129,9 +137,11 @@ scale2 <- .9
 x.scale <- pw / diff(range(r2c.points[,1])) * scale2
 y.scale <- y.rng / diff(range(r2c.points[,2])) * 1 / (3 * r2c.char.width) * scale2
 
+# Very oddly the C renders differently in different systems, so in some cases we
+# need to reverse the second part, in others not (hence the next commented line)
 r2c.r <- rbind(r2c.dat.raw[[1]], c(NA, NA), r2c.dat.raw[[2]])
-r2c.c <- rbind(r2c.dat.raw[[3]], r2c.dat.raw[[4]])
-# r2c.c <- rbind(r2c.dat.raw[[3]], r2c.dat.raw[[4]][rev(seq_len(nrow(r2c.dat.raw[[4]]))),])
+# r2c.c <- rbind(r2c.dat.raw[[3]], r2c.dat.raw[[4]])
+r2c.c <- rbind(r2c.dat.raw[[3]], r2c.dat.raw[[4]][rev(seq_len(nrow(r2c.dat.raw[[4]]))),])
 r2c.2 <- rbind(r2c.dat.raw[[5]], r2c.dat.raw[[6]])
 
 r2c.dat.scale <- lapply(

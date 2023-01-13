@@ -37,27 +37,49 @@ announcement for details.
 4/n
 
 ```
-set.seed(1)
-count <- 28
-frequency <- 1/(3600 * 24 * 15)
-time <- as.POSIXct('2022-01-01') - rev(cumsum(rexp(count, frequency)))
-revenue <- runif(count) * 100
-months <- seq(as.POSIXct('2020-10-01'), to=max(time), by="+1 month")
+library(ggplot2)
+
+# set.seed(1)
+# count <- 28
+# frequency <- 1/(3600 * 24 * 15)
+# time <-
+#   as.POSIXct('2022-01-01') -
+#   rev(cumsum(rexp(count, frequency)))
+# revenue <- runif(count) * 100
+
+months <- seq(
+  as.POSIXct('2020-10-01'), to=max(time), by="+1 month"
+)
 left <- head(months, -3)
 right <- tail(months, -3)
-bwmo <- rollbw_exec(r2c_mean, revenue, position=time, left=left, right=right)
-rev.qtr <- data.frame(left, right, prev.qtr=bwmo)
+
+r2c_mean <- r2cq(mean(x))
+trailqtr <- rollbw_exec(
+  r2c_mean, revenue, position=time,
+  left=left, right=right
+)
 
 library(ggplot2)
-ggplot(data.frame(time, revenue)) +
+p <- ggplot(data.frame(time, revenue)) +
   geom_point(aes(time, revenue)) +
   geom_rect(
     data=rev.qtr, aes(xmin=left, xmax=right, ymin=0, ymax=prev.qtr, fill=left),
-    alpha=.3
+    alpha=.2
   ) +
   geom_point(
-    data=rev.qtr, aes(x=right, y=prev.qtr, color=left), size=4
+    data=rev.qtr, aes(x=right, y=prev.qtr, color=left),
+    size=3, shape=21, fill=NA
+  ) +
+  geom_segment(
+    data=rev.qtr, arrow=arrow(length=unit(.1, 'inches'), type='closed'),
+    aes(x=right - 3600*24*3, xend=left, y=prev.qtr, yend=prev.qtr, color=left),
+
   ) +
   scale_fill_viridis_c() +
-  scale_color_viridis_c()
+  scale_color_viridis_c() +
+  ggtitle("Transactions and Trailing Qtr Mean as of 1st of Month") +
+  labs(fill=NULL, x=NULL, y='Revenue') +
+  guides(fill="none", color="none") +
+  theme(text=element_text(size=14))
+ggsave("~/../Shared/tmp/window-ex.png", p)
 ```
