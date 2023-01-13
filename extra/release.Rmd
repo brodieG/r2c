@@ -1,0 +1,85 @@
+
+New {r2c} release is available. {r2c} is an experimental package that compiles a
+small but useful subset of R for fast iterated statistics.  This new release
+adds window functions.
+
+<anim>
+<link-to-package>
+
+1/n
+
+For arbitrary statistics {r2c} is much faster.  For pre-defined statistics,
+{r2c} is as fast as dedicated compiled functions that compute each window in
+full (see README).
+
+<benchmarkplots>
+
+2/n
+
+`{r2c}` includes many window application methods, some I have not seen
+elsewhere.  E.g you can compute rolling prior twelve month sales as of the 1st
+of each month, with sales at arbitrary times.
+
+<plot-illustrating-sales>
+
+<plot-showing-all-different-window-types>
+* Integer spaced
+  * Integer spaced regular.
+  * Integer spaced regular variable width.
+* Arbitrary spaced
+  * Fixed sized windows
+
+3/n
+
+{r2c} also implements fast iterated group statistics. See the previous
+announcement for details.
+
+4/n
+
+```
+library(ggplot2)
+
+# set.seed(1)
+# count <- 28
+# frequency <- 1/(3600 * 24 * 15)
+# time <-
+#   as.POSIXct('2022-01-01') -
+#   rev(cumsum(rexp(count, frequency)))
+# revenue <- runif(count) * 100
+
+months <- seq(
+  as.POSIXct('2020-10-01'), to=max(time), by="+1 month"
+)
+left <- head(months, -3)
+right <- tail(months, -3)
+
+r2c_mean <- r2cq(mean(x))
+trailqtr <- rollbw_exec(
+  r2c_mean, revenue, position=time,
+  left=left, right=right
+)
+
+library(ggplot2)
+p <- ggplot(data.frame(time, revenue)) +
+  geom_point(aes(time, revenue)) +
+  geom_rect(
+    data=rev.qtr, aes(xmin=left, xmax=right, ymin=0, ymax=prev.qtr, fill=left),
+    alpha=.2
+  ) +
+  geom_point(
+    data=rev.qtr, aes(x=right, y=prev.qtr, color=left),
+    size=3, shape=21, fill=NA
+  ) +
+  geom_segment(
+    data=rev.qtr, arrow=arrow(length=unit(.1, 'inches'), type='closed'),
+    aes(x=right - 3600*24*3, xend=left, y=prev.qtr, yend=prev.qtr, color=left),
+
+  ) +
+  scale_fill_viridis_c() +
+  scale_color_viridis_c() +
+  ggtitle("Transactions and Trailing Qtr Mean as of 1st of Month") +
+  labs(fill=NULL, x=NULL, y='Revenue') +
+  guides(fill="none", color="none") +
+  theme(text=element_text(size=14))
+ggsave("~/../Shared/tmp/window-ex.png", p)
+```
