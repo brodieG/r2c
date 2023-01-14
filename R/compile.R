@@ -33,8 +33,10 @@ make_shlib <- function(x, dir, quiet) {
       "Bad luck?  Try again."
     )
   writeLines(x, file.src)
-  comp.out <-
-    system2(R.home("bin/R"), c("CMD", "SHLIB", file.src), stdout=TRUE)
+  comp.out <- system2(
+    R.home("bin/R"), c("CMD", "SHLIB", file.src),
+    stdout=TRUE, stderr=TRUE
+  )
   if(!quiet) writeLines(comp.out)
   # is this what's returned on windows (we can specify, but should make sure if
   # the extension matters)?
