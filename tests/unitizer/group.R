@@ -87,3 +87,22 @@ unitizer_sect('preprocess groups', {
   g.r2c <- process_groups(c(1L, 2L, 2L), sorted=TRUE)
   group_exec(r2c_sum, c(1, 2, 3), groups=g.r2c)
 })
+unitizer_sect('zero groups', {
+  group_exec(r2c_sum, list(), rep(1:2, each=2), MoreArgs=list(x=1:3))
+  group_exec(r2c_add, list(), rep(1:2, each=2), MoreArgs=list(x=1:3, y=10))
+  group_exec(r2c_sum, numeric(), rep(1:2, each=2))
+  group_exec(r2c_sum, list(numeric()), rep(1:2, each=2))
+
+  group_exec(r2c_sum, list(), integer(), MoreArgs=list(x=1:3))
+  group_exec(r2c_add, list(), integer(), MoreArgs=list(x=1:3, y=1:3))
+  group_exec(r2c_sum, numeric(), integer(), MoreArgs=list(x=1:3))
+  group_exec(r2c_sum, list(numeric()), integer(), MoreArgs=list(x=1:3))
+})
+unitizer_sect("param mismatch error prettyfying", {
+  n0 <- numeric()
+  group_exec(r2c_sum, n0, integer(), MoreArgs=list(x=1:3))
+  group_exec(r2c_sum, list(n0), integer(), MoreArgs=list(x=1:3))
+  group_exec(r2c_sum, list(y=n0), integer(), MoreArgs=list(x=1:3))
+  group_exec(r2c_sum, list(y=n0, x=n0), integer(), MoreArgs=list(x=1:3))
+})
+

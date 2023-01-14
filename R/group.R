@@ -227,7 +227,7 @@ r2c_groups_template <- function() {
 }
 #' Execute r2c Function Iteratively on Groups in Data
 #'
-#' A [runner][runners] that Organizes `data` according to `groups`, and calls
+#' A [runner][runners] that organizes `data` according to `groups`, and calls
 #' the native code associated with `fun` iteratively for each group.  `data`
 #' `data` will be "subset" the portion corresponding to the group being iterated
 #' prior to the native code invocation.  There is no interpreter overhead

@@ -56,11 +56,8 @@ details.
 \description{
 Translates eligible R calls into C, compiles them into native instructions
 using \verb{R CMD SHLIB}, and returns an interface to that code in the form of an
-"r2c_fun" function.  This function will behave like an R function that
-has for body the provided \code{call} and for parameters the free parameter
-symbols in the order they appear in the call tree, so the user must be sure
-to check the function's parameter order before use.  Unlike the R function,
-it carries out numerical calculations with \code{r2c} native instructions instead
+"r2c_fun" function.  Unlike the R function, it carries
+out numerical calculations with \code{r2c} native instructions instead
 of with the standard R routines, and most importantly it is compatible with
 \code{r2c} \link[=runners]{runner functions}.
 }
@@ -70,6 +67,11 @@ functions, there is limited value in doing so.  "r2c_fun" functions are
 optimized to be invoked invoked indirectly with \link{runners}.  In many common
 cases it is likely that using an "r2c_fun" directly instead of with a runner
 will be slower than evaluating the corresponding R expression.
+
+Parameters for "r2c_fun" functions are the free symbols in \code{call} in the order
+they appear in the call tree.  Be sure to check the parameters of the
+resulting "r2c_fun" to avoid surprised from unexpected parameter order.
+Future \code{{r2c}} release will allow specification of parameter order.
 
 The structure of "r2c_fun" objects is subject to change without notice in
 future \code{r2c} releases.  The only supported uses of them are standard
