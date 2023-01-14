@@ -107,7 +107,7 @@ SEXP R2C_run_window(
   struct R2C_dat dp = prep_data(dat, dat_cols, ids, flag, ctrl, so);
 
   // Make a copy of the base data pointers
-  double ** dat_base = (double **) R_alloc(dp.dat_end, sizeof(double *));
+  double ** dat_base = (double **) R_alloc(dp.dat_end + 1, sizeof(double *));
   for(int j = dp.dat_start; j <= dp.dat_end; ++j) dat_base[j] = dp.data[j];
 
   // ***************************************************************
