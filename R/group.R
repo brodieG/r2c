@@ -1,4 +1,4 @@
-## Copyright (C) 2022 Brodie Gaslam
+## Copyright (C) Brodie Gaslam
 ##
 ## This file is part of "r2c - Fast Iterated Statistic Computation in R"
 ##
@@ -173,8 +173,8 @@ group_exec_int <- function(
 #' y <- runif(3)
 #' g.r2c <- process_groups(g, sorted=TRUE)
 #' f <- r2cq(sum(x))
-#' group_exec(f, g.r2c, x)
-#' group_exec(f, g.r2c, y)
+#' group_exec(f, x, g.r2c)
+#' group_exec(f, y, g.r2c)
 
 process_groups <- function(groups, sorted=FALSE) {
   vetr(
@@ -227,15 +227,16 @@ r2c_groups_template <- function() {
 }
 #' Execute r2c Function Iteratively on Groups in Data
 #'
-#' Organizes `data` according to `groups`, and calls the native code associated
-#' with `fun` iteratively for each group.  Data provided in `data` will be
-#' subset provided to the native code subset to the portion corresponding to
-#' each group.  Each iteration of the native code is invoked directly from
-#' native code and thus avoids R interpreter overhead.
+#' A [runner][runners] that Organizes `data` according to `groups`, and calls
+#' the native code associated with `fun` iteratively for each group.  `data`
+#' `data` will be "subset" the portion corresponding to the group being iterated
+#' prior to the native code invocation.  There is no interpreter overhead
+#' between iterations.
 #'
 #' @export
 #' @seealso [`r2c`] for more details on the behavior and constraints of
 #'   "r2c_fun" functions, [`base::eval`] for the semantics of `enclos`.
+#' @family runners
 #' @param fun an "r2c_fun" function as produced by [`r2c`].
 #' @param groups an integer, numeric, or factor vector.  Alternatively, a list
 #'   of equal-length such vectors, the interaction of which defines individual

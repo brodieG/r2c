@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 Brodie Gaslam
+ * Copyright (C) Brodie Gaslam
  *
  * This file is part of "r2c - Fast Iterated Statistic Computation in R"
  *

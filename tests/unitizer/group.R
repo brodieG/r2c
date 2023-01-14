@@ -1,4 +1,4 @@
-## Copyright (C) 2022 Brodie Gaslam
+## Copyright (C) Brodie Gaslam
 ##
 ## This file is part of "r2c - A DSL for Fast Statistic Computation in R"
 ##
@@ -83,6 +83,7 @@ unitizer_sect('weird groups', {
   g2[g2 == 8L] <- 50L
   identical(group_exec(r2c_sum, x, g2), c(tapply(x, g2, sum)))
 })
-
-
-
+unitizer_sect('preprocess groups', {
+  g.r2c <- process_groups(c(1L, 2L, 2L), sorted=TRUE)
+  group_exec(r2c_sum, c(1, 2, 3), groups=g.r2c)
+})

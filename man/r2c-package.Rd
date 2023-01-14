@@ -7,6 +7,6 @@
 \description{
 Compiles a subset of R into machine code so that expressions composed with
 that subset can be applied repeatedly on varying data without interpreter
-overhead.  Use \code{\link{r2c}} to compile R, and \code{\link{group_exec}} or \code{\link{rolli_exec}} /
-\code{\link{rollby_exec}} to run the result on groups or rolling windows of data.
+overhead.  Use \code{\link{r2c}} to compile R, and \link{runners} to execute the resulting
+compiled code iteratively on varying data.
 }

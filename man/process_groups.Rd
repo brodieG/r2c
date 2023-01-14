@@ -47,8 +47,8 @@ x <- runif(3)
 y <- runif(3)
 g.r2c <- process_groups(g, sorted=TRUE)
 f <- r2cq(sum(x))
-group_exec(f, g.r2c, x)
-group_exec(f, g.r2c, y)
+group_exec(f, x, g.r2c)
+group_exec(f, y, g.r2c)
 }
 \seealso{
 \code{\link{group_exec}}
