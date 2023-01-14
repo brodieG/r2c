@@ -65,7 +65,9 @@ match_and_alloc <- function(
 
       call.m <- match.call(runner, call, expand.dots=FALSE, envir=enclos)
       data.2 <-
-        if(is.call(call.m[['data']])) as.list(call.m[['data']])[-1L]
+        if(is.call(call.m[['data']]) && call.m[['data']][[1]] == quote('list')) {
+          as.list(call.m[['data']])[-1L]
+        }
         else do  # note this is not in original order
       moreargs.2 <-
         if(is.call(call.m[['MoreArgs']])) as.list(call.m[['MoreArgs']])[-1L]
@@ -77,8 +79,14 @@ match_and_alloc <- function(
         match.call(f.dummy, call.dummy, envir=enclos),
         error=function(e) stop(simpleError(conditionMessage(e), call=call))
       )
-      # In case the above somehow doesn't produce an error; it always should
-      stop("Internal Error: no param match error; contact maintainer.")
+      # In case the above somehow doesn't produce an error, fallback to original
+      # The error doesn't make sense because the values that are being matched
+      # are the indices that we generated to track data vs. MoreArgs (see above)
+      stop(
+        "Internal Error: parameter match error, and unable to generate ",
+        "friendly error.  The error is \"", conditionMessage(e), "\", but ",
+        "this is from an internal matching attempt.  Contact maintainer."
+      )
   } )
   # Rename the dots and splice back in; there is no dots forwarding once we get
   # to r2c implementations, so the original names are useless, and we need new
