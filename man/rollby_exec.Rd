@@ -68,10 +68,10 @@ of the window is aligned with the anchor (i.e. conceptually equivalent to
 \code{-width} for right aligned.  See "Intervals".  Note this default is
 different to that for \code{\link{rolli_exec}}.}
 
-\item{position}{finite, non-NA, monotonically increasing numeric vector with as many
-elements as \code{data}.  Each element in \code{position} is the position on the real line
-of the corresponding \code{data} element (see notes).  Integer vectors are
-coerced to numeric.}
+\item{position}{finite, non-NA, monotonically increasing numeric vector with
+as many elements as \code{data}.  Each element in \code{position} is the position on
+the real line of the corresponding \code{data} element (see notes).  Integer
+vectors are coerced to numeric.}
 
 \item{start}{non-na, finite scalar numeric position on real line of first
 "anchor".  Windows may extend to the left of \code{start} (or to the right of
@@ -80,6 +80,20 @@ window, even if they are outside \verb{[start,end]}.}
 
 \item{end}{non-na, finite scalar numeric position on real line of last
 "anchor", see \code{start}.}
+
+\item{bounds}{scalar character to determine whether elements positions on
+a window boundary are included or excluded from the window:
+\itemize{
+\item "[)": include elements on left boundary, exclude those on right (default).
+\item "(]": include elements on right boundary, exclude those on left.
+\item "[]": include elements on either boundary.
+\item "()": exclude elements on either boundary.
+}
+
+[)": include elements on left boundary, exclude those on right (default).
+\itemize{
+\item "(]: R:)\%22:\%20include\%20elements\%20on\%20left\%20boundary,\%20exclude\%20those\%20on\%20right\%20(default).\%0A*\%20\%22(
+}}
 
 \item{MoreArgs}{a list of R objects to pass on as iteration-invariant
 arguments to \code{fun}.  Unlike with \code{data}, each of the objects therein are
@@ -112,14 +126,14 @@ A numeric vector of length:
 }
 }
 \description{
-Calls the native code associated with \code{fun} on sequential windows along
-\code{data} vector(s) with "elements" positioned on the real line.  Data element
-positions can be specified and irregular, so equal sized windows may contain
-different number of elements.  Window positions may be specified independent
-of data element positions.  Each \verb{roll*_exec} function provides a different
-mechanism for defining the space covered by each window.  All of them will
-compute \code{fun} for each iteration with the set of data "elements" that fall
-within that window.
+A \link[=runners]{runner} that calls the native code associated with \code{fun} on
+sequential windows along \code{data} vector(s) with "elements" positioned on the
+real line.  Data element positions can be specified and irregular, so equal
+sized windows may contain different number of elements.  Window positions may
+be specified independent of data element positions.  Each \verb{roll*_exec}
+function provides a different mechanism for defining the space covered by
+each window.  All of them will compute \code{fun} for each iteration with the set
+of data "elements" that fall within that window.
 \itemize{
 \item \code{rollby_exec}: equal width windows spaced \code{by} apart.
 \item \code{rollat_exec}: equal width windows at specific positions given in \code{at}.
@@ -338,11 +352,11 @@ options(old.opt)
 }
 \seealso{
 \code{\link{r2c}} for more details on the behavior and constraints of
-"r2c_fun" functions, \code{\link[base:eval]{base::eval}} for the semantics of \code{enclos}.
+"r2c_fun" functions, \code{\link[base:eval]{base::eval}} for the semantics of \code{enclos},
+\code{\link{first_vec}} to retrieve first atomic vector.
 
-\code{\link{first_vec}}.
-
-Other rolling functions: 
+Other runners: 
+\code{\link{group_exec}()},
 \code{\link{rolli_exec}()}
 }
-\concept{rolling functions}
+\concept{runners}

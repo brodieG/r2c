@@ -109,14 +109,14 @@ bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 #'
 #' @description
 #'
-#' Calls the native code associated with `fun` on sequential windows along
-#' `data` vector(s) with "elements" positioned on the real line.  Data element
-#' positions can be specified and irregular, so equal sized windows may contain
-#' different number of elements.  Window positions may be specified independent
-#' of data element positions.  Each `roll*_exec` function provides a different
-#' mechanism for defining the space covered by each window.  All of them will
-#' compute `fun` for each iteration with the set of data "elements" that fall
-#' within that window.
+#' A [runner][runners] that calls the native code associated with `fun` on
+#' sequential windows along `data` vector(s) with "elements" positioned on the
+#' real line.  Data element positions can be specified and irregular, so equal
+#' sized windows may contain different number of elements.  Window positions may
+#' be specified independent of data element positions.  Each `roll*_exec`
+#' function provides a different mechanism for defining the space covered by
+#' each window.  All of them will compute `fun` for each iteration with the set
+#' of data "elements" that fall within that window.
 #'
 #' * `rollby_exec`: equal width windows spaced `by` apart.
 #' * `rollat_exec`: equal width windows at specific positions given in `at`.
@@ -261,17 +261,19 @@ bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 #'
 #' @export
 #' @inheritParams group_exec
+#' @family runners
 #' @seealso [`r2c`] for more details on the behavior and constraints of
-#'   "r2c_fun" functions, [`base::eval`] for the semantics of `enclos`.
+#'   "r2c_fun" functions, [`base::eval`] for the semantics of `enclos`,
+#'   [`first_vec`] to retrieve first atomic vector.
 #' @param fun an "r2c_fun" function as produced by [`r2c`], except with the
 #'   additional restriction that it must be guaranteed to produce scalar
 #'   results as used with this function.
 #' @param width scalar positive numeric giving the width of the window interval.
 #'   Unlike with [`rolli_exec`]'s `n`, `width` must be scalar.
-#' @param position finite, non-NA, monotonically increasing numeric vector with as many
-#'   elements as `data`.  Each element in `position` is the position on the real line
-#'   of the corresponding `data` element (see notes).  Integer vectors are
-#'   coerced to numeric.
+#' @param position finite, non-NA, monotonically increasing numeric vector with
+#'   as many elements as `data`.  Each element in `position` is the position on
+#'   the real line of the corresponding `data` element (see notes).  Integer
+#'   vectors are coerced to numeric.
 #' @param by strictly positive, finite, non-NA scalar numeric, interpreted
 #'   as the stride to increment the anchor by after each `fun` application.
 #' @param at non-NA, finite, monotonically increasing numeric vector of anchor
@@ -295,14 +297,20 @@ bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 #'   window, even if they are outside `[start,end]`.
 #' @param end non-na, finite scalar numeric position on real line of last
 #'   "anchor", see `start`.
+#' @param bounds scalar character to determine whether elements positions on
+#'   a window boundary are included or excluded from the window:
+#'
+#' * "[)": include elements on left boundary, exclude those on right (default).
+#' * "(]": include elements on right boundary, exclude those on left.
+#' * "[]": include elements on either boundary.
+#' * "()": exclude elements on either boundary.
+#'
 #' @return A numeric vector of length:
 #'
 #' * `(end - start) %/% by + 1` for `rollby_exec`.
 #' * `length(at)` for `rollat_exec`.
 #' * `length(left)` for `rollbw_exec`.
 #'
-#' @family rolling functions
-#' @seealso [`first_vec`].
 #' @examples
 #' ## Simulate transactions occurring ~4 days
 #' old.opt <- options(digits=3)
@@ -495,13 +503,13 @@ rollbw_exec <- function(
 
 #' Compute on Sequential Regular Windows on Equidistant Data
 #'
-#' Calls the native code associated with `fun` on sequential regularly spaced
-#' windows along the `data` vector(s).  Each window is aligned relative to a
-#' specific data "element" (anchor), and the set of window size `n` contiguous
-#' elements around and including the "anchor" are computed on.  This is a
-#' special case of [`rollby_exec`] intended to mimic the semantics of
-#' `zoo::rollapply` where `width` is a scalar integer, and implicitly the data
-#' elements are equally spaced.
+#' A [runner][runners] that calls the native code associated with `fun` on
+#' sequential regularly spaced windows along the `data` vector(s).  Each window
+#' is aligned relative to a specific data "element" (anchor), and the set of
+#' window size `n` contiguous elements around and including the "anchor" are
+#' computed on.  This is a special case of [`rollby_exec`] intended to mimic the
+#' semantics of `zoo::rollapply` where `width` is a scalar integer, and
+#' implicitly the data elements are equally spaced.
 #'
 #' @inheritSection rollby_exec Data Elements
 #'
@@ -555,7 +563,7 @@ rollbw_exec <- function(
 #' than for this function.
 #'
 #' @inheritParams rollby_exec
-#' @family rolling functions
+#' @family runners
 #' @export
 #' @seealso [`r2c`] for more details on the behavior and constraints of
 #'   "r2c_fun" functions, [`base::eval`] for the semantics of `enclos`.

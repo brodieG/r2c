@@ -62,14 +62,14 @@ symbols in the order they appear in the call tree, so the user must be sure
 to check the function's parameter order before use.  Unlike the R function,
 it carries out numerical calculations with \code{r2c} native instructions instead
 of with the standard R routines, and most importantly it is compatible with
-\code{r2c} runner functions like \code{\link{group_exec}}.
+\code{r2c} \link[=runners]{runner functions}.
 }
 \details{
 While "r2c_fun" functions can be called in the same way as normal R
 functions, there is limited value in doing so.  "r2c_fun" functions are
-optimized to be invoked invoked indirectly with runners like \code{\link{group_exec}}.
-In many common cases it is likely that using an "r2c_fun" directly instead of
-with a runner will be slower than evaluating the corresponding R expression.
+optimized to be invoked invoked indirectly with \link{runners}.  In many common
+cases it is likely that using an "r2c_fun" directly instead of with a runner
+will be slower than evaluating the corresponding R expression.
 
 The structure of "r2c_fun" objects is subject to change without notice in
 future \code{r2c} releases.  The only supported uses of them are standard
@@ -121,11 +121,12 @@ r2c_sum_add <- r2cq(sum(x + y))
 r2c_sum_add <- r2c(quote(sum(x + y)))  ## equivalently
 r2c_sum_add(1, runif(10))
 r2c_sum_check <- r2cq(sum(x), check=TRUE)
+## Checks are disabled when using runners
 r2c_sum_check(1:10)                                 # checked
 group_exec(r2c_sum_check, 1:10, groups=rep(1L, 10)) # not checked
 }
 \seealso{
-\code{\link{group_exec}} to iterate this function groupwise on data,
+\code{\link{runners}} to iterate "r2c_fun" functions on varying data,
 \code{\link{get_c_code}} for functions to retrieve meta data from the function,
 including the generated C code and the compiler output.
 }

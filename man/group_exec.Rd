@@ -45,11 +45,11 @@ groups.  Otherwise, a "data.frame" with the group vectors as columns and
 the result of the computation as the last column.
 }
 \description{
-Organizes \code{data} according to \code{groups}, and calls the native code associated
-with \code{fun} iteratively for each group.  Data provided in \code{data} will be
-subset provided to the native code subset to the portion corresponding to
-each group.  Each iteration of the native code is invoked directly from
-native code and thus avoids R interpreter overhead.
+A \link[=runners]{runner} that Organizes \code{data} according to \code{groups}, and calls
+the native code associated with \code{fun} iteratively for each group.  Data
+provided in \code{data} will be subset provided to the native code subset to the
+portion corresponding to each group.  Each iteration of the native code is
+invoked directly from native code and thus avoids R interpreter overhead.
 }
 \examples{
 r2c_mean <- r2cq(mean(x))
@@ -104,4 +104,9 @@ group_exec(r2c_mean, x, groups=process_groups(list(g), sorted=TRUE))
 \seealso{
 \code{\link{r2c}} for more details on the behavior and constraints of
 "r2c_fun" functions, \code{\link[base:eval]{base::eval}} for the semantics of \code{enclos}.
+
+Other runners: 
+\code{\link{rollby_exec}()},
+\code{\link{rolli_exec}()}
 }
+\concept{runners}
