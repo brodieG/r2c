@@ -57,7 +57,7 @@ match_and_alloc <- function(
     )[-1L] ,
     error=function(e) {
       # Error produced by this is confusing because we're matching to positions,
-      # so instead re-match against for better error message.
+      # so instead re-match for better error message.
       #
       # Additional convoluation for the case where the call to e.g. `group_exec`
       # contains something like list(x = y), where we want to report the

@@ -49,10 +49,7 @@ SEXP R2C_group_sizes(SEXP g) {
   int *glabs = INTEGER(glabs_sxp);
   double gmax = 0;
 
-  if(glen == 0) {
-    glabs[0] = 0;
-    *gsize = 0.;
-  } else if(glen == 1) {
+  if(glen == 1) {
     *gsize = (double) glen;
     *glabs = *g_int;
   } else if (glen > 1) {
