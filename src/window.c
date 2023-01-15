@@ -320,8 +320,8 @@ static double ** copy_dat(struct R2C_dat dp) {
   /* left/right set by L_EXP and R_EXP respectively */                      \
   double left, right;                                                       \
   R_xlen_t i = 0; /* need initial vals for L_EXP and R_EXP */               \
-  L_EXP; R_EXP;                                                             \
-  for(; i < wa.rlen; ++i, (L_EXP), (R_EXP)) {                               \
+  for(; i < wa.rlen; ++i) {                                                 \
+    L_EXP; R_EXP;\
     /* Find first in-range element */                                       \
     while(ileft < wa.xlen && wa.x[ileft] L_OP left) ++ileft;                \
     if(ileft < wa.xlen) {                                                   \
