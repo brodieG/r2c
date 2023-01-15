@@ -49,8 +49,9 @@ match_and_alloc <- function(
   args.dummy <- as.list(seq_len(length(do) + length(MoreArgs)))
   f.dummy <- function() NULL
   formals(f.dummy) <- formals
+  body(f.dummy) <- as.call(c(as.name("list"), lapply(names(formals), as.name)))
   names(args.dummy) <- c(names(do), names(MoreArgs))
-  call.dummy <- as.call(c(list(f.dummy), as.list(args.dummy)))
+  call.dummy <- as.call(c(list(as.name("fun")), as.list(args.dummy)))
   call.dummy.m <- tryCatch(
     as.list(
       match.call(f.dummy, call.dummy, envir=enclos, expand.dots=FALSE)
@@ -59,7 +60,7 @@ match_and_alloc <- function(
       # Error produced by this is confusing because we're matching to positions,
       # so instead re-match for better error message.
       #
-      # Additional convoluation for the case where the call to e.g. `group_exec`
+      # Additional convolution for the case where the call to e.g. `group_exec`
       # contains something like list(x = y), where we want to report the
       # unevaluated expression an not e.g. the value of `y`.
 
@@ -80,7 +81,7 @@ match_and_alloc <- function(
         error=function(e) stop(simpleError(conditionMessage(e), call=call))
       )
       # In case the above somehow doesn't produce an error, fallback to original
-      # The error doesn't make sense because the values that are being matched
+      # The error won't make sense because the values that are being matched
       # are the indices that we generated to track data vs. MoreArgs (see above)
       stop(
         "Internal Error: parameter match error, and unable to generate ",
@@ -88,6 +89,24 @@ match_and_alloc <- function(
         "this is from an internal matching attempt.  Contact maintainer."
       )
   } )
+  # Test that all required parameters were provided, and provide error message
+  # if they weren't.  Ideally we'd give the originall expressions in `data` and
+  # `MoreArgs`, but that's too much work.
+  call.dummy.2 <- call.dummy
+  call.dummy.2[-1] <- lapply(names(formals), as.name)
+  tryCatch(
+    do.call(f.dummy, call.dummy.m),
+    error=function(e) stop(
+      simpleError(
+        paste0(
+          c(
+            sprintf("In `%s`:", deparse1(call.dummy.2)),
+            conditionMessage(e)
+          ),
+          collapse="\n"
+        ),
+        call=call
+  ) ) )
   # Rename the dots and splice back in; there is no dots forwarding once we get
   # to r2c implementations, so the original names are useless, and we need new
   # names so we can recognize which arguments came from dots.
