@@ -216,30 +216,12 @@ bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 #' the "on-line" algorithm, and `{slider}` the "segment tree" algorithm, each
 #' with different performance and precision trade-offs.
 #'
-#' In testing with sums we've found the `{slider}` (v0.2.2) "segment tree"
-#' algorithm to start outperforming `{r2c}` at window size ~100 for
-#' `slider::slide_sum` and at window size ~1000 for `slider::slide_index_sum`.
-#'
-#' The "on-line" algorithms are significantly faster than either `{r2c}` or
-#' `{slider}`, and at least on systems with 80 bit long doubles the precision
-#' loss (tested on `{data.table}` 1.4.16) seems tolerable for many applications.
-#' The `{data.table}` "exact" algorithm in single thread mode has performance
-#' near identical to [`rolli_exec`].
-#'
-#' For `by` values wider than the typical difference between `position` values,
-#' implementations that adjust the search stride along `position` taking advantage of
-#' its ordered nature will likely be faster.  [`rolli_exec`] does this.
-#'
-#' Any ALTREP objects generated for use in `position`, `at`, `left`, or `right`
-#' will be expanded.  Implementing ALTREP access for them is desirable, but
-#' would complicate the code substantially so is unlikely to get implemented.
-#'
 #' Recall that the less general the `roll*_` function is, the better performance
 #' it will have (see "Equivalence").  The differences are slight between the
 #' by/at/bw implementations, and also for `rolli_exec` if `by << n`.  If
 #' `by >> n`, `rolli_exec` can be much faster.
 #'
-#' Testing was done on a 6th generation Skylake.
+#' See [README](https://github.com/brodieG/r2c) for more details.
 #'
 #' @note For the purposes of this documentation, the first value in a set or the
 #'   lowest value in a range are considered to be the "leftmost" values.
