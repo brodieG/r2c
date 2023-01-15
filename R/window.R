@@ -27,7 +27,6 @@ roll_prep <- function(
   if(!is.list(data)) data <- list(data)
   if(length(d.len <- unique(lengths(data))) > 1L)
     stop("All `data` vectors must be the same length.")
-  if(!length(d.len)) stop("`data` may not be empty.")
   if(r.len > 2^48)  # See R_ints 12.1
     stop("Result length exceeds allowed 2^48 (would be ", r.len, ")")
   if(wmax > 2^48)  # See R_ints 12.1
@@ -44,7 +43,7 @@ roll_prep <- function(
 
   if(ncol(stack) != 1L) stop("Internal Error: unexpected stack state at exit.")
   if(stack['size', 1L] != 1L || stack['group', 1L] != 0L)
-    stop("`fun` must return scalar values only.")
+    stop("`fun` must be guaranteed to return scalar values.")
 
   # - Run ----------------------------------------------------------------------
 
@@ -390,7 +389,7 @@ rollby_exec <- function(
     position=(numeric() || integer()) && length(.) == length(first_vec(data)),
     data=(
       (numeric() || integer()) ||
-      (list() && all(is.num_naked(.)) && length(.) > 0)
+      (list() && all(is.num_naked(.)))
     ),
     by=NUM.1.POS,
     offset=NUM.1,
@@ -438,7 +437,7 @@ rollat_exec <- function(
     position=(numeric() || integer()) && length(.) == length(first_vec(data)),
     data=(
       (numeric() || integer()) ||
-      (list() && all(is.num_naked(.)) && length(.) > 0)
+      (list() && all(is.num_naked(.)))
     ),
     at=numeric(),
     offset=NUM.1,
@@ -478,7 +477,7 @@ rollbw_exec <- function(
     position=(numeric() || integer()) && length(.) == length(first_vec(data)),
     data=(
       (numeric() || integer()) ||
-      (list() && all(is.num_naked(.)) && length(.) > 0)
+      (list() && all(is.num_naked(.)))
     ),
     MoreArgs=list(),
     enclos=is.environment(.),
@@ -612,7 +611,7 @@ rolli_exec <- function(
     n=(numeric() || integer()),
     data=(
       (numeric() || integer()) ||
-      (list() && all(is.num_naked(.)) && length(.) > 0)
+      (list() && all(is.num_naked(.)))
     ),
     by=INT.1.POS && . <= .Machine[['integer.max']],
     partial=LGL.1,

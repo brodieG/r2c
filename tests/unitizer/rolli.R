@@ -101,4 +101,9 @@ unitizer_sect("Variable Width", {
   show_bits(rsum_pl(wvec, n=c(3, 1, NA, 1, 3)))
   show_bits(rsum_pl(wvec, n=c(3, 1, 1, 3)))
 })
+unitizer_sect("Zero Len", {
+  rolli_exec(r2c_sum, numeric(), 3)
+  rolli_exec(r2c_sum, list(), 3, MoreArgs=list(1:3))
+  rolli_exec(r2c_sum, list(numeric()), 3, MoreArgs=list(1:3))
+})
 

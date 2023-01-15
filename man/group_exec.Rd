@@ -18,15 +18,16 @@ used similarly to \code{envir} parameter to \code{\link[base:eval]{base::eval}} 
 
 \item{groups}{an integer, numeric, or factor vector.  Alternatively, a list
 of equal-length such vectors, the interaction of which defines individual
-groups to organize the vectors in \code{data} into.  Numeric vectors are coerced
-to integer, thus copied.  Vectors of integer type, but with different
-classes/attributes (other than factors) will be treated as integer vectors.
-The vectors must be the same length as those in \code{data}.  NA values are
-considered one group. If a list, the result of the calculation will be
-returned as a "data.frame", otherwise as a named vector.  Currently only
-one group vector is allowed, even when using list mode.  Support for
-multiple group vectors and other types of vectors will be added in the
-future.}
+groups to organize the vectors in \code{data} into (multiple vectors not
+implemented yet).  Numeric vectors are coerced to integer, thus copied.
+Vectors of integer type, but with different classes/attributes (other than
+factors) will be treated as integer vectors.  The vectors must be the
+same length as those in \code{data}.  NA values are considered one group. If a
+list, the result of the calculation will be returned as a "data.frame",
+otherwise as a named vector.  Currently only one group vector is allowed,
+even when using list mode.  Support for multiple group vectors and other
+types of vectors will be added in the future.  Zero length groups are not
+computed on at all (e.g. missing factor levels, zero-length group vector).}
 
 \item{MoreArgs}{a list of R objects to pass on as iteration-invariant
 arguments to \code{fun}.  Unlike with \code{data}, each of the objects therein are
@@ -45,11 +46,11 @@ groups.  Otherwise, a "data.frame" with the group vectors as columns and
 the result of the computation as the last column.
 }
 \description{
-A \link[=runners]{runner} that Organizes \code{data} according to \code{groups}, and calls
-the native code associated with \code{fun} iteratively for each group.  Data
-provided in \code{data} will be subset provided to the native code subset to the
-portion corresponding to each group.  Each iteration of the native code is
-invoked directly from native code and thus avoids R interpreter overhead.
+A \link[=runners]{runner} that organizes \code{data} according to \code{groups}, and calls
+the native code associated with \code{fun} iteratively for each group.  \code{data}
+\code{data} will be "subset" the portion corresponding to the group being iterated
+prior to the native code invocation.  There is no interpreter overhead
+between iterations.
 }
 \examples{
 r2c_mean <- r2cq(mean(x))

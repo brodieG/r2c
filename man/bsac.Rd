@@ -18,15 +18,16 @@ used similarly to \code{envir} parameter to \code{\link[base:eval]{base::eval}} 
 
 \item{groups}{an integer, numeric, or factor vector.  Alternatively, a list
 of equal-length such vectors, the interaction of which defines individual
-groups to organize the vectors in \code{data} into.  Numeric vectors are coerced
-to integer, thus copied.  Vectors of integer type, but with different
-classes/attributes (other than factors) will be treated as integer vectors.
-The vectors must be the same length as those in \code{data}.  NA values are
-considered one group. If a list, the result of the calculation will be
-returned as a "data.frame", otherwise as a named vector.  Currently only
-one group vector is allowed, even when using list mode.  Support for
-multiple group vectors and other types of vectors will be added in the
-future.}
+groups to organize the vectors in \code{data} into (multiple vectors not
+implemented yet).  Numeric vectors are coerced to integer, thus copied.
+Vectors of integer type, but with different classes/attributes (other than
+factors) will be treated as integer vectors.  The vectors must be the
+same length as those in \code{data}.  NA values are considered one group. If a
+list, the result of the calculation will be returned as a "data.frame",
+otherwise as a named vector.  Currently only one group vector is allowed,
+even when using list mode.  Support for multiple group vectors and other
+types of vectors will be added in the future.  Zero length groups are not
+computed on at all (e.g. missing factor levels, zero-length group vector).}
 
 \item{MoreArgs}{a list of R objects to pass on as iteration-invariant
 arguments to \code{fun}.  Unlike with \code{data}, each of the objects therein are
