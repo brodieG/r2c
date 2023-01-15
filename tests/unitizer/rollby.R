@@ -94,6 +94,7 @@ unitizer_sect('zero lengths', {
   rbs_W1B1(numeric(), position=numeric(1), start=0, end=1)
   rbs_W1B1(numeric(1), position=numeric(), start=0, end=1)
   rbs_W1B1(list(), position=numeric(), start=0, end=1)
+  rbs_W1B1(list(), position=numeric(), start=0, end=1, MoreArgs=list(1:3))
   rbs_W1B1(list(), position=numeric(1), start=0, end=1)
   rbs_W1B1(list(numeric(1)), position=numeric(), start=0, end=1)
   rbs_W1B1(list(numeric()), position=numeric(), start=0, end=1)

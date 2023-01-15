@@ -16,18 +16,12 @@ full (see README).
 
 2/n
 
-`{r2c}` includes many window application methods, some I have not seen
-elsewhere.  E.g you can compute rolling prior twelve month sales as of the 1st
-of each month, with sales at arbitrary times.
+`{r2c}` includes many window methods, some AFAICT unique.  E.g computing
+trailing quarter stats on arbitrarily-timed events as of the 1st of each month.
+
+Special thanks to @dvaughan32 for pointing me to {slider}'s `slide_index`.
 
 <plot-illustrating-sales>
-
-<plot-showing-all-different-window-types>
-* Integer spaced
-  * Integer spaced regular.
-  * Integer spaced regular variable width.
-* Arbitrary spaced
-  * Fixed sized windows
 
 3/n
 

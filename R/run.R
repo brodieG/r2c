@@ -13,6 +13,15 @@
 ##
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
+rename_dots <- function(call.matched, pattern) {
+  if(dots.pos <- match("...", names(call.matched), nomatch=0)) {
+    dots <- call.matched[[dots.pos]]
+    names(dots) <- sprintf(pattern, seq_along(dots))
+    call.matched <- append(call.matched[-dots.pos], dots, after=dots.pos - 1L)
+  }
+  call.matched
+}
+
 ## Match Data to r2c Fun Parameters
 ##
 ## Data is spread between group-varying (`data`) and non-group varying
@@ -49,23 +58,26 @@ match_and_alloc <- function(
   args.dummy <- as.list(seq_len(length(do) + length(MoreArgs)))
   f.dummy <- function() NULL
   formals(f.dummy) <- formals
+  body(f.dummy) <- as.call(c(as.name("list"), lapply(names(formals), as.name)))
   names(args.dummy) <- c(names(do), names(MoreArgs))
-  call.dummy <- as.call(c(list(f.dummy), as.list(args.dummy)))
+  call.dummy <- as.call(c(list(as.name("fun")), as.list(args.dummy)))
   call.dummy.m <- tryCatch(
     as.list(
       match.call(f.dummy, call.dummy, envir=enclos, expand.dots=FALSE)
     )[-1L] ,
     error=function(e) {
       # Error produced by this is confusing because we're matching to positions,
-      # so instead re-match against for better error message.
+      # so instead re-match for better error message.
       #
-      # Additional convoluation for the case where the call to e.g. `group_exec`
+      # Additional convolution for the case where the call to e.g. `group_exec`
       # contains something like list(x = y), where we want to report the
       # unevaluated expression an not e.g. the value of `y`.
 
       call.m <- match.call(runner, call, expand.dots=FALSE, envir=enclos)
       data.2 <-
-        if(is.call(call.m[['data']])) as.list(call.m[['data']])[-1L]
+        if(is.call(call.m[['data']]) && call.m[['data']][[1]] == quote('list')) {
+          as.list(call.m[['data']])[-1L]
+        }
         else do  # note this is not in original order
       moreargs.2 <-
         if(is.call(call.m[['MoreArgs']])) as.list(call.m[['MoreArgs']])[-1L]
@@ -77,17 +89,39 @@ match_and_alloc <- function(
         match.call(f.dummy, call.dummy, envir=enclos),
         error=function(e) stop(simpleError(conditionMessage(e), call=call))
       )
-      # In case the above somehow doesn't produce an error; it always should
-      stop("Internal Error: no param match error; contact maintainer.")
+      # In case the above somehow doesn't produce an error, fallback to original
+      # The error won't make sense because the values that are being matched
+      # are the indices that we generated to track data vs. MoreArgs (see above)
+      stop(
+        "Internal Error: parameter match error, and unable to generate ",
+        "friendly error.  The error is \"", conditionMessage(e), "\", but ",
+        "this is from an internal matching attempt.  Contact maintainer."
+      )
   } )
   # Rename the dots and splice back in; there is no dots forwarding once we get
   # to r2c implementations, so the original names are useless, and we need new
   # names so we can recognize which arguments came from dots.
-  if(dots.pos <- match("...", names(call.dummy.m), nomatch=0)) {
-    dots <- call.dummy.m[[dots.pos]]
-    names(dots) <- sprintf(".ARG.%d", seq_along(dots))
-    call.dummy.m <- append(call.dummy.m[-dots.pos], dots, after=dots.pos - 1L)
-  }
+
+  call.dummy.m.old <- call.dummy.m
+  call.dummy.m <- rename_dots(call.dummy.m, ".ARG.%d")
+
+  # Test that all required parameters were provided, and provide error message
+  # if they weren't.  Ideally we'd give the originall expressions in `data` and
+  # `MoreArgs`, but that's too much work.
+  call.dummy.2 <- rename_dots(call.dummy.m.old, "..%d")
+  call.dummy.2[] <- lapply(names(call.dummy.2), as.name)
+  call.dummy.2 <- as.call(c(list(quote(fun)), call.dummy.2))
+  tryCatch(
+    do.call(f.dummy, call.dummy.m),
+    error=function(e) stop(
+      simpleError(
+        paste0(
+          c(sprintf("In `%s`:", deparse1(call.dummy.2)), conditionMessage(e)),
+          collapse="\n"
+        ),
+        call=call
+  ) ) )
+
   # Split back into group varying (data) vs not (MoreArgs)
   dat.match <- unlist(call.dummy.m[call.dummy.m <= length(do)])
   names(do)[dat.match] <- names(dat.match)

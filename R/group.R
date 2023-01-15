@@ -37,7 +37,7 @@ group_exec_int <- function(
   if(length(d.len <- unique(lengths(data))) > 1L)
     stop("All `data` vectors must be the same length.")
   if(!length(d.len)) d.len <- 0L  # No data
-  groups <- if(is.null(groups)) {
+  groups <- if(is.null(groups)) { # Direct call of "r2c_fun"?
     r2c_group_obj(
       sizes=list(gsizes=as.numeric(d.len), glabs=0L, gmax=as.numeric(d.len)),
       order=seq_len(d.len),
@@ -49,7 +49,7 @@ group_exec_int <- function(
   } else groups
 
   mode <- groups[['mode']]
-  if(length(d.len) == 0 || !identical(d.len, length(groups[['group.o']][[1L]])))
+  if(length(data) > 0 && !identical(d.len, length(groups[['group.o']][[1L]])))
     stop("`data` vectors must be the same length as `group` vectors.")
 
   if (mode != "ungrouped") {
@@ -76,6 +76,7 @@ group_exec_int <- function(
   empty.res <- FALSE
   gsizes <- group.sizes[['gsizes']]
   res.size.type <- "variable"
+
   if(!stack['group', 1L]) { # constant group size
     group.res.sizes <- rep(stack['size', 1L], length(gsizes))
     res.size.type <- if(stack['size', 1L] == 1L) "scalar" else "constant"
@@ -212,7 +213,6 @@ process_groups <- function(groups, sorted=FALSE) {
     o <- seq_along(groups[[1L]])  # should be altrep
     go <- groups
   }
-
   r2c_group_obj(
     group_sizes(go[[1L]], levels=levels), # UPDATE IF ALLOW MORE GROUP VECS
     order=o, group.o=go, sorted=sorted, mode=mode
@@ -227,7 +227,7 @@ r2c_groups_template <- function() {
 }
 #' Execute r2c Function Iteratively on Groups in Data
 #'
-#' A [runner][runners] that Organizes `data` according to `groups`, and calls
+#' A [runner][runners] that organizes `data` according to `groups`, and calls
 #' the native code associated with `fun` iteratively for each group.  `data`
 #' `data` will be "subset" the portion corresponding to the group being iterated
 #' prior to the native code invocation.  There is no interpreter overhead
@@ -240,15 +240,16 @@ r2c_groups_template <- function() {
 #' @param fun an "r2c_fun" function as produced by [`r2c`].
 #' @param groups an integer, numeric, or factor vector.  Alternatively, a list
 #'   of equal-length such vectors, the interaction of which defines individual
-#'   groups to organize the vectors in `data` into.  Numeric vectors are coerced
-#'   to integer, thus copied.  Vectors of integer type, but with different
-#'   classes/attributes (other than factors) will be treated as integer vectors.
-#'   The vectors must be the same length as those in `data`.  NA values are
-#'   considered one group. If a list, the result of the calculation will be
-#'   returned as a "data.frame", otherwise as a named vector.  Currently only
-#'   one group vector is allowed, even when using list mode.  Support for
-#'   multiple group vectors and other types of vectors will be added in the
-#'   future.
+#'   groups to organize the vectors in `data` into (multiple vectors not
+#'   implemented yet).  Numeric vectors are coerced to integer, thus copied.
+#'   Vectors of integer type, but with different classes/attributes (other than
+#'   factors) will be treated as integer vectors.  The vectors must be the
+#'   same length as those in `data`.  NA values are considered one group. If a
+#'   list, the result of the calculation will be returned as a "data.frame",
+#'   otherwise as a named vector.  Currently only one group vector is allowed,
+#'   even when using list mode.  Support for multiple group vectors and other
+#'   types of vectors will be added in the future.  Zero length groups are not
+#'   computed on at all (e.g. missing factor levels, zero-length group vector).
 #' @param data a numeric vector, or a list of equal length numeric
 #'   vectors.  If a named list, the vectors will be matched to `fun` parameters
 #'   by those names.  Elements without names are matched positionally.  If a
@@ -328,7 +329,7 @@ group_exec <- function(
       integer() || numeric() ||
       # List of group vectors
       (
-        list() && 
+        list() &&
         all(
           vapply(., \(x) is.numeric(x) || is.integer(x) || is.factor(x), TRUE))
       ) ||
@@ -336,7 +337,7 @@ group_exec <- function(
       r2c_groups_template(),
     data=(
       (numeric() || integer()) ||
-      (list() && all(is.num_naked(.)) && length(.) > 0)
+      (list() && all(is.num_naked(.)))
     ),
     MoreArgs=list()
   )
