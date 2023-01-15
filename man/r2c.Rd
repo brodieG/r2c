@@ -70,7 +70,7 @@ will be slower than evaluating the corresponding R expression.
 
 Parameters for "r2c_fun" functions are the free symbols in \code{call} in the order
 they appear in the call tree.  Be sure to check the parameters of the
-resulting "r2c_fun" to avoid surprised from unexpected parameter order.
+resulting "r2c_fun" to avoid surprises from unexpected parameter order.
 Future \code{{r2c}} release will allow specification of parameter order.
 
 The structure of "r2c_fun" objects is subject to change without notice in

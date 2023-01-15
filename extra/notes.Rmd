@@ -1,5 +1,15 @@
 # r2c
 
+# Function vs. Expression
+
+One complexity to think about is that in the auto-generated "functions", there
+is no possibility for a free symbol to exist, whereas in the manually specified
+ones we might allow completely free symbols such as `pi`.  Currently (0.1.0) the
+structure supports this at the expense of quietly finding symbols bound to e.g.
+the global environment.  So we need to add a check that detects this.
+
+How to default values work for functions?
+
 # Window Implementation
 
 ## Offset Direction
