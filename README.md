@@ -140,6 +140,26 @@ working on will depend on some interaction of external interest and my own.
 * Get on CRAN (there is currently at least one questionable thing we do).
 * API to allow other native code to invoke `{r2c}` functions.
 
+## Installation
+
+This package is experimental and thus not available on CRAN yet.  To install:
+
+```
+f.dl <- tempfile()
+f.uz <- tempfile()
+github.url <- 'https://github.com/brodieG/r2c/archive/main.zip'
+download.file(github.url, f.dl)
+unzip(f.dl, exdir=f.uz)
+install.packages(file.path(f.uz, 'r2c-main'), repos=NULL, type='source')
+unlink(c(f.dl, f.uz))
+```
+
+Or if you have `{remotes}`:
+
+```
+remotes::install_github("brodieg/r2c")
+```
+
 ## Related Work
 
 ### "Compiling" R
