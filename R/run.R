@@ -13,6 +13,15 @@
 ##
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
+rename_dots <- function(call.matched, pattern) {
+  if(dots.pos <- match("...", names(call.matched), nomatch=0)) {
+    dots <- call.matched[[dots.pos]]
+    names(dots) <- sprintf(pattern, seq_along(dots))
+    call.matched <- append(call.matched[-dots.pos], dots, after=dots.pos - 1L)
+  }
+  call.matched
+}
+
 ## Match Data to r2c Fun Parameters
 ##
 ## Data is spread between group-varying (`data`) and non-group varying
@@ -89,32 +98,30 @@ match_and_alloc <- function(
         "this is from an internal matching attempt.  Contact maintainer."
       )
   } )
+  # Rename the dots and splice back in; there is no dots forwarding once we get
+  # to r2c implementations, so the original names are useless, and we need new
+  # names so we can recognize which arguments came from dots.
+
+  call.dummy.m.old <- call.dummy.m
+  call.dummy.m <- rename_dots(call.dummy.m, ".ARG.%d")
+
   # Test that all required parameters were provided, and provide error message
   # if they weren't.  Ideally we'd give the originall expressions in `data` and
   # `MoreArgs`, but that's too much work.
-  call.dummy.2 <- call.dummy
-  call.dummy.2[-1] <- lapply(names(formals), as.name)
+  call.dummy.2 <- rename_dots(call.dummy.m.old, "..%d")
+  call.dummy.2[] <- lapply(names(call.dummy.2), as.name)
+  call.dummy.2 <- as.call(c(list(quote(fun)), call.dummy.2))
   tryCatch(
     do.call(f.dummy, call.dummy.m),
     error=function(e) stop(
       simpleError(
         paste0(
-          c(
-            sprintf("In `%s`:", deparse1(call.dummy.2)),
-            conditionMessage(e)
-          ),
+          c(sprintf("In `%s`:", deparse1(call.dummy.2)), conditionMessage(e)),
           collapse="\n"
         ),
         call=call
   ) ) )
-  # Rename the dots and splice back in; there is no dots forwarding once we get
-  # to r2c implementations, so the original names are useless, and we need new
-  # names so we can recognize which arguments came from dots.
-  if(dots.pos <- match("...", names(call.dummy.m), nomatch=0)) {
-    dots <- call.dummy.m[[dots.pos]]
-    names(dots) <- sprintf(".ARG.%d", seq_along(dots))
-    call.dummy.m <- append(call.dummy.m[-dots.pos], dots, after=dots.pos - 1L)
-  }
+
   # Split back into group varying (data) vs not (MoreArgs)
   dat.match <- unlist(call.dummy.m[call.dummy.m <= length(do)])
   names(do)[dat.match] <- names(dat.match)
