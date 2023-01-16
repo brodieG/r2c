@@ -41,8 +41,7 @@ for each iteration.  There are currently two iteration mechanisms available:
 * `group_exec`: compute on disjoint groups in data (a.k.a. split-apply-combine).
 * `roll*_exec`: compute on (possibly) overlapping sequential windows in data.
 
-For example, to iterate the slope function by groups, we could use
-(character/factor group variables will be implemented in the future):
+For example, to iterate the slope function by groups, we could use:
 
     with(iris, group_exec(r2c_slope, list(Sepal.Width, Sepal.Length), Species))
     ##    setosa versicolor  virginica
@@ -235,7 +234,7 @@ rolling window statistics:
 * [Achim Zeileis][11] et al. for `rollapply` in [`{zoo}`][12] from the design of
   which `roll*_exec` borrows elements.
 * [David Vaughan][13] for ideas on window functions, including the index concept
-  (`position` in the `roll*_exec`, borrowed from [`{slider}`][14].
+  (`position` in the `roll*_exec` functions, borrowed from [`{slider}`][14]).
 * Byron Ellis and [Peter Danenberg](https://github.com/klutometis) for the
   inspiration behind `lcurry` (see [`functional::CurryL`][15]), used in tests.
 * [Hadley Wickham](https://github.com/hadley/) and [Peter
