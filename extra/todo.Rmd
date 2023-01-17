@@ -3,15 +3,11 @@
 ## Docs
 
 * Note that groups are pre-sorted.
-* Remove benchmarks from `roll*_exec` docs.
 
 ## General
 
-* Installation instructions?
 * Rename `r2c` to `r2cf` or similar once we implement functions.  Partly this is
   so `?r2c` will pull up the package docs, not the function docs.
-* Doc page for "runner" functions.
-* UBSAN / valgrind, and more.
 * Make sure there are interrupts.  Can we use "R_ext/Intermacros.h".  It seems
   yes generally, but they are not explicitly part of the API, and then there is
   the question of whether it makes sense to do so, or if we should just be doing
@@ -24,20 +20,6 @@
   we subset the input vector to generate the labels).
 
 ## Zero Len
-
-* Error case where the matching doesn't work and data or MoreArgs is e.g. a
-  variable or a complex expression.
-* Test that everything works if there is no group varying data (i.e. everything
-  fed through MoreArgs).  Not completely trivial to test as we need a function
-  that allows us to specify a `data` parameter, but then uses it as a control
-  instead of data (at least for `group_exec`).  We just need the group varying
-  data to be referenced somewhere in the call, which ...
-* Test:
-  * Zero element data and non-zero row groups
-  * Zero element data and zero row groups
-  * No iteration varying data at all
-  * Windows, in particular should still be possible with things that specify
-    position.
 
 
 ## For CRAN
@@ -160,6 +142,23 @@
 
 ## Done
 
+* Error case where the matching doesn't work and data or MoreArgs is e.g. a
+  variable or a complex expression.
+* Test that everything works if there is no group varying data (i.e. everything
+  fed through MoreArgs).  Not completely trivial to test as we need a function
+  that allows us to specify a `data` parameter, but then uses it as a control
+  instead of data (at least for `group_exec`).  We just need the group varying
+  data to be referenced somewhere in the call, which ...
+* Test:
+  * Zero element data and non-zero row groups
+  * Zero element data and zero row groups
+  * No iteration varying data at all
+  * Windows, in particular should still be possible with things that specify
+    position.
+* Doc page for "runner" functions.
+* UBSAN / valgrind, and more.
+* Installation instructions?
+* Remove benchmarks from `roll*_exec` docs.
 * Suppress compiler version output from R CMD SHLIB, check that compile error
   handling is okay.
 * Make `group_exec` interface consistent with `roll*_exec`
