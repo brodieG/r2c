@@ -1,4 +1,4 @@
-## Copyright (C) 2022 Brodie Gaslam
+## Copyright (C) Brodie Gaslam
 ##
 ## This file is part of "r2c - Fast Iterated Statistic Computation in R"
 ##
@@ -58,7 +58,7 @@ unitizer_sect("Forwarded Dots", {
   f2 <- function(...) {
     x <- 1
     y <- 2
-    group_exec(r2c_add, rep(1:2, each=5), list(...))
+    group_exec(r2c_add, list(...), rep(1:2, each=5))
   }
   f2(x, rep(y, 5))
 
@@ -66,7 +66,7 @@ unitizer_sect("Forwarded Dots", {
   f2a <- function(...) {
     x <- 1
     y <- 2
-    group_exec(r2c_sumdots, rep(1:2, each=5), list(...))
+    group_exec(r2c_sumdots, list(...), rep(1:2, each=5))
   }
   f2a(x, rep(y, 5))
 

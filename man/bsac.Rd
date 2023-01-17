@@ -4,33 +4,40 @@
 \alias{bsac}
 \title{Basic Split Apply Combine}
 \usage{
-bsac(call, groups, data, MoreArgs = list(), enclos = parent.frame())
+bsac(call, data, groups, MoreArgs = list(), enclos = parent.frame())
 }
 \arguments{
 \item{call}{quoted R call to apply to each group.}
 
-\item{groups}{an integer vector, or a list of equal-length integer vectors,
-the interaction of which defines individual groups to organize the vectors
-in \code{data} into.  NA values are considered one group. If a list, the result
-of the calculation will be returned as a "data.frame", otherwise as a named
-vector.  Currently only one group vector is allowed, even when using list
-mode.  Support for multiple group vectors and non-integer vectors will be
-added in the future.}
+\item{data}{a numeric vector, or a list of equal length numeric
+vectors.  If a named list, the vectors will be matched to \code{fun} parameters
+by those names.  Elements without names are matched positionally.  If a
+list must contain at least one vector.  Conceptually, this parameter is
+used similarly to \code{envir} parameter to \code{\link[base:eval]{base::eval}} when that is a list
+(see \code{enclos}).}
 
-\item{data}{a numeric vector, or a list of numeric vectors, each vector the
-same length as the vector(s) in \code{groups}.  If a named list, the vectors
-will be matched to \code{fun} parameters by those names.  Elements without names
-are matched positionally.  If a list must contain at least one element.}
+\item{groups}{an integer, numeric, or factor vector.  Alternatively, a list
+of equal-length such vectors, the interaction of which defines individual
+groups to organize the vectors in \code{data} into (multiple vectors not
+implemented yet).  Numeric vectors are coerced to integer, thus copied.
+Vectors of integer type, but with different classes/attributes (other than
+factors) will be treated as integer vectors.  The vectors must be the
+same length as those in \code{data}.  NA values are considered one group. If a
+list, the result of the calculation will be returned as a "data.frame",
+otherwise as a named vector.  Currently only one group vector is allowed,
+even when using list mode.  Support for multiple group vectors and other
+types of vectors will be added in the future.  Zero length groups are not
+computed on at all (e.g. missing factor levels, zero-length group vector).}
 
-\item{MoreArgs}{a list of R objects to pass on as group-invariant arguments
-to \code{fun}.  Unlike with \code{data}, each of the objects therein are passed in
-full to the native code for each group.  This is useful for arguments that
-are intended to remain constant group to group.  Matching of these objects
-to \code{fun} parameters is the same as for \code{data}, with positional matching
-occurring after the elements in \code{data} are matched.}
+\item{MoreArgs}{a list of R objects to pass on as iteration-invariant
+arguments to \code{fun}.  Unlike with \code{data}, each of the objects therein are
+passed in full to the native code for each iteration  This is useful for
+arguments that are intended to remain constant across iterations.  Matching
+of these objects to \code{fun} parameters is the same as for \code{data}, with
+positional matching occurring after the elements in \code{data} are matched.}
 
-\item{enclos}{environment to use as the \code{enclos} parameter when evaluating
-expressions or matching calls.}
+\item{enclos}{environment to use as the \code{enclos} parameter to
+\code{\link[base:eval]{base::eval}} when evaluating expressions or matching calls (see \code{data}).}
 }
 \value{
 numeric vector

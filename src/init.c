@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022 Brodie Gaslam
+ * Copyright (C) Brodie Gaslam
  *
  * This file is part of "r2c - Fast Iterated Statistic Computation in R"
  *
@@ -22,7 +22,17 @@
 static const
 R_CallMethodDef callMethods[] = {
   {"group_sizes", (DL_FUNC) &R2C_group_sizes, 1},
-  {"run_internal", (DL_FUNC) &R2C_run_internal, 8},
+  {"run_group", (DL_FUNC) &R2C_run_group, 8},
+  {"run_window", (DL_FUNC) &R2C_run_window, 10},
+
+  {"run_window_by", (DL_FUNC) &R2C_run_window_by, 13},
+  {"run_window_at", (DL_FUNC) &R2C_run_window_at, 11},
+  {"run_window_bw", (DL_FUNC) &R2C_run_window_bw, 10},
+
+  {"size_window_by", (DL_FUNC) &R2C_size_window_by, 8},
+  {"size_window_at", (DL_FUNC) &R2C_size_window_at, 6},
+  {"size_window_bw", (DL_FUNC) &R2C_size_window_bw, 5},
+
   {"assumptions", (DL_FUNC) &R2C_assumptions, 0},
   {"constants", (DL_FUNC) &R2C_constants, 0},
 

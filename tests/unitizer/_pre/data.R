@@ -1,4 +1,4 @@
-## Copyright (C) 2022 Brodie Gaslam
+## Copyright (C) Brodie Gaslam
 ##
 ## This file is part of "r2c - Fast Iterated Statistic Computation in R"
 ##
@@ -49,12 +49,23 @@ x.ovrf.dbl.na[which(g == 12L)[1L]] <- NA_real_
 x.ovrf.ldbl.na <- x.ovrf.ldbl
 x.ovrf.ldbl.na[ldbl.na[1L]] <- NA_real_
 
-# Functions used in multiple places
+# r2c Functions used in multiple places
 
+slope <- function(x, y)
+  sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2)
 r2c_slope <- r2cq(
   sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2),
   check=TRUE
 )
 r2c_sum <- r2cq(sum(x))
 r2c_add <- r2cq(x + y)
+r2c_len <- r2cq(length(x))
+
+# Helper Functions
+show_bits <- function(x, n=as.integer(max(c(log2(x), 0), na.rm=TRUE)) + 1L) {
+  raw <- vapply(x, intToBits, raw(32))
+  res <- as.integer(raw)
+  dim(res) <- dim(raw)
+  res[seq_len(n),,drop=FALSE]
+}
 

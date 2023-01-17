@@ -1,225 +1,358 @@
 # r2c
 
-# To Do / Questions
+# Function vs. Expression
 
-## Current
+One complexity to think about is that in the auto-generated "functions", there
+is no possibility for a free symbol to exist, whereas in the manually specified
+ones we might allow completely free symbols such as `pi`.  Currently (0.1.0) the
+structure supports this at the expense of quietly finding symbols bound to e.g.
+the global environment.  So we need to add a check that detects this.
 
-* Migrate to tapply structure.  More generally, explain interface?
-* Allow more then `INT_MAX` groups (labels are limiting right now)?
-* What if compilation fails, do we have good error messages?
+How to default values work for functions?
 
-## For CRAN
+# Window Implementation
 
-* Image links from README should be to raw github URLs.
-* Figure out why winbuilder doesn't work.
-* Errors in `match.call` that show the deparsed argument might deparse
-  differently on different systems (`group_sum` error tests).
+## Offset Direction
 
-## Other
+It really makes more sense for the offset to be the negative of what it is now.
 
-* Don't use double for group sizes unless we have groups that are too large.
-  **probably not worth it** b/c the group sizes result is only as big as the
-  number of groups, so very small in the grand scheme of things.  First level is
-  simply to check input vector size, and if less than `INT_MAX` use that, next
-  step would be to switch from int to double if we do have a vector that exceeds
-  the size limit (but then we need to test for that...).  Does that mean we need
-  a limit to int?  Will be annoying to have logic for both.
-* Should sorted be "assume.sorted"?  Probably.  Could add check that it is (see
-  next).
-* Process groups might be able to determine that things are sorted?  If things
-  are always e.g. increasing, then it must be the case that they are sorted.
-  Evaluate the overhead of this; should be low as it would just be done in the
-  second pass that stores the sizes?  Something still needs to be declared as
-  sorted though.  It's relatively cheap to check that it is, but not so cheap
-  that we would always want to run that check.
-* Perhaps we got too lazy with POW, do we need to handle all the other cases
-  arith handles?  Maybe, but if we do we'll likely need our own `pow` function,
-  as it stands right now we're likely to get non-identical results in the case
-  of NA or Inf (or at least particular variations of them).
-* Re-implement modulo.
-* The `check=TRUE` might be better done with an explicit check function.
-* For running function directly, can we pass data as an env so the traceback
-  doesn't explode (but make sure this doesn't cause reference / refcount issues)?
-* What is the implementation cost of allowing internal functions to advance the
-  data pointers so they don't have to be manually moved after each function
-  iteration?
-* Implement sum64 and mean64 to use double accumulator (note we've tested that
-  double accumulators are slower).
-* We can no longer use `mean <- mean.default` and `r2c` at same time (this might
-  be correct, but will make readme a bit more complicated).  Also, error message
-  is very confusing in this case as `mean.default` is also from the base
-  namespace, even though the masking is defined at the global level.
-* Currently we require at least one data column so we can get away with using
-  the group logic for the stand alone evaluation of the r2c funs.
-* Add destructors that will unload the shlib and delete file file when the
-  corresponding object is garbage collected (finalizer).
-* Add check to `r2c` funs that verify the `r2c` version, the R version, and the
-  platform (anything else)?
-* Figure out a better way to store the object than embedding it with `bquote` in
-  the function (e.g. retrieve from the call like `rlang`, but not sure that's
-  better).
-* Think about `df %>% group_by(g) %>% filter(x > min(df$x)`.  This should
-  resolve naturally if we allow `[['x']]` as "normal" expression.
-* Can we optimize label generation for cases where the last step is constant
-  size or size of groups?
-* Better introspection tools for intermediate products so we can see what they
-  are.
-* Are names sufficient to disqualify from nakedness?  How do names behave in
-  recycling?  Do we want to allow other attributes to persist?
-* Make sure to have a function that uses the `ctrl` functionality to check that
-  it works properly (once we switch to `flag` for most functions).
-* Can we get more memory efficient by e.g. using `+=` to avoid having to have
-  memory allocated for both LHS and RHS for the arithmetic operators?  Might
-  complicate things substantially.
-* Make sure pointer arrays are aligned.  Use `malloc`?  If so internal code
-  cannot use `error`, and we can't guarantee that?  Can we register a finalizer
-  somehow (probably will need to).
-* To allow assignments we can just use a series of nested environments such that
-  each sub-call will then seek the symbol through the nested environments.
-  We'll need to bind the data symbols to e.g. environments so they may be
-  uniquely identified and we can confirm they've been found.
-* Make sure headers go in in correct order; it may not work if we structure
-  workflow around C functions?  Maybe okay if each group of functions does the
-  right thing?  Do we need to include the headers before each group of
-  functions?  Do we need to keep translation units independent (but the lose the
-  benefit of static funs)?  This is almost certainly a real problem that needs
-  to be addressed.
-* Ensure all entry point names are unique and that there are no collisions.
-  Maybe this can be done on registration?
-* Special case where all groups are same size and there is an external vector of
-  that size?
-* Complex expressions with curly braces, etc.
-* Unary arithmetic funs.
-* Add post-processing of function result (e.g. to attach names, etc, as in
-  `quantile`).
-* Support for functions with defaults that need to be evaluated?  No.  This
-  substantially increases complexity because we have to do so in the function
-  evaluation environment and need access to all the other arguments.
-* Side effects from evaluation of control parameters?  Where should assigned
-  variables reside?
-* Add capability to specify functions in non-standard ways (e.g. `base::sum`, or
-  `(get("sum", as.environment("package:base"))`)?  Maybe not, that seems like
-  potential trouble.  Certainly document also things like `f <- sum; f(x)`.
-* Make sure there are interrupts.  Can we use "R_ext/Intermacros.h".  It seems
-  yes generally, but they are not explicitly part of the API, and then there is
-  the question of whether it makes sense to do so, or if we should just be doing
-  this at the group level?
-* Is it faster to compute complex expressions pairwise (i.e. full vector scan of
-  two vectors), or do each row in full once?
-* Look into using R_GetCCallable (see WRE) instead of what we're doing now.  It
-  seems though that to do so we'll need to generate a full package which will
-  further slow down the compilation.  What does `inline` do?
-* Check name isn't used already.
-* `?SHLIB` states some binary distributions don't include `R CMD SHLIB`.
-* Figure out how to call the current version of R (e.g. `RD CMD SHLIB`).
-* See how far back this works in terms of R versions.
-* What happens when this stuff is serialized?
-* Is there an alternative to R_FindSymbol?  Can we get it to be made part of the
-  API.
-* Can we use this in some way for e.g. really wide matrices where each column
-  takes the place of an argument?  Generating a pointer for each column then may
-  be less efficient.
-* Does altrep play into this in any way?
-* Lags and similar (i.e. `x[i] = x[i] * x[i - 1]`).
-* Re-use repeated expressions.
+## Start End
 
-## Done
+Does partial make sense for `rollby_`?  Should start end really subset, or
+simply set where we start.  The latter is increasingly attractive.  What is the
+correspondence with `rolli`?
 
-* Tests groups that aren't just 1:n or 0:n (I think we do this)?
-* Test on windows.  Instructions for windows users about toolchain, etc?
-* Fill out acknowledgments.
-* Rename `mean0` to `mean1`
-* Benchmarks:
-  * Randomly ordered groups?
-  * Larger group sizes?
-* Try to interfere with r2c funs.  Need to document exactly what environment
-  they are exposed to (base namespace).
-* Pass data around in environments for better deparse (can't do this because the
-  parameters might be unnamed via dots, or at least not easily, plus it only
-  matters for the naked call).
-* Add tests:
-    * For parenthesis removal in mechanics.
-    * For square tranform.
-* When we dropped the use of env to match the arguments, how did keep track of
-  the environment to look up functions in?  We don't, we just check function
-  validity at run time.
-* Emit warning/errors with the function call.
-* Can we come up with a better error message for the matching of arguments?  Do
-  we need our own matching instead of relying on `match.call`.
-* Check dots with names (i.e. names that don't match formas but are caught by
-  dots).  What should be done with these?  They probably should be unnamed.
-* Check dots with multiple sets of dots, trying to e.g. pass both to group
-  varying and flags/control params.
-* Can we truly support dots (I think so, see dots section).
-* Does arg order matching make sense?  We get: `function (y, x, ..., na.rm)` out
-  of `r2cq(y - sum(x, na.rm = na.rm, ...), check = TRUE)`, dots get moved up,
-  doesn't seem right.
-* Are we checking that the functions resolve correctly at run time (and not just
-  at compile time)? Yes, we check in `alloc`.
-* Test that dots still work after we changed the eval environment; almost
-  certainly won't so we have to think how to handle things that get matched to
-  e.g. `..1`, etc.
-* How can we efficiently warn of "longer object length is not a multiple" in
-  vecrec?  We don't want a modulo for each group.  But we could check that the
-  shorter object has not hit its length at the end of the loop and set a global
-  variable?  Or use `flags` to communicate back?  When we compute each
-  interaction size, we do (or could know) the group sizes, including possibly
-  max and min group size.  But to be certain of a multiple you must be certain
-  that there are no groups of odd sizes...  So I think it has to be done at run
-  time, annoyingly.
-* Do we need to handle the issue of `envir` for `match.call` at allocation time
-  instead of at compile time?  Seems like the way this goes wrong is if the
-  expression being looked at itself contains dots, e.g. literally `sum(...)`
-  where the `...` need to be fetched.
+We do really consider subsetting to be out of bounds of what this does.
+Although it would be nice and could do it.
 
-    > (\(...) r2cq(sum(...)))(1, 2)
-    Error in match.call(definition = definition, call = call, envir = envir,  : 
-      ... used in a situation where it does not exist
+Actually, increasingly thinking that partial just doesn't make sense other than
+for the regularly spaced data where you would expect a specific count of
+observations inside the window.  There is the argument that you want windows to
+have the same amount of "eligible space", but that's also achievable by setting
+`start` and `end` at reasonable points wrt to `x`.
 
-Right now preprocess is just using `parent.frame()` for match.call, which
-doesn't make any sense.
+## Incomplete
 
-* Check assumption that double will hold `R_xlen_t`?  Or that length is no
-  longer that the allowable size?  A bit tricky; no way to know what double size
-  is.  This is because we return the group size to R; otherwise it would just be
-  an R_xlen_t vector.  We need this to get the group max for the allocation.
-  It's possible R guarantees this will be no bigger than e.g. 2^53 or some such.
-  We added a check to assumptions.c.
-* Ensure that all pointer parameters are allocated one extra element at end so
-  that we can use the fun(++pointer) pattern without worrying about the last
-  call overflowing (I think this might be allowed by the standard anyway,
-  check).  Yes, allowed by C99 6.5.6 p8.
-* Is it possible that set.seed could interfere badly with the random file name
-  generation?  Yes, maybe try to initialize the pool
-* Evaluation of non-compilable expressions in an env child of an env with
-  appropriate symbols protected?  Such would be the symbols in the data, but
-  what about the functions that are used?  That seems excessive.  No, we won't
-  support this.
-* Think though corner case of R_NA, NaN, Inf, etc: are we preserving semantics.
-  Yes, mostly, but maybe not always (e.g. when we use `pow` instead of `square`)
-* Look into GraalVM, Renjin?
-* Only sort the columns that are used.  This is the case already as only things
-  that match to the `r2c_fun` are submitable.
-* Be sure to test situations where we have external data larger and smaller than
-  group sizes.
-* What do we do with NA groups?  Each it's own, or one big NA group?  One big NA
-  group.  Single group; now documented.
-* Document that we assume IEEE-754 (and thus existence of infinity and no
-  overflow on conversion from long double to double), and check whether this is
-  a reasonable assumption under C99 (probably no), or failing that under R.
-* Figure out why external vectors are being duplicated.  Were seeing:
+A window is considered incomplete if the beginning of the data is to the right
+of the left end of the first window, or the opposite.
 
-    Browse[2]> .Internal(inspect(alloc$alloc$dat[[5]]))
-    @7fe16de86b68 14 REALSXP g0c0 [MARK,REF(65535)]  1 : 3 (compact)
-    Browse[2]> .Internal(inspect(alloc$alloc$dat[[6]]))
-    @7fe16de8b7b8 14 REALSXP g0c0 [MARK,REF(65535)]  1 : 3 (compact)
+So if:
 
-  for the slope calculation with y as 1:3 (literal).  Duh, is this just because
-  we use `as.numeric`.
+    ileft == 0 && index[ileft] > left ||
+    iright == imax && index[iright] < right
 
-* Really need to figure out whether we want a formal interface to the functions.
-  It could be auto-generated from all the unbound symbols like gsubfn does it.
-* Annotate code with the call that it corresponds to
+## Rationalize
+
+We can rationalize the integer case to be:
+
+* `width = n - 1`
+* `bounds = "[]"`
+* `index = seq_along(<data>)`
+
+And it will be somewhat slower.  The biggest issue is that `seq_along()` could
+return either numeric or integer, and we don't want to generate that whole
+vector.  Maybe we just let it exist for this reason alone.  It would require a
+bit of contortion to handle the special iterative case?
+
+Maybe not, we would need to check whether the object is altrep sequence starting
+at 1 and with a stride of 1, and then we could, for just the "[]" bounds case,
+make the condition to check for be against the `i` instead of `index[ileft]`.
+
+## Discrete vs Continuous
+
+Is the "irregular" mode really about using a continuous variable, and thus the
+base index points to a zero-width instantaneous moment (`POSIXct`?).  Whereas
+instead the normal mode is pointing to a fixed width element.  What about
+something like a `Date`?  Which is it?  If it is continuous, do we just take it
+to be the instant the day switches, midnight?  Does it belong to the prior or
+the subsequent day?
+
+## Closed / Open intervals
+
+Related to the above, how do we treat the ends of a window?  Do we give the
+option of how to treat them?  What should be the default.
+
+It's tricky because there is no consistent answer.  For no overlapping windows,
+we get `n` if align is left or center, but `n-1` if it is right.
+
+I think what makes most sense is to have a half closed interval.  We're picking
+open on the right, so that e.g. if we pick a date, and we right align with width
+1 day, we'll get all the entries from the prior day excluding anything that
+happened at midnight, which we consider part of the current day.
+
+Maybe in the future we'll give the option to do something different.
+
+## End condition
+
+Struggling a little bit to figure out the natural end condition.  If `align =
+"left"` then it makes sense to have as many iterations as intervals.  We don't
+need end to get a go at being an base index because it is included in the prior
+window (notwithstanding smaller windows, etc.).
+
+I guess `end` needs a shot at being a window because there is no guarantee it
+was included in the prior window.  And it seems weird to use presence in the
+prior window as reason to give it a shot or not, although in the special case of
+`width = by` it does produce a "pleasing" outcome.
+
+## Alternative Irregular Windows
+
+Firstly we clearly need to rename our things.  There window size, window
+spacing, and window contents.  Our implementation is regular in the first two.
+We could allow:
+
+* Specifying indices.
+* Specifying window positions (where these could be the same as indices to
+  simulate what slider does).
+* Specifying window start/end points (equivalent to positions with variable
+  widths?)
+
+What should the names be?  Current `window_i_exec` is not actually irregular.
+
+* Is it step vs. slide?  But both are step.
+* Discrete vs continuous?
+* Integer vs real?  Maybe.
+* `window`
+* `window_c`
+* `window_ci`, this replaces `by` with `at`?
+
+    gexe(fun, groups, data, MoreArgs, enclos)
+    wexe(fun, width, data, MoreArgs, by, partial, align, enclos)
+    wcexe(fun, width, data, MoreArgs, by, partial, align, enclos)
+    wciexe(fun, width, index, data, MoreArgs, by, partial, align, enclos)
+
+    gexe(fun, d, g, args, enclos)
+    wexe(fun, d, w, by, align, partial, args, enclos)
+    wcexe(fun, d, i, w, by, align, partial, args, enclos)
+    wciexe(fun, d, i, w, at, align, partial, args, enclos)
+
+    g_exe(fun, data, g, args, enclos)
+    # discrete regular
+    wd_exe(fun, data, w, by, align, partial, args, enclos)
+    # continuous regular
+    wc_exe(fun, data, i, w, by, align, start, end, partial, args, enclos)
+    # continuous irregular
+    wi_exe(fun, data, i, w, at, align, start, end, partial, args, enclos)
+
+    g_exe
+    wd_by_exe
+    wd_at_exe
+    wc_by_exe
+    wc_at_exe
+
+    g_exe
+
+    wdby_exe
+    wdat_exe
+
+    wcby_exe
+    wcat_exe
+
+So is there a way to merge the discrete and continuous interfaces into one?  Not
+really, they are pretty different.  But continuous can completely cover the
+discrete case.
+
+Actually, they are pretty close because the following produce the same value:
+
+    wd_by(x, w=<odd number>)
+    wc_by(x, seq_along(x), w=<odd number>)
+
+One issue remaining is how to treat "align='right'".  In continuous it excludes
+the base index value due to the open interval on the right.  But in discrete it
+includes it.  If we defined it as `right = width - 1`, it works in continuous
+too?
+
+    |1|0|1|2|3|
+        ^
+      [ | )
+      ( | ]
+    [ | | | )
+    ( | | | ]
+
+
+
+    rolli_exec(f, data, n, align, by, partial, MoreArgs, enclos)
+
+    rollby_exec(
+      f, data, width, offset, by, x, start, end, bounds, partial,
+      MoreArgs, enclos
+    )
+    rollat_exec(
+      f, data, width, offset, at, x, bounds, partial, MoreArgs, enclos
+    )
+    rollin_exec(
+      f, data, width, offset, x, left, right, bounds, partial, MoreArgs, enclos
+    )
+
+
+    rollby_exec(
+      f, data, width, offset=w/2,
+      x=seq_along(if(is.list(data)) data[[1L]] else data),
+      by=(end - start) / (length(x) - 1L),
+      start=x[1], end=x[length(x)],
+      bounds="[)",
+      partial=FALSE,
+      MoreArgs=list(),
+      enclos=parent.frame()
+    )
+    rollat_exec()
+
+    auto_exec <- function(f, exec, ...) {
+
+    }
+
+    rollsum3 <- auto_exec(r2c_sum, roll_exec, width=3)
+    rollsum3(1:10, align='right')
+
+
+
+
+
+
+    w_exe(r2c_sum, x, w=5, partial=TRUE, args=list(na.rm=FALSE))
+    g_exe(r2c_sum, x, g, na.rm=TRUE)
+
+    wat_exe(
+      f, x, w,
+      i=seq_along(x), at=i, align='center',
+      partial, args, enclos
+    )
+
+    winx()
+    winatx()
+    grpx()
+
+    winX()
+    winatX()
+    grpX()
+
+    window_by_exec
+    window_at_exec
+
+
+
+
+What does `partial` mean for the continuous case?
+
+## r2c
+
+Advance: group size -> by
+Length: group size -> window
+
+Additionally, need to handle cases where the window overflows and fill it.
+
+Currently we advance the data pointer by group size, but instead we want to
+advance by 'by'.
+
+So we need to split the `grp_lens` into those two different things, that are the
+same for the group mode.
+
+Additionally, we need to add support for the recycling of the indices.  For
+simplicity we could start by recycling them in R?  Not ideal as it creates big
+vectors that are completely unnecessary for the default case of scalar offset
+and scalar window.  And these vectors are large.
+
+Need to ensure that we have nothing in the offset vector that causes a problem.
+
+Likely want a special branch for the scalar-scalar default case.
+
+Currently the code assumes that `g_lens` is equal in size to the number of
+offsets, which certainly won't be the case if we're recycling.  This also means
+that the looping is completely different because for the window case we're
+recycling offset and group size until the time we run out of data.  So we're
+going to have a double nested loop with a break.
+
+We need a check that the final result is scalar as it's not guaranteed ex-ante?
+We could guarantee it ex-ante, but that's dangerous if we're wrong (but then all
+our size calculations would be wrong anyway).
+
+What if we allow non-scalar results?  Probably immediate complication is that we
+can't just go straight to "NA" result when windows are OOB.  If we do resolve
+that, we need to do a first pass pre-computing the result vector size.
+
+For now focus on developing the scalar step and scalar window size, and
+recognize the possibility for:
+
+* Vector of steps.
+* Vector of window sizes.
+* A location vector to allow data to have different positions than their rank
+  in the input vector.
+
+## For Benchmarks
+
+* slider
+* data.table
+* zoo rollapply
+
+
+## Others Window Implementations
+
+### data.table
+
+#### Key Points
+
+* Slow and fast algorithm
+* Adaptive width
+
+#### Details
+
+https://github.com/Rdatatable/data.table/pull/5441#issuecomment-1236104263
+
+### Slider
+
+#### Key Points
+
+* Irregular series can still be windowed when providing an index.
+* Uses segment trees for the fast calculations to reduce cost from O(n^2) to
+  O(nlogn)
+* Uses before/after instead of left/center/right for more flexible window
+  computation.
+
+#### Details
+
+Interesting mention of "segment trees".  This allows to partially cache sums by
+pre-aggregating the vector in a binary fashion, and then re-using the aggregates
+when possible.
+
+Also interesting that instead of using "left", "right", etc., it uses before and
+after.
+
+Would it work with variance?  What does it generalize to?
+
+    sum((x - mean(x))^2)
+
+Default is to return a list.
+
+Concept of index column for irregular series.
+
+Referenced paper also has a few other interesting topics:
+
+* Partitions, where you compute the sliding function within each partition
+  independently.
+* Variable size windows, where you cannot easily deal with removal/addition
+  window because you don't know how much you need to remove/add and doing so
+  could require scanning the entire thing again.
+
+We can compute the variance of two buckets from the individual stats according
+to "Maintaining variance and k-medians over data stream windows." (referenced in
+[1])
+
+    n<i,j> = n<i> + n<j>
+    u<i,j> = (n<i>*u<i> + n<j>*u<j>) / (n<i> + n<j>)
+    V<i,j> = V<i> + V<j> + (n<i>*n<j> / n<i,j>) * (u<i> - u<j>)^2
+
+So it should be possible to derive the equivalent formulas for most statistics
+for combining buckets, but there might not be an automatic way of doing so given
+a function (hard to believe there would be looking at the above).  Once we have
+the statistics we can use segment trees to govern how we combine things.
+
+So ultimately this business comes down to how much it costs in common use cases
+to re-run the entire function.
+
+[1]: https://www.researchgate.net/publication/221559611_Variance_estimation_over_sliding_windows/link/56a2194208ae2afab885c5ba/download
+
+### runner
+
+Doesn't seem to add too much interesting.
 
 # Interface
 
@@ -1029,12 +1162,29 @@ Yes, we only append the numeric data.
 
 # Other Implementations
 
+## ast2ast
+
+https://github.com/Konrad1991/ast2ast/
+
+## sph-sc
+
+Scheme to C via @wdkrnls (Kyle Andrews).
+
+## armacmp
+
+https://github.com/dirkschumacher/armacmp
+
+## nCompiler
+
+https://github.com/nimble-dev/nCompiler
+
 ## Graal
 
 Main question here is how limiting the R-C boundary is.  Is it the case that
 code such as `data.table` is not any faster?  Does that even run?  How many of
 the packages actually work?  What stuff does not work?  Seems like there should
 be a bit of stuff that doesn't per TK.
+
 
 ## Renjin
 
@@ -1066,6 +1216,7 @@ aggregated.
 
 We can get "vectors" in the sense we're used to in there, but they need to go in
 as matrices (but that's okay, we can just do this with 1D matrices).
+
 
 # Concept
 

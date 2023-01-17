@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022  Brodie Gaslam
+ * Copyright (C) Brodie Gaslam
  *
  * This file is part of "r2c - Fast Iterated Statistic Computation in R"
  *
@@ -39,12 +39,20 @@ SEXP R2C_assumptions() {
     Rf_error("Double cannot hold R_LEN_T_MAX without precision loss.");
 
   // Need to make sure the full range of R_xlen_t values can be accomodated by
-  // double as we use doubles to store vector indices.
+  // double as we use doubles to store vector indices, specifically that there
+  // is enough precision that all sequential integers are representable and
+  // we're not skipping e.g. with a stride of 2.
   if(
     ((R_xlen_t)((double) R_XLEN_T_MAX) != R_XLEN_T_MAX) ||
       ((R_xlen_t)((double) R_XLEN_T_MAX - 1) != R_XLEN_T_MAX - 1)
   )
     Rf_error("Double cannot hold R_LEN_T_MAX without precision loss.");
+
+  // For window application, we want to remap the window starts and ends to an
+  // all-positive domain.  With a max window size of int we can definitely use
+  // R_xlen_t for that (in the positive range).  But what if we want to
+  // ultimately allow R_xlen_t window sizes?  That will never make sense except
+  // for very large `by` values.
 
   return Rf_ScalarLogical(1);
 }

@@ -3,7 +3,7 @@ Title: Fast Iterated Statistic Computation in R
 Description: Compiles a subset of R into machine code so that expressions
     composed with that subset can be applied repeatedly on varying data without
     interpreter overhead.
-Version: 0.0.1
+Version: 0.1.0
 Authors@R: c(
     person("Brodie", "Gaslam", email="brodie.gaslam@yahoo.com",
     role=c("aut", "cre")))
@@ -11,11 +11,12 @@ License: GPL-2 | GPL-3
 URL: https://github.com/brodieG/r2c
 BugReports: https://github.com/brodieG/r2c/issues
 Suggests:
-  unitizer
+  unitizer,
+  stats
 Imports:
   utils,
-  vetr
-RoxygenNote: 7.2.0
+  vetr (>= 0.2.14.9000)
+RoxygenNote: 7.2.3
 Roxygen: list(markdown = TRUE)
 Encoding: UTF-8
 Collate: 
@@ -28,7 +29,9 @@ Collate:
     'preprocess.R'
     'alloc.R'
     'compile.R'
+    'group.R'
     'load.R'
     'r2c-package.R'
     'run.R'
     'util.R'
+    'window.R'

@@ -1,0 +1,437 @@
+---
+title: "Benchmarks for r2c and Alternatives"
+output:
+  html_vignette:
+    toc: true
+    mathjax: NULL
+---
+
+# Prelude
+
+`system.time` is modified here to run 11 times after an initial gc, and display
+mean run time.
+
+```{r}
+system.time <- sys.time <- function(exp, reps=11) {
+  res <- matrix(0, reps, 5)
+  time.call <- quote(base::system.time({NULL}))
+  time.call[[2]][[2]] <- substitute(exp)
+  gc()
+  for(i in seq_len(reps)) {
+    res[i,] <- eval(time.call, parent.frame())
+  }
+  structure(res, class='proc_time2')
+}
+print.proc_time2 <- function(x, ...) {
+  print(
+    structure(
+      # x[order(x[,3]),][ceiling(nrow(x)/2),],
+      round(colMeans(x), 3),
+      names=c("user.self", "sys.self", "elapsed", "user.child", "sys.child"),
+      class='proc_time'
+) ) }
+```
+
+On an Intel(R) Core(TM) m5-6Y54 CPU @ 1.20GHz (early 2016 Macbook), and -O2
+optimization level.  Different systems / compilers / settings may produce
+different results.
+
+# Group Benchmarks
+
+We compare `{r2c}` to various alternatives using pre-sorted and pre-grouped (or
+split) data set as previously. Pre-sorting and pre-grouping allows us to focus
+timings on the statistic computation[^1].
+
+## Group Data
+
+```{r}
+set.seed(1)
+n <- 1e7
+gn <- 10
+ng <- n/gn
+x <- runif(n) * runif(n)  # full 64 bit precision randomness
+y <- runif(n) * runif(n)  # for later
+# pre-sorted groups
+g <- cumsum(sample(c(TRUE, rep(FALSE, gn - 1)), n, replace=TRUE))
+```
+
+## Group Slope
+
+For apples to apples comparison, we use `mean1` instead of `mean` as `mean`
+uses a two-pass calculation for precision, but `{collapse}` uses a single pass
+mean.
+
+<!-- we're slightly lying here because we can't redefine `mean1` without r2c
+complaining about it, but it's a white lie -->
+```{r eval=FALSE}
+mean1 <- function(x) sum(x) / length(x)
+```
+### r2c Baseline
+
+```{r}
+library(r2c)
+system.time(g.r2c <- process_groups(g, sorted=TRUE))  # pre-grouping
+r2c_slope1 <- r2cq(
+  sum((x - mean1(x)) * (y - mean1(y))) / sum((x - mean1(x))^2)
+)
+system.time(slope.r2c <- group_exec(r2c_slope1, g.r2c, list(x, y)))
+```
+
+### Base R and FastR
+
+```{r}
+system.time(x.split <- split(x, g))    # pre-group
+y.split <- split(y, g)    # pre-group
+slope <- function(x, y) sum((x - mean1(x)) * (y - mean1(y))) / sum((x - mean1(x)) ^ 2)
+system.time(slope.base <- mapply(slope, x.split, y.split))
+identical(slope.r2c, slope.base)
+```
+
+`{FastR}` uses the same code, but needs to be run under the `{FastR}`
+implementation of R.
+
+### data.table
+
+```{r}
+data.table::setDTthreads(1)
+dt <- data.table::data.table(x, y, g)
+system.time(data.table::setkey(dt, g), reps=1)  # pre-sorting
+mean <- mean1  # so name change alone doesn't break Gforce
+system.time(
+  slope.dt <- dt[,
+    sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2), keyby=g
+  ][["V1"]]
+)
+identical(slope.dt, unname(slope.base))
+all.equal(slope.dt, unname(slope.base))
+rm(mean)
+```
+
+In this case using `mean1` alone would break Gforce, but it's moot as the
+complex expression would too.  This is not entirely fair to `{data.table}` as it
+does not pre-group like `{collapse}`/`{r2c}`
+
+### collapse
+
+```{r}
+library(collapse)
+system.time(g.clp <- GRP(g))   # pre-sort/group
+fmean2 <- function(x, cg) fmean(x, cg, na.rm=FALSE, TRA="replace_fill")
+system.time(
+  slope.clp <-
+    fsum((x - fmean2(x, g.clp)) * (y - fmean2(y, g.clp)), g.clp, na.rm=FALSE) /
+    fsum((x - fmean2(x, g.clp))^2, g.clp, na.rm=FALSE)
+)
+identical(slope.clp, slope.base)
+all.equal(slope.clp, slope.base)
+```
+
+Alternatively and with similar performance
+
+```{r}
+system.time(
+  slope.clp.2 <-
+    fsum(fwithin(x, g.clp, na.rm=FALSE) * fwithin(y, g.clp, na.rm=FALSE), g.clp, na.rm=FALSE) /
+    fsum(fwithin(x, g.clp, na.rm=FALSE)^2, g.clp, na.rm=FALSE)
+)
+all.equal(slope.clp.2, slope.clp)
+```
+Thanks to Sebastian Krantz for pointing out the `TRA="replace_fill"`
+functionality, and for the alternate formulations.
+
+Or in more `{collapse}` semantic form (and a little faster because we allow
+re-use of `x - mean(x)`, which we don't use for comparison since that's no longer
+apples to apples):
+
+```{r}
+slope.clp.3 <-
+  data.frame(x, y, g) |>
+   fgroup_by(g) |>
+   fmutate(x_center = fwithin(x, na.rm = FALSE)) |>
+   fsummarise(
+     slope =
+       fsum(x_center, fwithin(y, na.rm = FALSE), na.rm = FALSE) %/=%
+       fsum(x_center, na.rm = FALSE)^2
+   )
+all.equal(slope.clp.3[['slope']], unname(slope.clp.2))
+```
+
+Ed: don't recall why this isn't working correctly now.
+
+## Group Sum
+
+### r2c baseline
+
+```{r}
+library(r2c)
+r2c_sum <- r2cq(sum(x))
+system.time(sum.r2c <- group_exec(r2c_sum, g.r2c, x))
+```
+
+### Base R and FastR
+
+```{r}
+system.time(sum.base <- vapply(x.split, sum, 0))
+identical(sum.r2c, sum.base)
+```
+
+`{FastR}` uses the same code, but needs to be run under the `{FastR}`
+implementation of R.  Times for `{FastR}` not reported.
+
+
+### data.table
+
+```{r}
+library(data.table); setDTthreads(1)
+dt <- data.table(x, g)
+setkey(dt, g)
+system.time(sum.dt <- dt[, sum(x), keyby=g][['V1']])
+identical(sum.dt, unname(sum.base))
+all.equal(sum.dt, unname(sum.base))
+```
+
+### collapse
+
+```{r}
+library(collapse)
+system.time(sum.clp <- fsum(x, g.clp, na.rm=FALSE))
+identical(sum.clp, sum.base)
+all.equal(sum.clp, sum.base)
+```
+
+## Bigger Groups
+
+```{r}
+set.seed(1)
+gn <- 1e3
+ng <- n/gn
+g <- cumsum(sample(c(TRUE, rep(FALSE, gn - 1)), n, replace=TRUE))
+
+system.time(x.split <- split(x, g))
+y.split <- split(y, g)
+system.time(g.r2c <- process_groups(g, sorted=TRUE))
+system.time(g.clp <- GRP(g))
+```
+
+And rerun the same code from before:
+
+```{r}
+system.time(slope.r2c <- group_exec(r2c_slope1, g.r2c, list(x, y)))
+system.time(slope.base <- mapply(slope, x.split, y.split))
+dt <- data.table(x, y, g)
+setkey(dt, g)
+mean <- mean1  # so name change alone doesn't break Gforce
+system.time(
+  slope.dt <- dt[,
+    sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2), keyby=g
+  ][["V1"]]
+)
+rm(mean)
+fmean2 <- function(x, cg) fmean(x, cg, na.rm=FALSE, TRA="replace_fill")
+system.time(
+  slope.clp <-
+    fsum((x - fmean2(x, g.clp)) * (y - fmean2(y, g.clp)), g.clp, na.rm=FALSE) /
+    fsum((x - fmean2(x, g.clp))^2, g.clp, na.rm=FALSE)
+)
+```
+
+In this case there are fewer iterations so `{r2c}`'s advantage is less
+pronounced, but still there.
+
+# Window Benchmarks
+
+## Window Data
+
+```{r}
+set.seed(1)
+n <- 1e6
+w <- 100
+w1 <- w - 1
+x <- runif(n) * runif(n)
+y <- runif(n) * runif(n)
+```
+## Window Slope
+
+### Baselines
+
+We need a left and right aligned version because different alternatives use
+different alignments (and some are not adjustable).  Here we use `mean` instead
+of `mean1` since we're not comparing against `collapse`.
+
+```{r}
+r2c_slope <- r2cq(
+  sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x))^2)
+)
+slope <- function(x, y)
+  sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x))^2)
+
+system.time(
+  slope.r2c <- rolli_exec(r2c_slope, list(x, y), n=w, align='left')
+)
+system.time(
+  slope.r.r2c <- rolli_exec(r2c_slope, list(x, y), n=w, align='right')
+)
+```
+
+### Base and FastR
+
+```{r}
+system.time(
+  slope.base <- vapply(
+    seq(1, n - w1),
+    function(i) { i.n <- i:(i + w1); slope(x[i.n], y[i.n]) },
+    numeric(1)
+  )
+)
+identical(slope.base, slope.r2c[!is.na(slope.r2c)])
+```
+
+`{FastR}` uses the same code, but needs to be run under the `{FastR}`
+implementation of R.  Times for `{FastR}`:
+
+```
+c(11.08, 6.292, 4.601, 5.259, 4.641, 3.921, 4.255, 4.637, 4.889,
+  4.661, 4.558)
+```
+
+### Roll
+
+Coincidentally `{roll}` happens to implement an on-line version of `lm`.  We
+time it out of curiosity, but this is still a special case implementation.
+
+```{r}
+library(roll)
+RcppParallel::setThreadOptions(numThreads=1)
+system.time(slope.roll <- roll_lm(x, y, width=w))
+identical(slope.roll$coefficients[,2], slope.r.r2c)
+all.equal(slope.roll$coefficients[,2], slope.r.r2c)
+```
+
+### data.table
+
+```{r}
+system.time(
+  slope.dt <- frollapply(seq_along(x), w, \(i) slope(x[i], y[i]))
+)
+identical(slope.dt, slope.r2c)
+```
+
+### Zoo
+
+```{r}
+system.time(reps=3,
+  slope.zoo <- zoo::rollapply(
+    seq_along(x), w, \(i) slope(x[i], y[i]), align='left', fill=NA
+  )
+)
+identical(slope.zoo, slope.r2c)
+```
+
+### Slider
+
+```{r}
+system.time(
+  slope.slider <- slider::slide_dbl(
+    seq_along(x), \(i) slope(x[i], y[i]), .after=w-1, .complete=TRUE
+  )
+)
+identical(slope.slider, slope.r2c)
+```
+
+## Window Sum
+
+### r2c Baseline
+
+```{r}
+r2c_sum <- r2cq(sum(x))
+system.time(sum.r2c <- rolli_exec(r2c_sum, x, w, align='left'))
+system.time(sumr.r2c <- rolli_exec(r2c_sum, x, w, align='right'))
+```
+
+### Base and FastR
+
+```{r}
+system.time(sum.base <- filter(x, rep(1, 100), sides=1))
+identical(c(sum.base), sumr.r2c)
+all.equal(c(sum.base), sumr.r2c)
+
+system.time(
+  sum2.base <- vapply(
+    seq(1, n - w1),
+    function(i) sum(x[i:(i + w1)]),
+    numeric(1)
+  )
+)
+identical(sum2.base, sum.r2c[!is.na(sum.r2c)])
+```
+
+`{FastR}` uses the same code, but needs to be run under the `{FastR}`
+implementation of R.  Times for `{FastR}`:
+
+```
+c(1.868,2.258, 1.924, 1.639, 1.377, 1.491,1.378, 1.360, 1.379,
+  1.353, 1.281)
+```
+
+### Roll
+
+```{r}
+system.time(sum.roll <- roll::roll_sum(x, w))
+identical(sum.roll, sumr.r2c)
+all.equal(sum.roll, sumr.r2c)
+```
+
+### Zoo
+
+```{r}
+system.time(sum.zoo <- zoo::rollsum(x, w, fill=NA, align='left'))
+identical(sum.zoo, sum.r2c)
+all.equal(sum.zoo, sum.r2c)
+```
+
+### data.table
+
+```{r}
+system.time(sum.dt <- data.table::frollsum(x, w, fill=NA, align='left'))
+identical(sum.dt, sum.r2c)
+all.equal(sum.dt, sum.r2c)
+system.time(
+  sum.e.dt <- data.table::frollsum(x, w, fill=NA, algo='exact', align='left')
+)
+identical(sum.e.dt, sum.r2c)
+```
+
+### RcppRoll
+
+```{r}
+system.time(sum.rcpp <- RcppRoll::roll_suml(x, w, fill=NA))
+identical(sum.dt, sum.r2c)
+all.equal(sum.dt, sum.r2c)
+```
+
+### Slider
+
+```{r}
+system.time(
+  sum.slide <- slider::slide_sum(x, before=0, after=w - 1, complete=TRUE)
+)
+identical(sum.slide, sum.r2c)
+all.equal(sum.slide, sum.r2c)
+```
+
+# Session Info
+
+```{r}
+sessionInfo()
+```
+
+[^1]: Pre-grouping in this case means primarily computing group-offsets in data
+      already sorted by group. Depending on the data, sorting and grouping can
+      be a significant part of the computational cost, although it is similar
+      for all all implementations tested here. `{r2c}`, `{data.table}`, 
+      `{collapse}` all use radix sort, although `{collapse}` also has a
+      hash-based grouping algorithm that is particularly effective for integer
+      groups in which the grouped result fits in CPU cache. Benchmarking the
+      grouping is out of scope of this document for the time being, but it is an
+      important part of group statistic computation.
+
