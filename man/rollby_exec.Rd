@@ -258,30 +258,12 @@ statistics.  For example, for rolling means \code{{data.table}} and \code{{roll}
 the "on-line" algorithm, and \code{{slider}} the "segment tree" algorithm, each
 with different performance and precision trade-offs.
 
-In testing with sums we've found the \code{{slider}} (v0.2.2) "segment tree"
-algorithm to start outperforming \code{{r2c}} at window size ~100 for
-\code{slider::slide_sum} and at window size ~1000 for \code{slider::slide_index_sum}.
-
-The "on-line" algorithms are significantly faster than either \code{{r2c}} or
-\code{{slider}}, and at least on systems with 80 bit long doubles the precision
-loss (tested on \code{{data.table}} 1.4.16) seems tolerable for many applications.
-The \code{{data.table}} "exact" algorithm in single thread mode has performance
-near identical to \code{\link{rolli_exec}}.
-
-For \code{by} values wider than the typical difference between \code{position} values,
-implementations that adjust the search stride along \code{position} taking advantage of
-its ordered nature will likely be faster.  \code{\link{rolli_exec}} does this.
-
-Any ALTREP objects generated for use in \code{position}, \code{at}, \code{left}, or \code{right}
-will be expanded.  Implementing ALTREP access for them is desirable, but
-would complicate the code substantially so is unlikely to get implemented.
-
 Recall that the less general the \verb{roll*_} function is, the better performance
 it will have (see "Equivalence").  The differences are slight between the
 by/at/bw implementations, and also for \code{rolli_exec} if \verb{by << n}.  If
 \verb{by >> n}, \code{rolli_exec} can be much faster.
 
-Testing was done on a 6th generation Skylake.
+See \href{https://github.com/brodieG/r2c}{README} for more details.
 }
 
 \examples{
