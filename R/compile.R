@@ -111,8 +111,15 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' rare.
 #'
 #' @export
-#' @param call an R expression, for `r2cq` it is captured unevaluated, for
-#'   `r2c` it should be quoted with e.g. [`quote`].  See details.
+#' @param x an object to compile into an "r2c_fun", for `r2cf` an R function, for
+#'   `r2cq` an expression that will be captured unevaluated, for `r2cl` an R
+#'   expression escaped with [`quote`].  See details.
+#' @param formals a list of parameters as generated with e.g. [`alist`]. This
+#'   is useful for `r2cq` and `r2cl` to force parameter order to differ from the
+#'   unbound symbol occurrence order (see details). It can also be used to
+#'   specify default values for parameters.  All names in this list must appear
+#'   as symbols in `x`; additional symbols in `x` will be resolved against the
+#'   evaluation environment at run time.
 #' @param dir NULL (default), or character(1L) name of a file system directory
 #'   to store the shared object file in.  If NULL a temporary directory will be
 #'   used. The shared object will also be loaded, and if `dir` is NULL the
@@ -135,6 +142,7 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' @param quiet whether to suppress the compilation output.
 #' @return an "r2c_fun" function; this is an unusual function so please see
 #'   details.
+#' @rdname r2c-compile
 #' @seealso [`runners`] to iterate "r2c_fun" functions on varying data,
 #'   [`get_c_code`] for functions to retrieve meta data from the function,
 #'   including the generated C code and the compiler output.
@@ -147,12 +155,43 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' r2c_sum_check(1:10)                                 # checked
 #' group_exec(r2c_sum_check, 1:10, groups=rep(1L, 10)) # not checked
 
-r2c <- function(
-  call, dir=NULL, check=getOption('r2c.check.result', FALSE),
+r2cf <- function(
+  x, dir=NULL, check=getOption('r2c.check.result', FALSE),
   quiet=getOption('r2c.quiet', TRUE), clean=is.null(dir)
-) {
+)
+  r2c_core(
+    body(x), formals=formals(x), dir=dir, check-check, quiet=queit,
+    clean=clean
+  )
+
+#' @export
+#' @rdname r2c-compile
+
+r2cl <- function(
+  x, formals=alist(), dir=NULL, check=getOption('r2c.check.result', FALSE),
+  quiet=getOption('r2c.quiet', TRUE), clean=is.null(dir)
+)
+  r2c_core(
+    x, formals=formals, dir=dir, check=check, quiet=quiet, clean=clean
+  )
+
+#' @export
+#' @rdname r2c-compile
+
+r2cq <- function(
+  x, formals=alist(), dir=NULL, check=getOption('r2c.check.result', FALSE),
+  quiet=getOption('r2c.quiet', TRUE), clean=is.null(dir)
+)
+  r2c_core(
+    substitute(x), formals=formals, dir=dir, check=check, quiet=quiet,
+    clean=clean
+  )
+
+
+r2c_core <- function(call, formals, dir, check, quie, clean) {
   vetr(
-    is.language(.), dir=CHR.1 || NULL, check=LGL.1, quiet=LGL.1, clean=LGL.1
+    is.language(.), list(),
+    dir=CHR.1 || NULL, check=LGL.1, quiet=LGL.1, clean=LGL.1
   )
   # Parse R expression and Generate the C code
   preproc <- preprocess(call)
@@ -284,14 +323,6 @@ r2c <- function(
   class(fun) <- "r2c_fun"
   fun
 }
-#' @export
-#' @rdname r2c
-
-r2cq <- function(
-  call, dir=NULL, check=getOption('r2c.check.result', FALSE),
-  quiet=getOption('r2c.quiet', TRUE), clean=is.null(dir)
-)
-  r2c(substitute(call), dir=dir, check=check, quiet=quiet, clean=clean)
 
 #' Extract Data from "r2c_fun" Objects
 #'

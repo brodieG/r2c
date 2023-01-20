@@ -1,23 +1,11 @@
 # To Do / Questions
 
-## Docs
-
-* Note that groups are pre-sorted.
-
 ## General
 
 * Rename `r2c` to `r2cf` or similar once we implement functions.  Partly this is
   so `?r2c` will pull up the package docs, not the function docs.
-* Make sure there are interrupts.  Can we use "R_ext/Intermacros.h".  It seems
-  yes generally, but they are not explicitly part of the API, and then there is
-  the question of whether it makes sense to do so, or if we should just be doing
-  this at the group level?
-* share `lcurry` with klutometis
-  https://github.com/klutometis/R-functional/issues
-* Make overflow testable.
-* Group label generation should potentially return position of vector rather
-  than actual label to allow flexible re-use of labels beyond just factors (i.e.
-  we subset the input vector to generate the labels).
+
+
 
 ## Zero Len
 
@@ -32,6 +20,16 @@
 
 ## Other
 
+* Make sure there are interrupts.  Can we use "R_ext/Intermacros.h".  It seems
+  yes generally, but they are not explicitly part of the API, and then there is
+  the question of whether it makes sense to do so, or if we should just be doing
+  this at the group level?
+* share `lcurry` with klutometis
+  https://github.com/klutometis/R-functional/issues
+* Make overflow testable.
+* Group label generation should potentially return position of vector rather
+  than actual label to allow flexible re-use of labels beyond just factors (i.e.
+  we subset the input vector to generate the labels).
 * Special case of constant result lengths could be an optimization for group
   where we don't have to generate the vector, although there should always be
   few groups relative to vector elements, so complexity not worth it?
@@ -136,7 +134,6 @@
 * Can we use this in some way for e.g. really wide matrices where each column
   takes the place of an argument?  Generating a pointer for each column then may
   be less efficient.
-* Does altrep play into this in any way?
 * Lags and similar (i.e. `x[i] = x[i] * x[i - 1]`).
 * Re-use repeated expressions.
 
@@ -179,7 +176,8 @@
   complex expression than the slope.
 * Look into whether we can efficiently iterate over an altrep without expanding
   it.  Update: We can by partially expanding it using the stuff from iter.h,
-  e.g. iterate by region which would generate and expand small chunks.
+  e.g. iterate by region which would generate and expand small chunks.  For now
+  we're not going to bother with this.
 * Decide whether partial should default to TRUE or FALSE.
 * Zero width windows with "[]" bounds.
 * Ensure partial condition is good on the new implementation (in particular,
