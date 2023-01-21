@@ -96,11 +96,11 @@ match_call <- function(definition, call, name) {
 #'   * Size of the current call being assessed.
 #'   * A linear list of generated code and associated calls.
 
-preprocess <- function(call) {
+preprocess <- function(call, formals) {
   # All the data generated goes into x
   x <- list(
     call=list(), depth=integer(), args=list(), args.type=list(), code=list(),
-    sym.free=character(), sym.bound=character(), dot.arg.i=1L
+    sym.free=formals, sym.bound=character(), dot.arg.i=1L
   )
   # We use this for match.call, but very questionable given the env might be
   # different when we actually run the code
