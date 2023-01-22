@@ -10,22 +10,18 @@ with R semantics, and without the challenges of directly compilable languages.
 
 ## "Compiling" R
 
-Currently `{r2c}` can "compile" R expressions composed of basic binary operators
-and statistics.  "Compile" is in quotes because `{r2c}` generates an equivalent
-C program, and compiles that.  To compute the slope of a single variable
-regression we might use:
+Currently `{r2c}` can "compile" R expressions or functions composed of basic
+binary operators and statistics.  "Compile" is in quotes because `{r2c}`
+generates an equivalent C program, and compiles that.  To compute the slope of a
+single variable regression we might use:
 
     library(r2c)
-    r2c_slope <- r2cq(
-      sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x))^2)
-    )
+
+    slope <- function(x, y) sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x))^2)
+    r2c_slope <- r2cf(slope)
+
     with(iris, r2c_slope(Sepal.Width, Sepal.Length))
     ## [1] -0.2233611
-
-This is equivalent to:
-
-    slope <- function(x, y)
-      sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x))^2)
     with(iris, slope(Sepal.Width, Sepal.Length))
     ## [1] -0.2233611
 
@@ -141,7 +137,7 @@ working on will depend on some interaction of external interest and my own.
 
 ## Installation
 
-This package is experimental and thus not available on CRAN yet.  To install:
+This package is not available on CRAN yet.  To install:
 
 ```
 f.dl <- tempfile()

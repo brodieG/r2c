@@ -1,5 +1,18 @@
 # r2c
 
+## 0.2.0
+
+### New Features
+
+* `r2cf` directly compiles R functions composed of `r2c` compatible calls.
+
+### Breaking Changes
+
+Recall the API is unstable and may still change further over the next few
+releases.
+
+* `r2c` has been renamed `r2cl`.
+
 ## 0.1.0
 
 ### New Features

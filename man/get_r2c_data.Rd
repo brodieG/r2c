@@ -37,9 +37,9 @@ shared object.
 }
 }
 \examples{
-r2c_sum_add <- r2cq(sum(x + y))
-get_r_code(r2c_sum_add)
-writeLines(get_c_code(r2c_sum_add))
+r2c_sum_sub <- r2cq(sum(x + y))
+get_r_code(r2c_sum_sub)
+writeLines(get_c_code(r2c_sum_sub))
 }
 \seealso{
 \code{\link{r2c}}.

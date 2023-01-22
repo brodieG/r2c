@@ -52,9 +52,8 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' native instructions using `R CMD SHLIB`, and return an interface to that
 #' code in the form of an "r2c_fun" function.  This function will carry out
 #' out numerical calculations with `r2c` native instructions instead of with the
-#' standard R routines.  When used with `r2c` [runner functions][runners], this
-#' allows for fast iterated calculations by avoiding per-iteration interpreter
-#' overhead.
+#' standard R routines. "r2c_fun" functions are intended to be run with the
+#' `r2c` [runners] for fast iterated calculations.
 #'
 #' While "r2c_fun" functions can be called in the same way as normal R
 #' functions, there is limited value in doing so.  "r2c_fun" functions are
