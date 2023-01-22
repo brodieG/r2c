@@ -1,4 +1,4 @@
-## Copyright (C) 2022 Brodie Gaslam
+## Copyright (C) Brodie Gaslam
 ##
 ## This file is part of "r2c - Fast Iterated Statistic Computation in R"
 ##
@@ -53,10 +53,8 @@ x.ovrf.ldbl.na[ldbl.na[1L]] <- NA_real_
 
 slope <- function(x, y)
   sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2)
-r2c_slope <- r2cq(
-  sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2),
-  check=TRUE
-)
+r2c_slope <- r2cf(slope, check=TRUE)
+
 r2c_sum <- r2cq(sum(x))
 r2c_add <- r2cq(x + y)
 r2c_len <- r2cq(length(x))

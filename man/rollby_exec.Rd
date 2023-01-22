@@ -68,10 +68,10 @@ of the window is aligned with the anchor (i.e. conceptually equivalent to
 \code{-width} for right aligned.  See "Intervals".  Note this default is
 different to that for \code{\link{rolli_exec}}.}
 
-\item{position}{finite, non-NA, monotonically increasing numeric vector with as many
-elements as \code{data}.  Each element in \code{position} is the position on the real line
-of the corresponding \code{data} element (see notes).  Integer vectors are
-coerced to numeric.}
+\item{position}{finite, non-NA, monotonically increasing numeric vector with
+as many elements as \code{data}.  Each element in \code{position} is the position on
+the real line of the corresponding \code{data} element (see notes).  Integer
+vectors are coerced to numeric.}
 
 \item{start}{non-na, finite scalar numeric position on real line of first
 "anchor".  Windows may extend to the left of \code{start} (or to the right of
@@ -80,6 +80,20 @@ window, even if they are outside \verb{[start,end]}.}
 
 \item{end}{non-na, finite scalar numeric position on real line of last
 "anchor", see \code{start}.}
+
+\item{bounds}{scalar character to determine whether elements positions on
+a window boundary are included or excluded from the window:
+\itemize{
+\item "[)": include elements on left boundary, exclude those on right (default).
+\item "(]": include elements on right boundary, exclude those on left.
+\item "[]": include elements on either boundary.
+\item "()": exclude elements on either boundary.
+}
+
+[)": include elements on left boundary, exclude those on right (default).
+\itemize{
+\item "(]: R:)\%22:\%20include\%20elements\%20on\%20left\%20boundary,\%20exclude\%20those\%20on\%20right\%20(default).\%0A*\%20\%22(
+}}
 
 \item{MoreArgs}{a list of R objects to pass on as iteration-invariant
 arguments to \code{fun}.  Unlike with \code{data}, each of the objects therein are
@@ -112,14 +126,14 @@ A numeric vector of length:
 }
 }
 \description{
-Calls the native code associated with \code{fun} on sequential windows along
-\code{data} vector(s) with "elements" positioned on the real line.  Data element
-positions can be specified and irregular, so equal sized windows may contain
-different number of elements.  Window positions may be specified independent
-of data element positions.  Each \verb{roll*_exec} function provides a different
-mechanism for defining the space covered by each window.  All of them will
-compute \code{fun} for each iteration with the set of data "elements" that fall
-within that window.
+A \link[=runners]{runner} that calls the native code associated with \code{fun} on
+sequential windows along \code{data} vector(s) with "elements" positioned on the
+real line.  Data element positions can be specified and irregular, so equal
+sized windows may contain different number of elements.  Window positions may
+be specified independent of data element positions.  Each \verb{roll*_exec}
+function provides a different mechanism for defining the space covered by
+each window.  All of them will compute \code{fun} for each iteration with the set
+of data "elements" that fall within that window.
 \itemize{
 \item \code{rollby_exec}: equal width windows spaced \code{by} apart.
 \item \code{rollat_exec}: equal width windows at specific positions given in \code{at}.
@@ -244,30 +258,12 @@ statistics.  For example, for rolling means \code{{data.table}} and \code{{roll}
 the "on-line" algorithm, and \code{{slider}} the "segment tree" algorithm, each
 with different performance and precision trade-offs.
 
-In testing with sums we've found the \code{{slider}} (v0.2.2) "segment tree"
-algorithm to start outperforming \code{{r2c}} at window size ~100 for
-\code{slider::slide_sum} and at window size ~1000 for \code{slider::slide_index_sum}.
-
-The "on-line" algorithms are significantly faster than either \code{{r2c}} or
-\code{{slider}}, and at least on systems with 80 bit long doubles the precision
-loss (tested on \code{{data.table}} 1.4.16) seems tolerable for many applications.
-The \code{{data.table}} "exact" algorithm in single thread mode has performance
-near identical to \code{\link{rolli_exec}}.
-
-For \code{by} values wider than the typical difference between \code{position} values,
-implementations that adjust the search stride along \code{position} taking advantage of
-its ordered nature will likely be faster.  \code{\link{rolli_exec}} does this.
-
-Any ALTREP objects generated for use in \code{position}, \code{at}, \code{left}, or \code{right}
-will be expanded.  Implementing ALTREP access for them is desirable, but
-would complicate the code substantially so is unlikely to get implemented.
-
 Recall that the less general the \verb{roll*_} function is, the better performance
 it will have (see "Equivalence").  The differences are slight between the
 by/at/bw implementations, and also for \code{rolli_exec} if \verb{by << n}.  If
 \verb{by >> n}, \code{rolli_exec} can be much faster.
 
-Testing was done on a 6th generation Skylake.
+See \href{https://github.com/brodieG/r2c}{README} for more details.
 }
 
 \examples{
@@ -338,11 +334,11 @@ options(old.opt)
 }
 \seealso{
 \code{\link{r2c}} for more details on the behavior and constraints of
-"r2c_fun" functions, \code{\link[base:eval]{base::eval}} for the semantics of \code{enclos}.
+"r2c_fun" functions, \code{\link[base:eval]{base::eval}} for the semantics of \code{enclos},
+\code{\link{first_vec}} to retrieve first atomic vector.
 
-\code{\link{first_vec}}.
-
-Other rolling functions: 
+Other runners: 
+\code{\link{group_exec}()},
 \code{\link{rolli_exec}()}
 }
-\concept{rolling functions}
+\concept{runners}

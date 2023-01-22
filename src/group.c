@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022  Brodie Gaslam
+ * Copyright (C) Brodie Gaslam
  *
  * This file is part of "r2c - Fast Iterated Statistic Computation in R"
  *
@@ -32,15 +32,16 @@ SEXP R2C_group_sizes(SEXP g) {
   int prt = 0;
   int *g_int = INTEGER(g);
   R_xlen_t glen = XLENGTH(g);
-  R_xlen_t gn = 1;  // At least one group, possibly zero sized
+  R_xlen_t gn = 0;
+  // we increment gn from 1 up, so need to start at 1 if have groups
+  gn = glen > 0;
 
-  if (glen > 1) {
-    int g_int_val = *g_int;
-    for(R_xlen_t gi = 1; gi < glen; ++gi) {
-      int g_int_prev_val = g_int_val;
-      g_int_val = *(++g_int);
-      if(g_int_val != g_int_prev_val) ++gn;
-  } }
+  int g_int_val = *g_int;
+  for(R_xlen_t gi = 1; gi < glen; ++gi) {
+    int g_int_prev_val = g_int_val;
+    g_int_val = *(++g_int);
+    if(g_int_val != g_int_prev_val) ++gn;
+  }
   SEXP gsize_sxp = PROTECT(Rf_allocVector(REALSXP, gn)); ++prt;
   SEXP glabs_sxp = PROTECT(Rf_allocVector(INTSXP, gn)); ++prt;
   g_int = INTEGER(g);
@@ -49,10 +50,7 @@ SEXP R2C_group_sizes(SEXP g) {
   int *glabs = INTEGER(glabs_sxp);
   double gmax = 0;
 
-  if(glen == 0) {
-    glabs[0] = 0;
-    *gsize = 0.;
-  } else if(glen == 1) {
+  if(glen == 1) {
     *gsize = (double) glen;
     *glabs = *g_int;
   } else if (glen > 1) {

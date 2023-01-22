@@ -1,4 +1,4 @@
-## Copyright (C) 2022 Brodie Gaslam
+## Copyright (C) Brodie Gaslam
 ##
 ## This file is part of "r2c - Fast Iterated Statistic Computation in R"
 ##
@@ -88,4 +88,16 @@ unitizer_sect("Forwarded Dots", {
 unitizer_sect("Self Check", {
   sum_check <- r2cq(sum(x), check=TRUE)
   sum_check(x)
+})
+unitizer_sect("Formals", {
+  r2c_sub_rev <- r2cq(x - y, formals=c('y', 'x'))
+  r2c_sub_rev(1, -3)
+  r2c_sub_rev2 <- r2cq(x - y, formals=alist(y=, x=10))
+  r2c_sub_rev2(-1)
+
+  # Resolve unbound symbol locally
+  x <- 1
+  r2c_sub_rev3 <- r2cf(function(y) x - y)
+  local({x <- 10; r2c_sub_rev3(-1)})
+  local({x <- c(10,20); group_exec(r2c_sub_rev3, 1:3, 1:3)})
 })

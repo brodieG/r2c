@@ -1,4 +1,4 @@
-## Copyright (C) 2022 Brodie Gaslam
+## Copyright (C) Brodie Gaslam
 ##
 ## This file is part of "r2c - Fast Iterated Statistic Computation in R"
 ##
@@ -82,6 +82,7 @@ fap_fun <- function(
   vetr(
     name=CHR.1,
     fun=is.function(.),
+    # really should have put some parens to resolve ambiguity below
     defn=typeof(fun) == "closure" && NULL || is.function(.),
     ctrl.params=
       character() && !anyNA(.) && all(. %in% names(formals(defn))) &&
@@ -97,7 +98,7 @@ fap_fun <- function(
   )
   if(length(intersect(ctrl.params, flag.params)))
     stop("Control and Flag parameters may not overlap.")
-  # Bug in vetr prevents this being done directly above
+  # Limitation in vetr prevents this being done directly above
   stopifnot(
     is.character(type[[1L]]) && length(type[[1L]]) == 1L && !is.na(type[[1L]]),
     type[[1L]] %in% c("constant", "arglen", "vecrec"),

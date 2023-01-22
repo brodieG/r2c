@@ -1,4 +1,4 @@
-## Copyright (C) 2022 Brodie Gaslam
+## Copyright (C) Brodie Gaslam
 ##
 ## This file is part of "r2c - Fast Iterated Statistic Computation in R"
 ##
@@ -27,7 +27,6 @@ roll_prep <- function(
   if(!is.list(data)) data <- list(data)
   if(length(d.len <- unique(lengths(data))) > 1L)
     stop("All `data` vectors must be the same length.")
-  if(!length(d.len)) stop("`data` may not be empty.")
   if(r.len > 2^48)  # See R_ints 12.1
     stop("Result length exceeds allowed 2^48 (would be ", r.len, ")")
   if(wmax > 2^48)  # See R_ints 12.1
@@ -44,7 +43,7 @@ roll_prep <- function(
 
   if(ncol(stack) != 1L) stop("Internal Error: unexpected stack state at exit.")
   if(stack['size', 1L] != 1L || stack['group', 1L] != 0L)
-    stop("`fun` must return scalar values only.")
+    stop("`fun` must be guaranteed to return scalar values.")
 
   # - Run ----------------------------------------------------------------------
 
@@ -109,14 +108,14 @@ bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 #'
 #' @description
 #'
-#' Calls the native code associated with `fun` on sequential windows along
-#' `data` vector(s) with "elements" positioned on the real line.  Data element
-#' positions can be specified and irregular, so equal sized windows may contain
-#' different number of elements.  Window positions may be specified independent
-#' of data element positions.  Each `roll*_exec` function provides a different
-#' mechanism for defining the space covered by each window.  All of them will
-#' compute `fun` for each iteration with the set of data "elements" that fall
-#' within that window.
+#' A [runner][runners] that calls the native code associated with `fun` on
+#' sequential windows along `data` vector(s) with "elements" positioned on the
+#' real line.  Data element positions can be specified and irregular, so equal
+#' sized windows may contain different number of elements.  Window positions may
+#' be specified independent of data element positions.  Each `roll*_exec`
+#' function provides a different mechanism for defining the space covered by
+#' each window.  All of them will compute `fun` for each iteration with the set
+#' of data "elements" that fall within that window.
 #'
 #' * `rollby_exec`: equal width windows spaced `by` apart.
 #' * `rollat_exec`: equal width windows at specific positions given in `at`.
@@ -217,30 +216,12 @@ bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 #' the "on-line" algorithm, and `{slider}` the "segment tree" algorithm, each
 #' with different performance and precision trade-offs.
 #'
-#' In testing with sums we've found the `{slider}` (v0.2.2) "segment tree"
-#' algorithm to start outperforming `{r2c}` at window size ~100 for
-#' `slider::slide_sum` and at window size ~1000 for `slider::slide_index_sum`.
-#'
-#' The "on-line" algorithms are significantly faster than either `{r2c}` or
-#' `{slider}`, and at least on systems with 80 bit long doubles the precision
-#' loss (tested on `{data.table}` 1.4.16) seems tolerable for many applications.
-#' The `{data.table}` "exact" algorithm in single thread mode has performance
-#' near identical to [`rolli_exec`].
-#'
-#' For `by` values wider than the typical difference between `position` values,
-#' implementations that adjust the search stride along `position` taking advantage of
-#' its ordered nature will likely be faster.  [`rolli_exec`] does this.
-#'
-#' Any ALTREP objects generated for use in `position`, `at`, `left`, or `right`
-#' will be expanded.  Implementing ALTREP access for them is desirable, but
-#' would complicate the code substantially so is unlikely to get implemented.
-#'
 #' Recall that the less general the `roll*_` function is, the better performance
 #' it will have (see "Equivalence").  The differences are slight between the
 #' by/at/bw implementations, and also for `rolli_exec` if `by << n`.  If
 #' `by >> n`, `rolli_exec` can be much faster.
 #'
-#' Testing was done on a 6th generation Skylake.
+#' See [README](https://github.com/brodieG/r2c) for more details.
 #'
 #' @note For the purposes of this documentation, the first value in a set or the
 #'   lowest value in a range are considered to be the "leftmost" values.
@@ -261,17 +242,19 @@ bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 #'
 #' @export
 #' @inheritParams group_exec
+#' @family runners
 #' @seealso [`r2c`] for more details on the behavior and constraints of
-#'   "r2c_fun" functions, [`base::eval`] for the semantics of `enclos`.
+#'   "r2c_fun" functions, [`base::eval`] for the semantics of `enclos`,
+#'   [`first_vec`] to retrieve first atomic vector.
 #' @param fun an "r2c_fun" function as produced by [`r2c`], except with the
 #'   additional restriction that it must be guaranteed to produce scalar
 #'   results as used with this function.
 #' @param width scalar positive numeric giving the width of the window interval.
 #'   Unlike with [`rolli_exec`]'s `n`, `width` must be scalar.
-#' @param position finite, non-NA, monotonically increasing numeric vector with as many
-#'   elements as `data`.  Each element in `position` is the position on the real line
-#'   of the corresponding `data` element (see notes).  Integer vectors are
-#'   coerced to numeric.
+#' @param position finite, non-NA, monotonically increasing numeric vector with
+#'   as many elements as `data`.  Each element in `position` is the position on
+#'   the real line of the corresponding `data` element (see notes).  Integer
+#'   vectors are coerced to numeric.
 #' @param by strictly positive, finite, non-NA scalar numeric, interpreted
 #'   as the stride to increment the anchor by after each `fun` application.
 #' @param at non-NA, finite, monotonically increasing numeric vector of anchor
@@ -295,14 +278,20 @@ bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 #'   window, even if they are outside `[start,end]`.
 #' @param end non-na, finite scalar numeric position on real line of last
 #'   "anchor", see `start`.
+#' @param bounds scalar character to determine whether elements positions on
+#'   a window boundary are included or excluded from the window:
+#'
+#' * "[)": include elements on left boundary, exclude those on right (default).
+#' * "(]": include elements on right boundary, exclude those on left.
+#' * "[]": include elements on either boundary.
+#' * "()": exclude elements on either boundary.
+#'
 #' @return A numeric vector of length:
 #'
 #' * `(end - start) %/% by + 1` for `rollby_exec`.
 #' * `length(at)` for `rollat_exec`.
 #' * `length(left)` for `rollbw_exec`.
 #'
-#' @family rolling functions
-#' @seealso [`first_vec`].
 #' @examples
 #' ## Simulate transactions occurring ~4 days
 #' old.opt <- options(digits=3)
@@ -382,7 +371,7 @@ rollby_exec <- function(
     position=(numeric() || integer()) && length(.) == length(first_vec(data)),
     data=(
       (numeric() || integer()) ||
-      (list() && all(is.num_naked(.)) && length(.) > 0)
+      (list() && all(is.num_naked(.)))
     ),
     by=NUM.1.POS,
     offset=NUM.1,
@@ -430,7 +419,7 @@ rollat_exec <- function(
     position=(numeric() || integer()) && length(.) == length(first_vec(data)),
     data=(
       (numeric() || integer()) ||
-      (list() && all(is.num_naked(.)) && length(.) > 0)
+      (list() && all(is.num_naked(.)))
     ),
     at=numeric(),
     offset=NUM.1,
@@ -470,7 +459,7 @@ rollbw_exec <- function(
     position=(numeric() || integer()) && length(.) == length(first_vec(data)),
     data=(
       (numeric() || integer()) ||
-      (list() && all(is.num_naked(.)) && length(.) > 0)
+      (list() && all(is.num_naked(.)))
     ),
     MoreArgs=list(),
     enclos=is.environment(.),
@@ -495,13 +484,13 @@ rollbw_exec <- function(
 
 #' Compute on Sequential Regular Windows on Equidistant Data
 #'
-#' Calls the native code associated with `fun` on sequential regularly spaced
-#' windows along the `data` vector(s).  Each window is aligned relative to a
-#' specific data "element" (anchor), and the set of window size `n` contiguous
-#' elements around and including the "anchor" are computed on.  This is a
-#' special case of [`rollby_exec`] intended to mimic the semantics of
-#' `zoo::rollapply` where `width` is a scalar integer, and implicitly the data
-#' elements are equally spaced.
+#' A [runner][runners] that calls the native code associated with `fun` on
+#' sequential regularly spaced windows along the `data` vector(s).  Each window
+#' is aligned relative to a specific data "element" (anchor), and the set of
+#' window size `n` contiguous elements around and including the "anchor" are
+#' computed on.  This is a special case of [`rollby_exec`] intended to mimic the
+#' semantics of `zoo::rollapply` where `width` is a scalar integer, and
+#' implicitly the data elements are equally spaced.
 #'
 #' @inheritSection rollby_exec Data Elements
 #'
@@ -555,7 +544,7 @@ rollbw_exec <- function(
 #' than for this function.
 #'
 #' @inheritParams rollby_exec
-#' @family rolling functions
+#' @family runners
 #' @export
 #' @seealso [`r2c`] for more details on the behavior and constraints of
 #'   "r2c_fun" functions, [`base::eval`] for the semantics of `enclos`.
@@ -604,7 +593,7 @@ rolli_exec <- function(
     n=(numeric() || integer()),
     data=(
       (numeric() || integer()) ||
-      (list() && all(is.num_naked(.)) && length(.) > 0)
+      (list() && all(is.num_naked(.)))
     ),
     by=INT.1.POS && . <= .Machine[['integer.max']],
     partial=LGL.1,

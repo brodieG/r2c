@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2022  Brodie Gaslam
+ * Copyright (C) Brodie Gaslam
  *
  * This file is part of "r2c - Fast Iterated Statistic Computation in R"
  *
@@ -107,7 +107,7 @@ SEXP R2C_run_window(
   struct R2C_dat dp = prep_data(dat, dat_cols, ids, flag, ctrl, so);
 
   // Make a copy of the base data pointers
-  double ** dat_base = (double **) R_alloc(dp.dat_end, sizeof(double *));
+  double ** dat_base = (double **) R_alloc(dp.dat_end + 1, sizeof(double *));
   for(int j = dp.dat_start; j <= dp.dat_end; ++j) dat_base[j] = dp.data[j];
 
   // ***************************************************************
@@ -320,16 +320,16 @@ static double ** copy_dat(struct R2C_dat dp) {
   /* left/right set by L_EXP and R_EXP respectively */                      \
   double left, right;                                                       \
   R_xlen_t i = 0; /* need initial vals for L_EXP and R_EXP */               \
-  L_EXP; R_EXP;                                                             \
-  for(; i < wa.rlen; ++i, (L_EXP), (R_EXP)) {                               \
+  for(; i < wa.rlen; ++i) {                                                 \
+    L_EXP; R_EXP;\
     /* Find first in-range element */                                       \
-    while(wa.x[ileft] L_OP left && ileft < wa.xlen) ++ileft;                \
+    while(ileft < wa.xlen && wa.x[ileft] L_OP left) ++ileft;                \
     if(ileft < wa.xlen) {                                                   \
       /* Small optim: reset to iright_prev if window >> by */               \
       if(ileft > iright_prev) iright = ileft + 1;                           \
       else iright = iright_prev + 1;                                        \
       /* Find first oob element  to right */                                \
-      while(wa.x[iright] R_OP right && iright < wa.xlen) ++iright;          \
+      while(iright < wa.xlen && wa.x[iright] R_OP right) ++iright;          \
       --iright;   /* step back to last in-range element */                  \
       iright_prev = iright;                                                 \
     } else {      /* ran out of vector */                                   \

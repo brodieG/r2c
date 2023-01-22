@@ -1,41 +1,18 @@
 # To Do / Questions
 
-## Docs
-
-* Note that groups are pre-sorted.
-* Show example of e.g. `rolli_exec`.
-* Cleanup the benchmark code for group and windows, and post links to them.
-* Avoid repetition from the iteration section and related works sections.
-* Remove benchmarks from `roll*_exec` docs.
-
 ## General
 
-* Release fixed `vetr` version!
-* Doc page for "runner" functions.
-* UBSAN / valgrind, and more.
+* Rename `r2c` to `r2cf` or similar once we implement functions.  Partly this is
+  so `?r2c` will pull up the package docs, not the function docs.
 
-* Make sure there are interrupts.  Can we use "R_ext/Intermacros.h".  It seems
-  yes generally, but they are not explicitly part of the API, and then there is
-  the question of whether it makes sense to do so, or if we should just be doing
-  this at the group level?
-* share `lcurry` with klutometis
-  https://github.com/klutometis/R-functional/issues
-* Can we have zero length data.  Both zero length vectors, and empty `data`
-  list?  We should be able to.  I think we just need to test zero length data.
-* Make overflow testable.
-* Test that everything works if there is no group varying data (i.e. everything
-  fed through MoreArgs).  Not completely trivial to test as we need a function
-  that allows us to specify a `data` parameter, but then uses it as a control
-  instead of data (at least for `group_exec`).  We just need the group varying
-  data to be referenced somewhere in the call, which ...
-* Group label generation should potentially return position of vector rather
-  than actual label to allow flexible re-use of labels beyond just factors (i.e.
-  we subset the input vector to generate the labels).
+
+
+## Zero Len
+
 
 ## For CRAN
 
-* Fix README links so they all work e.g. raw github URLs, and also whether to
-  use vignettes or what.
+* Include README/extra contents in vignettes
 * Figure out why winbuilder doesn't work.
 * Errors in `match.call` that show the deparsed argument might deparse
   differently on different systems (`group_sum` error tests).
@@ -43,8 +20,16 @@
 
 ## Other
 
-* Make `group_exec` interface consistent with `roll*_exec`
-* Numeric group vectors provoke weird error from `group_exec`
+* Make sure there are interrupts.  Can we use "R_ext/Intermacros.h".  It seems
+  yes generally, but they are not explicitly part of the API, and then there is
+  the question of whether it makes sense to do so, or if we should just be doing
+  this at the group level?
+* share `lcurry` with klutometis
+  https://github.com/klutometis/R-functional/issues
+* Make overflow testable.
+* Group label generation should potentially return position of vector rather
+  than actual label to allow flexible re-use of labels beyond just factors (i.e.
+  we subset the input vector to generate the labels).
 * Special case of constant result lengths could be an optimization for group
   where we don't have to generate the vector, although there should always be
   few groups relative to vector elements, so complexity not worth it?
@@ -149,12 +134,34 @@
 * Can we use this in some way for e.g. really wide matrices where each column
   takes the place of an argument?  Generating a pointer for each column then may
   be less efficient.
-* Does altrep play into this in any way?
 * Lags and similar (i.e. `x[i] = x[i] * x[i - 1]`).
 * Re-use repeated expressions.
 
 ## Done
 
+* Error case where the matching doesn't work and data or MoreArgs is e.g. a
+  variable or a complex expression.
+* Test that everything works if there is no group varying data (i.e. everything
+  fed through MoreArgs).  Not completely trivial to test as we need a function
+  that allows us to specify a `data` parameter, but then uses it as a control
+  instead of data (at least for `group_exec`).  We just need the group varying
+  data to be referenced somewhere in the call, which ...
+* Test:
+  * Zero element data and non-zero row groups
+  * Zero element data and zero row groups
+  * No iteration varying data at all
+  * Windows, in particular should still be possible with things that specify
+    position.
+* Doc page for "runner" functions.
+* UBSAN / valgrind, and more.
+* Installation instructions?
+* Remove benchmarks from `roll*_exec` docs.
+* Suppress compiler version output from R CMD SHLIB, check that compile error
+  handling is okay.
+* Make `group_exec` interface consistent with `roll*_exec`
+* Numeric group vectors provoke weird error from `group_exec`
+* Acknowledge that runner also uses `at` (but I think this was independent).
+  Decided against, it really was independent I think and it's pretty trivial.
 * Recycle warning for windows, does it make sense?  It might with the partial
   windows, but for the main section we should only need to check once?  This is
   actually significant for the `w=1` case, taking about 40% of the time the
@@ -169,7 +176,8 @@
   complex expression than the slope.
 * Look into whether we can efficiently iterate over an altrep without expanding
   it.  Update: We can by partially expanding it using the stuff from iter.h,
-  e.g. iterate by region which would generate and expand small chunks.
+  e.g. iterate by region which would generate and expand small chunks.  For now
+  we're not going to bother with this.
 * Decide whether partial should default to TRUE or FALSE.
 * Zero width windows with "[]" bounds.
 * Ensure partial condition is good on the new implementation (in particular,

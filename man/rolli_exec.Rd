@@ -61,13 +61,13 @@ positional matching occurring after the elements in \code{data} are matched.}
 a numeric vector of length \code{length(first_vec(data)) \%/\% by}.
 }
 \description{
-Calls the native code associated with \code{fun} on sequential regularly spaced
-windows along the \code{data} vector(s).  Each window is aligned relative to a
-specific data "element" (anchor), and the set of window size \code{n} contiguous
-elements around and including the "anchor" are computed on.  This is a
-special case of \code{\link{rollby_exec}} intended to mimic the semantics of
-\code{zoo::rollapply} where \code{width} is a scalar integer, and implicitly the data
-elements are equally spaced.
+A \link[=runners]{runner} that calls the native code associated with \code{fun} on
+sequential regularly spaced windows along the \code{data} vector(s).  Each window
+is aligned relative to a specific data "element" (anchor), and the set of
+window size \code{n} contiguous elements around and including the "anchor" are
+computed on.  This is a special case of \code{\link{rollby_exec}} intended to mimic the
+semantics of \code{zoo::rollapply} where \code{width} is a scalar integer, and
+implicitly the data elements are equally spaced.
 }
 \section{Window Alignment}{
 
@@ -158,7 +158,8 @@ rolli_exec(r2c_len, dat, n=c(1,3,1,3,1), align='left', partial=TRUE)
 \code{\link{r2c}} for more details on the behavior and constraints of
 "r2c_fun" functions, \code{\link[base:eval]{base::eval}} for the semantics of \code{enclos}.
 
-Other rolling functions: 
+Other runners: 
+\code{\link{group_exec}()},
 \code{\link{rollby_exec}()}
 }
-\concept{rolling functions}
+\concept{runners}

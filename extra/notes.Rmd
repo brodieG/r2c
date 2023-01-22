@@ -1,5 +1,41 @@
 # r2c
 
+# Function vs. Expression
+
+## Free vs. Bound
+
+One complexity to think about is that in the auto-generated "functions", there
+is no possibility for a free symbol to exist, whereas in the manually specified
+ones we might allow completely free symbols such as `pi`.  Currently (0.1.0) the
+structure supports this at the expense of quietly finding symbols bound to e.g.
+the global environment.  So we need to add a check that detects this.
+
+How to default values work for functions?  This should be fine so long as they
+are either control or flag parameters.   So we need to check as we process the
+expression that we don't try to use a control/flag parameter as a data parameter
+somewhere.
+
+    > f <- r2cq(sum(x, na.rm=y) + sum(y, na.rm=x))
+    > f(1, 2)
+    Error in VALID_FUNS[[c(name, "ctrl.validate")]](stack.ctrl, stack.flag,  : 
+      `na.rm` should be type "logical" (is "double") in `sum(x, na.rm = y)`.
+    > f(1, 2)
+
+Seems like it should actually be fine except for the possibility that a variable
+will get interpreted in full in one context (control) and in part in the other
+(data).  We should disallow it as the described case should never be something
+we actually want (and would be unsemantic), even though technically it could
+work.
+
+If we specify `formals` for expressions, we need to distinguish the case where
+we don't specify any formals at all and want them all swallowed into the actual
+formals, vs. the case where we want everything left unbound.  Maybe leave NULL?
+
+For the case we do have formals, it might be as simple as initializing
+`x[['sym.free']]`.  One thing is we'll probably have to add tracking of whether
+a symbol is ever used or not to possibly report that there is an unused formal
+(or at least think through the consequences of such; maybe none?).
+
 # Window Implementation
 
 ## Offset Direction

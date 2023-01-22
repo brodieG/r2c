@@ -10,22 +10,18 @@ with R semantics, and without the challenges of directly compilable languages.
 
 ## "Compiling" R
 
-Currently `{r2c}` can "compile" R expressions composed of basic binary operators
-and statistics.  "Compile" is in quotes because `{r2c}` generates an equivalent
-C program, and compiles that.  To compute the slope of a single variable
-regression we might use:
+Currently `{r2c}` can "compile" R expressions or functions composed of basic
+binary operators and statistics.  "Compile" is in quotes because `{r2c}`
+generates an equivalent C program, and compiles that.  To compute the slope of a
+single variable regression we might use:
 
     library(r2c)
-    r2c_slope <- r2cq(
-      sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x))^2)
-    )
+
+    slope <- function(x, y) sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x))^2)
+    r2c_slope <- r2cf(slope)
+
     with(iris, r2c_slope(Sepal.Width, Sepal.Length))
     ## [1] -0.2233611
-
-This is equivalent to:
-
-    slope <- function(x, y)
-      sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x))^2)
     with(iris, slope(Sepal.Width, Sepal.Length))
     ## [1] -0.2233611
 
@@ -41,8 +37,7 @@ for each iteration.  There are currently two iteration mechanisms available:
 * `group_exec`: compute on disjoint groups in data (a.k.a. split-apply-combine).
 * `roll*_exec`: compute on (possibly) overlapping sequential windows in data.
 
-For example, to iterate the slope function by groups, we could use
-(character/factor group variables will be implemented in the future):
+For example, to iterate the slope function by groups, we could use:
 
     with(iris, group_exec(r2c_slope, list(Sepal.Width, Sepal.Length), Species))
     ##    setosa versicolor  virginica
@@ -140,6 +135,26 @@ working on will depend on some interaction of external interest and my own.
 * Get on CRAN (there is currently at least one questionable thing we do).
 * API to allow other native code to invoke `{r2c}` functions.
 
+## Installation
+
+This package is not available on CRAN yet.  To install:
+
+```
+f.dl <- tempfile()
+f.uz <- tempfile()
+github.url <- 'https://github.com/brodieG/r2c/archive/main.zip'
+download.file(github.url, f.dl)
+unzip(f.dl, exdir=f.uz)
+install.packages(file.path(f.uz, 'r2c-main'), repos=NULL, type='source')
+unlink(c(f.dl, f.uz))
+```
+
+Or if you have `{remotes}`:
+
+```
+remotes::install_github("brodieg/r2c")
+```
+
 ## Related Work
 
 ### "Compiling" R
@@ -215,7 +230,7 @@ rolling window statistics:
 * [Achim Zeileis][11] et al. for `rollapply` in [`{zoo}`][12] from the design of
   which `roll*_exec` borrows elements.
 * [David Vaughan][13] for ideas on window functions, including the index concept
-  used in `window_i_exec`, borrowed from [`{slider}`][14].
+  (`position` in the `roll*_exec` functions, borrowed from [`{slider}`][14]).
 * Byron Ellis and [Peter Danenberg](https://github.com/klutometis) for the
   inspiration behind `lcurry` (see [`functional::CurryL`][15]), used in tests.
 * [Hadley Wickham](https://github.com/hadley/) and [Peter
@@ -241,7 +256,7 @@ rolling window statistics:
 [7]: https://github.com/eddelbuettel/inline
 [8]: https://twitter.com/BrodieGaslam/status/1527829442374025219?s=20&t=rg6aybJlGxPEUwBsI0ii1Q
 [9]: https://www.brodieg.com/tags/hydra/
-[10]: extra/benchmarks/benchmarks-public.html
+[10]: https://htmlpreview.github.io/?https://raw.githubusercontent.com/brodieG/r2c/3caf106980e558c931aea554e1f0197a82d031a3/extra/benchmarks/benchmarks-public.html
 [11]: https://www.zeileis.org/
 [12]: https://cran.r-project.org/package=zoo
 [13]: https://github.com/DavisVaughan
@@ -257,8 +272,8 @@ rolling window statistics:
 [23]: https://cran.r-project.org/package=RcppRoll
 [24]: https://cran.r-project.org/web/packages/runner/index.html
 [25]: https://cran.r-project.org/web/packages/roll/readme/README.html
-[26]: extra/benchmarks/benchmarks-public.html#group-data
-[27]: extra/benchmarks/benchmarks-public.html#window-data
+[26]: https://htmlpreview.github.io/?https://raw.githubusercontent.com/brodieG/r2c/3caf106980e558c931aea554e1f0197a82d031a3/extra/benchmarks/benchmarks-public.html#group-data
+[27]: https://htmlpreview.github.io/?https://raw.githubusercontent.com/brodieG/r2c/3caf106980e558c931aea554e1f0197a82d031a3/extra/benchmarks/benchmarks-public.html#window-data
 
 [^3]: My limited experience with `{FastR}`is that it is astonishing, but also
   frustrating.  What it does is amazing, but the compatibility limitations are
@@ -277,9 +292,9 @@ rolling window statistics:
   the [`{roll}` README][25] for an explanation), it will begin to outperform
   `{r2c}` at window sizes larger than 100 as its performance scales with the
   logarithm of window size.  The "on-line" algorithm is most susceptible to
-  precision issues, but on systems with 80bit long double accumulators, it seems
-  likely that the "on-line" algorithm will be sufficiently precise for most
-  applications.
+  precision issues, but at least on systems with 80bit long double accumulators,
+  it seems likely that the "on-line" algorithm will be sufficiently precise for
+  most applications.
 [^14]: It turns out there is `roll::roll_lm` that can compute slopes, but it
   cannot handle the general case of composing arbitrary statistics from the
   ones it implements.
