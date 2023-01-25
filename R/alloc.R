@@ -297,14 +297,18 @@ vec_rec_max_size <- function(x, gmax) {
 ## * depth: the depth at which allocation occurred, only relevant for
 ##   `type == "tmp"`
 ## * i: scalar integer the first index of the appended items.
+## * protect: TRUE or FALSE whether the variable is protected e.g. because it
+##   has been bound to a symbol.
 
-alloc_dat <- function(dat, depth, size, call, typeof='double') {
+alloc_dat <- function(
+  dat, depth, size, call, typeof='double', protect=FALSE
+) {
   # writeLines(sprintf("  d: %d s: %d c: %s", depth, size, deparse1(call)))
   if(depth == .Machine$integer.max)
     stop("Expression max depth exceeded for alloc.") # exceedingly unlikely
 
   if(depth > 0) {
-    free <- !is.finite(dat[['depth']])
+    free <- !is.finite(dat[['depth']]) && !dat[['protected']]
     fit <- free & dat[['type']] == "tmp" & dat[['alloc']] >= size
     if(!any(fit)) {
       # New allocation, then sort by size
@@ -314,6 +318,7 @@ alloc_dat <- function(dat, depth, size, call, typeof='double') {
       dat[['ids']] <- c(dat[['ids']], id)
       dat[['type']] <- c(dat[['type']], 'tmp')
       dat[['typeof']] <- c(dat[['typeof']], typeof)
+      dat[['protected']] <- c(dat[['protected']], protected)
       dat[['dat']] <- c(dat[['dat']], list(numeric(size)))
       # writeLines(paste0("    alloc new: ", size))
       dat[['i']] <- id
@@ -326,6 +331,7 @@ alloc_dat <- function(dat, depth, size, call, typeof='double') {
       # )
       dat[['depth']][slot] <- depth
       dat[['typeof']][slot] <- typeof
+      dat[['protected']][slot] <- protected
       dat[['i']] <- dat[['ids']][slot]
     }
   } else {
@@ -338,7 +344,9 @@ alloc_dat <- function(dat, depth, size, call, typeof='double') {
   # "free" in the malloc sense, just an indication that next time this function
   # is called it can re-use the slot.
 
-  dat[['depth']][dat[['depth']] > depth & dat[['type']] == 'tmp'] <- Inf
+  dat[['depth']][
+    dat[['depth']] > depth & dat[['type']] == 'tmp' & !dat[['protected']]
+  ] <- Inf
   dat
 }
 init_dat <- function() list(
@@ -365,6 +373,7 @@ append_dat <- function(dat, new, sizes, depth, type) {
     dat[['depth']] <- c(dat[['depth']], rep(depth, length(new)))
     dat[['type']] <- c(dat[['type']], rep(type, length(new)))
     dat[['typeof']] <- c(dat[['typeof']], vapply(new, typeof, "character"))
+    dat[['protected']] <- c(dat[['protected']], rep(TRUE, length(new)))
     dat[['i']] <- id.max + 1L
   }
   dat
