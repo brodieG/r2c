@@ -19,8 +19,44 @@ NULL
 
 #' Allocate Required Storage
 #'
-#' For each call, we record indices into the storage list for each
-#' argument and the result of evaluating the call.
+#' For each call, we allocate a vector for the result in the storage list,
+#' possibly re-using a previously allocated but freed vector.  Additionally, we
+#' record the indices into the storage list for the result of each call, as well
+#' as for each argument to it.
+#'
+#' The call tree has been linearized depth first by `preprocess`, so the
+#' parameters are recorded before the call they belong to.  The order of the
+#' elements in the linearized call implicitly contains all parameter matching
+#' information (i.e. everything has been `match.call`ed already).
+#'
+#' To process we will accumulate parameters in a stack, until we see a call at
+#' which point reduce.  In addition to allocating memory, This process converts
+#' `preproc$call` to `alloc$call.dat` (and `$depth`, and more).
+#' `alloc$call.dat` should have as many entries as there are C calls in
+#' `preproc$code`.
+#'
+#' @param x preprocess data as produced by `preprocess`
+#' @return an alloc object:
+#'
+#' alloc
+#'   $alloc
+#'     $dat: storage list of status vectors, result vector, data vectors, and
+#'       allocated vectors.
+#'     $alloc: the used size of the vectors in `$dat` (note that for iterated
+#'       data it will be the size of the largest iteration, which may/will be
+#'       less than the true size).
+#'     $depth: tree level at which the vectors are occupied
+#'     $type: is it a result vector, data vector, etc.
+#'     $typeof: double/integer to track type for possible conversion to int
+#'     $i:
+#'   $call.dat: each actual call with a C counterpart
+#'     $call: the R call
+#'     $ids: ids in `alloc$dat` for parameters, and then result
+#'     $ctrl: evaluated control parameters
+#'     $flag: computed flag paramteter value
+#'   $stack:
+#'     matrix used to track parameter sizes, but the time it's returned it
+#'     should just have the size of the final return
 #'
 #' @noRd
 #' @param x the result of preprocessing an expression
@@ -53,10 +89,6 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
   # Objective is to compute how much temporary storage we need to track all the
   # intermediate calculations in the call tree.
   #
-  # The call tree has been linearized depth first, so the parameters are
-  # recorded before the call they belong to.  To process we will accumulate
-  # parameters in a stack, until we see a call at which point reduce.
-  #
   # For each call we want to record:
   # * The ids of the parameters.
   # * The id of the result.
@@ -80,10 +112,10 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
       # size, allocate for it, etc.
       check_fun(name, env)
       ftype <- VALID_FUNS[[c(name, "type")]]
+
       # If all non-control, non-flag inputs were know to be integer, and we're
       # dealing with a function that returns integer for those, make it known
       # the result should be integer.
-
       res.typeof <- if(
         VALID_FUNS[[c(name, "preserve.int")]] &&
         all(alloc[['typeof']][stack['id', ]] == "integer")
@@ -209,8 +241,8 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
 }
 ## Convert Group Varying data ID to Alloc ID
 ##
-## Group varying data is offset from beginning of allocation data, so we need to
-## translate.
+## Group (iteration) varying data is offset from beginning of allocation data,
+## so we need to translate.
 
 get_gdat_id <- function(gd_id) {
   gd_id + IX[['I.GRP']]  # starting column for group varying data

@@ -85,16 +85,27 @@ match_call <- function(definition, call, name) {
 
 #' Generate C Code for Compilation
 #'
-#' Match each R symbol to C code, possibly parameterized by some simple
-#' parameters such as which parameters are specified, but not much else as
-#' we need to know the groupwise data to make more decisions.
+#' Match each call and its parameters, identifying which parameters are control
+#' vs. flag, and associating the C call to each R call.
+#'
+#'
+#' See `alloc` for more details.
 #'
 #' @noRd
 #' @param call an unevaluated R call
-#' @return a list containing (update):
-#'   * Accrued temporary storage requirements (is this still true?).
-#'   * Size of the current call being assessed.
-#'   * A linear list of generated code and associated calls.
+#' @return a list containing:
+#'
+#' $call: linearized call tree with parameters preceeding calls (recall that a
+#'   call can itself be a parameter to another call nearer the root).
+#' $depth: tree depth of each call or parameter
+#' $args: unused leftover from prior bad implementation?
+#' $args.type: unused leftover from prior bad implementation?
+#' $code: the generated C code
+#' $sym.free/bound: ? Not sure this is still correct since we add the `formals`
+#'   parameter.
+#' $dot.arg.i: ?
+#' $argn: parameter name argument is bound to.
+#' $type: argument type
 
 preprocess <- function(call, formals) {
   # All the data generated goes into x
