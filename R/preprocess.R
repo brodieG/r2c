@@ -14,6 +14,7 @@
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
 #' @include code.R
+#' @include optim.R
 
 NULL
 
@@ -86,36 +87,28 @@ match_call <- function(definition, call, name) {
 #' Generate C Code for Compilation
 #'
 #' Match each call and its parameters, identifying which parameters are control
-#' vs. flag, and associating the C call to each R call.
+#' vs. flag, and associating the C call to each R call.  The call tree is
+#' linearized depth first, so the parameters are recorded before the call they
+#' belong to.  The depth of the parameters allows us to distinguish what call
+#' they belong to (note a parameter can be a call too).  The order of the
+#' elements in the linearized call implicitly contains all parameter matching
+#' information (i.e. everything has been `match.call`ed already).
 #'
-#'
-#' See `alloc` for more details.
+#' See `alloc` and `init_call_dat` for more details.
 #'
 #' @noRd
 #' @param call an unevaluated R call
-#' @return a list containing:
-#'
-#' $call: linearized call tree with parameters preceeding calls (recall that a
-#'   call can itself be a parameter to another call nearer the root).
-#' $depth: tree depth of each call or parameter
-#' $args: unused leftover from prior bad implementation?
-#' $args.type: unused leftover from prior bad implementation?
-#' $code: the generated C code
-#' $sym.free/bound: ? Not sure this is still correct since we add the `formals`
-#'   parameter.
-#' $dot.arg.i: ?
-#' $argn: parameter name argument is bound to.
-#' $type: argument type
+#' @return a call dat list as described in `init_call_dat`.
 
 preprocess <- function(call, formals) {
   # All the data generated goes into x
-  x <- list(
-    call=list(), depth=integer(), args=list(), args.type=list(), code=list(),
-    sym.free=formals, sym.bound=character(), dot.arg.i=1L
-  )
+  x <- init_call_dat(formals)
   # We use this for match.call, but very questionable given the env might be
   # different when we actually run the code
   x <- pp_internal(call=call, depth=0L, x=x)
+
+  # Apply "compiler" optimizations
+  x <- compile_optim(x)
 
   # Deduplicate the code and generate the final C file (need headers).
   headers <- unique(unlist(lapply(x[['code']], "[[", "headers")))
@@ -188,6 +181,7 @@ preprocess <- function(call, formals) {
   x[['code']] <- structure(code.txt, class="code_text")
   x
 }
+# Recursion portion of preprocess
 
 pp_internal <- function(call, depth, x, argn="") {
   if(depth == .Machine$integer.max)
@@ -211,6 +205,7 @@ pp_internal <- function(call, depth, x, argn="") {
     if(identical(call.transform, call)) break
     call <- call.transform
   }
+  rename <- character()
   if(is.call(call)) {
     # - Recursion on Params ----------------------------------------------------
     func <- call_valid(call)
@@ -237,6 +232,7 @@ pp_internal <- function(call, depth, x, argn="") {
     ) } }
     type <- "call"
     # Generate Code
+    warning("Don't generate code, instead record data for code gen")
     code <- VALID_FUNS[[c(func, "code.gen")]](
       func,
       args[args.types == "other"],
@@ -244,6 +240,15 @@ pp_internal <- function(call, depth, x, argn="") {
       args[args.types == "flag"]
     )
     code_valid(code, call)
+    # In case of assignment, we generate a rename.  Rename is not necessary if
+    # the symbol already exists, but it doesn't harm and is needed for when the
+    # symbol already exists
+    if(func %in% c("=", "<-")) {
+      target.symbol <- args[[1L]]
+      if(!is.name(target.symbol))
+        stop(simpleError("invalid left-hand side to assignment.", call))
+      rename <- as.character(target.symbol)
+    }
   } else {
     # - Symbol or Constant -----------------------------------------------------
     type <- "leaf"
@@ -255,7 +260,7 @@ pp_internal <- function(call, depth, x, argn="") {
     # defines .ARG9999999999 or whatever to try to overflow us).
     if(is.name(call)) {
       name <- as.character(call)
-      if(grepl("^\\.ARG[0-9]+$", name)) {
+      if(grepl("^\\.ARG0[0-9]+$", name)) {
         stop(
           "Symbols matching regex \"^\\.ARG[0-9]+$\" are disallowed (",
           name, ")."
@@ -264,19 +269,73 @@ pp_internal <- function(call, depth, x, argn="") {
         call <- as.name(paste0(".ARG", x[['dot.arg.i']]))
         x[['dot.arg.i']] <- x[['dot.arg.i']] + 1L
   } } }
-  record_call_dat(x, call=call, depth=depth, argn=argn, type=type, code=code)
+  record_call_dat(
+    x, call=call, depth=depth, argn=argn, type=type, code=code,
+    rename=rename
+  )
 }
+# See preprocess for some discussion of what the elements are
+#'
+#' $call: linearized call tree with parameters preceeding calls (recall that a
+#'   call can itself be a parameter to another call nearer the root).
+#' $depth: tree depth of each call or parameter
+#' $args: unused leftover from prior bad implementation?
+#' $args.type: unused leftover from prior bad implementation?
+#' $argn: parameter name argument is bound to.
+#' $code: the generated C code
+#' $sym.free/bound: ? Not sure this is still correct since we add the `formals`
+#'   parameter.
+#' $dot.arg.i: counter used when generating the `.ARG0i` symbols that replace
+#'   the `..1`, `..2`, ... symbols.
+#' $rename.arg.i: counter used when generating the `.ARG1i` symbols that replace
+#'   symbols that have been re-bound via assignment or are stand-ins for
+#'   repeated calculations.  Note that the difference between the dot version
+#'   and this one is that the dot numbering is "0###" whereas this one is
+#'   "1###".  We use such close name just to avoid having to add more
+#'   categories of disallowed variable names.
+#' $rename: named character vector with the symbols as they appear in the call
+#'   as the names, and their current renamed version as the value.  This is a
+#'   point in time snapshot and cannot be used to reconstruct the history of the
+#'   renames.
+#' $last.read: named integer of indeces in the linearized call tree of the last
+#'   _call_ that read a particular symbol.  This allow us to know when we can
+#'   free an allocation otherwise used by that symbol.  The names of this vector
+#'   correspond to the **renamed** variables.
+#' $call.rename: version of `call` with symbols renamed using `rename`.
+#' $type: argument type
+#'
+#' @noRd
+
+init_call_dat <- function(formals)
+  list(
+    call=list(),
+    depth=integer(),
+    args=list(),
+    args.type=list(),
+    code=list(),
+    sym.free=formals,
+    sym.bound=character(),
+    dot.arg.i=1L
+    rename.arg.i=1L,
+    last.read=integer(),
+    protected=logical(),
+    rename=character(),
+    call.rename=character()
+  )
+
 ## Record Expression Data
+##
+## This is what linearizes the call tree.
 
 record_call_dat <- function(
-  x, call, depth, argn, type, code, sym.free=sym_free(x, call)
+  x, call, depth, argn, type, code, sym.free=sym_free(x, call),
+  rename=character()
 ) {
+  # Undo the dots replacement
+  call <- if(identical(call, quote(.R2C.DOTS))) QDOTS else call
+
   # list data
-  x[['call']] <- c(
-    x[['call']],
-    # Undo the dots replacement
-    list(if(identical(call, quote(.R2C.DOTS))) QDOTS else call)
-  )
+  x[['call']] <- c(x[['call']], list(call))
   x[['code']] <- c(x[['code']], list(code))
 
   # vec data
@@ -284,8 +343,62 @@ record_call_dat <- function(
   x[['depth']] <- c(x[['depth']], depth)
   x[['type']] <- c(x[['type']], type)
   x[['sym.free']] <- union(x[['sym.free']], sym.free)
+
+  # Assignment calls should submit non empty rename, which then will lead to any
+  # subsequent calls having matching symbols renamed.  See `rename_call`.
+  x[['rename']] <- append_rename(x, rename)
+  x[['call.rename']] <- c(x[['call.rename']], list(rename_call(x, call)))
+
+  if(is.symbol(x[['call.rename']])) {
+    x[['last.read']][as.character(x[['call.rename']])] <- length(x[['call']])
+  }
   x
 }
+## Rename Symbols in Calls
+##
+## The purpose of the renaming is to distinguish calls that are identical except
+## that the content of the calls they reference has changed due to an assignment
+## overwriting or masking an existing variable.
+##
+## @param x a call dat object
+## @param call language a call/symbol to rename
+
+rename_call <- function(x, call) {
+  call <- if (is.name(call)) {
+    call.chr <- as.character(call)
+    call <-
+      if(call.chr %in% names(x[['rename']])) as.name(x[['rename']][call.chr])
+      else call
+  } else if (is.call(call) && length(call) > 1L) {
+    # Re-assemble call from the prior arguments that have already been renamed.
+    # For a call with n arguments, the prior n elements in the list at depth + 1
+    # will be the arguments.
+    renamed.at.depth <- x[['call.rename']][
+      x[['depth']] == x[['depth']][length(x[['depth']])] + 1L
+    ]
+    call[-1L] <- renamed.at.depth[
+      seq(length(renamed.at.depth), length.out=length(call) - 1L, by=-1L)
+    ]
+  }
+  call
+}
+## Apply Renames to Character Representation of Symbol
+##
+## A new instance of a symbol to rename is added to the list.  An existing
+## instance is further renamed, using the `.ARG1###` syntax.
+##
+## @param x a call dat object
+## @param symbol a symbol to rename
+
+append_rename <- function(x, symbol) {
+  stopifnot(is.symbol(symbol))
+  sym.char <- as.character(symbol)
+  rename.i <- x[['rename.arg.i']]
+  x[['rename']][sym.char] <- as.name(sprintf(RENAME.ARG.TPL, rename.i))
+  x[['rename.arg.i']] <- rename.i + 1L
+  x
+}
+
 sym_free <- function(x, sym) {
   if(is.symbol(sym)) {
     sym.chr <- as.character(sym)
@@ -302,7 +415,7 @@ sym_free <- function(x, sym) {
 expand_dots <- function(x, arg.names) {
   exp.fields <- c('argn', 'type', 'depth')
   is.dots <- vapply(x[['call']], identical, TRUE, QDOTS)
-  is.dots.m <- grepl(RX.ARG, arg.names)
+  is.dots.m <- grepl(DOT.ARG.RX, arg.names)
   if(any(is.dots)) {
     dots.m.names <- lapply(arg.names[is.dots.m], as.name)
     # Could have multiple sets of dots
@@ -318,3 +431,6 @@ expand_dots <- function(x, arg.names) {
   ) } } }
   x
 }
+
+
+

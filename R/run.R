@@ -44,10 +44,10 @@ match_and_alloc <- function(
   # Trick here is data is split across `data` and `MoreArgs` so we have to merge
   # together to match, but then split the data back into the two parameters
   # since they have different usage semantics.
-  if(any(grepl(RX.ARG, names(do))))
-    stop("`data` names may not match regular expression \"", RX.ARG, "\".")
-  if(any(grepl(RX.ARG, names(MoreArgs))))
-    stop("`MoreArgs` names may not match regular expression \"", RX.ARG, "\".")
+  if(any(grepl(DOT.ARG.RX, names(do))))
+    stop("`data` names may not match this regex: \"", DOT.ARG.RX, "\".")
+  if(any(grepl(DOT.ARG.RX, names(MoreArgs))))
+    stop("`MoreArgs` names may not match this regex: \"", DOT.ARG.RX, "\".")
   if(is.null(names(do))) names(do) <- character(length(do))
   if(is.null(names(MoreArgs))) names(MoreArgs) <- character(length(MoreArgs))
 

@@ -20,20 +20,19 @@ NULL
 #' Allocate Required Storage
 #'
 #' For each call, we allocate a vector for the result in the storage list,
-#' possibly re-using a previously allocated but freed vector.  Additionally, we
-#' record the indices into the storage list for the result of each call, as well
-#' as for each argument to it.
+#' possibly re-using a previously allocated but "freed" vector.  Additionally,
+#' we record the indices into the storage list for the result of each call, as
+#' well as for each argument to it.
 #'
-#' The call tree has been linearized depth first by `preprocess`, so the
-#' parameters are recorded before the call they belong to.  The order of the
-#' elements in the linearized call implicitly contains all parameter matching
-#' information (i.e. everything has been `match.call`ed already).
+#' The calls have been linearized by `preprocess` (see that for details).
 #'
-#' To process we will accumulate parameters in a stack, until we see a call at
-#' which point reduce.  In addition to allocating memory, This process converts
-#' `preproc$call` to `alloc$call.dat` (and `$depth`, and more).
-#' `alloc$call.dat` should have as many entries as there are C calls in
-#' `preproc$code`.
+#' This process converts `preproc$call` to `alloc$call.dat` (and `$depth`, and
+#' more).  `alloc$call.dat` should have as many entries as there are C calls
+#' in `preproc$code`.
+#'
+#' An allocation is considered "freed" as soon as we drop emerge above the call
+#' depth for which it was originally made (note: the tree metaphor is
+#' ridiculous, with leaves below the root).
 #'
 #' @param x preprocess data as produced by `preprocess`
 #' @return an alloc object:
@@ -45,7 +44,9 @@ NULL
 #'     $alloc: the used size of the vectors in `$dat` (note that for iterated
 #'       data it will be the size of the largest iteration, which may/will be
 #'       less than the true size).
-#'     $depth: tree level at which the vectors are occupied
+#'     $depth: tree level at which the vectors are occupied, note it should
+#'       really be "height" under a tree metaphor.  Here depth = 0 means root,
+#'       whereas leaves will have highest depth values.
 #'     $type: is it a result vector, data vector, etc.
 #'     $typeof: double/integer to track type for possible conversion to int
 #'     $i:
@@ -138,7 +139,8 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
               ),
               .CALL
           ) )
-        # Get parameter data (depth + 1L should be params to current call)
+        # Get parameter data. depth + 1L should be params to current call, note
+        # this is not generally true for the stuff in `x`, only for the stack.
         sizes.tmp <- stack[
           c('size', 'group'),
           colnames(stack) %in% ftype[[2L]] & stack['depth',] == depth + 1L,
@@ -212,6 +214,16 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
         stack, id=id, depth=depth, size=size, group=0, argn=argn
       )
     } else if (id <- match(name, names(data.naked), nomatch=0)) {
+      # This would become an else, and then:
+      # * Check against available created variables
+      # * Then existing logic to match against group data
+      # * Also need to update the previous else if clause.  Related, control
+      #   variables are not allowed to match group data; are they allowed to
+      #   match assigned values (probably not)?  Need to be very careful there
+      #   is no confusion in this.  It's a little safer with the group data
+      #   since they end up matching the full data column, but here who knows
+      #   what they will match.
+
       # Record size (note `id` computed in conditional)
       stack <- append_stack(
         stack, id=get_gdat_id(id), depth=depth, size=NA_real_,

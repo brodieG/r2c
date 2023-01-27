@@ -67,7 +67,16 @@ stopifnot(
 IX <- list()
 QDOTS <- quote(...)
 
-# - Regex ----------------------------------------------------------------------
+# - Internal Symbols -----------------------------------------------------------
 
-RX.ARG <- "^\\.ARG\\.\\d+$"
+# For arguments that show up as `..1`, `..2`, replaced to match pattern below
+DOT.ARG.BASE <- ".ARG0"
+DOT.ARG.RX <- sprintf("^\\%s\\d+$", DOT.ARG.BASE)
+DOT.ARG.TPL <- ".ARG0%d"
+
+# For renames symbols
+RENAME.ARG.BASE <- ".ARG1"
+RENAME.ARG.RX <- sprintf("^\\%s\\d+$", DOT.ARG.BASE)
+RENAME.ARG.TPL <- ".ARG1%d"
+
 
