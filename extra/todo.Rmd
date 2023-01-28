@@ -1,11 +1,49 @@
+
+
 # To Do / Questions
 
-## General
+## Current
 
+* Test corner cases such as a repeated assignment to see if it get correctly
+  detected as being repeated.
+* Make sure that the Function Environment in `r2cf` is captured somewhere.  In
+  particular we want to make sure unbound symbols are resolved according to that
+  environment.  Will also need to think about what this means for the `enclos`
+  parameter to the runners.  This might also have implications for function
+  libraries.
+* Handle assignment to function symbols, etc?  There shouldn't be confusion with
+  invocation, but if we ever implement `lapply`, etc?
+* Identify unused assignments as a courtesy warning?
+* Make sure we think through the interaction of things with `sym.free` with
+  variable assignment as that could cause problems since that assumed the only
+  source of them was parameters.
+* Rename depth to height.  No, rename depth to level.  The use of height and
+  depth with an upside down tree is ridiculous and not my fault.
+* Check that forwarding calls in `...` works correctly, e.g.
+  `sum(1 + x, 2 + y)`, not obvious from glancing at dots handling that it does.
+* Does preproc `sym.free` `sym.bound` make sense now with `formals` supplied?
 * Rename `r2c` to `r2cf` or similar once we implement functions.  Partly this is
   so `?r2c` will pull up the package docs, not the function docs.
+* To allow assignments we can just use a series of nested environments such that
+  each sub-call will then seek the symbol through the nested environments.
+  We'll need to bind the data symbols to e.g. environments so they may be
+  uniquely identified and we can confirm they've been found.  Err, what were we
+  thinking here?
+* Complex expressions with curly braces, etc.
+* Unary arithmetic funs.
+* Add post-processing of function result (e.g. to attach names, etc, as in
+  `quantile`).
+* Support for functions with defaults that need to be evaluated?  No.  This
+  substantially increases complexity because we have to do so in the function
+  evaluation environment and need access to all the other arguments.
+* Side effects from evaluation of control parameters?  Where should assigned
+  variables reside?
+
+* Can we get more memory efficient by e.g. using `+=`.  This is complicated, see
+  notes "Memory Re-Use".
 
 
+## Memory Re-Use
 
 ## Zero Len
 
@@ -68,8 +106,6 @@
   be correct, but will make readme a bit more complicated).  Also, error message
   is very confusing in this case as `mean.default` is also from the base
   namespace, even though the masking is defined at the global level.
-* Currently we require at least one data column so we can get away with using
-  the group logic for the stand alone evaluation of the r2c funs.
 * Add destructors that will unload the shlib and delete file file when the
   corresponding object is garbage collected (finalizer).
 * Add check to `r2c` funs that verify the `r2c` version, the R version, and the
@@ -87,16 +123,9 @@
   recycling?  Do we want to allow other attributes to persist?
 * Make sure to have a function that uses the `ctrl` functionality to check that
   it works properly (once we switch to `flag` for most functions).
-* Can we get more memory efficient by e.g. using `+=` to avoid having to have
-  memory allocated for both LHS and RHS for the arithmetic operators?  Might
-  complicate things substantially.
 * Make sure pointer arrays are aligned.  Use `malloc`?  If so internal code
   cannot use `error`, and we can't guarantee that?  Can we register a finalizer
   somehow (probably will need to).
-* To allow assignments we can just use a series of nested environments such that
-  each sub-call will then seek the symbol through the nested environments.
-  We'll need to bind the data symbols to e.g. environments so they may be
-  uniquely identified and we can confirm they've been found.
 * Make sure headers go in in correct order; it may not work if we structure
   workflow around C functions?  Maybe okay if each group of functions does the
   right thing?  Do we need to include the headers before each group of
@@ -107,15 +136,6 @@
   Maybe this can be done on registration?
 * Special case where all groups are same size and there is an external vector of
   that size?
-* Complex expressions with curly braces, etc.
-* Unary arithmetic funs.
-* Add post-processing of function result (e.g. to attach names, etc, as in
-  `quantile`).
-* Support for functions with defaults that need to be evaluated?  No.  This
-  substantially increases complexity because we have to do so in the function
-  evaluation environment and need access to all the other arguments.
-* Side effects from evaluation of control parameters?  Where should assigned
-  variables reside?
 * Add capability to specify functions in non-standard ways (e.g. `base::sum`, or
   `(get("sum", as.environment("package:base"))`)?  Maybe not, that seems like
   potential trouble.  Certainly document also things like `f <- sum; f(x)`.
@@ -139,6 +159,8 @@
 
 ## Done
 
+* Currently we require at least one data column so we can get away with using
+  the group logic for the stand alone evaluation of the r2c funs.
 * Error case where the matching doesn't work and data or MoreArgs is e.g. a
   variable or a complex expression.
 * Test that everything works if there is no group varying data (i.e. everything

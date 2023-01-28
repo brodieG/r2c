@@ -1,4 +1,197 @@
-# r2c
+# Assignments
+
+## Re-Writeable assignment
+
+This raises an interesting point: if we allow modification of the assignment we
+must create a new allocation and make a copy.  Maybe we can forward analyze and
+see if future calls modify the symbol?
+
+So, if each assignment generates a call, if it is to a RO variable it can record
+the parameter and result ids as the same, and set the depth of that variable to
+zero.  If it is a RW variable, then it allocates something to hold the copy, and
+sets the depth of that to zero.
+
+`preproc` will have separately generated a C command that is a either a NULL
+operation (so that all the parameter incrementing stays in sync - hmm, looks
+we do have some incrementing that doesn't require a call, e.g. for flag) or a
+`memcpy`.  So `preproc` needs to track whether a variable is written to which it
+can do in a second pass.  Actually not that trivial because `code.gen` is run
+during the recursion stage, so we can't just go back and change it in the
+linearized list.  We would have to defer running it, which means recording all
+the parameters for it.
+
+So how would we detect that an assign created variable is written to later?
+preproc has the argument name.  It would then keep a top-level list of all the
+assigned to arg names accumulated to date, and if at some point later down the
+track a write function involves that parameter, it would know.  That means that 
+
+## Arith Assign (Memory Re-Use)
+
+Can we use `+=` to avoid having to have memory allocated for both LHS and RHS
+for the arithmetic operators?  Might complicate things substantially.  The main
+problem with this is we have a protected expression for re-use, we cannot
+overwrite it.  Additionally, we only ever want to overwrite the longer of the
+two parameters.  So we could do this in the subset of situations where the first
+argument is longer, but to do it `alloc` would have to realize this, know that
+is a special vecrec + arith situation, and then set the result vector to be the
+same.  We would also need to modify the arith code to have one additional
+conditional layer that needs to be called once per iteration.
+
+Better would be to have a second version of arith that does the `+=` business
+and we substitute that one in for the calls that support it.  This doesn't
+resolve `alloc` still having to do work.
+
+It does create a second situation where we want to be able to code gen two
+different pathways depending on the nature of subsequent code.  This should all
+be able to happen at the preproc level though, I think.
+
+## Expression Re-use
+
+We know these are non-modifiable assignments as they are not true symbols.
+Should we reflect this somewhere?  Because if we try to fail safe and default to
+copying things, only to go back later and change those that don't need copying,
+we really need to make sure we detect this.
+
+A challenge is that when we add an assignment to replace an expression, what
+used to be a single call, becomes two.  So any positions indices won't work.
+We also have the awkwardness or our rename call array potentially doing a double
+rename if we don't handle it correctly.
+
+Maybe for each element in the call.rename array, we track the original call
+index.
+
+First need to deparse all non terminal expressions
+
+## Memory
+
+IIRC currently each call can re-use a memory slot deeper than itself.  This
+makes sense in the context of a completely nested single line expression.  It
+should extend naturally to assignments that are made at the top level.  Gets a
+bit tricky if there is an assignment made inside a call (and also we need to be
+able to distinguish between a param specification and an assignment; it's
+probably okay though b/c of `match.call`).
+
+So all assignments are made directly at the top level automatically since we do
+not support `local` or anything like it.  Possibly instead of "top-level" we
+just keep track of the current function's depth to allow for nested "r2c_fun"
+functions.
+
+We then need to figure out how to resolve symbols.
+
+In the reduce step, we can just change the depth of the prior call's result on
+the stack (remember to test sequential allocations `a <- b <- fun(c)`).
+
+
+Things to do:
+
+1. Allow preproc to match to newly created variables.
+2. Add generator functions for RO and RW assignment.
+3. Add a mechanism for alloc to know how to set the depth for assignment
+   (actually this might be fine since `preproc` does it, problem is that `alloc`
+   uses `depth + 1` to get parameters to current call, which won't work anymore.
+4. Related to ^, change how `alloc` finds the parameters to each call.  We might
+   need a separate flag to have `alloc` change the depth after identifying
+   parameters, or alternative set a `callid` of some sort to identify parameters.
+   Maybe have `preproc` add a `protect` flag.
+5. Structure to track variables needs to contain:
+   * Depth?
+   * Size (including NA for group size).
+   * Read Only flag.
+   * Id of call that generated them (so we can go back and edit the call if an
+     RO flag was toggled off).
+6. Auto-free memory once there are no further calls to it (also true of
+   sub-expressions).
+
+First thing to solve then is allowing preproc to match to newly created
+variables.  Hmm, not sure preproc is the one that does this.  preproc only
+matches to parameter names.  So it's alloc that needs to do it.
+
+We could do it by adding an additional match layer ahead of the `data.naked`
+one.  If there is a match in this additional layer, then we use the variable
+(and inherit size, etc.).
+
+How does an overwrite work in this scheme?  It should mark the data allocation
+as available, and ...
+
+Also, things are a bit complicated by the call being in effect `"<-"(x, value)`.
+We need to get the target name from the call, which isn't hard, but just doesn't
+quite fit into the framework we have.
+
+## Renaming
+
+Preprocess does match each call.  Whenever it matches a call, we can check if
+any of the parameter expressions reference a prior expression, and at that point
+we can go back and mark as protected.  Need to make sure anything data/external
+is default protected.  Interestingly we don't need to auto-protect an
+assignment, it only needs to be protected if at some point it is re-used (but it
+would be interesting to let ppl know if it is never used).
+
+So we want a structure with all the prior expressions so we can test them, and
+go back and mark them as needing to be protected, and also the point at which
+they are last used.
+
+Assignment can use this.
+
+Then, at the end we can go back and code gen everything, substituting when
+appropriate functions that are dealing with protected parameters.
+
+The renaming process likely needs to be a shadow rename, meaning we need the
+original copy too.
+
+Anytime we rename, we need to process all remaining expressions and rename them
+too.  Likely we want a deferred rename, i.e. it happens just before each
+expression is processed, so we need to accumulate all the renames.  If we don't
+do this we have to maintain two copies of the call tree which is going to be
+annoying to recurse through.
+
+* Need a stack of renames.
+* Need a stack of past expressions to identify re-use (we have this already from
+  the linearized stack).
+
+## Nested Functions
+
+In order to support nested functions, we need to prevent renames of external
+variables.  We also need to affect symbol resolution.  So essentially each
+function layer will need a whole frame of `call_dat` or some such.  We will also
+need to re-match to the outer function environment as that could cause renaming
+of the data variables, etc.
+
+What a nested function does is effectively:
+
+    function(a, b) {
+      a <- force(a)
+      b <- force(b)
+      ...
+    }
+
+In other words, it generates implicit bindings to its local variables.  To
+shoehorn it into our framework we can just keep applying the renames on a
+rolling basis, and they should then naturally expire by the time the function
+exits scope.  So `preprocess` will need to identify a function to symbol in the
+call, realize that it can get a body for it, bind the formals to force-renamed
+symbols, and proceed as normal.  The allocator should then behave correctly from
+that point forward, without needing an explicit frame stack.
+
+What we can do is anytime we encounter a function, generate the assignment calls
+for all the parameters.  We only allow constant default params, so should be
+okay (but need to double check what we do with those at preprocess time).
+
+One problem to resolve with the renaming is the nested function might use a
+component from the outer one (e.g. internally it computes `mean(a)`, but
+`mean(a)` has already been computed previously); the renaming would prevent
+re-use of the expression.  So maybe we don't need to worry about renaming.  The
+only real issue is how unbound symbols are resolved, and making sure that
+such symbols are not resolved against symbols bound in the calling frame.
+
+So it seems that anytime we enter a new function, we need to reset the portion
+of the allocated data structure that we can look through.
+
+## Preproc
+
+Shouldn't actually generate any code?  But we need a mechanism to tell the
+allocator that the result of the prior call should be assigned to the top level,
+and we need to bind it to a symbol (duh) that will be on the search path.
+
 
 # Function vs. Expression
 
@@ -35,6 +228,9 @@ For the case we do have formals, it might be as simple as initializing
 `x[['sym.free']]`.  One thing is we'll probably have to add tracking of whether
 a symbol is ever used or not to possibly report that there is an unused formal
 (or at least think through the consequences of such; maybe none?).
+
+To conclude, we allow free symbols either via the function formals or by giving
+a list of symbols to bind to formals.
 
 # Window Implementation
 
