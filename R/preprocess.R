@@ -260,13 +260,13 @@ pp_internal <- function(call, depth, x, argn="") {
     # defines .ARG9999999999 or whatever to try to overflow us).
     if(is.name(call)) {
       name <- as.character(call)
-      if(grepl("^\\.ARG0[0-9]+$", name)) {
+      if(grepl(DOT.ARG.RX, name)) {
         stop(
-          "Symbols matching regex \"^\\.ARG[0-9]+$\" are disallowed (",
+          "Symbols matching regex \"", DOT.ARG.RX, "\" are disallowed (",
           name, ")."
         )
       } else if(grepl("^\\.\\.[0-9]+$", name)) {
-        call <- as.name(paste0(".ARG", x[['dot.arg.i']]))
+        call <- as.name(sprintf(DOT.ARG.TPL, x[['dot.arg.i']]))
         x[['dot.arg.i']] <- x[['dot.arg.i']] + 1L
   } } }
   record_call_dat(
@@ -285,9 +285,9 @@ pp_internal <- function(call, depth, x, argn="") {
 #' $code: the generated C code
 #' $sym.free/bound: ? Not sure this is still correct since we add the `formals`
 #'   parameter.
-#' $dot.arg.i: counter used when generating the `.ARG0i` symbols that replace
+#' $dot.arg.i: counter used when generating the symbols that replace
 #'   the `..1`, `..2`, ... symbols.
-#' $rename.arg.i: counter used when generating the `.ARG1i` symbols that replace
+#' $rename.arg.i: counter used when generating the symbols that replace
 #'   symbols that have been re-bound via assignment or are stand-ins for
 #'   repeated calculations.  Note that the difference between the dot version
 #'   and this one is that the dot numbering is "0###" whereas this one is

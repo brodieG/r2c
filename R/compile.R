@@ -89,9 +89,8 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' sub-calls (e.g. the `x` and `y` in `sum(x) + y`) will become parameters to
 #' the "r2c_fun" function.  There must be at least one such symbol in `call`.
 #' Symbol order in the "r2c_fun" parameter list is based on order of appearance
-#' in the call tree after everything is [`match.call`]ed.  `.R2C.DOTS` and any
-#' symbols that match the regular expression `"^\\.ARG[0-9]+$"` are reserved for
-#' use by `r2c` and thus disallowed in `call`.
+#' in the call tree after everything is [`match.call`]ed.  Symbols beginning
+#' with `.R2C` are reserved for use by `r2c` and thus disallowed in `call`.
 #'
 #' Parameters used with "r2c_fun" supported functions are categorized into data
 #' parameters and control parameters.  For example, in `sum(x, na.rm=TRUE)`, `x`

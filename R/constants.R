@@ -69,14 +69,21 @@ QDOTS <- quote(...)
 
 # - Internal Symbols -----------------------------------------------------------
 
+R2C.PRIV.BASE <- ".R2C"
+R2C.PRIV.RX <- sprintf("^%s", R2C.PRIV.BASE)
+
 # For arguments that show up as `..1`, `..2`, replaced to match pattern below
-DOT.ARG.BASE <- ".ARG0"
+DOT.ARG.BASE <- sprintf("%s_DOT_", R2C.PRIV.BASE)
 DOT.ARG.RX <- sprintf("^\\%s\\d+$", DOT.ARG.BASE)
-DOT.ARG.TPL <- ".ARG0%d"
+DOT.ARG.TPL <- sprintf("%s%%d", DOT.ARG.BASE)
 
 # For renames symbols
-RENAME.ARG.BASE <- ".ARG1"
-RENAME.ARG.RX <- sprintf("^\\%s\\d+$", DOT.ARG.BASE)
-RENAME.ARG.TPL <- ".ARG1%d"
+RENAME.ARG.BASE <- sprintf("%s_RN_", R2C.PRIV.BASE)
+RENAME.ARG.RX <- sprintf("^\\%s\\d+$", RENAME.ARG.RX)
+RENAME.ARG.TPL <- sprintf("%s%%d", RENAME.ARG.BASE)
 
+# For substitution (re-use)
+REUSE.ARG.BASE <- sprintf("%s_SUB_", R2C.PRIV.BASE)
+REUSE.ARG.RX <- sprintf("^\\%s\\d+$", RENAME.ARG.RX)
+REUSE.ARG.TPL <- sprintf("%s%%d", REUSE.ARG.BASE)
 

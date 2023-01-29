@@ -236,7 +236,7 @@ reuse_calls <- function(x) {
   # repeated calls need to be replaced by that variable.
   for(i in calls.first.keep) {
     index.i <- calls.indices[[i]]
-    rename.arg <- as.name(sprintf(RENAME.ARG.TPL, rename.n))
+    rename.arg <- as.name(sprintf(REUSE.ARG.TPL, rename.n))
     rename.n <- rename.n + 1L
     x[[index.i]] <- call("<-", rename.arg, x[[index.i]])
     call.rep <- seq_along(calls.dep)[-calls.first][

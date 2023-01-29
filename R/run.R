@@ -44,10 +44,10 @@ match_and_alloc <- function(
   # Trick here is data is split across `data` and `MoreArgs` so we have to merge
   # together to match, but then split the data back into the two parameters
   # since they have different usage semantics.
-  if(any(grepl(DOT.ARG.RX, names(do))))
-    stop("`data` names may not match this regex: \"", DOT.ARG.RX, "\".")
-  if(any(grepl(DOT.ARG.RX, names(MoreArgs))))
-    stop("`MoreArgs` names may not match this regex: \"", DOT.ARG.RX, "\".")
+  if(any(grepl(R2C.PRIV.RX, names(do))))
+    stop("`data` names may not match this regex: \"", R2C.PRIV.RX, "\".")
+  if(any(grepl(R2C.PRIV.RX, names(MoreArgs))))
+    stop("`MoreArgs` names may not match this regex: \"", R2C.PRIV.RX, "\".")
   if(is.null(names(do))) names(do) <- character(length(do))
   if(is.null(names(MoreArgs))) names(MoreArgs) <- character(length(MoreArgs))
 
@@ -103,7 +103,7 @@ match_and_alloc <- function(
   # names so we can recognize which arguments came from dots.
 
   call.dummy.m.old <- call.dummy.m
-  call.dummy.m <- rename_dots(call.dummy.m, ".ARG.%d")
+  call.dummy.m <- rename_dots(call.dummy.m, DOT.ARG.TPL)
 
   # Test that all required parameters were provided, and provide error message
   # if they weren't.  Ideally we'd give the originall expressions in `data` and
