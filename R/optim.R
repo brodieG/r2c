@@ -114,21 +114,26 @@ optim <- function(x) {
 #' @param renames a named list of symbols, in which the names are the original
 #'   symbol name, and the values are the symbol to rename the original symbol
 #'   to.  This list is updated as `rename_call` invokes itself recursively.
-#' @param i the index that the next rename will adopt.
+#' @param ri the index that the next rename will adopt.
+#' @return a list with components:
+#'
+#' * x: the renamed call
+#' * renames: the final list of renames (see `renames`)
+#' * ri: see `ri`.
 
-rename_call <- function(x, renames=list(), i=1L) {
-  renames <- list()
-  rename.i <- i
+rename_call <- function(x, renames=list(), ri=1L) {
   if(
     is.call(x) && length(x) > 1L &&
     (is.symbol(x[[1L]]) || is.character(x[[1L]]))
   ) {
     fun.name <- as.character(x[[1L]])
-    # For does an assignment to the counter variable
-    if(fun.name %in% c("<-", "-", "for")) {
+    if(fun.name %in% c("<-", "=", "for")) {
+      # Perform a rename anytime there is an assignment.  `for` assigns to the
+      # counter variable.  Right assignment doesn't exist post parsing (just
+      # becomes "<-" with symbols flipped).
       target.symbol <- x[[2L]]
       target.type <- typeof(target.symbol)
-      if(target.symbol != 'symbol') {
+      if(target.type != 'symbol') {
         msg <-
           if(fun.name == "for")
             paste("expected symbol for loop variable but got", target.type)
@@ -136,22 +141,25 @@ rename_call <- function(x, renames=list(), i=1L) {
         stop(simpleError(msg, x))
       }
       target.char <- as.character(target.symbol)
-      target.rename <- sprintf(RENAME.ARG.TPL, rename.i)
+      target.rename <- sprintf(RENAME.ARG.TPL, ri)
       target.rename.symbol <- as.symbol(target.rename)
-      rename.i <- rename.i + 1L
+      ri <- ri + 1L
       renames[[target.char]] <- x[[2L]] <- target.rename.symbol
     }
+    # Recurse into the paramaters of the call (techincally for assignments we
+    # shouldn't do 2L, but it should be harmless).
     for(j in seq(2L, length(x), 1L)) {
-      rdat <- rename_call(x[[j]], renames=renames, i=i)
+      rdat <- rename_call(x[[j]], renames=renames, ri=ri)
       x[[j]] <- rdat[['x']]
       renames <- rdat[['renames']]
-      renames.i <- rdat[['i']]
+      ri <- rdat[['ri']]
     }
   } else if (is.symbol(x)) {
+    # Perform the rename if the symbol is one of those that is assigned to
     symbol.char <- as.character(x)
-    if(symbol.char %in% names(renames)) x <- x[[symbol.char]]
+    if(symbol.char %in% names(renames)) x <- renames[[symbol.char]]
   }
-  list(x=x, renames=renames, i=rename.i)
+  list(x=x, renames=renames, ri=ri)
 }
 
 #' Flatten Calls Preserving Indices Into Recursive Structure
