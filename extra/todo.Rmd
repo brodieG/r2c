@@ -2,10 +2,25 @@
 
 # To Do / Questions
 
-## Current
+## Things to test
 
 * Test corner cases such as a repeated assignment to see if it get correctly
   detected as being repeated.
+* Check that forwarding calls in `...` works correctly, e.g.
+  `sum(1 + x, 2 + y)`, not obvious from glancing at dots handling that it does.
+* Reuse with an inner expression that appears separately from a re-used outer
+  expression.
+
+## Current
+
+* Change reserved symbols to be anything starting with `.R2C` so we have more
+  flexibility and don't need to use the same format for dot args, replaced
+  names, etc.
+* `reuse_call` needs to track what the original call was so we can provide
+  better error messages if something goes wrong at some point.
+* `reuse_call` and `rename_call` need to realize that for loops assign values!
+  It should be okay to just rename the counter; I think everything else works
+  out.
 * Make sure that the Function Environment in `r2cf` is captured somewhere.  In
   particular we want to make sure unbound symbols are resolved according to that
   environment.  Will also need to think about what this means for the `enclos`
@@ -19,8 +34,6 @@
   source of them was parameters.
 * Rename depth to height.  No, rename depth to level.  The use of height and
   depth with an upside down tree is ridiculous and not my fault.
-* Check that forwarding calls in `...` works correctly, e.g.
-  `sum(1 + x, 2 + y)`, not obvious from glancing at dots handling that it does.
 * Does preproc `sym.free` `sym.bound` make sense now with `formals` supplied?
 * Rename `r2c` to `r2cf` or similar once we implement functions.  Partly this is
   so `?r2c` will pull up the package docs, not the function docs.
