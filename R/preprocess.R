@@ -354,50 +354,50 @@ record_call_dat <- function(
   }
   x
 }
-## Rename Symbols in Calls
-##
-## The purpose of the renaming is to distinguish calls that are identical except
-## that the content of the calls they reference has changed due to an assignment
-## overwriting or masking an existing variable.
-##
-## @param x a call dat object
-## @param call language a call/symbol to rename
-
-rename_call <- function(x, call) {
-  call <- if (is.name(call)) {
-    call.chr <- as.character(call)
-    call <-
-      if(call.chr %in% names(x[['rename']])) as.name(x[['rename']][call.chr])
-      else call
-  } else if (is.call(call) && length(call) > 1L) {
-    # Re-assemble call from the prior arguments that have already been renamed.
-    # For a call with n arguments, the prior n elements in the list at depth + 1
-    # will be the arguments.
-    renamed.at.depth <- x[['call.rename']][
-      x[['depth']] == x[['depth']][length(x[['depth']])] + 1L
-    ]
-    call[-1L] <- renamed.at.depth[
-      seq(length(renamed.at.depth), length.out=length(call) - 1L, by=-1L)
-    ]
-  }
-  call
-}
-## Apply Renames to Character Representation of Symbol
-##
-## A new instance of a symbol to rename is added to the list.  An existing
-## instance is further renamed, using the `.ARG1###` syntax.
-##
-## @param x a call dat object
-## @param symbol a symbol to rename
-
-append_rename <- function(x, symbol) {
-  stopifnot(is.symbol(symbol))
-  sym.char <- as.character(symbol)
-  rename.i <- x[['rename.arg.i']]
-  x[['rename']][sym.char] <- as.name(sprintf(RENAME.ARG.TPL, rename.i))
-  x[['rename.arg.i']] <- rename.i + 1L
-  x
-}
+# ## Rename Symbols in Calls
+# ##
+# ## The purpose of the renaming is to distinguish calls that are identical except
+# ## that the content of the calls they reference has changed due to an assignment
+# ## overwriting or masking an existing variable.
+# ##
+# ## @param x a call dat object
+# ## @param call language a call/symbol to rename
+# 
+# rename_call <- function(x, call) {
+#   call <- if (is.name(call)) {
+#     call.chr <- as.character(call)
+#     call <-
+#       if(call.chr %in% names(x[['rename']])) as.name(x[['rename']][call.chr])
+#       else call
+#   } else if (is.call(call) && length(call) > 1L) {
+#     # Re-assemble call from the prior arguments that have already been renamed.
+#     # For a call with n arguments, the prior n elements in the list at depth + 1
+#     # will be the arguments.
+#     renamed.at.depth <- x[['call.rename']][
+#       x[['depth']] == x[['depth']][length(x[['depth']])] + 1L
+#     ]
+#     call[-1L] <- renamed.at.depth[
+#       seq(length(renamed.at.depth), length.out=length(call) - 1L, by=-1L)
+#     ]
+#   }
+#   call
+# }
+# ## Apply Renames to Character Representation of Symbol
+# ##
+# ## A new instance of a symbol to rename is added to the list.  An existing
+# ## instance is further renamed, using the `.ARG1###` syntax.
+# ##
+# ## @param x a call dat object
+# ## @param symbol a symbol to rename
+# 
+# append_rename <- function(x, symbol) {
+#   stopifnot(is.symbol(symbol))
+#   sym.char <- as.character(symbol)
+#   rename.i <- x[['rename.arg.i']]
+#   x[['rename']][sym.char] <- as.name(sprintf(RENAME.ARG.TPL, rename.i))
+#   x[['rename.arg.i']] <- rename.i + 1L
+#   x
+# }
 
 sym_free <- function(x, sym) {
   if(is.symbol(sym)) {

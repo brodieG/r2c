@@ -64,6 +64,96 @@ optim <- function(x) {
   }
 
 }
+#' Rename Symbols in Calls
+#'
+#' The purpose of the renaming is to distinguish calls that are identical except
+#' that the content of the calls they reference has changed due to an assignment
+#' overwriting or masking an existing variable.
+#'
+#' We have a 1-1 mapping to the original call since we're not adding/removing
+#' calls.
+#'
+#' Assignments in loop need to be renamed one additional time on loop exit
+#' because there is no guarantee that every expression in some way involving the
+#' counter variable (or any other loop generated variable) will be in a specific
+#' state.  For example, if we have `x <- i` in a loop, but we break out of the
+#' loop before the loop is complete, `i` and `x` will not be the same at the end
+#' of the loop.  Or even simpler:
+#' ```
+#' for(i in 1) {
+#'   break
+#'   x <- y
+#' }
+#' mean(x)
+#' ```
+#' ```
+#' mean(x)
+#' for(i in 1:2) {
+#'   mean(x)
+#'   if(i > 1) break
+#'   x <- i
+#'   mean(x)
+#'   z <- c(z, y)
+#' }
+#' mean(x)
+#' ```
+#' So find all the names written in the loop (**including the loop counter**),
+#' ideally we would identify the set of those (recursively) that are loop
+#' varying vs loop constant.  Loop constant ones can get the same treatment, but
+#' loop varying ones are not eligible.
+#'
+#' What do we consider loop varying?  Any expression involving any variables
+#' created in the loop.  So we need to do a pass to identify all the calls that
+#' are loop varying and annotate them some how.
+#'
+#' How do nested loops work?  Maybe doesn't matter, once you're in a loop, we
+#' can apply the same algorithm to absolutely everything in the loop.
+#'
+#' @noRd
+#' @param x a call
+#' @param renames a named list of symbols, in which the names are the original
+#'   symbol name, and the values are the symbol to rename the original symbol
+#'   to.  This list is updated as `rename_call` invokes itself recursively.
+#' @param i the index that the next rename will adopt.
+
+rename_call <- function(x, renames=list(), i=1L) {
+  renames <- list()
+  rename.i <- i
+  if(
+    is.call(x) && length(x) > 1L &&
+    (is.symbol(x[[1L]]) || is.character(x[[1L]]))
+  ) {
+    fun.name <- as.character(x[[1L]])
+    # For does an assignment to the counter variable
+    if(fun.name %in% c("<-", "-", "for")) {
+      target.symbol <- x[[2L]]
+      target.type <- typeof(target.symbol)
+      if(target.symbol != 'symbol') {
+        msg <-
+          if(fun.name == "for")
+            paste("expected symbol for loop variable but got", target.type)
+          else "invalid left-hand side to assignment."
+        stop(simpleError(msg, x))
+      }
+      target.char <- as.character(target.symbol)
+      target.rename <- sprintf(RENAME.ARG.TPL, rename.i)
+      target.rename.symbol <- as.symbol(target.rename)
+      rename.i <- rename.i + 1L
+      renames[[target.char]] <- x[[2L]] <- target.rename.symbol
+    }
+    for(j in seq(2L, length(x), 1L)) {
+      rdat <- rename_call(x[[j]], renames=renames, i=i)
+      x[[j]] <- rdat[['x']]
+      renames <- rdat[['renames']]
+      renames.i <- rdat[['i']]
+    }
+  } else if (is.symbol(x)) {
+    symbol.char <- as.character(x)
+    if(symbol.char %in% names(renames)) x <- x[[symbol.char]]
+  }
+  list(x=x, renames=renames, i=rename.i)
+}
+
 #' Flatten Calls Preserving Indices Into Recursive Structure
 #'
 #' @noRd
@@ -89,19 +179,28 @@ flatten_call_rec <- function(x, calls, indices) {
   list(calls=calls.res, indices=calls.i.res)
 }
 
-#' Identify Repeated Calls and Re-use Result of First Instance
+#' Identify Repeated Calls and Reuse First Instance
 #'
-#' First call is assigned to a new "rename" variable, subsequent ones then
-#' become that rename variable.
+#' Complex statistics often re-use a simpler statistic multiple times, providing
+#' the opportunity to optimize them by storing the result of the simple
+#' statistic instead of recomputing it.  This function detects reuses of
+#' sub-calls and modifies the call tree to implement the store-and-reuse
+#' optimization.
 #'
-#' In order for this to work correctly the input call has to have had renaming
-#' done to it so that re-assigned symbols are correctly detected as being new.
+#' Store-and-reuse only works if there are no side-effects in the evaluation
+#' of the original call being optimized, including assignments that overwrite
+#' pre-existing variables.  It is still possible to optimize such calls if
+#' the call is modified to use new variable names instead of overwriting
+#' existing ones, as can be done with [`rename_calls`].
 #'
-#' @noRd
-#' @param x a call renamed call tree
+#' @param x a call, ideally first renamed with [`rename_calls`].
 #' @param rename.i index to used for additional "renamed" variables generated
 
-re_use_calls <- function(x, rename.n=1L) {
+reuse_calls <- function(x) {
+  in.loop <- FALSE
+  rename.dat <- rename_call(x)
+  x <- rename.arg[['x']]
+
   flat <- flatten_call(x)
   calls.flat <- flat[['calls']]
   calls.indices <- flat[['indices']]
@@ -117,6 +216,8 @@ re_use_calls <- function(x, rename.n=1L) {
   calls.rep <- calls.match != seq_along(calls.match) & is.call
   # For each repeated, call, find the first instance
   calls.first <- unique(match(calls.dep[calls.rep], calls.dep))
+
+  warning("check we're in loop")
 
   # Eliminate Redundant repeated calls caused by a repeated call with subcalls
   # (which will obviously be repeated too).
