@@ -10,9 +10,14 @@
   `sum(1 + x, 2 + y)`, not obvious from glancing at dots handling that it does.
 * Reuse with an inner expression that appears separately from a re-used outer
   expression.
+* Renames:
+  * Don't change the structure of the tree
+  * Can be reversed (maybe this covers the prior point)
 
 ## Current
 
+* Make sure we understand when it's okay or not okay to assume about order of
+  evaluation of parameters (e.g. when they contain assignments in them).
 * Change reserved symbols to be anything starting with `.R2C` so we have more
   flexibility and don't need to use the same format for dot args, replaced
   names, etc.

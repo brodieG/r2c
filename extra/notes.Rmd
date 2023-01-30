@@ -1,3 +1,85 @@
+# Loops
+
+## C Implementation
+
+Probably the way a loop would work is:
+
+```
+void run(
+  double ** data, R_xlen_t * lens, int ** di, int * narg, int * flag, SEXP ctrl
+) {
+  (void) narg; // unused
+  (void) ctrl; // unused
+
+  dibase = *di;
+  flagbase= *flag;
+  for(i = 0; i < n; ++i) {
+    // - Loop Overhead ---------------------------------------------------------
+    // Do something to update the value of `i` in the data
+    ...
+
+    // Then reset index, flags, more args
+    di = dibase;
+    flag = flag;
+
+    // - Normal Code -----------------------------------------------------------
+    // mean(x)
+    mean(data, lens, *di++, *flag);
+    ++flag;
+
+    // x - mean(x)
+    subtract(data, lens, *di++);
+    ++flag;
+  }
+}
+```
+
+## Memory
+
+Pretty challenging dealing with loops.
+
+```
+x <- integer()
+for(i in 1:10) {
+  x <- c(x, i)
+}
+```
+
+Each loop iteration is going to have a different size for x. The best we can
+hope for is consistent size every iteration including the first.  This should
+handle the case where the loop doesn't even run.
+
+What about variables created in loops that are not taken?
+
+# If
+
+Need to track size of all variables in every branch and before the if, and check
+that they all resolve to the same size after the if, at least for those that get
+used after the if (i.e. intermediate variables not used again don't matter).
+
+We'll need to allocate for every branch, even if the taken branch at run time
+might not set/change a variable.
+
+What about variables created in loops branches are not taken and then attempted
+to be used later?
+
+# Rename stack
+
+List, with for names the original names, and for values all the things the names
+were renamed to, and context for each of those (e.g. pre-loop, loop depth,
+condition n, condition depth).
+
+```
+x
+ARG0
+ARG1 for0
+ARG2 for0
+ARG3 if0-0
+ARG4 if0-1
+ARG2 if0-2
+ARG5 for1
+```
+
 # Assignments
 
 ## Re-Writeable assignment
@@ -23,7 +105,7 @@ the parameters for it.
 So how would we detect that an assign created variable is written to later?
 preproc has the argument name.  It would then keep a top-level list of all the
 assigned to arg names accumulated to date, and if at some point later down the
-track a write function involves that parameter, it would know.  That means that 
+track a write function involves that parameter, it would know.  That means that
 
 ## Arith Assign (Memory Re-Use)
 
@@ -210,7 +292,7 @@ somewhere.
 
     > f <- r2cq(sum(x, na.rm=y) + sum(y, na.rm=x))
     > f(1, 2)
-    Error in VALID_FUNS[[c(name, "ctrl.validate")]](stack.ctrl, stack.flag,  : 
+    Error in VALID_FUNS[[c(name, "ctrl.validate")]](stack.ctrl, stack.flag,  :
       `na.rm` should be type "logical" (is "double") in `sum(x, na.rm = y)`.
     > f(1, 2)
 
@@ -775,7 +857,7 @@ It's kind of an accident that we generate the `..1` symbol, and only because
 `1:10` is a call:
 
     > (function(...) r2cq(sum(...)))(1, 2)
-    function () 
+    function ()
     {
 
 So probably just need to figure out why the call version generates the `..1`
@@ -943,11 +1025,11 @@ On my system this is the cost of accessing the vectors at random (well, this
 includes the physical re-ordering):
 
 > system.time(x[io])       # ordered
-   user  system elapsed 
-  0.052   0.003   0.057 
+   user  system elapsed
+  0.052   0.003   0.057
 > system.time(x[ir])       # random
-   user  system elapsed 
-  0.286   0.007   0.311 
+   user  system elapsed
+  0.286   0.007   0.311
 
 And most of the cost is just accessing the vector (`order_sum` below adds each
 value to a single accumulator in the order specified by io).
@@ -957,25 +1039,25 @@ value to a single accumulator in the order specified by io).
 > io <- seq_len(n) - 1L
 > ir <- sample(io)
 > system.time(order_sum(x, io))
-   user  system elapsed 
-  0.022   0.000   0.023 
+   user  system elapsed
+  0.022   0.000   0.023
 > system.time(order_sum(x, ir))
-   user  system elapsed 
-  0.210   0.006   0.230 
+   user  system elapsed
+  0.210   0.006   0.230
 
 The key to collapse speed is that it reads the large input vectors in order, but
 then writes to the small group vector out of order.
 
 > system.time(fsum(x, g4, na.rm=FALSE))
-   user  system elapsed 
-  0.081   0.004   0.087 
+   user  system elapsed
+  0.081   0.004   0.087
 
 This advantage falls apart as we grow the size of the group vector by increasing
 the number of repeats:
 
 > system.time(fsum(x, g6, na.rm=FALSE))
-   user  system elapsed 
-  0.865   0.017   0.910 
+   user  system elapsed
+  0.865   0.017   0.910
 
 But exactly what is happening is not 100% clear:
 
@@ -1024,11 +1106,11 @@ higher sizes.  Let
     g.ar <- sample(all.range, n, replace=TRUE)
     g <- sample(ng, n, replace=TRUE)
     system.time(fsum(x, g.ar, na.rm=FALSE))
-    ##   user  system elapsed 
-    ##  0.069   0.003   0.072 
+    ##   user  system elapsed
+    ##  0.069   0.003   0.072
     system.time(fsum(x, g, na.rm=FALSE))
-    ##   user  system elapsed 
-    ##  0.064   0.004   0.068 
+    ##   user  system elapsed
+    ##  0.064   0.004   0.068
 
 
     n <- 1e7; ng <- 1e4
@@ -1036,11 +1118,11 @@ higher sizes.  Let
     g.ar <- sample(all.range, n, replace=TRUE)
     g <- sample(ng, n, replace=TRUE)
     system.time(fsum(x, g.ar, na.rm=FALSE))
-    ##   user  system elapsed 
-    ##  0.132   0.003   0.136 
+    ##   user  system elapsed
+    ##  0.132   0.003   0.136
     system.time(fsum(x, g, na.rm=FALSE))
-    ##   user  system elapsed 
-    ##  0.077   0.003   0.080 
+    ##   user  system elapsed
+    ##  0.077   0.003   0.080
 
 Let's try with different types to see what happens:
 
@@ -1052,48 +1134,48 @@ Let's try with different types to see what happens:
     g.ar <- sample(all.range, n, replace=TRUE)
     gt <- as.character(g)
     system.time(fsum(x, gt, na.rm=FALSE))
-    ##   user  system elapsed 
-    ##  0.373   0.020   0.401 
+    ##   user  system elapsed
+    ##  0.373   0.020   0.401
     gt <- as.character(g.ar)
     system.time(fsum(x, gt, na.rm=FALSE))
-    ##   user  system elapsed 
-    ##  0.412   0.016   0.435 
+    ##   user  system elapsed
+    ##  0.412   0.016   0.435
     gt <- g + 0
     system.time(fsum(x, gt, na.rm=FALSE))
-    ##   user  system elapsed 
-    ##  0.621   0.030   0.668 
+    ##   user  system elapsed
+    ##  0.621   0.030   0.668
     gt <- g.ar + 0
     system.time(fsum(x, gt, na.rm=FALSE))
-    ##   user  system elapsed 
-    ##  0.693   0.027   0.730 
+    ##   user  system elapsed
+    ##  0.693   0.027   0.730
     gt <- factor(as.character(g))
     system.time(fsum(x, gt, na.rm=FALSE))
-    ##   user  system elapsed 
-    ##  0.032   0.000   0.033 
+    ##   user  system elapsed
+    ##  0.032   0.000   0.033
     system.time(fsum(x, g, na.rm=FALSE))
-    ##   user  system elapsed 
-    ##  0.085   0.007   0.094 
+    ##   user  system elapsed
+    ##  0.085   0.007   0.094
     system.time(res <- group_exec(f, g, x))
-    ##   user  system elapsed 
-    ##  0.763   0.020   0.802 
+    ##   user  system elapsed
+    ##  0.763   0.020   0.802
     system.time(fsum(x, g.ar, na.rm=FALSE))
-    ##   user  system elapsed 
-    ##  0.142   0.016   0.160 
+    ##   user  system elapsed
+    ##  0.142   0.016   0.160
 
 Pretty much as expected.  Big benefit from factors.  So really the hashes work
 very well with sequential integers, whereas the sorting version should be about
 the same for everything?.
 
     system.time(order(x))
-    ##   user  system elapsed 
-    ##  0.587   0.026   0.620 
+    ##   user  system elapsed
+    ##  0.587   0.026   0.620
     system.time(order(g))
-    ##   user  system elapsed 
-    ##  0.201   0.005   0.208 
+    ##   user  system elapsed
+    ##  0.201   0.005   0.208
     gt <- as.character(g)
     system.time(order(gt, method='radix'))
-    ##   user  system elapsed 
-    ##  0.271   0.006   0.281 
+    ##   user  system elapsed
+    ##  0.271   0.006   0.281
 
 Largest number of groups that will fit in L1 would be 16K, not enough to start
 evicting out of L2 for the all range one.  To do that we need 32K entries.  At
@@ -1104,11 +1186,11 @@ evicting out of L2 for the all range one.  To do that we need 32K entries.  At
     g.ar <- sample(all.range, n, replace=TRUE)
     g <- sample(ng, n, replace=TRUE)
     system.time(fsum(x, g.ar, na.rm=FALSE))
-    ##    user  system elapsed 
-    ##   0.358   0.008   0.371 
+    ##    user  system elapsed
+    ##   0.358   0.008   0.371
     system.time(fsum(x, g, na.rm=FALSE))
-    ##    user  system elapsed 
-    ##   0.136   0.004   0.140 
+    ##    user  system elapsed
+    ##   0.136   0.004   0.140
 
 This suggests a massive crash in performance as for all range half will have
 been done in L2, and half out.  We can go up to 500K entries contiguous before
@@ -1119,11 +1201,11 @@ we start exhausting L2 cache, so let's try with 250K groups:
     g.ar <- sample(all.range, n, replace=TRUE)
     g <- sample(ng, n, replace=TRUE)
     system.time(fsum(x, g.ar, na.rm=FALSE))
-    ##    user  system elapsed 
-    ##   0.599   0.010   0.616 
+    ##    user  system elapsed
+    ##   0.599   0.010   0.616
     system.time(fsum(x, g, na.rm=FALSE))
-    ##    user  system elapsed 
-    ##   0.343   0.007   0.353 
+    ##    user  system elapsed
+    ##   0.343   0.007   0.353
 
 **We're assuming no hash collisions whatsoever**
 
@@ -1255,33 +1337,33 @@ we're dealing with group sizes that in the contiguous case just fit in cache at
     ng <- n/10
 
     system.time(res <- group_exec(f, g, x))
-    ##   user  system elapsed 
-    ##  7.421   0.477   7.919 
+    ##   user  system elapsed
+    ##  7.421   0.477   7.919
     system.time(fsum(x, g, na.rm=FALSE))
-    ##   user  system elapsed 
-    ## 12.264   0.580  12.888 
+    ##   user  system elapsed
+    ## 12.264   0.580  12.888
 
     ng <- n/100
     system.time(res <- group_exec(f, g, x))
-    ##   user  system elapsed 
-    ##  7.174   0.571   7.766 
+    ##   user  system elapsed
+    ##  7.174   0.571   7.766
     system.time(fsum(x, g, na.rm=FALSE))
-    ##   user  system elapsed 
-    ##  5.101   0.401   5.520 
+    ##   user  system elapsed
+    ##  5.101   0.401   5.520
 
     ng <- n/1000
     system.time(res <- group_exec(f, g, x))
-    ##   user  system elapsed 
-    ##  6.512   0.543   7.077 
+    ##   user  system elapsed
+    ##  6.512   0.543   7.077
     system.time(fsum(x, g, na.rm=FALSE))
-    ##   user  system elapsed 
-    ##  1.280   0.184   1.471 
+    ##   user  system elapsed
+    ##  1.280   0.184   1.471
 
     all.range <- as.integer(seq(1, n, length.out=ng))
     g.ar <- sample(all.range, n, replace=TRUE)
     system.time(fsum(x, g.ar, na.rm=FALSE))
-    ##   user  system elapsed 
-    ##  3.672   0.445   4.131 
+    ##   user  system elapsed
+    ##  3.672   0.445   4.131
 
 At n/1000 we're talking 400KB contiguous or 6.4MB, so for the latter just 50%
 overflowing L3 cache.
@@ -1290,8 +1372,8 @@ overflowing L3 cache.
     all.range <- as.integer(seq(1, n, length.out=ng))
     g.ar <- sample(all.range, n, replace=TRUE)
     system.time(fsum(x, g.ar, na.rm=FALSE))
-    ##   user  system elapsed 
-    ##  6.877   0.590   7.566 
+    ##   user  system elapsed
+    ##  6.877   0.590   7.566
 
 At 2n with n/100 we're 50% in cache for the contiguous case.  Maybe should try
 the n/10 case with g.ar?
@@ -1302,16 +1384,16 @@ the n/10 case with g.ar?
     x <- runif(n) * runif(n)
     g <- sample(ng, n, replace=TRUE)
     ## system.time(res <- group_exec(f, g, x))
-    ##    user  system elapsed 
-    ##  18.133   1.306  19.516 
+    ##    user  system elapsed
+    ##  18.133   1.306  19.516
     ## system.time(fsum(x, g, na.rm=FALSE))
-    ##    user  system elapsed 
-    ##  10.954   0.814  11.783 
+    ##    user  system elapsed
+    ##  10.954   0.814  11.783
     all.range <- as.integer(seq(1, n, length.out=ng))
     g.ar <- sample(all.range, n, replace=TRUE)
     ## system.time(fsum(x, g.ar, na.rm=FALSE))
-    ##    user  system elapsed 
-    ##  17.222   1.158  18.458 
+    ##    user  system elapsed
+    ##  17.222   1.158  18.458
 
 ## Notes vs data.table
 
@@ -1528,31 +1610,31 @@ Some costs of not being able to do the full optimization:
     > x <- runif(n)
     > g <- sample(n)
     > sys.time(res <- run_group(shlib, "fun4", list(x), g, 0L))
-       user  system elapsed 
-      1.077   0.005   1.087 
+       user  system elapsed
+      1.077   0.005   1.087
     > sys.time(res <- run_group(shlib, "fun4", list(x), g, 1L))
-       user  system elapsed 
-      1.076   0.004   1.085 
+       user  system elapsed
+      1.076   0.004   1.085
 
 These above are with `na.rm` as an explicit if/else, where group size is 1..
 
     > sys.time(res <- run_group0(shlib, "fun3", list(x), g))
-       user  system elapsed 
-      1.030   0.004   1.040 
+       user  system elapsed
+      1.030   0.004   1.040
 
 Here instead we assume `na.rm = FALSE` so no extra if/else.  For reference this
 is what the above looks like with group size = 10:
 
     > sys.time(res <- run_group0(shlib, "fun3", list(x), g))
-       user  system elapsed 
-      0.778   0.004   0.788 
+       user  system elapsed
+      0.778   0.004   0.788
 
 And finally back to group size = 1 we now add a `asInteger(VECTOR_ELT(x, 0))` to
 retrieve the `na.rm` flag:
 
     > sys.time(res <- run_group1(shlib, "fun5", list(x), g, 0L))
-       user  system elapsed 
-      1.147   0.002   1.149 
+       user  system elapsed
+      1.147   0.002   1.149
 
 So a 10% penalty, which suggests some value in allowing for a single flag to be
 passed down.  But maybe this becomes a future feature.
@@ -1564,26 +1646,26 @@ with any other processes.  Given that sorting is such a big part of the cost,
 it's going to be hard to beat that.
 
     > sys.time(res1 <- run_group2(shlib, "fun6", list(x, y), g))
-       user  system elapsed 
-      1.058   0.007   1.071 
+       user  system elapsed
+      1.058   0.007   1.071
     > sys.time(res2 <- run_group2(shlib, "fun7", list(x, y), g))
-       user  system elapsed 
-      1.069   0.008   1.084 
+       user  system elapsed
+      1.069   0.008   1.084
     > sys.time({
     +   o <- order(g)
     +   xo <- x[o]
     +   yo <- y[o]
     + })
-       user  system elapsed 
-      0.783   0.005   0.794 
+       user  system elapsed
+      0.783   0.005   0.794
     > sys.time(res3 <- xo + yo)
-       user  system elapsed 
-      0.022   0.000   0.022 
+       user  system elapsed
+      0.022   0.000   0.022
     > all.equal(res1, res2)
     [1] TRUE
     > all.equal(res1, res3)
     [1] TRUE
-    > 
+    >
 
 ## Allocation
 
@@ -1621,11 +1703,11 @@ pointer offset access.
     w <- runif(5e6)
     >
     > sys.time(fapply:::test1(x, y, z, w))
-       user  system elapsed 
-      0.025   0.000   0.025 
+       user  system elapsed
+      0.025   0.000   0.025
     > sys.time(fapply:::test2(x, y, z, w))
-       user  system elapsed 
-      0.018   0.000   0.018 
+       user  system elapsed
+      0.018   0.000   0.018
 
 It is slightly faster to do x + y + z + w (test2) than do pairwise additions
 across the full vectors (test1).  Maybe because we only increment the loop
@@ -1634,19 +1716,19 @@ variable once?
 With `MOD_ITERATE_CHECK2` and checking every 1e6:
 
     > sys.time(fapply:::test3(x, y, z, w))
-     user  system elapsed 
-    0.036   0.000   0.038 
+     user  system elapsed
+    0.036   0.000   0.038
 
 Interestingly `MOD_ITERATE2` is no faster, so the check is basically free.
 
 `R_ITERATE_CHECK` is comparable to pairwise addition (test1):
 
     > sys.time(fapply:::test1(x, y, z, w))
-       user  system elapsed 
-      0.026   0.000   0.028 
+       user  system elapsed
+      0.026   0.000   0.028
     > sys.time(fapply:::test5(x, y, z, w))
-       user  system elapsed 
-      0.026   0.000   0.028 
+       user  system elapsed
+      0.026   0.000   0.028
 
 
 ## Function Types
@@ -2266,7 +2348,7 @@ If unnamed we can rely on the symbol.
 
 
 These are very appealing for group/window because we can easily re-use the same
-shared object, and additionally 
+shared object, and additionally
 
 ```
 obj <- r2c(<expr>)

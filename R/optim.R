@@ -66,48 +66,20 @@ optim <- function(x) {
 }
 #' Rename Symbols in Calls
 #'
-#' The purpose of the renaming is to distinguish calls that are identical except
-#' that the content of the calls they reference has changed due to an assignment
-#' overwriting or masking an existing variable.
+#' Any symbols that are assigned to are given new unique names.  This
+#' distinguishes calls that are identical except that the content of the calls
+#' they reference has changed due to an assignment overwriting or masking an
+#' existing variable.  Without doing this, we would not be able to look up the
+#' correct memory slot at runtime since `r2c` does not explicitly bind data to
+#' symbols.
 #'
-#' We have a 1-1 mapping to the original call since we're not adding/removing
-#' calls.
+#' Only assignments that are currently allowed or likely to be allowed are
+#' recognized.  For example, assignments with `assign` or by editing
+#' environments will not be recognized.
 #'
-#' Assignments in loop need to be renamed one additional time on loop exit
-#' because there is no guarantee that every expression in some way involving the
-#' counter variable (or any other loop generated variable) will be in a specific
-#' state.  For example, if we have `x <- i` in a loop, but we break out of the
-#' loop before the loop is complete, `i` and `x` will not be the same at the end
-#' of the loop.  Or even simpler:
-#' ```
-#' for(i in 1) {
-#'   break
-#'   x <- y
-#' }
-#' mean(x)
-#' ```
-#' ```
-#' mean(x)
-#' for(i in 1:2) {
-#'   mean(x)
-#'   if(i > 1) break
-#'   x <- i
-#'   mean(x)
-#'   z <- c(z, y)
-#' }
-#' mean(x)
-#' ```
-#' So find all the names written in the loop (**including the loop counter**),
-#' ideally we would identify the set of those (recursively) that are loop
-#' varying vs loop constant.  Loop constant ones can get the same treatment, but
-#' loop varying ones are not eligible.
-#'
-#' What do we consider loop varying?  Any expression involving any variables
-#' created in the loop.  So we need to do a pass to identify all the calls that
-#' are loop varying and annotate them some how.
-#'
-#' How do nested loops work?  Maybe doesn't matter, once you're in a loop, we
-#' can apply the same algorithm to absolutely everything in the loop.
+#' Loops require that every variable assigned within them be renamed prior to
+#' the loop starting (and additionally in the spot they are assigned to in the
+#' loop) because otherwise the second iteration of the loop would be incorrect.
 #'
 #' @noRd
 #' @param x a call
@@ -195,11 +167,20 @@ flatten_call_rec <- function(x, calls, indices) {
 #' sub-calls and modifies the call tree to implement the store-and-reuse
 #' optimization.
 #'
-#' Store-and-reuse only works if there are no side-effects in the evaluation
-#' of the original call being optimized, including assignments that overwrite
-#' pre-existing variables.  It is still possible to optimize such calls if
-#' the call is modified to use new variable names instead of overwriting
-#' existing ones, as can be done with [`rename_calls`].
+#' It is not possible to reuse calls that first occur in loops that reference
+#' names (directly or indirectly) that are assigned to in a loop.  This is
+#' because we cannot know ex-ante k
+#' ```
+#' i <- 3
+#' mean(i)
+#' for(i in 1:2) {
+#'   mean(i)
+#'   if(i > 1) break
+#'   mean(i)
+#' }
+#' mean(i)
+#' ```
+#'
 #'
 #' @param x a call, ideally first renamed with [`rename_calls`].
 #' @param rename.i index to used for additional "renamed" variables generated
