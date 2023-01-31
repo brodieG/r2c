@@ -1,6 +1,35 @@
-# Loops
+# If / Loop
 
-## C Implementation
+## Constraint Overview
+
+The over riding constraint is that every symbol must resolve to an unambiguous
+size.  `if` and `for` control structures can create ambiguity in sizes (e.g.
+different sizes in branches of if, different sizes within the loop / loop can
+act like a branch if not taken).
+
+Disallow cases where a variable might not be created that is later used:
+
+* for:
+  * Zero iterations (maybe).
+  * `break` / `continue`
+* if:
+  * Brand new symbol.
+  * Not all branches contain it.
+  * What if the symbol exists from elsewhere?
+
+Additionally:
+
+* for:
+  * variables read and written from must be consistent size before and
+    after loop
+  * variables must remain constant size in the loop (e.g. cannot grow)
+  * variables written to in loop must be either unchanged in size, or the loop
+    must be guaranteed to have at least one iteration.
+* if:
+  * variables written to must be the same size across all branches; branches
+    that don't write ok so long as prior var same size.
+
+## Loop C Implementation
 
 Probably the way a loop would work is:
 
@@ -34,7 +63,7 @@ void run(
 }
 ```
 
-## Memory
+## Interesting Example
 
 Pretty challenging dealing with loops.
 
@@ -51,34 +80,54 @@ handle the case where the loop doesn't even run.
 
 What about variables created in loops that are not taken?
 
-# If
+## Tracking Implementation
 
-Need to track size of all variables in every branch and before the if, and check
-that they all resolve to the same size after the if, at least for those that get
-used after the if (i.e. intermediate variables not used again don't matter).
+### For
 
-We'll need to allocate for every branch, even if the taken branch at run time
-might not set/change a variable.
+* Identify all the symbols within it that are both read and overwritten.
+* Identify all the symbols written that might not be written in a zero loop.
+* For each of those, identify what the rename was before the loop.
 
-What about variables created in loops branches are not taken and then attempted
-to be used later?
+Implementation should probably take a snapshot of the rename stack on loop entry
+so that we can recover the before loop symbols.
 
-# Rename stack
+### If
 
-List, with for names the original names, and for values all the things the names
-were renamed to, and context for each of those (e.g. pre-loop, loop depth,
-condition n, condition depth).
+Anytime we hit an `if` statement, for each of its branches, find all the symbols
+overwritten (including child branches).  Create a list of all the symbols that
+should resolve to same size.  Check that symbol is used later.
 
-```
-x
-ARG0
-ARG1 for0
-ARG2 for0
-ARG3 if0-0
-ARG4 if0-1
-ARG2 if0-2
-ARG5 for1
-```
+### Implementation
+
+So the natural structure of this is a tree, where each node's children are all
+the symbols that need to resolve to the same size, recursively.  At allocation
+time we can resolve symbol sizes, and then come back and plug them into the
+tree, checking whether constraints are met, i.e. that all direct sibling nodes
+at any given depth are the same size (note this does not extend to cousins as
+they can temporarily be different sizes so long as they resolve back down to the
+same size).
+
+For each node, it will be helpful to retain a reference to the source tree node
+that it originates from.
+
+One problem is `that` for has one potential incompatibility which is that it can
+create new symbols, but might not run, but whether it runs or not will be
+knowable at run time.  Initial implementation could be the stricter version that
+does not allow changing size on any overwritten symbol, and could relax to the
+one where it's just read/write ones when we can discern whether the loop
+executes at least once.  The `if` analogue would be if we could know that a
+branch is taken at allocation time.
+
+So strictest version is:
+
+* For variables used after control
+  * cannot change the size of a variable in a for loop
+  * cannot create a variable in the for loop that is used in it or after it
+  * cannot create a variable in an if that isn't also created in all branches
+  * variables must be the same size before and after the control
+* For variables used only in the control
+  * cannot change the size of a variable in a for loop
+  * cannot create a variable in the for loop that is used in it or after it
 
 # Assignments
 

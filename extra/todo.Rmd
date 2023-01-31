@@ -4,6 +4,8 @@
 
 ## Things to test
 
+* That it is impossible to try to use an allocation before it would be created
+  in the code.  Tricky with loops.
 * Test corner cases such as a repeated assignment to see if it get correctly
   detected as being repeated.
 * Check that forwarding calls in `...` works correctly, e.g.
