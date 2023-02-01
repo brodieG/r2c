@@ -20,6 +20,10 @@
 
 * Make sure we understand when it's okay or not okay to assume about order of
   evaluation of parameters (e.g. when they contain assignments in them).
+  Probably we'll just have to document that what we assume may be different than
+  what R does, and it's a really bad idea to do this in the first place in a way
+  where order matters.
+
 * Change reserved symbols to be anything starting with `.R2C` so we have more
   flexibility and don't need to use the same format for dot args, replaced
   names, etc.

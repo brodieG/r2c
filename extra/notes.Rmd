@@ -99,6 +99,54 @@ should resolve to same size.  Check that symbol is used later.
 
 ### Implementation
 
+For each symbol, we need to track all the different renamed symbols that could
+resolve to that symbol.  Then, whenever that symbol is used, we check that all
+the renames point to the same size object.  So in this case each branch of an
+`if` just appends renames to a symbol.  `for` does the same.  An assignment
+outside of the `for`/`if` resets the stack.
+
+But really we want to track the last assignment to a symbol as within an `if`
+branch we don't really care about all the intermediate ones.
+
+A remaining issue is that for `for` loops we need to also track what the symbol
+was before the loop (to allow the possibility the loop did not run), and for
+`if` we need the same if either the symbol is not assigned to in every branch.
+We could just be lazy for the `if` and just require that size cannot be changed.
+But that's going to be confusing for people that do set the size in every
+branch, and e.g. the symbol is not bound beforehand.
+
+There probably is a broad set of situations where we can know that a for loop
+will run, so perhaps in those cases as in a fully specified `if` we don't
+include the pre-loop symbol in the list.
+
+We also need a mechanism to trigger an error when the symbol is not bound
+beforehand.  Perhaps, for every symbol that appears in any expression, the very
+first thing we do is try to resolve it.  All the internal `r2c` symbols should
+be guaranteed bound, so we should never have to worry about a weird `.R2C_RN_X`
+not defined error.
+
+So how do we know if a symbol has been assigned to in all the branches?  We can
+count how many branches there are, and there should be as many additional
+renames on the stack for each symbol that has additional renames.  Then we can
+remove the prior rename because it will be masked.
+
+Trick with all this is we need to check the state of the stack at every use of a
+symbol, so we're back to doing the whole tree as described in (old)...
+
+        x
+      / | \
+     a  b  |
+     |  |  |
+     a  b  x
+
+Not only that, we can't even know if everything is the same size or not unless
+we process the expressions.
+
+So we do all the renaming and stuff first, and allocation time, we build the
+symbol mapping tree with each step in the evaluation.
+
+### Implementation (Old)
+
 So the natural structure of this is a tree, where each node's children are all
 the symbols that need to resolve to the same size, recursively.  At allocation
 time we can resolve symbol sizes, and then come back and plug them into the

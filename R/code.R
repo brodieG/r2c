@@ -186,12 +186,12 @@ VALID_FUNS <- list(
     "<-", fun=base::`<-`, defn=function(x, value) NULL,
     type=list("arglen", "value"),
     code.gen=code_gen_assign
-  )
+  ),
   fap_fun(
     "=", fun=base::`=`, defn=function(x, value) NULL,
     type=list("arglen", "value"),
     code.gen=code_gen_assign
-  )
+  ),
   # - r2c funs -----------------------------------------------------------------
   fap_fun(
     "mean1", fun=mean1, defn=mean1,

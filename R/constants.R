@@ -79,11 +79,11 @@ DOT.ARG.TPL <- sprintf("%s%%d", DOT.ARG.BASE)
 
 # For renames symbols
 RENAME.ARG.BASE <- sprintf("%s_RN_", R2C.PRIV.BASE)
-RENAME.ARG.RX <- sprintf("^\\%s\\d+$", RENAME.ARG.RX)
+RENAME.ARG.RX <- sprintf("^\\%s\\d+$", RENAME.ARG.BASE)
 RENAME.ARG.TPL <- sprintf("%s%%d", RENAME.ARG.BASE)
 
 # For substitution (re-use)
 REUSE.ARG.BASE <- sprintf("%s_SUB_", R2C.PRIV.BASE)
-REUSE.ARG.RX <- sprintf("^\\%s\\d+$", RENAME.ARG.RX)
+REUSE.ARG.RX <- sprintf("^\\%s\\d+$", RENAME.ARG.BASE)
 REUSE.ARG.TPL <- sprintf("%s%%d", REUSE.ARG.BASE)
 

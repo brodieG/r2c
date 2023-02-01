@@ -64,6 +64,30 @@ optim <- function(x) {
   }
 
 }
+#' A Call To Recurse Into
+#' @noRd
+
+is.call_w_args <- function(x)
+  is.call(x) && length(x) > 1L && (is.symbol(x[[1L]]) || is.character(x[[1L]]))
+
+get_target_symbol <- function(x, fun.name) {
+  target.symbol <- x[[2L]]
+  target.type <- typeof(target.symbol)
+  if(target.type != 'symbol') {
+    msg <-
+      if(fun.name == "for")
+        paste("expected symbol for loop variable but got", target.type)
+      else "invalid left-hand side to assignment."
+    stop(simpleError(msg, x))
+  }
+  as.character(target.symbol)
+}
+generate_rename <- function(ri) {
+  target.rename <- sprintf(RENAME.ARG.TPL, ri)
+  as.symbol(target.rename)
+}
+
+
 #' Rename Symbols in Calls
 #'
 #' Any symbols that are assigned to are given new unique names.  This
@@ -73,13 +97,26 @@ optim <- function(x) {
 #' correct memory slot at runtime since `r2c` does not explicitly bind data to
 #' symbols.
 #'
-#' Only assignments that are currently allowed or likely to be allowed are
-#' recognized.  For example, assignments with `assign` or by editing
+#' Only assignments mechanisms that are currently allowed or likely to be
+#' allowed are recognized.  For example, assignments with `assign` or by editing
 #' environments will not be recognized.
 #'
-#' Loops require that every variable assigned within them be renamed prior to
-#' the loop starting (and additionally in the spot they are assigned to in the
-#' loop) because otherwise the second iteration of the loop would be incorrect.
+#' Due to the special run-time semantics of control structures we need to do
+#' additional renaming for them to avoid incorrect code reuse substitutions or
+#' memory allocations.  Loops can change a variable they read from the first
+#' iteration to the second, and might run zero iterations.  If statements can
+#' cause variables to be different depending on what branch (including none) is
+#' taken.  To avoid making any assumptions about the value of a symbol, we
+#' generate renames.  This resolves the reuse substitution, but not memory
+#' allocations for the variables which have additional constraints.  E.g. an
+#' `if` statement could assign to a variable as a scalar in one branch and as a
+#' vector in another.  This is resolved in the allocation step (later).
+#'
+#' In addition to renaming, we need to add statements that cause the renames to
+#' happen (assignments).  We do not do that yet because we want to be able to
+#' keep a 1-1 map of the renamed call to the original call.  Instead, we return
+#' the indices where such statements occur, along with the set of symbols that
+#' need to renaming assignments added to them.
 #'
 #' @noRd
 #' @param x a call
@@ -87,53 +124,94 @@ optim <- function(x) {
 #'   symbol name, and the values are the symbol to rename the original symbol
 #'   to.  This list is updated as `rename_call` invokes itself recursively.
 #' @param ri the index that the next rename will adopt.
+#' @param index the index of `x` in its containing call, if any.  Any empty
+#'   index means `x` is the outermost call.
+#' @param ctrl.dat a list of the location and renames required for each by any
+#'   control structure.
 #' @return a list with components:
 #'
 #' * x: the renamed call
 #' * renames: the final list of renames (see `renames`)
 #' * ri: see `ri`.
 
-rename_call <- function(x, renames=list(), ri=1L) {
-  if(
-    is.call(x) && length(x) > 1L &&
-    (is.symbol(x[[1L]]) || is.character(x[[1L]]))
-  ) {
+rename_call <- function(
+  x, renames=list(), ri=1L, index=integer(), ctrl.dat=list()
+) {
+  rename.loop <- c("for", "while", "repeat")
+  rename.ctrls <- c("if", rename.loop)
+  if(is.call_w_args(x)) {
     fun.name <- as.character(x[[1L]])
+    # Rename caused by assignment.  `for` assigns to the counter variable.
+    # `->` becomes `<-` on parsing.
     if(fun.name %in% c("<-", "=", "for")) {
-      # Perform a rename anytime there is an assignment.  `for` assigns to the
-      # counter variable.  Right assignment doesn't exist post parsing (just
-      # becomes "<-" with symbols flipped).
-      target.symbol <- x[[2L]]
-      target.type <- typeof(target.symbol)
-      if(target.type != 'symbol') {
-        msg <-
-          if(fun.name == "for")
-            paste("expected symbol for loop variable but got", target.type)
-          else "invalid left-hand side to assignment."
-        stop(simpleError(msg, x))
-      }
-      target.char <- as.character(target.symbol)
-      target.rename <- sprintf(RENAME.ARG.TPL, ri)
-      target.rename.symbol <- as.symbol(target.rename)
+      tar.char <- get_target_symbol(x, fun.name)
+      renames[[tar.char]] <- generate_rename(ri) # x[[2L]] renamed in recursion
       ri <- ri + 1L
-      renames[[target.char]] <- x[[2L]] <- target.rename.symbol
+    }
+    # Renames required by control structures (also applied going through params)
+    ctrl.symbols <- character()
+    if(fun.name %in% rename.ctrls) {
+      # Record the control data
+      ctrl.dat <- c(ctrl.dat, list(list(index=index, name=fun.name)))
+      ctrl.dat.i <- length(ctrl.dat)
+      ctrl.symbols <- assigned_symbols(x)
+      if(fun.name %in% rename.loop) {
+        # loops need to generate renames on entry
+        for(sym.char in ctrl.symbols) {
+          renames[[sym.char]] <- generate_rename(ri)
+          ri <- ri + 1L
+        }
+        ctrl.dat[[length(ctrl.dat)]][['renames.entry']] <- renames[ctrl.symbols]
+      }
     }
     # Recurse into the paramaters of the call (techincally for assignments we
     # shouldn't do 2L, but it should be harmless).
     for(j in seq(2L, length(x), 1L)) {
-      rdat <- rename_call(x[[j]], renames=renames, ri=ri)
+      rdat <- rename_call(
+        x[[j]], renames=renames, ri=ri, index=c(index, j), ctrl.dat=ctrl.dat
+      )
       x[[j]] <- rdat[['x']]
       renames <- rdat[['renames']]
       ri <- rdat[['ri']]
+    }
+    # Apply and record ex-post control renames
+    if(length(ctrl.symbols)) {
+      for(sym.char in ctrl.symbols) {
+        renames[[sym.char]] <- generate_rename(ri)
+        ri <- ri + 1L
+      }
+      ctrl.dat[[ctrl.dat.i]][['renames.exit']] <- renames[ctrl.symbols]
     }
   } else if (is.symbol(x)) {
     # Perform the rename if the symbol is one of those that is assigned to
     symbol.char <- as.character(x)
     if(symbol.char %in% names(renames)) x <- renames[[symbol.char]]
   }
-  list(x=x, renames=renames, ri=ri)
+  list(x=x, renames=renames, ri=ri, ctrl.dat=ctrl.dat)
 }
+#' Identify Symbols Assigned
+#'
+#' Return names of all symbols assigned to within a call.  This is not super
+#' efficient because we recurse into every subcall, but then later as
+#' `rename_call` reaches deeper, it will recurse over the subcalls again.  In
+#' theory, we could do a 1 pass version of it that can then be subset into in
+#' some way if this ever became a bottleneck.
 
+assigned_symbols <- function(x, symbols=character()) {
+  if(is.call_w_args(x)) {
+    fun.name <- as.character(x[[1L]])
+    # `->` becomes `<-` on parsing.
+    if(fun.name %in% c("<-", "=")) {
+      symbols <- c(symbols, get_target_symbol(x, fun.name))
+    }
+    # Recurse into the paramaters of the call (techincally for assignments we
+    # shouldn't do 2L, but it should be harmless).
+    for(j in seq(2L, length(x), 1L)) {
+      symbols <- assigned_symbols(x[[j]], symbols=symbols)
+    }
+  }
+  unique(symbols)
+}
 #' Flatten Calls Preserving Indices Into Recursive Structure
 #'
 #' @noRd
@@ -188,7 +266,7 @@ flatten_call_rec <- function(x, calls, indices) {
 reuse_calls <- function(x) {
   in.loop <- FALSE
   rename.dat <- rename_call(x)
-  x <- rename.arg[['x']]
+  x <- rename.dat[['x']]
 
   flat <- flatten_call(x)
   calls.flat <- flat[['calls']]
@@ -206,7 +284,7 @@ reuse_calls <- function(x) {
   # For each repeated, call, find the first instance
   calls.first <- unique(match(calls.dep[calls.rep], calls.dep))
 
-  warning("check we're in loop")
+  warning("handle loop and if variables")
 
   # Eliminate Redundant repeated calls caused by a repeated call with subcalls
   # (which will obviously be repeated too).
