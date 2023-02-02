@@ -143,7 +143,95 @@ Not only that, we can't even know if everything is the same size or not unless
 we process the expressions.
 
 So we do all the renaming and stuff first, and allocation time, we build the
-symbol mapping tree with each step in the evaluation.
+symbol mapping tree for each symbol with each step in the evaluation.
+
+```
+x <- w
+if(a) {
+  x <- r
+} else if (b) {
+  x <- s
+} else {
+  if(c) {
+    x <- t
+  } else if (d) {
+    x <- u
+  }
+}
+```
+
+`if` stack contains a count of how many `else` at any given `if` depth.  For
+each depth, for each variable, what symbol-nodes it has been bound to (a symbol
+node can contain the result of a nested if).
+
+So the processing of an `if` should return a list with as many elements as there
+are `else` clauses, plus 1 for the original, plus an indication if there is not
+a terminal else.  Then, the function that initiated the processing of the `if`,
+can check whether for each symbol, there are the right number of things.  For
+those that don't have enough, add the previously bound symbol(s).  Then, flatten
+all the lists in case there was any nesting.
+
+Within each branch of the if, we don't have to worry about what's going on in
+the alternate branches, only the symbol ambiguities accrued to date.
+
+`for` loops are different because we need to forward check all the symbols due
+to the same code being run more than once.  This is going to be a real pain.  If
+we prevent reading and writing from the same symbol in a loop maybe ok?  If we
+don't ban it, we need to do a double pass to read ahead all the symbol
+assignments (recursion is okay, we resolve everything when we back out)..., ah
+no, we need to send all the symbols down to the next recursion level.  But how
+can we send all the symbols if some of them might themselves be down a level
+(e.g. an assignment in an `if`, or a `for` loop).  I guess we just have to
+collect all the assignments recursively?
+
+Maybe overcomplicating this.  A `for` loop can only add a new rename for each
+symbol, always.  In theory, symbols that are written to before they are read
+could be exempted from this provided the loop is guaranteed to run once.  So as
+we enter the loop, the allocator could detect this.  Then, we track what symbols
+are read in the loop, and if they are later written to we add the old rename to
+what has to be resolved for that symbol.
+
+Ugh, and almost forgot about parameter order.
+
+So `if` seems mostly handled with the concept of adding an `r2c_collapse` call
+that validates that all rename symbols that could resolve to an original symbol
+are size compatible.  We can do the same for `for`, but there the challenge is
+that multiple symbols are used before we get to the end of the loop, but we
+won't know until we compute the loop whether there is a size change.
+
+Beyond that, there is the question of how we handle the allocation with multiple
+renames.  In theory, only one can exist at a time, so they can all use the same
+memory slot (and probably need to do so). The `r2c_collapse` can ensure this
+happens for any calls after the `if`.  `for` remains an issue.  It may just be
+that the allocator has to know that `for` cannot change the size of an existing
+symbol.
+
+So for each symbol, the allocator carries the last computed size, and in a `for`
+loop, it blows up if a symbol is changed in size, and in a `if` loop it chugs
+along until reaching the `r2c_collapse` after the `if`.  The main issue for the
+`if` is that it needs to maintain allocation branches for each branch of the
+loop, and merge them all on exit.  Our naive rename approach complicates this
+because what it makes it hard to distinguish when an original name is free
+(overwritten), and when it isn't.
+
+Maybe this isn't too bad, the main thing is to distinguish between data/external
+symbols and new ones we add.  So when we enter a branch, we just create a copy
+of the whole allocation structure, and when we exit, we compare to all the other
+branches (including the original) and make sure they are compatible.  Actually,
+for the `if` statements maybe we first compare across all branches and replace a
+missing `else` with the original.  This should work recursively I think.  From
+this perspective we don't need to keep any of the assignment symbol renames.
+The only renames we care about are the subexpression substitutions.  The initial
+renames were just to prevent invalid substitutions, but once that's handled, we
+can revert them all (so we need to track original symbol).  This seems like it
+could work.
+
+Next steps:
+
+* Change rename struct to keep track of all remappings
+* Add rename undo after the subexpression replacement
+* Tests (or do we wait to make sure this stuff actually works)?
+* Start rebuilding the allocations mechanism.
 
 ### Implementation (Old)
 

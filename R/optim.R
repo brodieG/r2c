@@ -82,12 +82,20 @@ get_target_symbol <- function(x, fun.name) {
   }
   as.character(target.symbol)
 }
-generate_rename <- function(ri) {
-  target.rename <- sprintf(RENAME.ARG.TPL, ri)
-  as.symbol(target.rename)
+generate_rename <- function(rn, name) {
+  rn.root <- gsub("(^[^.[:alpha:]]|[^[:alnum:]])", ".", substr(name, 1, 8))
+  rn.i <- rn[['i']][rn.root]
+  rn.i <- if(is.na(rn.i)) 1L else rn.i + 1L
+  target.rename <- sprintf(RENAME.ARG.TPL, rn.root, rn.i)
+  rn[['i']][rn.root] <- rn.i
+  rn[['renames']][[rn.root]] <- as.symbol(target.rename)
+  rn
 }
-
-
+apply_rename <- function(rn, symbol) {
+  name <- as.character(symbol)
+  if(name %in% names(rn[['renames']])) rn[['renames']][[name]]
+  else symbol
+}
 #' Rename Symbols in Calls
 #'
 #' Any symbols that are assigned to are given new unique names.  This
@@ -116,13 +124,31 @@ generate_rename <- function(ri) {
 #' happen (assignments).  We do not do that yet because we want to be able to
 #' keep a 1-1 map of the renamed call to the original call.  Instead, we return
 #' the indices where such statements occur, along with the set of symbols that
-#' need to renaming assignments added to them.
+#' need renaming assignments added to them.
+#'
+#' What should these renames be though?  I.e. what do we assign to the rename
+#' symbol.  The allocator step will be comparing all the live rename symbols for
+#' each original symbol to check for sizes.  If we throw in a dummy one for the
+#' substitutions we won't be able to collapse it.  Maybe it's a call to
+#' `r2c_collapse` with all the potential branch symbols to resolve at that
+#' point?  This seems like a good idea for `if` where we can check at the end.
+#' What about for `for`?
+#'
 #'
 #' @noRd
 #' @param x a call
-#' @param renames a named list of symbols, in which the names are the original
-#'   symbol name, and the values are the symbol to rename the original symbol
-#'   to.  This list is updated as `rename_call` invokes itself recursively.
+#' @param renames a list with two elements:
+#'
+#' * i: named integer, for each variable root (first 8 characters), how many
+#'   instances there have been of it so far (the root is the name).  This is
+#'   designed to give some sense of what the original variable name was for
+#'   debugging purposes, but is not collision proof.  We don't allow full
+#'   variable names as if we did we would have to enforce a restriction on the
+#'   allowed number of characters in symbols.
+#' * renames: a named list in which the names are the original symbol name, and
+#'   the values are the symbol to rename the original symbol to.  This list is
+#'   updated as `rename_call` invokes itself recursively.
+#'
 #' @param ri the index that the next rename will adopt.
 #' @param index the index of `x` in its containing call, if any.  Any empty
 #'   index means `x` is the outermost call.
@@ -135,7 +161,7 @@ generate_rename <- function(ri) {
 #' * ri: see `ri`.
 
 rename_call <- function(
-  x, renames=list(), ri=1L, index=integer(), ctrl.dat=list()
+  x, rn=list(i=integer(), renames=list()), index=integer(), ctrl.dat=list()
 ) {
   rename.loop <- c("for", "while", "repeat")
   rename.ctrls <- c("if", rename.loop)
@@ -145,10 +171,9 @@ rename_call <- function(
     # `->` becomes `<-` on parsing.
     if(fun.name %in% c("<-", "=", "for")) {
       tar.char <- get_target_symbol(x, fun.name)
-      renames[[tar.char]] <- generate_rename(ri) # x[[2L]] renamed in recursion
-      ri <- ri + 1L
+      rn <- generate_rename(rn, tar.char)
     }
-    # Renames required by control structures (also applied going through params)
+    # rn required by control structures (also applied going through params)
     ctrl.symbols <- character()
     if(fun.name %in% rename.ctrls) {
       # Record the control data
@@ -156,38 +181,31 @@ rename_call <- function(
       ctrl.dat.i <- length(ctrl.dat)
       ctrl.symbols <- assigned_symbols(x)
       if(fun.name %in% rename.loop) {
-        # loops need to generate renames on entry
-        for(sym.char in ctrl.symbols) {
-          renames[[sym.char]] <- generate_rename(ri)
-          ri <- ri + 1L
-        }
-        ctrl.dat[[length(ctrl.dat)]][['renames.entry']] <- renames[ctrl.symbols]
+        # loops need to generate rn on entry
+        for(sym.char in ctrl.symbols) rn <- generate_rename(rn, sym.char)
+        ctrl.dat[[ctrl.dat.i]][['rn.entry']] <- rn[['renames']][ctrl.symbols]
       }
     }
     # Recurse into the paramaters of the call (techincally for assignments we
     # shouldn't do 2L, but it should be harmless).
     for(j in seq(2L, length(x), 1L)) {
       rdat <- rename_call(
-        x[[j]], renames=renames, ri=ri, index=c(index, j), ctrl.dat=ctrl.dat
+        x[[j]], rn=rn, index=c(index, j), ctrl.dat=ctrl.dat
       )
       x[[j]] <- rdat[['x']]
-      renames <- rdat[['renames']]
-      ri <- rdat[['ri']]
+      rn <- rdat[['rn']]
+      ctrl.dat <- rdat[['ctrl.dat']]
     }
-    # Apply and record ex-post control renames
+    # Apply and record ex-post control rn
     if(length(ctrl.symbols)) {
-      for(sym.char in ctrl.symbols) {
-        renames[[sym.char]] <- generate_rename(ri)
-        ri <- ri + 1L
-      }
-      ctrl.dat[[ctrl.dat.i]][['renames.exit']] <- renames[ctrl.symbols]
+      for(sym.char in ctrl.symbols) rn <- generate_rename(rn, sym.char)
+      ctrl.dat[[ctrl.dat.i]][['rn.exit']] <- rn[['renames']][ctrl.symbols]
     }
   } else if (is.symbol(x)) {
     # Perform the rename if the symbol is one of those that is assigned to
-    symbol.char <- as.character(x)
-    if(symbol.char %in% names(renames)) x <- renames[[symbol.char]]
+    x <- apply_rename(rn, x)
   }
-  list(x=x, renames=renames, ri=ri, ctrl.dat=ctrl.dat)
+  list(x=x, rn=rn, ctrl.dat=ctrl.dat)
 }
 #' Identify Symbols Assigned
 #'
