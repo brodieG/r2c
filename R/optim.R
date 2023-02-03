@@ -53,22 +53,13 @@ flatten_call_rec <- function(x, calls, indices) {
 #' sub-calls and modifies the call tree to implement the store-and-reuse
 #' optimization.
 #'
-#' It is not possible to reuse calls that first occur in loops that reference
-#' names (directly or indirectly) that are assigned to in a loop.  This is
-#' because we cannot know ex-ante k
-#' ```
-#' i <- 3
-#' mean(i)
-#' for(i in 1:2) {
-#'   mean(i)
-#'   if(i > 1) break
-#'   mean(i)
-#' }
-#' mean(i)
+#' @noRd
+#' @param x a call
+#' @return a list with elements:
 #'
-#'
-#' @param x a call, ideally first renamed with [`rename_calls`].
-#' @param rename.i index to used for additional "renamed" variables generated
+#' * x: the call with the re-used expressions substituted
+#' * reuse: named list with names the variables that reference the expressions
+#'   that are substituted, and values those expressions.
 
 reuse_calls <- function(x) {
   # rename assigned-to symbols, etc
@@ -111,10 +102,13 @@ reuse_calls <- function(x) {
   # ones reuse this symbol.  For each modified subcall, record a reference to
   # the original call (useful for annotating the modified call)
   ru.i <- 1L
+  reuse <- list()
   for(i in calls.first.keep) {
     index.i <- calls.indices[[i]]
-    ru.arg <- as.name(sprintf(REUSE.ARG.TPL, ru.i))
+    ru.char <- sprintf(REUSE.ARG.TPL, ru.i)
+    ru.arg <- as.name(ru.arg)
     ru.i <- ru.i + 1L
+    reuse[[ru.char]] <- x[[index.i]]  # keep a copy of the reuse code
     x[[index.i]] <- call("<-", ru.arg, x[[index.i]])
     call.rep <- seq_along(calls.dep)[-calls.first][
       match(calls.dep[i], calls.dep[-calls.first])
@@ -125,9 +119,9 @@ reuse_calls <- function(x) {
   # things that are different due to e.g. assignment
   unrename_call(x, rename.dat[['rn']])
 
-  # Return the reuse-substituted call along with the mapping of each subcall to
-  # the subcall it originated from (for useful deparsing of subbed calls)
+  # Return the reuse-substituted call along with the mapping of each reuse
+  # variable to the expression it stands in for.
 
-
+  list(x, reuse=reuse)
 }
 
