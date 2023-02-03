@@ -65,17 +65,19 @@ flatten_call_rec <- function(x, calls, indices) {
 #'   mean(i)
 #' }
 #' mean(i)
-#' ```
 #'
 #'
 #' @param x a call, ideally first renamed with [`rename_calls`].
 #' @param rename.i index to used for additional "renamed" variables generated
 
 reuse_calls <- function(x) {
-  in.loop <- FALSE
+  # rename assigned-to symbols, etc
   rename.dat <- rename_call(x)
   x <- rename.dat[['x']]
 
+  # Flatten the calls so we can quickly compare and find matches.  Retain tree
+  # structure in 'indices' so we can retrieve the original calls and map new
+  # modified calls to the original ones
   flat <- flatten_call(x)
   calls.flat <- flat[['calls']]
   calls.indices <- flat[['indices']]
@@ -86,17 +88,15 @@ reuse_calls <- function(x) {
   calls.dep <- character(length(calls.flat))
   calls.dep[is.call] <- vapply(calls.flat[is.call], dep1, "")
 
-  # Find repeated calls
+  # Find repeated calls, and track the first instance for each.  The first
+  # instance will be the one that gets assigned to a variable, subsequent ones
+  # will then use that variable.
   calls.match <- match(calls.dep, calls.dep)
   calls.rep <- calls.match != seq_along(calls.match) & is.call
-  # For each repeated, call, find the first instance
   calls.first <- unique(match(calls.dep[calls.rep], calls.dep))
 
-  warning("handle loop and if variables")
-
   # Eliminate Redundant repeated calls caused by a repeated call with subcalls
-  # (which will obviously be repeated too).
-  # For each repeated call, find the repeat count of its parent
+  # as obviously the subcalls will be repeated too
   rep.counts <- table(calls.match[calls.match %in% which(is.call)])
   index.lookup.parent <-
     vapply(calls.indices[calls.first], function(x) toString(x[-length(x)]), "")
@@ -105,20 +105,29 @@ reuse_calls <- function(x) {
   rep.count.parent <- rep.counts[as.character(index.parent)]
   calls.first.keep <- calls.first[rep.count.first > rep.count.parent]
   if(any(rep.count.first < rep.count.parent) || anyNA(calls.first.keep))
-    stop("Internal Error: implies nonsensical call hierarchy.")
+    stop("Internal Error: implied nonsensical call hierarchy.")
 
-  # Source calls need to be augmented with an assignment to a renamed variable,
-  # repeated calls need to be replaced by that variable.
+  # Modify calls so first instance of repeats becomes an assignment, subsequent
+  # ones reuse this symbol.  For each modified subcall, record a reference to
+  # the original call (useful for annotating the modified call)
+  ru.i <- 1L
   for(i in calls.first.keep) {
     index.i <- calls.indices[[i]]
-    rename.arg <- as.name(sprintf(REUSE.ARG.TPL, rename.n))
-    rename.n <- rename.n + 1L
-    x[[index.i]] <- call("<-", rename.arg, x[[index.i]])
+    ru.arg <- as.name(sprintf(REUSE.ARG.TPL, ru.i))
+    ru.i <- ru.i + 1L
+    x[[index.i]] <- call("<-", ru.arg, x[[index.i]])
     call.rep <- seq_along(calls.dep)[-calls.first][
       match(calls.dep[i], calls.dep[-calls.first])
     ]
-    for(j in call.rep) x[[calls.indices[[j]]]] <- rename.arg
+    for(j in call.rep) x[[calls.indices[[j]]]] <- ru.arg
   }
-  x
+  # Undo the renames we used to ensure call reuse did not incorrectly reuse
+  # things that are different due to e.g. assignment
+  unrename_call(x, rename.dat[['rn']])
+
+  # Return the reuse-substituted call along with the mapping of each subcall to
+  # the subcall it originated from (for useful deparsing of subbed calls)
+
+
 }
 
