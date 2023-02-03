@@ -13,6 +13,7 @@
 ##
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
+#' @include code-assign.R
 #' @include code-summary.R
 #' @include code-arith.R
 #' @include code-pow.R

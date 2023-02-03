@@ -315,7 +315,7 @@ init_call_dat <- function(formals)
     code=list(),
     sym.free=formals,
     sym.bound=character(),
-    dot.arg.i=1L
+    dot.arg.i=1L,
     rename.arg.i=1L,
     last.read=integer(),
     protected=logical(),
