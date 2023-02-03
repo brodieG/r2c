@@ -313,14 +313,14 @@ vec_rec_max_size <- function(x, gmax) {
 ##   has been bound to a symbol.
 
 alloc_dat <- function(
-  dat, depth, size, call, typeof='double', protect=FALSE
+  dat, depth, size, call, typeof='double', protected=FALSE
 ) {
   # writeLines(sprintf("  d: %d s: %d c: %s", depth, size, deparse1(call)))
   if(depth == .Machine$integer.max)
     stop("Expression max depth exceeded for alloc.") # exceedingly unlikely
 
   if(depth > 0) {
-    free <- !is.finite(dat[['depth']]) && !dat[['protected']]
+    free <- !is.finite(dat[['depth']]) & !dat[['protected']]
     fit <- free & dat[['type']] == "tmp" & dat[['alloc']] >= size
     if(!any(fit)) {
       # New allocation, then sort by size

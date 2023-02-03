@@ -299,11 +299,7 @@ init_call_dat <- function(formals)
     sym.free=formals,
     sym.bound=character(),
     dot.arg.i=1L,
-    rename.arg.i=1L,
-    last.read=integer(),
-    protected=logical(),
-    rename=character(),
-    call.rename=character()
+    last.read=integer()
   )
 
 ## Record Expression Data
@@ -342,7 +338,7 @@ sym_free <- function(x, sym) {
 expand_dots <- function(x, arg.names) {
   exp.fields <- c('argn', 'type', 'depth')
   is.dots <- vapply(x[['call']], identical, TRUE, QDOTS)
-  is.dots.m <- grepl(RX.ARG, arg.names)
+  is.dots.m <- grepl(DOT.ARG.RX, arg.names)
   if(any(is.dots)) {
     dots.m.names <- lapply(arg.names[is.dots.m], as.name)
     # Could have multiple sets of dots

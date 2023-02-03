@@ -154,13 +154,13 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #'   including the generated C code and the compiler output.
 #' @examples
 #' r2c_sum_sub <- r2cq(sum(x - y))
-#' r2c_sum_sub <- r2c(quote(sum(x - y)))  ## equivalently
+#' r2c_sum_sub <- r2cl(quote(sum(x - y)))  ## equivalently
 #' sum_sub <- function(x, y) sum(x - y)
 #' r2c_sum_sub <- r2cf(sum_sub)           ## equivalently
 #' r2c_sum_sub(-1, c(1, 2, 3))
 #'
 #' ## Set parameter order for r2cq
-#' r2c_sum_sub2 <- r2c(quote(sum(x - y)), formals=c('y', 'x'))
+#' r2c_sum_sub2 <- r2cq(sum(x - y), formals=c('y', 'x'))
 #' r2c_sum_sub2(-1, c(1, 2, 3))
 #'
 #' ## Leave symbols unbound
