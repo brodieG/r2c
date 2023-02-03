@@ -63,6 +63,7 @@ flatten_call_rec <- function(x, calls, indices) {
 
 reuse_calls <- function(x) {
   # rename assigned-to symbols, etc
+  x.orig <- x
   rename.dat <- rename_call(x)
   x <- rename.dat[['x']]
 
@@ -106,9 +107,9 @@ reuse_calls <- function(x) {
   for(i in calls.first.keep) {
     index.i <- calls.indices[[i]]
     ru.char <- sprintf(REUSE.ARG.TPL, ru.i)
-    ru.arg <- as.name(ru.arg)
+    ru.arg <- as.name(ru.char)
     ru.i <- ru.i + 1L
-    reuse[[ru.char]] <- x[[index.i]]  # keep a copy of the reuse code
+    reuse[[ru.char]] <- x.orig[[index.i]]  # keep a copy of the reuse subs
     x[[index.i]] <- call("<-", ru.arg, x[[index.i]])
     call.rep <- seq_along(calls.dep)[-calls.first][
       match(calls.dep[i], calls.dep[-calls.first])
@@ -117,11 +118,10 @@ reuse_calls <- function(x) {
   }
   # Undo the renames we used to ensure call reuse did not incorrectly reuse
   # things that are different due to e.g. assignment
-  unrename_call(x, rename.dat[['rn']])
+  x <- unrename_call(x, rename.dat[['rn']])
 
   # Return the reuse-substituted call along with the mapping of each reuse
   # variable to the expression it stands in for.
-
   list(x, reuse=reuse)
 }
 
