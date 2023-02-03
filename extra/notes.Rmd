@@ -82,53 +82,7 @@ What about variables created in loops that are not taken?
 
 ## Tracking Implementation
 
-### For
-
-* Identify all the symbols within it that are both read and overwritten.
-* Identify all the symbols written that might not be written in a zero loop.
-* For each of those, identify what the rename was before the loop.
-
-Implementation should probably take a snapshot of the rename stack on loop entry
-so that we can recover the before loop symbols.
-
-### If
-
-Anytime we hit an `if` statement, for each of its branches, find all the symbols
-overwritten (including child branches).  Create a list of all the symbols that
-should resolve to same size.  Check that symbol is used later.
-
 ### Implementation
-
-For each symbol, we need to track all the different renamed symbols that could
-resolve to that symbol.  Then, whenever that symbol is used, we check that all
-the renames point to the same size object.  So in this case each branch of an
-`if` just appends renames to a symbol.  `for` does the same.  An assignment
-outside of the `for`/`if` resets the stack.
-
-But really we want to track the last assignment to a symbol as within an `if`
-branch we don't really care about all the intermediate ones.
-
-A remaining issue is that for `for` loops we need to also track what the symbol
-was before the loop (to allow the possibility the loop did not run), and for
-`if` we need the same if either the symbol is not assigned to in every branch.
-We could just be lazy for the `if` and just require that size cannot be changed.
-But that's going to be confusing for people that do set the size in every
-branch, and e.g. the symbol is not bound beforehand.
-
-There probably is a broad set of situations where we can know that a for loop
-will run, so perhaps in those cases as in a fully specified `if` we don't
-include the pre-loop symbol in the list.
-
-We also need a mechanism to trigger an error when the symbol is not bound
-beforehand.  Perhaps, for every symbol that appears in any expression, the very
-first thing we do is try to resolve it.  All the internal `r2c` symbols should
-be guaranteed bound, so we should never have to worry about a weird `.R2C_RN_X`
-not defined error.
-
-So how do we know if a symbol has been assigned to in all the branches?  We can
-count how many branches there are, and there should be as many additional
-renames on the stack for each symbol that has additional renames.  Then we can
-remove the prior rename because it will be masked.
 
 Trick with all this is we need to check the state of the stack at every use of a
 symbol, so we're back to doing the whole tree as described in (old)...
@@ -175,44 +129,14 @@ Within each branch of the if, we don't have to worry about what's going on in
 the alternate branches, only the symbol ambiguities accrued to date.
 
 `for` loops are different because we need to forward check all the symbols due
-to the same code being run more than once.  This is going to be a real pain.  If
-we prevent reading and writing from the same symbol in a loop maybe ok?  If we
-don't ban it, we need to do a double pass to read ahead all the symbol
-assignments (recursion is okay, we resolve everything when we back out)..., ah
-no, we need to send all the symbols down to the next recursion level.  But how
-can we send all the symbols if some of them might themselves be down a level
-(e.g. an assignment in an `if`, or a `for` loop).  I guess we just have to
-collect all the assignments recursively?
+to the same code being run more than once.  We simply disallow `for` loops from
+changing a variable size.
 
 Maybe overcomplicating this.  A `for` loop can only add a new rename for each
-symbol, always.  In theory, symbols that are written to before they are read
-could be exempted from this provided the loop is guaranteed to run once.  So as
-we enter the loop, the allocator could detect this.  Then, we track what symbols
-are read in the loop, and if they are later written to we add the old rename to
-what has to be resolved for that symbol.
 
-Ugh, and almost forgot about parameter order.
-
-So `if` seems mostly handled with the concept of adding an `r2c_collapse` call
-that validates that all rename symbols that could resolve to an original symbol
-are size compatible.  We can do the same for `for`, but there the challenge is
-that multiple symbols are used before we get to the end of the loop, but we
-won't know until we compute the loop whether there is a size change.
-
-Beyond that, there is the question of how we handle the allocation with multiple
-renames.  In theory, only one can exist at a time, so they can all use the same
-memory slot (and probably need to do so). The `r2c_collapse` can ensure this
-happens for any calls after the `if`.  `for` remains an issue.  It may just be
-that the allocator has to know that `for` cannot change the size of an existing
-symbol.
-
-So for each symbol, the allocator carries the last computed size, and in a `for`
-loop, it blows up if a symbol is changed in size, and in a `if` loop it chugs
-along until reaching the `r2c_collapse` after the `if`.  The main issue for the
-`if` is that it needs to maintain allocation branches for each branch of the
-loop, and merge them all on exit.  Our naive rename approach complicates this
-because what it makes it hard to distinguish when an original name is free
-(overwritten), and when it isn't.
+Ugh, and almost forgot about parameter order (it's okay, this is "unknowable" in
+R anyway because it depends on when the params are touched inside functions, so
+we have to declare it as a difference to `r2c`).
 
 Maybe this isn't too bad, the main thing is to distinguish between data/external
 symbols and new ones we add.  So when we enter a branch, we just create a copy
@@ -228,42 +152,32 @@ could work.
 
 Next steps:
 
-* Change rename struct to keep track of all remappings
-* Add rename undo after the subexpression replacement
-* Tests (or do we wait to make sure this stuff actually works)?
+* Tests (or do we wait to make sure this stuff actually works)?  Kind of, the
+  code is all broken atm.
+* If the first instance of an expression is assigned, and the assigned symbol is
+  available, can we just use that as the name of the sub-expression?  Reasons
+  not to are that these symbols can be overwritten (that's okay, renaming
+  handles this), and it's also harder to debug because we won't be able to
+  distinguish that a particular subexpression was replaced.  So probably lean
+  against, as it would only "help" in the weird case where a user saved an
+  intermediate expression, but then failed to use it.
 * Start rebuilding the allocations mechanism.
 
-### Implementation (Old)
+## Track Substituted Expressions
 
-So the natural structure of this is a tree, where each node's children are all
-the symbols that need to resolve to the same size, recursively.  At allocation
-time we can resolve symbol sizes, and then come back and plug them into the
-tree, checking whether constraints are met, i.e. that all direct sibling nodes
-at any given depth are the same size (note this does not extend to cousins as
-they can temporarily be different sizes so long as they resolve back down to the
-same size).
+* For the substituted ones it's trivial because their own index is the index
+  of what should be referenced.
+* For the one with the assignment....
+* Seems like we really want for each call in the new tree, a reference to the
+  old.
 
-For each node, it will be helpful to retain a reference to the source tree node
-that it originates from.
-
-One problem is `that` for has one potential incompatibility which is that it can
-create new symbols, but might not run, but whether it runs or not will be
-knowable at run time.  Initial implementation could be the stricter version that
-does not allow changing size on any overwritten symbol, and could relax to the
-one where it's just read/write ones when we can discern whether the loop
-executes at least once.  The `if` analogue would be if we could know that a
-branch is taken at allocation time.
-
-So strictest version is:
-
-* For variables used after control
-  * cannot change the size of a variable in a for loop
-  * cannot create a variable in the for loop that is used in it or after it
-  * cannot create a variable in an if that isn't also created in all branches
-  * variables must be the same size before and after the control
-* For variables used only in the control
-  * cannot change the size of a variable in a for loop
-  * cannot create a variable in the for loop that is used in it or after it
+But, what we actually want is when we're going through the pre-process
+linearization, for each thing in the tree we're traversing, have the original
+call.  We can't do this for one tree alone.  Conceivably we could if we attached
+the original call as an attribute, but stops working with symbols.  Maybe we
+attach the original call to calls when there is a difference, and separately we
+return a list of the calls corresponding to the re-use symbols.  This should
+make it relatively straight-forward.
 
 # Assignments
 
