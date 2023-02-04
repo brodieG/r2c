@@ -120,9 +120,8 @@ be recognized.  Symbols used as parameters to \code{call} and its constituent
 sub-calls (e.g. the \code{x} and \code{y} in \code{sum(x) + y}) will become parameters to
 the "r2c_fun" function.  There must be at least one such symbol in \code{call}.
 Symbol order in the "r2c_fun" parameter list is based on order of appearance
-in the call tree after everything is \code{\link{match.call}}ed.  \code{.R2C.DOTS} and any
-symbols that match the regular expression \code{"^\\\\.ARG[0-9]+$"} are reserved for
-use by \code{r2c} and thus disallowed in \code{call}.
+in the call tree after everything is \code{\link{match.call}}ed.  Symbols beginning
+with \code{.R2C} are reserved for use by \code{r2c} and thus disallowed in \code{call}.
 
 Parameters used with "r2c_fun" supported functions are categorized into data
 parameters and control parameters.  For example, in \code{sum(x, na.rm=TRUE)}, \code{x}
@@ -147,13 +146,13 @@ rare.
 }
 \examples{
 r2c_sum_sub <- r2cq(sum(x - y))
-r2c_sum_sub <- r2c(quote(sum(x - y)))  ## equivalently
+r2c_sum_sub <- r2cl(quote(sum(x - y)))  ## equivalently
 sum_sub <- function(x, y) sum(x - y)
 r2c_sum_sub <- r2cf(sum_sub)           ## equivalently
 r2c_sum_sub(-1, c(1, 2, 3))
 
 ## Set parameter order for r2cq
-r2c_sum_sub2 <- r2c(quote(sum(x - y)), formals=c('y', 'x'))
+r2c_sum_sub2 <- r2cq(sum(x - y), formals=c('y', 'x'))
 r2c_sum_sub2(-1, c(1, 2, 3))
 
 ## Leave symbols unbound

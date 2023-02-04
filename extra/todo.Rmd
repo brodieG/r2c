@@ -16,6 +16,7 @@
 
 ## Current
 
+* What do indices do we want to record in a re-used call?
 * Make sure we understand when it's okay or not okay to assume about order of
   evaluation of parameters (e.g. when they contain assignments in them).
   Probably we'll just have to document that what we assume may be different than
