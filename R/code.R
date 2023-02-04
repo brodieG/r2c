@@ -20,6 +20,24 @@
 
 NULL
 
+
+is.valid_arglen <- function(x)
+  is.character(type[[2L]]) &&
+  length(type[[2L]]) == 1L &&
+  !is.na(type[[2L]]) &&
+  is.null(type[[3L]]) || is.function(type[[3L]])
+
+is.valid_vecrec <- function(type)
+  type[[1L]] == "vecrec" &&
+  is.character(type[[2L]]) &&
+  !anyNA(type[[2L]])
+
+is.valid_constant <- function(type)
+  is.integer(type[[2L]]) &&
+  length(type[[2L]]) == 1L &&
+  !is.na(type[[2L]]) &&
+  type[[2L]] >= 0L
+
 #' Initializer for Function Registration Entries
 #'
 #' @section Code Generation:
@@ -104,24 +122,9 @@ fap_fun <- function(
     is.character(type[[1L]]) && length(type[[1L]]) == 1L && !is.na(type[[1L]]),
     type[[1L]] %in% c("constant", "arglen", "vecrec"),
     (
-      (
-        type[[1L]] == "constant" &&
-        is.integer(type[[2L]]) &&
-        length(type[[2L]]) == 1L &&
-        !is.na(type[[2L]]) &&
-        type[[2L]] >= 0L
-      ) ||
-      (
-        type[[1L]] == "arglen" &&
-        is.character(type[[2L]]) &&
-        length(type[[2L]]) == 1L &&
-        !is.na(type[[2L]])
-      ) ||
-      (
-        type[[1L]] == "vecrec" &&
-        is.character(type[[2L]]) &&
-        !anyNA(type[[2L]])
-      )
+      (type[[1L]] == "constant" && is.valid_constant(type)) ||
+      (type[[1L]] == "arglen" && is.valid_arglen(type)) ||
+      (type[[1L]] == "vecrec" && is.valid_vecrec(type))
   ) )
   list(
     name=name, fun=fun, defn=defn, ctrl=ctrl.params, flag=flag.params,
@@ -183,6 +186,8 @@ VALID_FUNS <- list(
     type=list("vecrec", c("e1", "e2")), code.gen=code_gen_pow,
     transform=pow_transform
   ),
+  # - Assign / Control----------------------------------------------------------
+
   fap_fun(
     "<-", fun=base::`<-`, defn=function(x, value) NULL,
     type=list("arglen", "value"),
@@ -192,6 +197,12 @@ VALID_FUNS <- list(
     "=", fun=base::`=`, defn=function(x, value) NULL,
     type=list("arglen", "value"),
     code.gen=code_gen_assign
+  ),
+  fap_fun(
+    "{", fun=base::"{", defn=function(...) NULL,
+    # arglen of last argument matching dots
+    type=list("arglen", "...", function(x) x[length(x)]),
+    code.gen=code_gen_braces
   ),
   # - r2c funs -----------------------------------------------------------------
   fap_fun(

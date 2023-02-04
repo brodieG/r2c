@@ -135,7 +135,8 @@ preprocess <- function(call, formals, optimize=FALSE) {
   r.calls.dep.m <- grepl("\n", r.calls.dep.keep, fixed=TRUE)
   c.calls.fmt <- format(c.calls.keep)
 
-  # Do we need extra parameters that need to be incremented explicitly?
+  # Do we need extra parameters that need to be incremented explicitly across
+  # iterations?
   c.narg <- vapply(x[['code']][calls.keep], "[[", TRUE, "narg")
   c.flag <- vapply(x[['code']][calls.keep], "[[", TRUE, "flag")
   c.ctrl <- vapply(x[['code']][calls.keep], "[[", TRUE, "ctrl")

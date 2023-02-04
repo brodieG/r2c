@@ -141,11 +141,21 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
           ) )
         # Get parameter data. depth + 1L should be params to current call, note
         # this is not generally true for the stuff in `x`, only for the stack.
-        sizes.tmp <- stack[
-          c('size', 'group'),
-          colnames(stack) %in% ftype[[2L]] & stack['depth',] == depth + 1L,
-          drop=FALSE
-        ]
+        param.cand <- which(
+          colnames(stack) %in% ftype[[2L]] & stack['depth',] == depth + 1L
+        )
+        # Arglen needs to disambiguate multiple params (e.g. `...` may show up
+        # multiple times in `colnames(stack)` for any given depth).
+        if(is.function(ftype[[3L]])) {
+          param.cand.tmp <- ftype[[3L]](param.cand)
+          if(
+            !is.integer(param.cand.tmp) ||
+            !all(param.cand.tmp %in% param.cand)
+          )
+            stop("Internal Error: parameter disambiguation for sizing failed.")
+          param.cand <- param.cand.tmp
+        }
+        sizes.tmp <- stack[c('size', 'group'), param.cand, drop=FALSE]
         alloc <- alloc_dat(
           alloc, depth, size=vec_rec_max_size(sizes.tmp, gmax), call,
           typeof=res.typeof
