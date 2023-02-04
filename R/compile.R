@@ -145,6 +145,8 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #'   by `tempfile()` to avoid accidents.  If you manually provide `dir` you will
 #'   need to manually delete the directory yourself.
 #' @param quiet whether to suppress the compilation output.
+#' @param TRUE, FALSE, or an integer setting optimization levels.  Currently
+#'   applies [`reuse_calls`] if not FALSE or 0.
 #' @return an "r2c_fun" function; this is an unusual function so please see
 #'   details.
 #' @name r2c-compile
@@ -176,7 +178,8 @@ rand_string <- function(len, pool=c(letters, 0:9))
 
 r2cf <- function(
   x, dir=NULL, check=getOption('r2c.check.result', FALSE),
-  quiet=getOption('r2c.quiet', TRUE), clean=is.null(dir)
+  quiet=getOption('r2c.quiet', TRUE), clean=is.null(dir),
+  optimize=getOption('r2c.optimize', TRUE)
 )
   r2c_core(
     body(x), formals=as.list(formals(x)),
@@ -188,7 +191,8 @@ r2cf <- function(
 
 r2cl <- function(
   x, formals=NULL, dir=NULL, check=getOption('r2c.check.result', FALSE),
-  quiet=getOption('r2c.quiet', TRUE), clean=is.null(dir)
+  quiet=getOption('r2c.quiet', TRUE), clean=is.null(dir),
+  optimize=getOption('r2c.optimize', TRUE)
 )
   r2c_core(
     x, formals=formals, dir=dir, check=check, quiet=quiet, clean=clean
@@ -199,18 +203,20 @@ r2cl <- function(
 
 r2cq <- function(
   x, formals=NULL, dir=NULL, check=getOption('r2c.check.result', FALSE),
-  quiet=getOption('r2c.quiet', TRUE), clean=is.null(dir)
+  quiet=getOption('r2c.quiet', TRUE), clean=is.null(dir),
+  optimize=getOption('r2c.optimize', TRUE)
 )
   r2c_core(
     substitute(x), formals=formals, dir=dir, check=check, quiet=quiet,
-    clean=clean
+    clean=clean, optimize=optimize
   )
 
 
-r2c_core <- function(call, formals, dir, check, quiet, clean) {
+r2c_core <- function(call, formals, dir, check, quiet, clean, optimize) {
   vetr(
     is.language(.), (list() && !is.null(names(.))) || NULL || CHR,
-    dir=CHR.1 || NULL, check=LGL.1, quiet=LGL.1, clean=LGL.1
+    dir=CHR.1 || NULL, check=LGL.1, quiet=LGL.1, clean=LGL.1,
+    optimize=LGL.1 || INT.1.POS
   )
   auto.formals <- FALSE
   if(is.character(formals)) {

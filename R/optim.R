@@ -53,15 +53,54 @@ flatten_call_rec <- function(x, calls, indices) {
 #' sub-calls and modifies the call tree to implement the store-and-reuse
 #' optimization.
 #'
-#' @noRd
+#' While this function is intended primarily for use as a pre-processing
+#' optimization for `r2c`, it can be applied to R expressions generally with
+#' some important caveats.  `r2c` should work correctly with all `r2c`
+#' compatible R expressions, but is not guaranteed to do so with all R
+#' expressions.  In particular, any expressions with side effects except for
+#' simple assignments with `<-` or `=` are likely to cause problems.
+#' Additionally, `r2c` processes function parameters in function order with
+#' depth first recursion, whereas R makes no guarantees about the order in which
+#' parameters are evaluated.  This could cause a normal R evaluation to evaluate
+#' temporary assignments out of intended order with bad consequences.
+#'
+#' This function avoids potentially ambiguous substitutions, e.g. when component
+#' variables might be set to different values by different branches.  This might
+#' void substitutions that at run-time would have turned out to be valid, and
+#' even some that could have been known to be valid with more sophisticated
+#' static analysis (e.g. `if(TRUE) ... else ...` will be treated as a branch
+#' even though it is not really).  Substitutions involving loop modified
+#' variables are also limited due to the possibility of their value changing
+#' during e.g. the first and nth loop iteration, or the possibility of the loop
+#' not running at all.
+#'
+#' @export
 #' @param x a call
 #' @return a list with elements:
 #'
 #' * x: the call with the re-used expressions substituted
 #' * reuse: named list with names the variables that reference the expressions
 #'   that are substituted, and values those expressions.
+#'
+#' @examples
+#' x <- runif(100)
+#' y <- runif(100)
+#' slope <- quote(((x - mean(x)) * (y - mean(y))) / (x - mean(x))^2)
+#' (slope.r <- reuse_calls(slope))
+#' identical(eval(slope), eval(slope.r))
+#'
+#' intercept <- quote(
+#'   mean(y) - mean(x) * ((x - mean(x)) * (y - mean(y))) / (x - mean(x))^2
+#' )
+#' (intercept.r <- reuse_calls(intercept))
+#' identical(eval(intercept), eval(intercept.r))
 
-reuse_calls <- function(x) {
+reuse_calls <- function(x) reuse_calls_int(x)[[1L]]
+
+## Internal version that additional returns a map of the temporary values to the
+## expressions they replace.
+
+reuse_calls_int <- function(x) {
   # rename assigned-to symbols, etc
   x.orig <- x
   rename.dat <- rename_call(x)

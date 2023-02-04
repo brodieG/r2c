@@ -16,6 +16,14 @@
 
 ## Current
 
+* Make sure vecrec works with `...`, e.g. as would be needed for `paste(...)`
+  (although maybe that's not the best example given 0-len behavior).
+* Consider whether `x^2` -> `x * x` should be an optimization (especially given
+  that `x` could be a complex expression.
+* Do we want to hoist out temporary code-reuses to the top level so that we can
+  enforce evaluation order, and also to try to make the code clearer?
+* Should we add `rm` statements (optionally) for `reuse_calls` use in R to
+  reduce peak memory usage?
 * What do indices do we want to record in a re-used call?
 * Make sure we understand when it's okay or not okay to assume about order of
   evaluation of parameters (e.g. when they contain assignments in them).

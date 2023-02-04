@@ -76,7 +76,7 @@ match_call <- function(definition, call, name) {
     match("...", args.nm[args.ord])
   } else length(args)
   # expand the dots
-  c(
+  res <- c(
     args[seq_len(args.dot.pos - 1L)],
     mcall.dots,
     if(length(args.dummy) > args.dot.pos)
@@ -98,9 +98,14 @@ match_call <- function(definition, call, name) {
 #'
 #' @noRd
 #' @param call an unevaluated R call
+#' @param logical or integer, level of optimization to apply
 #' @return a call dat list as described in `init_call_dat`.
 
-preprocess <- function(call, formals) {
+preprocess <- function(call, formals, optimize=FALSE) {
+  if(optimize > 0L) {
+    callr <- reuse_calls_int(call)
+    call <- callr[['x']]  # also contains renames
+  }
   # All the data generated goes into x
   x <- init_call_dat(formals)
   # We use this for match.call, but very questionable given the env might be
@@ -195,7 +200,7 @@ pp_internal <- function(call, depth, x, argn="") {
   # Transform call (e.g. x^2 becomes x * x); ideally the transformation function
   # would have the matched call, but since the only use we have for it is a
   # primitive that doesn't match arguments we don't worry about that right now.
-
+  # Should this be done as an "optimization"?
   while(is.call(call)) { # equivalent to if(...) repeat
     func <- call_valid(call)
     call.transform <- VALID_FUNS[[c(func, "transform")]](call)
