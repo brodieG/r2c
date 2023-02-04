@@ -13,7 +13,7 @@
 ##
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
-#' @include code-assign.R
+#' @include code-assign-control.R
 #' @include code-summary.R
 #' @include code-arith.R
 #' @include code-pow.R
@@ -21,11 +21,11 @@
 NULL
 
 
-is.valid_arglen <- function(x)
+is.valid_arglen <- function(type)
   is.character(type[[2L]]) &&
   length(type[[2L]]) == 1L &&
   !is.na(type[[2L]]) &&
-  is.null(type[[3L]]) || is.function(type[[3L]])
+  (length(type) <= 2L || is.function(type[[3L]]))
 
 is.valid_vecrec <- function(type)
   type[[1L]] == "vecrec" &&
@@ -50,7 +50,11 @@ is.valid_constant <- function(type)
 #' * Name of the C function.
 #' * Call to use to invoke the function.
 #'
-#' Function parameters are specifically defined.
+#' Right now one must manually verify that the definition is consistent with the
+#' call format.  The call format is generated with `code_res`, but unfortunately
+#' the actual function definition needs to be manually coded to match what
+#' `code_res` does.  `code_gen_summary` is a good one to look at for
+#' inspiration.
 #'
 #' @noRd
 #' @param name character(1L) symbol that will reference the function
@@ -67,14 +71,16 @@ is.valid_constant <- function(type)
 #'   may be conveyed to the function without the need to use `VECTOR_ELT`, etc.,
 #'   to access the specific control parameter.  Any parameters here are
 #'   exclusive of those listed in `ctrl.params`.
-#' @param type list(2L) containing the type of function in "constant", "arglen",
-#'   or "vecrec" at position one, and additional meta data at position two
-#'   that can be depending on the value in position one:
+#' @param type list(2:3) containing the type of function in "constant", "arglen",
+#'   or "vecrec" at position one, and additional meta data at position two or
+#'   three that can be depending on the value in position one:
 #'
 #'   * constant: a positive non-NA integer indicating the constant result size
 #'     (e.g. 1L for `mean`)
 #'   * arglen: character(1L) the name of the argument to use the length of as
-#'     the result size (e.g. `probs` for [`quantile`].
+#'     the result size (e.g. `probs` for [`quantile`]), also allows specifying a
+#'     function at position 3 to e.g. pick which of multiple arguments matching
+#'     `...` to use for the length.
 #'   * vecrec: character(n) the names of the arguments to use to compute result
 #'     size under assumption of recycling to longest, or zero if any argument is
 #'     zero length.
@@ -109,7 +115,7 @@ fap_fun <- function(
     flag.params=
       character() && !anyNA(.) && all(. %in% names(formals(defn))) &&
       !"..." %in% . && length(.) < 32L,
-    type=list(NULL, NULL),
+    type=list() && length(.) %in% 2:3,
     code.gen=is.function(.),
     ctrl.validate=is.function(.),
     transform=is.function(.),
