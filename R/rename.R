@@ -73,8 +73,7 @@ init_rename <- function() list(i=integer(), renames=list(), map=character())
 assigned_symbols <- function(x, symbols=character()) {
   if(is.call_w_args(x)) {
     fun.name <- as.character(x[[1L]])
-    # `->` becomes `<-` on parsing.
-    if(fun.name %in% c("<-", "=")) {
+    if(fun.name %in% ASSIGN.SYM) {
       symbols <- c(symbols, get_target_symbol(x, fun.name))
     }
     # Recurse into the paramaters of the call (techincally for assignments we
@@ -103,14 +102,21 @@ assigned_symbols <- function(x, symbols=character()) {
 #' values, we generate renames for any symbols assigned to in control
 #' structures.
 #'
-#' Once re-use substitution is completed, we restore the original symbol names
-#' with `unrename_call`.
+#' The objective of the renaming is to ensure that any same-name symbols that
+#' might possibly contain different values to end up with different names.  It
+#' is not intended that the renamed call will have the same semantics as the
+#' original call (and it definitely won't with loops that do assignments), only
+#' that there is no chance of the same symbol referring to two different values
+#' in the course of "execution".
 #'
 #' This resolves the reuse substitution, but not memory allocations for the
 #' variables which have additional constraints.  E.g. an `if` statement could
 #' assign to a variable as a scalar in one branch and as length 100 vector in
 #' another.  This is resolved in the allocation step (later) by disallowing
 #' variables from having ambiguous sizes.
+#'
+#' Once re-use substitution is completed, we restore the original symbol names
+#' with `unrename_call`.
 #'
 #' @noRd
 #' @param x a call
@@ -133,28 +139,55 @@ assigned_symbols <- function(x, symbols=character()) {
 #' * rn: the updated `renames` list (see `renames` above).
 
 rename_call <- function(x, rn=init_rename()) {
+  # To generate a rename is to increment an index associated with a variable.
+  # To apply the rename is to replace an instance of that variable with a name
+  # mangled using the index.  Strategy is to detect points at which a variable
+  # name is invalidated (e.g. overwritten), and generate new renames then for
+  # application at appropriate time.
   is.renames(rn)
   rename.loop <- c("for", "while", "repeat")
   rename.ctrls <- c("if", rename.loop)
   if(is.call_w_args(x)) {
     fun.name <- as.character(x[[1L]])
-    # Rename caused by assignment.  `for` assigns to the counter variable.
-    # `->` becomes `<-` on parsing.
-    if(fun.name %in% c("<-", "=", "for")) {
+    rec.ids <- seq(2L, length(x), 1L)
+
+    # Assignments both generate renames, but are special cases where we need to
+    # recurse in a specific order: first the source expression for the
+    # assignment, then the assignment symbol, finally the rest (for `for`)
+    if(fun.name %in% ASSIGN.SYM) {
+      if(length(x) != (3L + (fun.name == 'for')))
+        stop("Assignment / `for` with incorrect token count (", dep1(x), ")")
+      # Rename the expression that is assigned
+      rdat <- rename_call(x[[rec.ids[2L]]], rn=rn)
+      x[[rec.ids[2L]]] <- rdat[['x']]
+      rn <- rdat[['rn']]
+      # Rename the assigned-to symbol (only non-leaf rename)
       tar.char <- get_target_symbol(x, fun.name)
       rn <- generate_rename(rn, tar.char)
+      x[[2L]] <- apply_rename(rn, x[[2L]])
+      # Don't need to recurse into these anymore as we just dealt with them
+      rec.ids <- rec.ids[-(1:2)]
     }
-    # Renames required by control structures, `for` needs them on entry and
-    # exit, `if` on entry (actual rename applied at leaves during recursion)
+    # Extra renames required by control structs: loops on entry and exit, `if`
+    # on exit (actual renames applied at leaves during recursion).  This means
+    # that `else if` generates potentially unnecessary but harmless renames.
     ctrl.symbols <- character()
     if(fun.name %in% rename.ctrls) {
-      ctrl.symbols <- assigned_symbols(x)
+      # Exclude portions of the control exprs that don't need renames.  This is
+      # ugly with possible "OOB" reads (that resolve to NULL), and the resulting
+      # `x.ctrl` is garbage, but works within `assigned_symbols`.  `while`'s
+      # condition is part of the loop (though guaranteed to run once).
+      x.ctrl <-
+        if(fun.name == 'for') x[[4L]]
+        else if(fun.name == 'if') x[c(1L, 3:4)]
+        else x
+      ctrl.symbols <- assigned_symbols(x.ctrl)
       if(fun.name %in% rename.loop) {
         # for loops need to generate rn on entry
         for(sym.char in ctrl.symbols) rn <- generate_rename(rn, sym.char)
     } }
-    # Recurse into the paramaters of the call
-    for(j in seq(2L, length(x), 1L)) {
+    # Recurse into the paramaters of the call and apply rename
+    for(j in rec.ids) {
       rdat <- rename_call(x[[j]], rn=rn)
       x[[j]] <- rdat[['x']]
       rn <- rdat[['rn']]
@@ -164,7 +197,8 @@ rename_call <- function(x, rn=init_rename()) {
       for(sym.char in ctrl.symbols) rn <- generate_rename(rn, sym.char)
     }
   } else if (is.symbol(x)) {
-    # Perform the rename if the symbol had one generated
+    # Perform the rename if the symbol had one generated, this is where most of
+    # the actual renaming is done, except for the `for` loop counter variable
     x <- apply_rename(rn, x)
   }
   list(x=x, rn=rn)

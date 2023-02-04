@@ -67,6 +67,9 @@ stopifnot(
 IX <- list()
 QDOTS <- quote(...)
 
+# `for` assigns to the counter variable.  `->` becomes `<-` on parsing.
+ASSIGN.SYM <- c("<-", "=", "for")
+
 # - Internal Symbols -----------------------------------------------------------
 
 R2C.PRIV.BASE <- ".R2C"
