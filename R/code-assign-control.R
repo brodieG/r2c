@@ -32,11 +32,13 @@ code_gen_braces <- function(fun, args.reg, args.ctrl, args.flags) {
   code_res(defn=defn, narg=TRUE, name=name)
 }
 # These are read-only assignments.  We'll need to detect read/write assignments
-# and do something different with them.
+# and do something different with them.  Note that for assignments we skip one
+# parameter (the symbol being assigned to), so there is one less parameter than
+# there is in the actual call.
 f_assign <- '
 static void %s(%s) {
-  *data[di[2]] = *data[di[1]];
-  lens[di[2]] = lens[di[1]];
+  *data[di[1]] = *data[di[0]];
+  lens[di[1]] = lens[di[0]];
 }'
 code_gen_assign <- function(fun, args.reg, args.ctrl, args.flags) {
   vetr(

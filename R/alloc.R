@@ -146,8 +146,7 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
   # Add group data.
   if(!all(nzchar(names(data)))) stop("All data must be named.")
   data.naked <- data[is.num_naked(data)]
-  data.used <- logical(length(data.naked))
-  names(data.used) <- names(data.naked)
+  data.used <- integer()
   alloc <- append_dat(
     alloc, new=data.naked, sizes=rep(gmax, length(data.naked)),
     depth=0L, type="grp", i.call.max=i.call.max
@@ -169,6 +168,9 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
   call.dat <- list()
 
   for(i in seq_along(x[['call']])) {
+    # Assigned symbol is processed as part of the assignment call, not here
+    if(x[['assign']][i]) next
+
     type <- x[['type']][[i]]
     call <- x[['call']][[i]]
     depth <- x[['depth']][[i]]
@@ -317,14 +319,14 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
         size=if(is.grp) NA_real_ else alloc[['size']][id],
         group=is.grp + 0, argn=argn
       )
-      data.used[id] <- TRUE
+      data.used <- union(data.used, id)
     } else stop("Internal Error: unexpected token.")
   }
   # Remove unused data, and re-index to account for that
   ids.all <- seq_along(alloc[['dat']])
   ids.keep <- ids.all[
     alloc[['type']] %in% c("res", "ext", "tmp", "sts") |
-    ids.all %in% get_gdat_id(which(data.used))
+    ids.all %in% data.used
   ]
   call.dat <- lapply(
     call.dat, function(x) {
@@ -334,7 +336,7 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
   stack['id',] <- match(stack['id',], ids.keep)
 
   alloc.fin <- lapply(
-    alloc[c('dat', 'alloc', 'depth', 'type', 'typeof')], "[", ids.keep
+    alloc[c('dat', 'alloc', 'depth', 'type', 'typeof', 'name')], "[", ids.keep
   )
   alloc.fin[['i']] <- match(alloc[['i']], ids.keep)
   list(alloc=alloc.fin, call.dat=call.dat, stack=stack)

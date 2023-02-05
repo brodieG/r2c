@@ -230,10 +230,11 @@ pp_internal <- function(call, depth, x, argn="", assign=FALSE) {
 
     for(i in seq_along(args)) {
       if(args.types[i] %in% c('control', 'flag')) { # shouldn't be assign symbol
+        if(next.assign) stop("Internal error: controls/flag on assignment.")
         x <- record_call_dat(
           x, call=args[[i]], depth=depth + 1L, argn=names(args)[i],
           type=args.types[i], code=code_blank(),
-          sym.free=sym_free(x, args[[i]])
+          sym.free=sym_free(x, args[[i]]), assign=FALSE
         )
       } else {
         x <- pp_internal(
@@ -275,8 +276,7 @@ pp_internal <- function(call, depth, x, argn="", assign=FALSE) {
         x[['dot.arg.i']] <- x[['dot.arg.i']] + 1L
   } } }
   record_call_dat(
-    x, call=call, depth=depth, argn=argn, type=type, code=code,
-    sym.free=if(assign) character() else sym_free(x, call)
+    x, call=call, depth=depth, argn=argn, type=type, code=code, assign
   )
 }
 # See preprocess for some discussion of what the elements are
@@ -321,13 +321,14 @@ init_call_dat <- function(formals)
     sym.free=formals,
     sym.bound=character(),
     dot.arg.i=1L,
-    last.read=integer()
+    last.read=integer(),
+    assign=logical()
   )
 
 ## Record Expression Data
 
 record_call_dat <- function(
-  x, call, depth, argn, type, code, sym.free=sym_free(x, call)
+  x, call, depth, argn, type, code, assign, sym.free=sym_free(x, call)
 ) {
   # list data
   x[['call']] <- c(
@@ -341,9 +342,12 @@ record_call_dat <- function(
   x[['argn']] <- c(x[['argn']], argn)
   x[['depth']] <- c(x[['depth']], depth)
   x[['type']] <- c(x[['type']], type)
+  x[['assign']] <- c(x[['assign']], assign)
   # symbols only bound after first instance of being bound, i.e. can start off
   # as free until actually gets assigned to.
-  x[['sym.free']] <- union(x[['sym.free']], setdiff(sym.free, x[['sym.bound']]))
+  if(!assign) {
+    x[['sym.free']] <- union(x[['sym.free']], setdiff(sym.free, x[['sym.bound']]))
+  }
   x
 }
 sym_free <- function(x, sym) {
