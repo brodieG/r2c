@@ -185,8 +185,11 @@ preprocess <- function(call, formals, optimize=FALSE) {
   x
 }
 # Recursion portion of preprocess
+#
+# @param assign indicate whether current evaluation is of a symbol being
+#   assigned to to avoid recording that as a free symbol.
 
-pp_internal <- function(call, depth, x, argn="") {
+pp_internal <- function(call, depth, x, argn="", assign=FALSE) {
   if(depth == .Machine$integer.max)
     stop("Expression max depth exceeded.") # exceedingly unlikely
 
@@ -198,10 +201,10 @@ pp_internal <- function(call, depth, x, argn="") {
       stop("Internal Error: call to `(` with wrong parameter count.")  # nocov
     call <- call[[2L]]
   }
-  # Transform call (e.g. x^2 becomes x * x); ideally the transformation function
-  # would have the matched call, but since the only use we have for it is a
-  # primitive that doesn't match arguments we don't worry about that right now.
-  # Should this be done as an "optimization"?
+  # Transform call (e.g. x^2 becomes square(x)); ideally the transformation
+  # function would have the matched call, but since the only use we have for it
+  # is a primitive that doesn't match arguments we don't worry about that right
+  # now.  Should this be done as an "optimization"?
   while(is.call(call)) { # equivalent to if(...) repeat
     func <- call_valid(call)
     call.transform <- VALID_FUNS[[c(func, "transform")]](call)
@@ -221,8 +224,12 @@ pp_internal <- function(call, depth, x, argn="") {
     args.types[names(args) %in% VALID_FUNS[[c(func, "ctrl")]]] <- "control"
     args.types[names(args) %in% VALID_FUNS[[c(func, "flag")]]] <- "flag"
 
+    # Check if we're in assignment call
+    name <- as.character(call[[1L]])
+    next.assign <- name %in% ASSIGN.SYM
+
     for(i in seq_along(args)) {
-      if(args.types[i] %in% c('control', 'flag')) {
+      if(args.types[i] %in% c('control', 'flag')) { # shouldn't be assign symbol
         x <- record_call_dat(
           x, call=args[[i]], depth=depth + 1L, argn=names(args)[i],
           type=args.types[i], code=code_blank(),
@@ -230,8 +237,14 @@ pp_internal <- function(call, depth, x, argn="") {
         )
       } else {
         x <- pp_internal(
-          call=args[[i]], depth=depth + 1L, x=x, argn=names(args)[i]
+          call=args[[i]], depth=depth + 1L, x=x, argn=names(args)[i],
+          assign=i == 1L && next.assign
     ) } }
+    # Bind assignments (we do it after processing of the rest of the call)
+    if(next.assign) {
+      sym.bound <- get_target_symbol(call, name)
+      x[['sym.bound']] <- union(sym.bound, x[['sym.bound']])
+    }
     type <- "call"
     # Generate Code
     code <- VALID_FUNS[[c(func, "code.gen")]](
@@ -261,7 +274,10 @@ pp_internal <- function(call, depth, x, argn="") {
         call <- as.name(sprintf(DOT.ARG.TPL, x[['dot.arg.i']]))
         x[['dot.arg.i']] <- x[['dot.arg.i']] + 1L
   } } }
-  record_call_dat(x, call=call, depth=depth, argn=argn, type=type, code=code)
+  record_call_dat(
+    x, call=call, depth=depth, argn=argn, type=type, code=code,
+    sym.free=if(assign) character() else sym_free(x, call)
+  )
 }
 # See preprocess for some discussion of what the elements are
 #'
@@ -325,7 +341,9 @@ record_call_dat <- function(
   x[['argn']] <- c(x[['argn']], argn)
   x[['depth']] <- c(x[['depth']], depth)
   x[['type']] <- c(x[['type']], type)
-  x[['sym.free']] <- union(x[['sym.free']], sym.free)
+  # symbols only bound after first instance of being bound, i.e. can start off
+  # as free until actually gets assigned to.
+  x[['sym.free']] <- union(x[['sym.free']], setdiff(sym.free, x[['sym.bound']]))
   x
 }
 sym_free <- function(x, sym) {

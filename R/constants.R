@@ -69,6 +69,7 @@ QDOTS <- quote(...)
 
 # `for` assigns to the counter variable.  `->` becomes `<-` on parsing.
 ASSIGN.SYM <- c("<-", "=", "for")
+LOOP.SYM <- c("for", "while", "repeat")
 
 # - Internal Symbols -----------------------------------------------------------
 

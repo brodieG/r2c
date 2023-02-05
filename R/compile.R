@@ -186,7 +186,7 @@ r2cf <- function(
 )
   r2c_core(
     body(x), formals=as.list(formals(x)),
-    dir=dir, check=check, quiet=quiet, clean=clean
+    dir=dir, check=check, quiet=quiet, clean=clean, optimize=optimize
   )
 
 #' @export
@@ -198,7 +198,8 @@ r2cl <- function(
   optimize=getOption('r2c.optimize', TRUE)
 )
   r2c_core(
-    x, formals=formals, dir=dir, check=check, quiet=quiet, clean=clean
+    x, formals=formals, dir=dir, check=check, quiet=quiet,
+    clean=clean, optimize=optimize
   )
 
 #' @export

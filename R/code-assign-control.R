@@ -13,7 +13,6 @@
 ##
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
-code_gen_assign <- function() NULL
 
 f_braces <- '
 static void %s(%s) {
@@ -31,4 +30,22 @@ code_gen_braces <- function(fun, args.reg, args.ctrl, args.flags) {
   name <- "braces"
   defn <- sprintf(f_braces, name, toString(c(F.ARGS.BASE, F.ARGS.VAR)))
   code_res(defn=defn, narg=TRUE, name=name)
+}
+# These are read-only assignments.  We'll need to detect read/write assignments
+# and do something different with them.
+f_assign <- '
+static void %s(%s) {
+  *data[di[2]] = *data[di[1]];
+  lens[di[2]] = lens[di[1]];
+}'
+code_gen_assign <- function(fun, args.reg, args.ctrl, args.flags) {
+  vetr(
+    isTRUE(. %in% c("=", "<-")),
+    args.reg=list(NULL, NULL),
+    args.ctrl=list() && length(.) == 0L,
+    args.flags=list() && length(.) == 0L
+  )
+  name <- "assign"
+  defn <- sprintf(f_assign, name, toString(F.ARGS.BASE))
+  code_res(defn=defn, name=name)
 }

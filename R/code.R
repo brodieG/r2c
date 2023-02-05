@@ -56,6 +56,31 @@ is.valid_constant <- function(type)
 #' `code_res` does.  `code_gen_summary` is a good one to look at for
 #' inspiration.
 #'
+#' Default parameters that every C function should have are in `ARGS.NM.BASE`,
+#' and include:
+#'
+#' * data: an array of pointers to double, which includes every every allocation
+#'   that exists at any point in time in the process, including those required
+#'   to support the inputs and the output of the C function.
+#' * lens: an array of `R_xlen_t` values, each one representing how many items
+#'   the corresponding array of doubles in `data` has.
+#' * di: an array of integers that represents, in order, the indices of the data
+#'   parameters (i.e. not control or flag) of the function, in `data`.  So for
+#'   example, `data[di[0]]` returns a pointer to the data backing the first data
+#'   parameter for the function.  If a function takes `n` args, then
+#'   `data[di[n]]` points to where the result of the function should be written
+#'   to.
+#'
+#' Generally a C function with `n` arguments is supposed to compute on the data
+#' in `data[di[0:(n-1)]]` and record the result into `data[di[n]]` and the
+#' length of the result into `lens[di[n]]` (although the latter in theory should
+#' be known ahead of time - maybe this allows a check?).
+#'
+#' For functions with variable arguments (e.g. because they have `...` in their
+#' signature), be sure to include `F.ARGS.VAR` in the definition, and to use
+#' `narg=TRUE` for `code_res` (see "code-summary.R" which handles both the case
+#' with a single parameter, and many parameters).
+#'
 #' @noRd
 #' @param name character(1L) symbol that will reference the function
 #' @param fun the function we're trying to emulate
@@ -138,7 +163,7 @@ fap_fun <- function(
     transform=transform, preserve.int=preserve.int
   )
 }
-# Make sure "(" is not added to this list.
+# Make sure "(" is not added to this list as it's pre-processed away.
 VALID_FUNS <- list(
   # - Base Funs ----------------------------------------------------------------
   fap_fun(
@@ -210,6 +235,7 @@ VALID_FUNS <- list(
     type=list("arglen", "...", function(x) x[length(x)]),
     code.gen=code_gen_braces
   ),
+
   # - r2c funs -----------------------------------------------------------------
   fap_fun(
     "mean1", fun=mean1, defn=mean1,
@@ -253,7 +279,14 @@ call_valid <- function(call) {
     stop("`", func, "` is not a supported function.")
   func
 }
-# To make sure we use the same structure everywhere.
+#' Organize Code Generation Output
+#'
+#' Additionally, generates the call to the function.
+#'
+#' @noRd
+#' @param narg TRUE if function has variable number of arguments
+#' @param flag TRUE if function has flag parameters
+#' @param ctrl TRUE if function has control parameters
 
 code_res <- function(
   defn, name, narg=FALSE, flag=FALSE, ctrl=FALSE, headers=character()
