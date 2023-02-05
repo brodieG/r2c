@@ -16,7 +16,9 @@
 
 f_braces <- '
 static void %s(%s) {
-  *data[di[narg]] = *data[di[narg - 1]];
+  for(R_xlen_t i = 0; i < lens[di[narg - 1]]; ++i) {
+    data[di[narg]][i] = data[di[narg - 1]][i];
+  }
   lens[di[narg]] = lens[di[narg - 1]];
 }'
 code_gen_braces <- function(fun, args.reg, args.ctrl, args.flags) {
