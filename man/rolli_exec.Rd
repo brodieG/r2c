@@ -73,9 +73,7 @@ implicitly the data elements are equally spaced.
 
 
 \code{align} specifies which end of the window aligns with the anchor.  Here we
-illustrate on the fourth iteration of a call to \code{rolli_exec}:
-
-\if{html}{\out{<div class="sourceCode">}}\preformatted{## rolli_exec(..., data=1:7,  n=4)
+illustrate on the fourth iteration of a call to \code{rolli_exec}:\preformatted{## rolli_exec(..., data=1:7,  n=4)
        +--------- On the 4th iteration, anchor is 4
        v
  1 2 3 4 5 6 7    | seq_along(first_vec(data))
@@ -84,7 +82,7 @@ illustrate on the fourth iteration of a call to \code{rolli_exec}:
        * * * *    | "left"    \{4, 5, 6, 7\}
      * * * *      | "center"  \{3, 4, 5, 6\}  <- default
  * * * *          | "right"   \{1, 2, 3, 4\}
-}\if{html}{\out{</div>}}
+}
 
 For the case of "center" with even sized windows more elements will be to the
 right than to the left of the anchor.
@@ -93,9 +91,7 @@ right than to the left of the anchor.
 \section{Correspondence to \code{\link{rollby_exec}}}{
 
 
-\code{rolli_exec} is a slightly more efficient implementation of:
-
-\if{html}{\out{<div class="sourceCode">}}\preformatted{function(fun, data, n, align, ...)
+\code{rolli_exec} is a slightly more efficient implementation of:\preformatted{function(fun, data, n, align, ...)
   roll_by_exec(
     fun, data,
     width=n - 1,
@@ -103,13 +99,11 @@ right than to the left of the anchor.
     bounds="[]",
     ...
    )
-}\if{html}{\out{</div>}}
+}
 
-Window element counts correspond to an interval width as \code{n - 1}, e.g.:
-
-\if{html}{\out{<div class="sourceCode">}}\preformatted{1  2  3     |  n = 3
+Window element counts correspond to an interval width as \code{n - 1}, e.g.:\preformatted{1  2  3     |  n = 3
 [     ]     |  width = 3 - 1 = 2 = n - 1
-}\if{html}{\out{</div>}}
+}
 
 Unlike \code{rolli_exec}, \code{\link{rollby_exec}} only supports fixed width windows.
 

@@ -185,9 +185,7 @@ and open on the right by default.
 
 As an illustration for \code{rollby_exec} and \code{rollat_exec}, consider the case of
 \code{width = 3} windows at the fourth iteration, with various \code{offset} values.
-The offset is the distance from the left end of the window to the anchor:
-
-\if{html}{\out{<div class="sourceCode">}}\preformatted{## rollby_exec(..., by=1, width=3)
+The offset is the distance from the left end of the window to the anchor:\preformatted{## rollby_exec(..., by=1, width=3)
                    +------------- 4th iteration, anchor is 4.0
                    V
 1.0   2.0   3.0   4.0   5.0   6.0   7.0 | < Real Line
@@ -197,15 +195,13 @@ The offset is the distance from the left end of the window to the anchor:
                    [-----------------)  |     0      \{4, 5, 6\}
           [-----------------)           |  -w/2      \{3, 4, 5\}
  [-----------------)                    |    -w      \{1, 2, 3\}
-}\if{html}{\out{</div>}}
+}
 
 In each case we get three elements in the window, although this is only
 because the positions of the elements are on the integers.  Because the
 windows are open on the right, elements that align exactly on the right end
 of the window are excluded.  With irregularly spaced elements, e.g. with
-\code{position = c(1, 1.25, 2.5, 5.3, 7, ...)}, we might see (positions approximate):
-
-\if{html}{\out{<div class="sourceCode">}}\preformatted{## rollby_exec(..., by=1, width=3, position=c(1, 1.25, 2.5, 5.3, 7))
+\code{position = c(1, 1.25, 2.5, 5.3, 7, ...)}, we might see (positions approximate):\preformatted{## rollby_exec(..., by=1, width=3, position=c(1, 1.25, 2.5, 5.3, 7))
                    +------------- 4th iteration, base index is 4.0
                    V
 1.0   2.0   3.0   4.0   5.0   6.0   7.0 | < Real Line
@@ -215,7 +211,7 @@ of the window are excluded.  With irregularly spaced elements, e.g. with
                    [-----------------)  |     0      \{4\}
           [-----------------)           |  -w/2      \{3, 4\}
  [-----------------)                    |    -w      \{1, 2, 3\}
-}\if{html}{\out{</div>}}
+}
 
 Unlike with \code{\link{rolli_exec}} there is no \code{partial} parameter as there is no
 expectation of a fixed number of elements in any given window.

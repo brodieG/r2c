@@ -1,3 +1,20 @@
+# Linearized vs Not
+
+One big advantage of the linearlized processing is that it lets us track lots of
+relevant meta data in the same form.
+
+One issue we're running into is that we lose some of the context.  For example,
+in an assignment expression the first thing we hit in the linearized call is the
+symbol to assign to, with no understanding that symbol is being assigned to
+later.  So we'll try to resolve it and will fail because it does not exist yet.
+
+For now the hack would be to leave the symbol unresolved?  Yes, but how do we
+make sure that it does get resolved and allocated at the right time?  We can
+mark it as an assignment symbol, along with the depth at which it should be
+resolved, and once we get to the assignment call that matches that depth, we can
+do all the update stuff.  I think if we just ignore it completely it's fine.  We
+just need to record that it's an assign target.
+
 # If / Loop
 
 ## Constraint Overview
@@ -297,6 +314,56 @@ as available, and ...
 Also, things are a bit complicated by the call being in effect `"<-"(x, value)`.
 We need to get the target name from the call, which isn't hard, but just doesn't
 quite fit into the framework we have.
+
+## Assignment and Control Variables
+
+One big complication is that control variables could reference variables that
+are created as part of the expression, e.g.:
+
+    x <- a > b
+    sum(y, na.rm=x)
+
+How do we resolve this?  Currently the semantics are to treat symbols as if they
+are the full data the symbols.  We could have a version of each assignment that
+resolves also to the full data symbols used purely for the controls, but this is
+very tricky because we don't want to carry out all those evaluations that define
+each of the symbols unless we actually have to as those would compute on the
+entire data vectors potentially.  We could define them as `delayedAssign`
+into an environment, and then evaluate the control parameters with that as an
+environment in the chain.
+
+So every time we encounter an assignment, we need to record the assignment
+expression as a `delayedAssign` in our special environment that has `data` for
+parent.
+
+Possibly even worse:
+
+    sum(x, na.rm=(x <- y))
+
+As it stands now we'll make a copy of `x` in the initial allocation pass,
+whereas probably we would expect the opposite to happen (i.e. actually get `y`).
+Probably we just warn people about it and let them make their bed.  Since we use
+a new environment each time that `x` likely is lost.
+
+## Assignment and Allocation
+
+When we encounter an assignment, we need to know not to allocate additional
+memory.  Additionally, we need to know to free whatever data was previously
+pointed to by that symbol.
+
+When we encounter a symbol, we need a mapping table to know whether the symbol
+is an assigned symbol.  If it is, then we know it's size from the `alloc` value.
+
+We want to track when each symbol is last used so we know we can trash the
+allocation.  We can probably do this in a first pass through the linearized
+calls where, for each symbol, we find the latest read reference to it.  Then,
+anytime a symbol is "protected" by being written to, the "protected" value is
+the last reference to it.  Each iteration then frees all the wrong depth stuff,
+and any expired protections.
+
+Any overwriting of a symbol will also effectively free the prior allocation (and
+transfer the protection value to the new allocation (although they may be the
+same size and re-use the slot).
 
 ## Renaming
 

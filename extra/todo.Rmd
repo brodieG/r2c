@@ -16,12 +16,27 @@
 
 ## Current
 
+* Assignment isn't re-using last available slot.  It should if it's unprotected.
+  Maybe it could under additional circumstances?
+* Can we optimize away `braces`?  They don't really do anything but return the
+  last value, which is what would happen anyway.  Maybe too annoying to deal
+  with in the current structure.  Another problem with braces is that they cause
+  everything under them to be protected by depth by virtue of being siblings,
+  when really we only care about the last value.
+* `r2cq(test)` produces weird error (note that's just a symbol).
+* Are we okay with doing the call substitution before match-calling?  That's
+  going to change param evaluation order.  Probably not okay.
 * Make sure vecrec works with `...`, e.g. as would be needed for `paste(...)`
   (although maybe that's not the best example given 0-len behavior).
 * Consider whether `x^2` -> `x * x` should be an optimization (especially given
-  that `x` could be a complex expression.
+  that `x` could be a complex expression (actual, this special case is handled
+  with `square` which avoids the repetition).
 * Do we want to hoist out temporary code-reuses to the top level so that we can
-  enforce evaluation order, and also to try to make the code clearer?
+  enforce evaluation order, and also to try to make the code clearer?  Main
+  challenge is if there is an assignment at some point earlier in the expression
+  that conflicts with the hoisting (i.e. hoisting would result in the expression
+  referencing an undefined symbol).  And what does top-level mean when e.g.
+  there is a loop or branch (do we go all the way, or stop there)?
 * Should we add `rm` statements (optionally) for `reuse_calls` use in R to
   reduce peak memory usage?
 * What do indices do we want to record in a re-used call?
