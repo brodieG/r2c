@@ -428,10 +428,10 @@ alloc_dat <- function(
       dat[['name']][unprotect] <- ''
     }
     # Look for free slots
-    free <- !is.finite(dat[['depth']]) & dat[['protected']] < i.call
+    free <- !is.finite(dat[['depth']]) & dat[['protected']] <= i.call
     fit <- free & dat[['type']] == "tmp" & dat[['alloc']] >= size
     if(!any(fit)) {
-      # New allocation, then sort by size
+      # New allocation
       dat[['alloc']] <- c(dat[['alloc']], size)
       dat[['size']] <- c(dat[['size']], size)
       dat[['depth']] <- c(dat[['depth']], depth)

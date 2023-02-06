@@ -237,8 +237,13 @@ pp_internal <- function(call, depth, x, argn="", assign=FALSE) {
           sym.free=sym_free(x, args[[i]]), assign=FALSE
         )
       } else {
+        # braces don't automatically preserve all their arguments
+        # (sub-expressions); increase depth for each argument, most for the 1st
+        # braces.depth.adder <- (length(args) - i) * (name == "{")
+        # new.depth <- depth + braces.depth.adder + 1L
+        new.depth <- depth + 1L
         x <- pp_internal(
-          call=args[[i]], depth=depth + 1L, x=x, argn=names(args)[i],
+          call=args[[i]], depth=new.depth, x=x, argn=names(args)[i],
           assign=i == 1L && next.assign
     ) } }
     # Bind assignments (we do it after processing of the rest of the call)
@@ -275,9 +280,13 @@ pp_internal <- function(call, depth, x, argn="", assign=FALSE) {
         call <- as.name(sprintf(DOT.ARG.TPL, x[['dot.arg.i']]))
         x[['dot.arg.i']] <- x[['dot.arg.i']] + 1L
   } } }
-  record_call_dat(
-    x, call=call, depth=depth, argn=argn, type=type, code=code, assign
-  )
+  # Braces don't add a call as they just return the last value (it does mean we
+  # throw away some generated code that isn't used)
+  if(name == "{") x
+  else
+    record_call_dat(
+      x, call=call, depth=depth, argn=argn, type=type, code=code, assign
+    )
 }
 # See preprocess for some discussion of what the elements are
 #'
@@ -338,15 +347,18 @@ record_call_dat <- function(
   )
   x[['code']] <- c(x[['code']], list(code))
 
-  # vec data
+  # vec data, if we add any here, be sure to add them to `exp.fields` in
+  # `expand_dots`.
   x[['argn']] <- c(x[['argn']], argn)
   x[['depth']] <- c(x[['depth']], depth)
   x[['type']] <- c(x[['type']], type)
   x[['assign']] <- c(x[['assign']], assign)
+
   # symbols only bound after first instance of being bound, i.e. can start off
   # as free until actually gets assigned to.
   if(!assign) {
-    x[['sym.free']] <- union(x[['sym.free']], setdiff(sym.free, x[['sym.bound']]))
+    x[['sym.free']] <-
+      union(x[['sym.free']], setdiff(sym.free, x[['sym.bound']]))
   }
   x
 }
@@ -364,7 +376,7 @@ sym_free <- function(x, sym) {
 ## data matched to dots to the number of dots.
 
 expand_dots <- function(x, arg.names) {
-  exp.fields <- c('argn', 'type', 'depth')
+  exp.fields <- c('argn', 'type', 'depth', 'assign')
   is.dots <- vapply(x[['call']], identical, TRUE, QDOTS)
   is.dots.m <- grepl(DOT.ARG.RX, arg.names)
   if(any(is.dots)) {

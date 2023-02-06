@@ -27,7 +27,7 @@ Collate:
     'code-arith.R'
     'code-mean.R'
     'code-summary.R'
-    'code-assign.R'
+    'code-assign-control.R'
     'code.R'
     'preprocess.R'
     'alloc.R'

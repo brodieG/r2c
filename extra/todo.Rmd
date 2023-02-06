@@ -16,6 +16,7 @@
 
 ## Current
 
+* What happens if we have an assignment at depth 0?
 * Assignment isn't re-using last available slot.  It should if it's unprotected.
   Maybe it could under additional circumstances?
 * Can we optimize away `braces`?  They don't really do anything but return the

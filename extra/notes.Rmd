@@ -1,3 +1,19 @@
+# Braces
+
+The idea of dropping the braces was cute, but it wreaks havoc with all sorts of
+other assumptions we make about depth.
+
+Right now the only way we get it to work is by having a C implementation of
+braces that copies from source to result.  Could it work if instead we managed
+to get braces to designate the same read and write?  It's a bit tricky because
+of the possibility of a result.
+
+So if we add a `self` option to `alloc_dat`, should work probably, but what if
+that self is e.g. protected?  Does it matter?  Is all the what need to do update
+the depth then?  Seems right.  Assignment should probably do something similar.
+
+Then, we restore the brackets code, but it truly becomes a no-op.
+
 # Linearized vs Not
 
 One big advantage of the linearlized processing is that it lets us track lots of
