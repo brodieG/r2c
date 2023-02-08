@@ -50,7 +50,7 @@ collect_loop_call_symbols <- function(x) {
 #' @param x object as produced by preproc
 
 latest_symbol_instance <- function(x) {
-  call <- x[['call']]
+  call <- x
   # Compute symbol lifetime.  We only need to find the latest time it exists as
   # a leaf because it will be protected by its expression level in expressions.
   # This is to support protecting assignments across sub-expressions.
@@ -74,6 +74,21 @@ latest_symbol_instance <- function(x) {
   max.instance[names(loop.max)] <- pmax(max.instance[names(loop.max)], loop.max)
   max.instance[nzchar(names(max.instance))]
 }
+#' Find Last Call That Computes
+#'
+#' Braces just return the last value (as do assignments and control structures).
+
+latest_action_call <- function(x) {
+  calls <- vapply(x, is.call, TRUE)
+  call.sym <- vapply(x[calls], function(x) length(x) && is.name(x[[1L]]), TRUE)
+  call.active <- vapply(
+    x[calls][call.sym],
+    function(x) !as.character(x[[1L]]) %in% c(ASSIGN.SYM, LOOP.SYM, "{", "if"),
+    TRUE
+  )
+  max(seq_along(x)[calls][call.sym][call.active])
+}
+
 #' Allocate Required Storage
 #'
 #' For each call, we allocate a vector for the result in the storage list,
@@ -93,9 +108,22 @@ latest_symbol_instance <- function(x) {
 #' more).  `alloc$call.dat` should have as many entries as there are C calls
 #' in `preproc$code`.
 #'
+#' @section Depth:
+#'
 #' An allocation is considered "freed" as soon as we emerge above the call
-#' level for which it was originally made, unless it is also referenced by a
-#' symbol that is still in use (designated by the "protected" vector).
+#' level (depth) for which it was originally made, unless it is also referenced
+#' by a symbol that is still in use (designated by the "protected" vector).  The
+#' `depth` variable semantics are strongly shaped by how it is generated (i.e.
+#' by incrementing it with each level of recursion in the call tree it
+#' originates from).  For example, for each call, it is a given that all of it's
+#' parameters will have a `depth` of `depth+1`.  We use `stack` as a mechanism
+#' for tracking the current call's parameters.
+#'
+#' For the specific case of braces and assignments, we let `alloc_dat` "promote"
+#' the depth of their results so that there does not need to be a new allocation
+#' for what should be a no-op.  This will cause the `depth` values in the
+#' allocation data and the `stack` to diverge, but those should converge after
+#' the stack reduces.
 #'
 #' @param x preprocess data as produced by `preprocess`
 #' @return an alloc object:
@@ -109,7 +137,7 @@ latest_symbol_instance <- function(x) {
 #'       less than the true size).
 #'     $depth: tree level at which the vectors are occupied, note it should
 #'       really be "height" under a tree metaphor.  Here depth = 0 means root,
-#'       whereas leaves will have highest depth values.
+#'       whereas leaves will have highest depth values.  See details.
 #'     $type: is it a result vector, data vector, etc.
 #'     $typeof: double/integer to track type for possible conversion to int
 #'     $i:
@@ -129,19 +157,22 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
   # - Initialize ---------------------------------------------------------------
   env <- list2env(MoreArgs, parent=par.env)
   call.outer <- x[['call']][[length(x[['call']])]]
-  i.call.max <- length(x[['call']])
-  sym.max <- latest_symbol_instance(x)
 
+  # Call indices where various interesting things happen
+  meta <- list(
+    i.call.max=length(x[['call']]),               # call count
+    i.sym.max=latest_symbol_instance(x[['call']]),# last symbol maybe touched
+    i.last.action=latest_action_call(x[['call']]) # last computing call
+  )
+  alloc <- init_dat(x[['call']], meta=meta, scope=0L)
   # Status control placeholder.
   alloc <- append_dat(
-    init_dat(x[['call']]), new=list(numeric(IX[['STAT.N']])),
-    sizes=IX[['STAT.N']],
-    depth=0L, type="sts", i.call.max=i.call.max
+    alloc, new=list(numeric(IX[['STAT.N']])),
+    sizes=IX[['STAT.N']], depth=0L, type="sts"
   )
   # Result placeholder, to be alloc'ed once we know group sizes.
   alloc <- append_dat(
-    alloc, new=list(numeric()), sizes=0L, depth=0L, type="res",
-    i.call.max=i.call.max
+    alloc, new=list(numeric()), sizes=0L, depth=0L, type="res"
   )
   # Add group data.
   if(!all(nzchar(names(data)))) stop("All data must be named.")
@@ -149,8 +180,11 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
   data.used <- integer()
   alloc <- append_dat(
     alloc, new=data.naked, sizes=rep(gmax, length(data.naked)),
-    depth=0L, type="grp", i.call.max=i.call.max
+    depth=0L, type="grp"
   )
+  # Bump scope so the data cannot be overwritten
+  alloc[['scope']] <- alloc[['scope']] + 1L
+
   # - Process ------------------------------------------------------------------
   #
   # Objective is to compute how much temporary storage we need to track all the
@@ -158,10 +192,6 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
   # into a data structure.  This data structure will also include references to
   # external vectors (if there are such references), and the result of
   # evaluating the control/flag parameters.
-  #
-  # From the data structure, For each call we want to record:
-  # * The ids of the parameters in the data.
-  # * The id of the result in the data.
 
   stack <- init_stack()
   stack.ctrl <- stack.flag <- list()
@@ -193,19 +223,11 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
         all(alloc[['typeof']][stack['id', ]] == "integer")
       ) "integer" else "double"
       # If this is an assignment, protect the corresponding symbol
-      if(name %in% ASSIGN.SYM) {
-        assign.name <- get_target_symbol(call, name)
-        protected <- sym.max[assign.name]
-      } else {
-        assign.name <- ""
-        protected <- 0L
-      }
       if(ftype[[1L]] == "constant") {
         # Always constant size, e.g. 1 for `sum`
         size <- ftype[[2L]]
         alloc <- alloc_dat(
-          alloc, depth, size=size, call, typeof=res.typeof, i.call=i,
-          protected=protected, name=assign.name
+          alloc, depth, size=size, call=call, typeof=res.typeof, i.call=i
         )
         group <- 0
       } else if(ftype[[1L]] %in% c("arglen", "vecrec")) {
@@ -238,8 +260,8 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
         }
         sizes.tmp <- stack[c('size', 'group'), param.cand, drop=FALSE]
         alloc <- alloc_dat(
-          alloc, depth, size=vec_rec_max_size(sizes.tmp, gmax), call,
-          typeof=res.typeof, i.call=i, protected=protected, name=assign.name
+          alloc, depth, size=vec_rec_max_size(sizes.tmp, gmax), call=call,
+          typeof=res.typeof, i.call=i
         )
         size <- vec_rec_known_size(sizes.tmp[1L,])  # knowable sizes
         group <- max(sizes.tmp[2L,])                # any group size in the lot?
@@ -264,7 +286,7 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
 
     # - Control Parameter ------------------------------------------------------
     } else if (
-      type %in% c("control", "flag") || !name %in% alloc[['name']]
+      type %in% c("control", "flag") || !name %in% colnames(alloc[['names']])
     ) {
       # Need to eval parameter
       tryCatch(
@@ -299,8 +321,7 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
         id <- 0L
       } else {
         alloc <- append_dat(
-          alloc, new=list(arg.e), sizes=size, depth=depth, type="ext",
-          i.call.max=i.call.max
+          alloc, new=list(arg.e), sizes=size, depth=depth, type="ext"
         )
         id <- alloc[['i']]
       }
@@ -309,9 +330,7 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
       )
 
     # - Match a Symbol In Data -------------------------------------------------
-    } else if (id <- match(name, rev(alloc[['name']]), nomatch=0)) {
-      # Reconvert the id into data order, matched rev to simulate masking
-      id <- length(alloc[['name']]) - id + 1L
+    } else if (id <- name_to_id(alloc, name)) {
       is.grp <- alloc[['type']][id] == 'grp'
       # Record size (note `id` computed in conditional)
       stack <- append_stack(
@@ -321,6 +340,7 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
       )
       data.used <- union(data.used, id)
     } else stop("Internal Error: unexpected token.")
+    browser()
   }
   # Remove unused data, and re-index to account for that
   ids.all <- seq_along(alloc[['dat']])
@@ -383,17 +403,15 @@ vec_rec_max_size <- function(x, gmax) {
 }
 ## Track Required Allocations for Intermediate vectors
 ##
-## List of all allocated temporary vector sizes, and which of those are free,
-## along with identifiers, and a scalar noting which of the slots the most
-## recent(?) request was assigned to.
+## This is a description of the input `dat` (which is also the returned value
+## after update).
 ##
 ## * dat: the actual data, for "tmp" type (i.e. generated by alloc_dat) this
-##   will be written to so should not be accessible via R, or at least hidden.
-##   Doesn't have to be done this way but it simplifies things.
+##   will be written to so should not be accessible via R.
 ## * ids: an integer identifier for each item in `dat`.
 ## * alloc: the true size of the vector (should be equivalent to
 ##   `lengths(dat[['dat']])`?).
-## * size; the size of the vector in use (can be less than 'alloc' if a smaller
+## * size: the size of the vector in use (can be less than 'alloc' if a smaller
 ##   vector is assigned to a freed bigger slot).
 ## * type: one of "tmp" (allocated), "grp" (from the data we're generating
 ##   groups from, "ext" (any other data vector), "res" (the result), "sts"
@@ -402,7 +420,8 @@ vec_rec_max_size <- function(x, gmax) {
 ##   try to track integer-ness (if any).
 ## * depth: the depth at which allocation occurred, only relevant for
 ##   `type == "tmp"`
-## * i: scalar integer the first index of the appended items.
+## * i: scalar integer the first index of the most recently allocated/appended
+##   item(s).
 ## * protected: the latest use of the symbol in the linearized call list,
 ##   non-zero only for allocations bound to a symbol (i.e. assigned to), can be
 ##   released once we're past that step in the linearized call list (as tracked
@@ -414,94 +433,184 @@ vec_rec_max_size <- function(x, gmax) {
 ## @param i.call the index of the element being processed in the linearized call
 ##   tree.
 
-alloc_dat <- function(
-  dat, depth, size, call, typeof='double', i.call, protected, name=""
-) {
+alloc_dat <- function(dat, depth, size, call, typeof='double', i.call) {
   if(depth == .Machine$integer.max)
     stop("Expression max depth exceeded for alloc.") # exceedingly unlikely
 
-  if(depth > 0) {
-    # Remove protection from prev assignment to but not currently in-use name
-    if(nzchar(name)) {
-      unprotect <- dat[['name']] == name & !is.finite(dat[['depth']])
-      dat[['protected']][unprotect] <- 0L
-      dat[['name']][unprotect] <- ''
-    }
-    # Look for free slots
-    free <- !is.finite(dat[['depth']]) & dat[['protected']] <= i.call
-    fit <- free & dat[['type']] == "tmp" & dat[['alloc']] >= size
-    if(!any(fit)) {
-      # New allocation
-      dat[['alloc']] <- c(dat[['alloc']], size)
-      dat[['size']] <- c(dat[['size']], size)
-      dat[['depth']] <- c(dat[['depth']], depth)
-      dat[['type']] <- c(dat[['type']], 'tmp')
-      dat[['typeof']] <- c(dat[['typeof']], typeof)
-      dat[['protected']] <- c(dat[['protected']], protected)
-      dat[['name']] <- c(dat[['name']], name)
+  call.name <-
+    if(is.call(call) && is.symbol(call[[1L]])) as.character(call[[1L]])
+    else ""
 
-      id <- if(length(dat[['ids']])) max(dat[['ids']]) + 1L else 1L
-      dat[['ids']] <- c(dat[['ids']], id)
-      dat[['dat']] <- c(dat[['dat']], list(numeric(size)))
-      dat[['i']] <- id
-    } else {
-      # Allocate to smallest available that will fit
-      target <- which.min(dat[['alloc']][fit])
-      slot <- seq_along(dat[['alloc']])[fit][target]
-      dat[['depth']][slot] <- depth
-      dat[['size']][slot] <- size
-      dat[['typeof']][slot] <- typeof
-      dat[['protected']][slot] <- protected
-      dat[['name']][slot] <- name
-      dat[['i']] <- dat[['ids']][slot]
-    }
-  } else {
-    # Result
-    slot <- which(dat[['type']] == "res")
-    dat[['i']] <- slot
-    dat[['typeof']][slot] <- typeof
+  # Cleanup expired symbols
+  dat <- names_clean(dat, i.call)
+
+  if(call.name %in% ASSIGN.SYM) {
+    # Remove protection from prev assignment to but not currently in-use name
+    name <- get_target_symbol(call)
+    dat <- names_free(dat, name)
   }
-  # Free the data we no longer need for the next go-around.  This is not a
-  # "free" in the malloc sense, just an indication that next time this function
-  # is called it can re-use the slot.  Data is only truly freed if any
-  # protection it has has expired.
-  dat[['depth']][dat[['depth']] > depth & dat[['type']] == 'tmp'] <- Inf
+  if(i.call <= dat[['meta']][['i.last.action']] & !call.name == "{") {
+    if(i.call == dat[['meta']][['i.last.action']]) {
+      # Last call that computes anything should be written to result
+      slot <- which(dat[['type']] == "res")
+      dat[['i']] <- slot
+      dat[['typeof']][slot] <- typeof
+    } else {
+      # Look for free slots
+      free <-
+        !is.finite(dat[['depth']]) &
+        !dat[['ids']] %in% dat[['names']]['ids',]
+      fit <- free & dat[['type']] == "tmp" & dat[['alloc']] >= size
+      if(!any(fit)) {
+        # New allocation
+        new <- list(numeric(size))
+        id <- if(length(dat[['ids']])) max(dat[['ids']]) + 1L else 1L
+        dat <- append_vec_dat(
+          dat, new=new, ids=id, sizes=size, depth=depth, type="tmp",
+          typeof=typeof
+        )
+        dat[['dat']] <- c(dat[['dat']], new)
+        dat[['i']] <- id
+      } else {
+        # Allocate to smallest available that will fit
+        target <- which.min(dat[['alloc']][fit])
+        slot <- seq_along(dat[['alloc']])[fit][target]
+
+        dat[['depth']][slot] <- depth
+        dat[['size']][slot] <- size
+        dat[['typeof']][slot] <- typeof
+        dat[['i']] <- dat[['ids']][slot]
+      }
+    }
+    # Free the data we no longer need for the next go-around.  This is not a
+    # "free" in the malloc sense, just an indication that next time this function
+    # is called it can re-use the slot, provided the slot is not referenced in
+    # 'names'.
+    dat[['depth']][dat[['depth']] > depth & dat[['type']] == 'tmp'] <- Inf
+  }
+  # Bind new symbols
+  if(call.name %in% ASSIGN.SYM) {
+    # Remove protection from prev assignment to but not currently in-use name
+    dat <- names_bind(dat, name, id)
+  }
   dat
-}
-init_dat <- function(call) {
-  list(
-    dat=list(), alloc=numeric(), depth=integer(), ids=integer(), type=character(),
-    typeof=character(), i=0L
-  )
 }
 # Naked numeric data, including group varying data, result, and other in that
 # order, where other is external data and temporary variables, although the
 # temorary variables are added by `alloc_dat`, not this function.
 
-append_dat <- function(dat, new, sizes, depth, type, i.call.max) {
+append_dat <- function(dat, new, sizes, depth, type) {
   if(length(new)) { # it's possible `data` has no numeric nums
     if(is.null(names(new))) names(new) <- character(length(new))
     if(!is.list(new)) stop("Internal Error: `new` must be list.")
     if(!all(is.num_naked(new))) stop("Internal Error: bad data column.")
     if(!type %in% c("res", "grp", "ext", "sts"))
       stop("Internal Error: bad type.")
-    id.max <- length(dat[['dat']])
+
+    # Append dat should never overwrite names in the existing scope
+    names <- dat[['names']]
+    if(
+      any(
+        names(new) %in%
+        colnames(names[,names['scope',] == dat[['scope']], drop=FALSE])
+    ) )
+      stop("Internal error: cannot append names existing in current scope.")
+
+    new.ids <- seq_along(new) + length(dat[['dat']])
     dat[['dat']] <- c(
       dat[['dat']],
       lapply(new, function(x) if(is.integer(x)) as.numeric(x) else x)
     )
-    dat[['ids']] <- c(dat[['ids']], seq_along(new) + id.max)
-    dat[['alloc']] <- c(dat[['alloc']], sizes)
-    dat[['size']] <- c(dat[['size']], sizes)
-    dat[['depth']] <- c(dat[['depth']], rep(depth, length(new)))
-    dat[['type']] <- c(dat[['type']], rep(type, length(new)))
-    dat[['typeof']] <- c(dat[['typeof']], vapply(new, typeof, "character"))
-    dat[['protected']] <- c(dat[['protected']], rep(i.call.max, length(new)))
-    dat[['name']] <- c(dat[['name']], names(new))
-    dat[['i']] <- id.max + 1L
+    dat <- append_vec_dat(
+      dat, new, ids=new.ids, sizes=sizes, depth=depth, type=type,
+      typeof=vapply(new, typeof, "character")
+    )
+
+    # Bind names
+    has.name <- nzchar(names(new))
+    dat <- names_bind(dat, names(new)[has.name], new.ids[has.name])
+
+    dat[['i']] <- new.ids[1L]
   }
   dat
 }
+append_vec_dat <- function(dat, new, ids, sizes, depth, type, typeof) {
+  dat[['ids']] <- c(dat[['ids']], ids)
+  dat[['alloc']] <- c(dat[['alloc']], sizes)
+  dat[['size']] <- c(dat[['size']], sizes)
+  dat[['depth']] <- c(dat[['depth']], rep(depth, length(new)))
+  dat[['type']] <- c(dat[['type']], rep(type, length(new)))
+  dat[['typeof']] <- c(dat[['typeof']], typeof)
+  dat
+}
+
+#' Helper Functions for Symbol Management
+#'
+#' * `names_clean` drops name that have no future references to them, which
+#'   makes it safe to release any memory that they've been bound to.
+#' * `names_free` frees any allocation previously bound to a symbol, use this
+#'   when you give a symbol a new binding in the same scope.
+#' * `names_bind` record new symbols and their binding to the data allocation.
+#'
+#' @noRd
+
+names_clean <- function(alloc, i.call) {
+  names <- alloc[['names']]
+  # Drop out ouf scope names
+  names <- names[, names['scope',] <= alloc[['scope']], drop=FALSE]
+  # Drop expired names
+  alloc[['names']] <- names[, names['i.max',] >= i.call, drop=FALSE]
+  alloc
+}
+names_free <- function(alloc, new.names) {
+  names <- alloc[['names']]
+  to.free <-
+    names['scope', ] == alloc[['scope']] &
+    colnames(names) %in% new.names
+  alloc[['names']] <- names[, !to.free, drop=FALSE]
+  alloc
+}
+names_bind <- function(alloc, new.names, new.ids) {
+  new.names.mx <- rbind(
+    ids=new.ids,
+    scope=rep(alloc[['scope']], length(new.names)),
+    i.max=alloc[['meta']][['i.sym.max']][new.names]
+  )
+  new.names.mx['i.max', is.na(new.names.mx['i.max',])] <- 0L
+  colnames(new.names.mx) <- new.names
+  alloc[['names']] <- cbind(alloc[['names']], new.names.mx)
+  alloc
+}
+name_to_id <- function(alloc, name) {
+  if (id <- match(name, rev(colnames(alloc[['names']])), nomatch=0)) {
+    # Reconvert the name id into data id (`rev` simulates masking)
+    id <- ncol(alloc[['names']]) - id + 1L
+    alloc[['names']]['ids', id]
+  }
+}
+
+
+
+init_dat <- function(call, meta, scope) {
+  list(
+    # Allocation data
+    dat=list(),
+    names=rbind(ids=integer(), scope=integer(), i.max=integer()),
+
+    # Equal length vector data
+    alloc=numeric(),
+    depth=integer(),
+    ids=integer(),
+    type=character(),
+    typeof=character(),
+
+    # Other data
+    i=0L,
+    scope=scope,
+    meta=meta
+  )
+}
+
 ## Stack used to track parameters ahead of reduction when processing call.
 init_stack <- function() {
   matrix(

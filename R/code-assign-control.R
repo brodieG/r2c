@@ -15,12 +15,9 @@
 
 
 f_braces <- '
-// This code should never be used, here for legacy reasons
+// Braces are a no-op; the effect is handled allocation side
 static void %s(%s) {
-  for(R_xlen_t i = 0; i < lens[di[narg - 1]]; ++i) {
-    data[di[narg]][i] = data[di[narg - 1]][i];
-  }
-  lens[di[narg]] = lens[di[narg - 1]];
+  data; di; narg; lens;
 }'
 # This function will get run, but the results discarded.  We started off using
 # it, but decided later easier to skip braces altogether, and it was easier to
@@ -38,14 +35,10 @@ code_gen_braces <- function(fun, args.reg, args.ctrl, args.flags) {
   code_res(defn=defn, narg=TRUE, name=name)
 }
 
-# These are read-only assignments.  We'll need to detect read/write assignments
-# and do something different with them.  Note that for assignments we skip one
-# parameter (the symbol being assigned to), so there is one less parameter than
-# there is in the actual call.
 f_assign <- '
+// Read-only assignments are a no-op; the effect is handled allocation side
 static void %s(%s) {
-  *data[di[1]] = *data[di[0]];
-  lens[di[1]] = lens[di[0]];
+  data; di; lens;
 }'
 code_gen_assign <- function(fun, args.reg, args.ctrl, args.flags) {
   vetr(

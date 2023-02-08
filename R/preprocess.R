@@ -237,13 +237,8 @@ pp_internal <- function(call, depth, x, argn="", assign=FALSE) {
           sym.free=sym_free(x, args[[i]]), assign=FALSE
         )
       } else {
-        # braces don't automatically preserve all their arguments
-        # (sub-expressions); increase depth for each argument, most for the 1st
-        # braces.depth.adder <- (length(args) - i) * (name == "{")
-        # new.depth <- depth + braces.depth.adder + 1L
-        new.depth <- depth + 1L
         x <- pp_internal(
-          call=args[[i]], depth=new.depth, x=x, argn=names(args)[i],
+          call=args[[i]], depth=depth + 1L, x=x, argn=names(args)[i],
           assign=i == 1L && next.assign
     ) } }
     # Bind assignments (we do it after processing of the rest of the call)
@@ -280,13 +275,9 @@ pp_internal <- function(call, depth, x, argn="", assign=FALSE) {
         call <- as.name(sprintf(DOT.ARG.TPL, x[['dot.arg.i']]))
         x[['dot.arg.i']] <- x[['dot.arg.i']] + 1L
   } } }
-  # Braces don't add a call as they just return the last value (it does mean we
-  # throw away some generated code that isn't used)
-  if(name == "{") x
-  else
-    record_call_dat(
-      x, call=call, depth=depth, argn=argn, type=type, code=code, assign
-    )
+  record_call_dat(
+    x, call=call, depth=depth, argn=argn, type=type, code=code, assign
+  )
 }
 # See preprocess for some discussion of what the elements are
 #'
