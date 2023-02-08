@@ -71,6 +71,11 @@ QDOTS <- quote(...)
 ASSIGN.SYM <- c("<-", "=", "for")
 LOOP.SYM <- c("for", "while", "repeat")
 
+# Calls that don't actually do any computing themselves, rather rely on
+# computations that happen in their arguments `for` is a bit tricky as it does
+# "compute" the counter value.
+PASSIVE.SYM <- unique(c(ASSIGN.SYM, LOOP.SYM, "if", "{"))
+
 # - Internal Symbols -----------------------------------------------------------
 
 R2C.PRIV.BASE <- ".R2C"
