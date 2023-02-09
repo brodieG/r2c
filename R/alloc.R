@@ -103,9 +103,9 @@ latest_action_call <- function(x) {
 #'
 #' Leaf symbols are looked for through (in order):
 #'
-#' * Previously assigned symbols in the expression
-#' * The naked data vectors
-#' * The outside environment
+#' * Previously assigned symbols in the expression.
+#' * The naked data vectors (hmm..., another semantic wrinkle).
+#' * The outside environment.
 #'
 #' The calls have been linearized by `preprocess` (see that for details).
 #'
@@ -134,23 +134,12 @@ latest_action_call <- function(x) {
 #' @return an alloc object:
 #'
 #' alloc
-#'   $alloc
-#'     $dat: storage list of status vectors, result vector, data vectors, and
-#'       allocated vectors.
-#'     $alloc: the used size of the vectors in `$dat` (note that for iterated
-#'       data it will be the size of the largest iteration, which may/will be
-#'       less than the true size).
-#'     $depth: tree level at which the vectors are occupied, note it should
-#'       really be "height" under a tree metaphor.  Here depth = 0 means root,
-#'       whereas leaves will have highest depth values.  See details.
-#'     $type: is it a result vector, data vector, etc.
-#'     $typeof: double/integer to track type for possible conversion to int
-#'     $i:
+#'   $alloc: see `alloc_dat`.
 #'   $call.dat: each actual call with a C counterpart
 #'     $call: the R call
 #'     $ids: ids in `alloc$dat` for parameters, and then result
 #'     $ctrl: evaluated control parameters
-#'     $flag: computed flag paramteter value
+#'     $flag: computed flag parameter value
 #'   $stack:
 #'     matrix used to track parameter sizes, but the time it's returned it
 #'     should just have the size of the final return
@@ -367,14 +356,6 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
   alloc.fin[['i']] <- match(alloc[['i']], ids.keep)
   list(alloc=alloc.fin, call.dat=call.dat, stack=stack)
 }
-## Convert Group Varying data ID to Alloc ID
-##
-## Group (iteration) varying data is offset from beginning of allocation data,
-## so we need to translate.
-
-get_gdat_id <- function(gd_id) {
-  gd_id + IX[['I.GRP']]  # starting column for group varying data
-}
 
 ## Compute Max Possible Size
 ##
@@ -513,9 +494,9 @@ alloc_dat <- function(dat, depth, size, call, typeof='double', i.call) {
 
   dat
 }
-# Naked numeric data, including group varying data, result, and other in that
-# order, where other is external data and temporary variables, although the
-# temorary variables are added by `alloc_dat`, not this function.
+## Add naked numeric data, including group varying data, result, and other, to
+## our r2c data tracking structure.  Temporary variables are added by
+## `alloc_dat`, not this function.
 
 append_dat <- function(dat, new, sizes, depth, type) {
   if(length(new)) { # it's possible `data` has no numeric nums
@@ -628,7 +609,6 @@ init_dat <- function(call, meta, scope) {
     meta=meta
   )
 }
-
 ## Stack used to track parameters ahead of reduction when processing call.
 init_stack <- function() {
   matrix(
