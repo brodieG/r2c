@@ -343,6 +343,8 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
         size=if(is.grp) NA_real_ else alloc[['size']][id],
         group=is.grp + 0, argn=argn
       )
+      # Update symbol depth (needed for assigned-to symbols)
+      alloc[['depth']][id] <- depth
       data.used <- union(data.used, id)
     } else stop("Internal Error: unexpected token.")
   }
