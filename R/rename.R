@@ -25,7 +25,7 @@ is.renames <- function(x)
   stopifnot(
     is.list(x), identical(names(x), c("i", "renames", "map")),
     is.list(x[['renames']]), is.integer(x[['i']]), is.character(x[['map']]),
-    all(names(x[['renames']]) %in% x[['map']]),
+    all(names(x[['renames']]) %in% generate_root(x[['map']])),
     all(x[['map']] %in% names(x[['renames']])),
     all(names(x[['i']]) %in% x[['map']]),
     all(x[['map']] %in% names(x[['i']]))
@@ -43,8 +43,11 @@ get_target_symbol <- function(x, fun.name) {
   }
   as.character(target.symbol)
 }
+generate_root <- function(name)
+  gsub("(^[^.[:alpha:]]|[^[:alnum:]_])", ".", substr(name, 1, 8))
+
 generate_rename <- function(rn, name) {
-  rn.root <- gsub("(^[^.[:alpha:]]|[^[:alnum:]])", ".", substr(name, 1, 8))
+  rn.root <- generate_root(name)
   rn.i <- rn[['i']][rn.root]
   rn.i <- if(is.na(rn.i)) 1L else rn.i + 1L
   target.rename <- sprintf(RENAME.ARG.TPL, rn.root, rn.i)

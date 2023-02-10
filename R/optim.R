@@ -95,7 +95,7 @@ flatten_call_rec <- function(x, calls, indices) {
 #' (intercept.r <- reuse_calls(intercept))
 #' identical(eval(intercept), eval(intercept.r))
 
-reuse_calls <- function(x) reuse_calls_int(x)[[1L]]
+reuse_calls <- function(x) reuse_calls_int(x)[['x']]
 
 ## Internal version that additional returns a map of the temporary values to the
 ## expressions they replace.
@@ -161,6 +161,6 @@ reuse_calls_int <- function(x) {
 
   # Return the reuse-substituted call along with the mapping of each reuse
   # variable to the expression it stands in for.
-  list(x, reuse=reuse)
+  list(x=x, reuse=reuse)
 }
 
