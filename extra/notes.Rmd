@@ -1,3 +1,59 @@
+# Single Group Performance
+
+Much slower than base, would be interesting to track down what's going on.  It's
+particularly bad if we reverse the order, but it looks like we've got a whole
+extra vector being allocated that maybe doesn't need to be.
+
+    library(r2c)
+    slope2 <- function(x, y) {
+      mux <- mean(x)
+      x_mux <- x - mux
+      sum(x_mux * (y - mean(y))) / sum(x_mux^2)
+    }
+    r2c_slope2 <- r2cf(slope2)
+    n <- 1e8
+    a <- runif(n)
+    b <- runif(n) * .5 + a * .5
+    gc()
+    ###             used   (Mb) gc trigger   (Mb) limit (Mb)  max used   (Mb)
+    ### Ncells    362973   19.4     698777   37.4         NA    677183   36.2
+    ### Vcells 200733947 1531.5  362973722 2769.3      16384 300734934 2294.5
+    system.time(slope2(a, b))
+    ##   user  system elapsed 
+    ##  0.834   0.192   1.026 
+    gc()
+    ##            used   (Mb) gc trigger   (Mb) limit (Mb)  max used   (Mb)
+    ## Ncells    363549   19.5     698777   37.4         NA    677183   36.2
+    ## Vcells 200735202 1531.5  579650024 4422.4      16384 400737393 3057.4
+    system.time(r2c_slope2(a, b))
+    ##   user  system elapsed 
+    ##  0.807   0.210   1.069 
+    gc()
+    ##             used   (Mb) gc trigger   (Mb) limit (Mb)  max used   (Mb)
+    ## Ncells    373739   20.0     698777   37.4         NA    677183   36.2
+    ## Vcells 200759255 1531.7  579650024 4422.4      16384 550877897 4202.9
+    system.time(slope2(a, b))
+    ##   user  system elapsed 
+    ##  0.867   0.228   1.094 
+    gc()
+    ##             used   (Mb) gc trigger   (Mb) limit (Mb)  max used   (Mb)
+    ## Ncells    432238   23.1     885577   47.3         NA    677183   36.2
+    ## Vcells 200891389 1532.7  579650024 4422.4      16384 550877897 4202.9
+    system.time(r2c_slope2(a, b))
+    ##   user  system elapsed 
+    ##  0.864   0.326   1.265 
+    gc()
+    ##             used   (Mb) gc trigger   (Mb) limit (Mb)  max used   (Mb)
+    ## Ncells    434879   23.3     885577   47.3         NA    677183   36.2
+    ## Vcells 200897934 1532.8  579650024 4422.4      16384 550990626 4203.8
+
+Ok, some more testing, the problem is almost certainly that there we generate an
+integer group vector that is the difference here.  Almost certainly the group
+order vector that isn't altrep as noted.  That might be enough to explain the
+difference in timing (note there is a lot of sensitivity to the order in which
+things happen above given we make big memory requests from the OS).
+
+
 # Braces
 
 The idea of dropping the braces was cute, but it wreaks havoc with all sorts of
@@ -13,6 +69,75 @@ that self is e.g. protected?  Does it matter?  Is all the what need to do update
 the depth then?  Seems right.  Assignment should probably do something similar.
 
 Then, we restore the brackets code, but it truly becomes a no-op.
+
+Main challenge right now is that we need to convey the special case where the
+result needs to be written to the final result and not just an intermediate
+point, imagine:
+
+    {
+      a
+      {
+        b
+        x <- b + a
+      }
+    }
+
+This is going to be several layers deep, but still needs `b + a` written to the
+result, preferably without having to copy it from unnecessary temporary
+assignments.
+
+We could have braces promote the result to a new depth.  Assignments don't
+strictly need to do that because they add the protection.
+
+But ultimately the problem is we need to know in the above that `b + a` should
+be writing to the result.  We would know that by having analyzed the linearized
+call and finding the last non braces.
+
+# Assignments
+
+Need to restructure to allow multiple symbols to point to the same memory
+allocation.
+
+When a memory allocation gets a name, it gets a protection.  For each
+allocation, we need to track all the names bound to it, and the protection each
+of those conveys.
+
+So need two lists, one tracking for each data, what symbols are bound to it, and
+another, for each symbol, what the latest protection it provides.  We also need
+a lookup table for each symbol, what data it points to, that will respect
+masking, etc.
+
+We really need `append_dat` and `alloc_dat` to have some structural guarantees
+so we don't accidentally mess it up.
+
+Also, `append_dat` can add names.
+
+Some names can be overwritten, but others can't (e.g. data, later when we have
+function scope, outer function ones).
+
+For lookups, probably we just use a named vector with possibly repeated names,
+and some symbol assignment level (this will be the scope for e.g. future
+function environments, and for data today).
+
+To determine whether a slot is free, it needs to check that it is not in the
+name vector.
+
+Name vector is cleaned up anytime there is an assignment, and after every
+iteration (protection expiration).
+
+Each name needs:
+* A scope (cannot overwrite something of lower scope).
+* A data id it points to.
+* An order in the name list.
+
+Each iteration needs cleanup:
+* Remove any out of scope names.
+* Remove any expired names.
+
+* names
+* id
+* scope
+* last.call
 
 # Linearized vs Not
 
@@ -61,6 +186,10 @@ Additionally:
 * if:
   * variables written to must be the same size across all branches; branches
     that don't write ok so long as prior var same size.
+
+Need to think about what compatible allocations are.  Certainly different
+branches must produce the same size result.  Does the result need to end up in
+the same allocation id?
 
 ## Loop C Implementation
 
@@ -239,7 +368,9 @@ preproc has the argument name.  It would then keep a top-level list of all the
 assigned to arg names accumulated to date, and if at some point later down the
 track a write function involves that parameter, it would know.  That means that
 
-## Arith Assign (Memory Re-Use)
+## Memory Re-Use
+
+### Arith Assign
 
 Can we use `+=` to avoid having to have memory allocated for both LHS and RHS
 for the arithmetic operators?  Might complicate things substantially.  The main
@@ -258,6 +389,26 @@ resolve `alloc` still having to do work.
 It does create a second situation where we want to be able to code gen two
 different pathways depending on the nature of subsequent code.  This should all
 be able to happen at the preproc level though, I think.
+
+### Do we do it already?
+
+For the case of assigned to variables it seems maybe the code already does it,
+as we see things like:
+
+    ..$ :List of 4
+    .. ..$ call: language square(x_mux)
+    .. ..$ ids : int [1:2] 5 5
+    .. ..$ ctrl: list()
+    .. ..$ flag: int 0
+
+In this case, `x_mux` is not referenced any further, and is thus free.  Seems
+like this can work in some cases, but not all?
+
+    f(x_mux, some_calc)
+
+In this case, there is a risk that `some_calc` will end up using `x_mux`'s
+allocation, so this is definitely too aggressive.  When a terminal symbol is
+used, it should update the depth of the corresponding allocation.
 
 ## Expression Re-use
 

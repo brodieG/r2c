@@ -101,3 +101,16 @@ unitizer_sect("Formals", {
   local({x <- 10; r2c_sub_rev3(-1)})
   local({x <- c(10,20); group_exec(r2c_sub_rev3, 1:3, 1:3)})
 })
+unitizer_sect("brackets/assign", {
+  external <- 1:5
+  bracket <- r2cq({
+    a <- 10
+    c <- {
+      b <- 3
+      b * a * external
+    }
+    d <- sum(tmp)
+    c * d
+  }, formals=c('tmp'))
+  group_exec(bracket, 1:10, rep(1:2, each=5))
+})

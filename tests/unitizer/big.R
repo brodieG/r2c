@@ -50,4 +50,6 @@ unitizer_sect("Big Tests", {
   all.equal(c(r2c.int, r2c_slope(x, y)), stats.coef)
   ri.int <- rolli_exec(r2c_int, list(x, y), n=w)
 
+  # With intermediate assignments
+  identical(ri.slope, rolli_exec(r2c_slope2, list(x, y), n=w))
 })
