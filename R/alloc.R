@@ -17,28 +17,6 @@
 
 NULL
 
-collect_call_symbols <- function(x) {
-  syms <- character()
-  if(is.call(x) && length(x) > 1) {
-    syms <- c(syms, collect_call_symbols(x))
-  } else if (is.symbol(x)) {
-    syms <- as.character(x)
-  }
-  syms
-}
-collect_loop_call_symbols <- function(x) {
-  syms <- character()
-  if(is.call(x) && length(x) > 1) {
-    name <- as.character(x[[1L]])
-    syms <-
-      if(name == "for" && length(x) == 4L) collect_call_symbols(x[[4L]])
-      else if(name == "while" && length(x) == 3L) collect_call_symbols(x[[3L]])
-      else if(name == "repeat" && length(x) == 2L) collect_call_symbols(x[[2L]])
-      else character()
-  }
-  syms
-}
-
 #' Find Latest Symbol Instance
 #'
 #' This currently allows control/flag parameter symbols to count, even though

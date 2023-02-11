@@ -15,9 +15,6 @@
 
 # - Util Funs ------------------------------------------------------------------
 
-is.call_w_args <- function(x)
-  is.call(x) && length(x) > 1L && (is.symbol(x[[1L]]) || is.character(x[[1L]]))
-
 ## See `rename_call` for spec this is checking.  We don't get into checking the
 ## symbols to try to reduce the cost of the check.
 
@@ -31,18 +28,6 @@ is.renames <- function(x)
     all(x[['map']] %in% names(x[['i']]))
   )
 
-get_target_symbol <- function(x, fun.name) {
-  target.symbol <- x[[2L]]
-  target.type <- typeof(target.symbol)
-  if(target.type != 'symbol') {
-    msg <-
-      if(fun.name == "for")
-        paste("expected symbol for loop variable but got", target.type)
-      else "invalid left-hand side to assignment."
-    stop(simpleError(msg, x))
-  }
-  as.character(target.symbol)
-}
 generate_root <- function(name)
   gsub("(^[^.[:alpha:]]|[^[:alnum:]_])", ".", substr(name, 1, 8))
 
@@ -63,30 +48,6 @@ apply_rename <- function(rn, symbol) {
 }
 init_rename <- function() list(i=integer(), renames=list(), map=character())
 
-#' Identify Symbols Assigned
-#'
-#' Return names of all symbols assigned to within a call.  This is not super
-#' efficient because we recurse into every subcall, but then later as
-#' `rename_call` reaches deeper, it will recurse over the subcalls again.  In
-#' theory, we could do a 1 pass version of it that can then be subset into in
-#' some way if this ever became a bottleneck.
-#'
-#' @noRd
-
-assigned_symbols <- function(x, symbols=character()) {
-  if(is.call_w_args(x)) {
-    fun.name <- as.character(x[[1L]])
-    if(fun.name %in% ASSIGN.SYM) {
-      symbols <- c(symbols, get_target_symbol(x, fun.name))
-    }
-    # Recurse into the paramaters of the call (techincally for assignments we
-    # shouldn't do 2L, but it should be harmless).
-    for(j in seq(2L, length(x), 1L)) {
-      symbols <- assigned_symbols(x[[j]], symbols=symbols)
-    }
-  }
-  unique(symbols)
-}
 # - Main Funs ------------------------------------------------------------------
 
 #' Rename Symbols in Calls

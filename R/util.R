@@ -125,3 +125,70 @@ lcurry <- function (FUN, ...) {
   f
 }
 
+# - Internal Utility Tools -----------------------------------------------------
+
+is.call_w_args <- function(x)
+  is.call(x) && length(x) > 1L && (is.symbol(x[[1L]]) || is.character(x[[1L]]))
+
+get_target_symbol <- function(x, fun.name) {
+  target.symbol <- x[[2L]]
+  target.type <- typeof(target.symbol)
+  if(target.type != 'symbol') {
+    msg <-
+      if(fun.name == "for")
+        paste("expected symbol for loop variable but got", target.type)
+      else "invalid left-hand side to assignment."
+    stop(simpleError(msg, x))
+  }
+  as.character(target.symbol)
+}
+is.assign_call <- function(x)
+  is.call(x) && length(x) > 2 &&
+  (is.name(x[[1L]]) || is.character(x[[1L]])) &&
+  isTRUE(as.character(x[[1L]]) %in% ASSIGN.SYM)
+
+#' Identify Symbols Assigned
+#'
+#' Return names of all symbols assigned to within a call.  This is not super
+#' efficient because we recurse into every subcall, but then later as
+#' `rename_call` reaches deeper, it will recurse over the subcalls again.  In
+#' theory, we could do a 1 pass version of it that can then be subset into in
+#' some way if this ever became a bottleneck.
+#'
+#' @noRd
+
+assigned_symbols <- function(x, symbols=character()) {
+  if(is.assign_call(x)) {
+    symbols <- c(symbols, get_target_symbol(x, fun.name))
+    for(j in seq(2L, length(x), 1L)) {
+      symbols <- assigned_symbols(x[[j]], symbols=symbols)
+  } }
+  unique(symbols)
+}
+
+collect_call_symbols <- function(x) {
+  syms <- character()
+  if(is.call(x) && length(x) > 1) {
+    for(i in seq(2L, length(x), 1L))
+      syms <- c(syms, collect_call_symbols(x[[i]]))
+  } else if (is.symbol(x)) {
+    syms <- as.character(x)
+  }
+  syms
+}
+collect_loop_call_symbols <- function(x) {
+  syms <- character()
+  if(is.call(x) && length(x) > 1) {
+    name <- as.character(x[[1L]])
+    syms <-
+      if(name == "for" && length(x) == 4L) collect_call_symbols(x[[4L]])
+      else if(name == "while" && length(x) == 3L) collect_call_symbols(x[[3L]])
+      else if(name == "repeat" && length(x) == 2L) collect_call_symbols(x[[2L]])
+      else character()
+  }
+  syms
+}
+
+
+
+
