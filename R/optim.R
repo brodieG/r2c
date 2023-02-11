@@ -113,6 +113,10 @@ reuse_calls_int <- function(x) {
   calls.flat <- flat[['calls']]
   calls.indices <- flat[['indices']]
   index.lookup <- vapply(calls.indices, toString, "")
+  index.max <- max(lengths(calls.indices))
+  calls.indices.mx <- vapply(
+    calls.indices, function(x) {length(x) <- index.max; x}, integer(index.max)
+  )
 
   # Deparse in order to match calls
   is.call <- vapply(calls.flat, typeof, "") == "language"
@@ -136,29 +140,61 @@ reuse_calls_int <- function(x) {
   # For each repeated call, identify how far out it can be hoisted (we want
   # generated assignments to occur outside of parameters, i.e. avoid things
   # like `f(tmp1 <- x, tmp2 <- y)` as param evaluation order is tricky).
-  # Constraints include sub-expressions they contain, i.e. an expression can be
-  # hoisted no earlier than a sub-expression it contains.  So process these in
-  # reverse depth order (which is the order the flattened indices are in).
-  calls.rep.i <- calls.indices[calls.rep]
-  max.rep.depth <- max(lengths(calls.rep.i))
-  calls.rep.i.ext <- vapply(
-    calls.rep.i,
-    function(x) {length(x) <- max.rep.depth; x},
-    integer(max.rep.depth)
-  )
-  calls.rep.i.o <- do.call(order, split(calls.rep.i.ext, row(calls.rep.i.ext)))
-
-  # Todo:
-  # * For each call, collect all the symbols
-  # * Match against sym.assign to find when assigned, if zero means exists out
-  #   of scope.
-  # * Find nearest brace, if zero means out of scope.
-  # * Find any sub-calls earlier in the list (list doesn't exist yet)
-  # * Relocate indices to the aforementioned list at the right spot.
-  # * repeat.
-
-  stop("in progress")
-
+  #
+  # An expression should not be hoisted no earlier than a sub-expression it
+  # contains.  So process these in reverse depth order (which is the order the
+  # flattened indices are in).  Brace limit is first expression at level of
+  # closeset enclosing brace.  Enclosing calls are listed after their leaves,
+  # but at any given call depth the arguments are in the order they are in the
+  # call.
+  hoists <- vector("list", length(calls.first))
+  hoist.last <- 0L
+  braces <- which(vapply(calls.flat, is.brace_call, TRUE))
+  for(j in seq_along(calls.first)) {
+    i <- calls.first[j]
+    enc.brace <- min(c(length(calls.flat), braces[braces > i]))
+    call.syms <- collect_call_symbols(calls.flat[[i]])
+    sym.hoist.lim <- max(match(call.syms, sym.assign, nomatch=0))
+    if(sym.hoist.lim >= enc.brace) {
+      # can't hoist b/c component symbol defined too late; void the replacement
+      calls.first <- calls.first[!calls.first == i]
+      calls.rep <- calls.rep[
+        !calls.rep %in% match(calls.dep[[i]], calls.dep, nomatch=0)
+      ]
+    } else {
+      # ok to hoist, find index to hoist into (i.e. insert just before).  The
+      # idea is to find the enclosing brace, and then get the next level index
+      # that our call is in relative to the brace, and insert just before that.
+      if(!enc.brace) {
+        brace.root <- integer()
+        brace.i.len <- 0L
+      }
+      else {
+        brace.i.len <- length(calls.indices[[enc.brace]])
+        brace.root <- calls.indices.mx[seq_len(brace.i.len), , drop=FALSE]
+      }
+      brace.match <-
+        colSums(brace.root == calls.indices[[enc.brace]], na.rm=TRUE) ==
+        brace.i.len
+      brace.content.lvl <- lengths(calls.indices) ==  brace.i.len + 1L
+      brace.contents <- brace.content.lvl & brace.match
+      # Get our call's next level index
+      call.root.i <- seq_len(brace.i.len + 1L)
+      call.root <- calls.indices.mx[call.root.i, , drop=FALSE]
+      call.root.match <- call.root == calls.indices[[i]][call.root.i]
+      call.match <- colSums(call.root.match, na.rm=TRUE) == brace.i.len + 1L
+      hoist.point <-
+        which(call.match & lengths(calls.indices) == brace.i.len + 1L)
+      if(length(hoist.point) != 1L)
+        stop("Internal Error: failed to find unique hoist point.")
+      if(hoist.point < hoist.last)
+        stop("Internal Error: non-sequential hoist points?")
+      hoists[[j]] <- list(
+        i=i, hoist=calls.indices[[hoist.point]], expr=calls.flat[[i]],
+        expr.sub=NULL
+      )
+      hoist.last <- hoist.point
+  } }
   # Eliminate Redundant repeated calls caused by a repeated call with subcalls
   # as obviously the subcalls will be repeated too
   rep.counts <- table(calls.match[calls.match %in% which(is.call)])
@@ -171,33 +207,65 @@ reuse_calls_int <- function(x) {
   if(any(rep.count.first < rep.count.parent) || anyNA(calls.first.keep))
     stop("Internal Error: implied nonsensical call hierarchy.")
 
-  # Modify calls so first instance of repeats becomes an assignment, subsequent
-  # ones reuse this symbol.  For each modified subcall, record a reference to
-  # the original call (useful for annotating the modified call)
+  # Now also eliminate redundant from hoists; we do this after because hoisting
+  # itself can eliminate calls from eligibility differently than redundant
+  # elimination, so this reduces chance of eliminating something made
+  # non-redundant by hoisting.
+  hoist.i <- vapply(hoists, "[[", 0L, "i")
+  hoists <- hoists[hoist.i %in% calls.first.keep]
+
+  # Modify calls so each expression becomes a reference to the re-use symbol.
   ru.i <- 1L
   reuse <- list()
-  for(i in calls.first.keep) {
-    index.i <- calls.indices[[i]]
+  for(i in seq_along(hoists)) {
+    to.sub <- which(calls.dep[hoists[[i]][['i']]] == calls.dep)
     ru.char <- sprintf(REUSE.ARG.TPL, ru.i)
     ru.arg <- as.name(ru.char)
     ru.i <- ru.i + 1L
-    reuse[[ru.char]] <- x.orig[[index.i]]  # keep a copy of the reuse subs
-    x[[index.i]] <- call("<-", ru.arg, x[[index.i]])
-    call.rep <- seq_along(calls.dep)[-calls.first][
-      match(calls.dep[i], calls.dep[-calls.first])
-    ]
-    for(j in call.rep) x[[calls.indices[[j]]]] <- ru.arg
+    hoists[[i]][['expr.sub']] <- call("<-", ru.arg, hoists[[i]][['expr']])
+    for(j in to.sub) x[[calls.indices[[j]]]] <- ru.arg
+  }
+  # Merge all the hoists that happen at the same point
+  hoist.indices <- vapply(hoists, function(x) toString(x[['hoist']]), "")
+  hoist.split <- split(hoists, hoist.indices)  # ugh, order not guaranteed?
+  hoists.merged <- lapply(
+    hoist.split,
+    function(x) {
+      list(hoist=x[[1L]][['hoist']], exprs=lapply(x, "[[", "expr.sub"))
+  } )
+  # Insert assignment calls at the hoist points.
+  extra.i <- integer()
+  if(length(hoists.merged) && !length(braces)) {
+    # Need to add an outermost brace
+    x <- call("{", x)
+    extra.i <- 2L
+  }
+  for(h.i in seq_along(hoists.merged)) {
+    hoist <- hoists.merged[[h.i]]
+    hoist.point <- c(extra.i, hoist[['hoist']])
+    hoist.parent <- hoist.point[-length(hoist.point)]
+    hoist.index <- hoist.point[length(hoist.point)]
+    expr.tmp <- x[[hoist.parent]]
+    if(!is.brace_call(expr.tmp) || hoist.index < 2L)
+      stop("Internal Error: bad hoist data.")
+    new.len <- length(hoist[['exprs']])
+    expr.len <- length(expr.tmp) + new.len
+    expr.target <- as.call(vector("list", expr.len))
+    left <- seq_len(hoist.index - 1L)
+    right <- seq(hoist.index, length(expr.tmp), 1L)
+    middle <- hoist.index + seq_along(hoist[['exprs']]) - 1L
+    expr.target[left] <- expr.tmp[left]
+    expr.target[middle] <- hoist[['exprs']]
+    expr.target[right + new.len] <- expr.tmp[right]
+    x[[hoist.parent]] <- expr.target
   }
   # Undo the renames we used to ensure call reuse did not incorrectly reuse
   # things that are different due to e.g. assignment
   x <- unrename_call(x, rename.dat[['rn']])
 
   # Return the reuse-substituted call along with the mapping of each reuse
-  # variable to the expression it stands in for.
-  list(x=x, reuse=reuse)
+  # variable to the expression it stands in for (the latter would be `reuse`,
+  # but we dropped that for now).
+  list(x=x, reuse=NULL)
 }
 
-
-reuse_call <- function(x) {
-
-}
