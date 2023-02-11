@@ -34,7 +34,7 @@ flatten_call <- function(x) {
 flatten_call_rec <- function(x, calls, indices) {
   calls.res <- indices.res <- list()
   if(is.call(x) && length(x) > 1) {
-    for(i in seq(2L, length(x), 1)) {
+    for(i in seq(2L, length(x), 1L)) {
       dat <- flatten_call_rec(x[[i]], calls, c(indices, i))
       calls.res <- c(calls.res, dat[['calls']])
       indices.res <- c(indices.res, dat[['indices']])
@@ -126,6 +126,39 @@ reuse_calls_int <- function(x) {
   calls.rep <- calls.match != seq_along(calls.match) & is.call
   calls.first <- unique(match(calls.dep[calls.rep], calls.dep))
 
+  # Find earliest index of each symbol.
+  sym.assign <- vapply(calls.flat, is.assign_call, TRUE)
+  syms <- character(length(calls.flat))
+  syms[sym.assign] <- vapply(calls.flat[sym.assign], get_target_symbol, "")
+  if(anyDuplicated(syms[nzchar(syms)]))
+    stop("Internal Error: duplicated assigned symbols, rename should prevent.")
+
+  # For each repeated call, identify how far out it can be hoisted (we want
+  # generated assignments to occur outside of parameters, i.e. avoid things
+  # like `f(tmp1 <- x, tmp2 <- y)` as param evaluation order is tricky).
+  # Constraints include sub-expressions they contain, i.e. an expression can be
+  # hoisted no earlier than a sub-expression it contains.  So process these in
+  # reverse depth order (which is the order the flattened indices are in).
+  calls.rep.i <- calls.indices[calls.rep]
+  max.rep.depth <- max(lengths(calls.rep.i))
+  calls.rep.i.ext <- vapply(
+    calls.rep.i,
+    function(x) {length(x) <- max.rep.depth; x},
+    integer(max.rep.depth)
+  )
+  calls.rep.i.o <- do.call(order, split(calls.rep.i.ext, row(calls.rep.i.ext)))
+
+  # Todo:
+  # * For each call, collect all the symbols
+  # * Match against sym.assign to find when assigned, if zero means exists out
+  #   of scope.
+  # * Find nearest brace, if zero means out of scope.
+  # * Find any sub-calls earlier in the list (list doesn't exist yet)
+  # * Relocate indices to the aforementioned list at the right spot.
+  # * repeat.
+
+  stop("in progress")
+
   # Eliminate Redundant repeated calls caused by a repeated call with subcalls
   # as obviously the subcalls will be repeated too
   rep.counts <- table(calls.match[calls.match %in% which(is.call)])
@@ -164,3 +197,7 @@ reuse_calls_int <- function(x) {
   list(x=x, reuse=reuse)
 }
 
+
+reuse_call <- function(x) {
+
+}
