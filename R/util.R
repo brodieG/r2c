@@ -174,7 +174,7 @@ collect_call_symbols <- function(x) {
   syms <- character()
   if(is.call(x) && length(x) > 1) {
     for(i in seq(2L, length(x), 1L))
-      syms <- c(syms, collect_call_symbols(x[[i]]))
+      syms <- union(syms, collect_call_symbols(x[[i]]))
   } else if (is.symbol(x)) {
     syms <- as.character(x)
   }
