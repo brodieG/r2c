@@ -146,6 +146,10 @@ is.assign_call <- function(x)
   is.call(x) && length(x) > 2 &&
   (is.name(x[[1L]]) || is.character(x[[1L]])) &&
   isTRUE(as.character(x[[1L]]) %in% ASSIGN.SYM)
+is.brace_call <- function(x)
+  is.call(x) &&
+  (is.name(x[[1L]]) || is.character(x[[1L]])) &&
+  as.character(x[[1L]]) == "{"
 
 #' Identify Symbols Assigned
 #'
