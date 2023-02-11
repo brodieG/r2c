@@ -1,3 +1,34 @@
+# Reuse
+
+We want to hoist stuff out so that instead of:
+
+    (.R2C_SUB_2 <- mean(y)) -
+    (.R2C_SUB_1 <- mean(x)) *
+      (sum((.R2C_SUB_3 <- (x - .R2C_SUB_1)) * (y - .R2C_SUB_2)) /
+        sum(.R2C_SUB_3^2)
+      )
+
+We have:
+
+    .R2C_SUB_2 <- mean(y)
+    .R2C_SUB_1 <- mean(x)
+    .R2C_SUB_3 <- (x - .R2C_SUB_1)
+    .R2C_SUB_2 - .R2C_SUB_1 * sum(.R2C_SUB_3 *
+      (y - .R2C_SUB_2)) / sum(.R2C_SUB_3^2)
+
+So maybe:
+
+* For every symbol, find out the point at which it has been defined.
+* For every expr to sub, find the earliest point it can be moved forward to:
+  * Stopping at the first set of braces
+* Move the sub-expression there if we're at a set of braces (if not don't sub?)
+  * We could still possibly be safe if every nested call just had one parameter,
+    and we add the constraint that all `r2c` expressions must evaluate their
+    single parameter.
+* For expressions that can't be moved?
+* Perhaps this whole process needs to be done iteratively?
+
+
 # Single Group Performance
 
 Much slower than base, would be interesting to track down what's going on.  It's
@@ -53,91 +84,9 @@ order vector that isn't altrep as noted.  That might be enough to explain the
 difference in timing (note there is a lot of sensitivity to the order in which
 things happen above given we make big memory requests from the OS).
 
-
 # Braces
 
-The idea of dropping the braces was cute, but it wreaks havoc with all sorts of
-other assumptions we make about depth.
-
-Right now the only way we get it to work is by having a C implementation of
-braces that copies from source to result.  Could it work if instead we managed
-to get braces to designate the same read and write?  It's a bit tricky because
-of the possibility of a result.
-
-So if we add a `self` option to `alloc_dat`, should work probably, but what if
-that self is e.g. protected?  Does it matter?  Is all the what need to do update
-the depth then?  Seems right.  Assignment should probably do something similar.
-
-Then, we restore the brackets code, but it truly becomes a no-op.
-
-Main challenge right now is that we need to convey the special case where the
-result needs to be written to the final result and not just an intermediate
-point, imagine:
-
-    {
-      a
-      {
-        b
-        x <- b + a
-      }
-    }
-
-This is going to be several layers deep, but still needs `b + a` written to the
-result, preferably without having to copy it from unnecessary temporary
-assignments.
-
-We could have braces promote the result to a new depth.  Assignments don't
-strictly need to do that because they add the protection.
-
-But ultimately the problem is we need to know in the above that `b + a` should
-be writing to the result.  We would know that by having analyzed the linearized
-call and finding the last non braces.
-
 # Assignments
-
-Need to restructure to allow multiple symbols to point to the same memory
-allocation.
-
-When a memory allocation gets a name, it gets a protection.  For each
-allocation, we need to track all the names bound to it, and the protection each
-of those conveys.
-
-So need two lists, one tracking for each data, what symbols are bound to it, and
-another, for each symbol, what the latest protection it provides.  We also need
-a lookup table for each symbol, what data it points to, that will respect
-masking, etc.
-
-We really need `append_dat` and `alloc_dat` to have some structural guarantees
-so we don't accidentally mess it up.
-
-Also, `append_dat` can add names.
-
-Some names can be overwritten, but others can't (e.g. data, later when we have
-function scope, outer function ones).
-
-For lookups, probably we just use a named vector with possibly repeated names,
-and some symbol assignment level (this will be the scope for e.g. future
-function environments, and for data today).
-
-To determine whether a slot is free, it needs to check that it is not in the
-name vector.
-
-Name vector is cleaned up anytime there is an assignment, and after every
-iteration (protection expiration).
-
-Each name needs:
-* A scope (cannot overwrite something of lower scope).
-* A data id it points to.
-* An order in the name list.
-
-Each iteration needs cleanup:
-* Remove any out of scope names.
-* Remove any expired names.
-
-* names
-* id
-* scope
-* last.call
 
 # Linearized vs Not
 
@@ -410,23 +359,6 @@ In this case, there is a risk that `some_calc` will end up using `x_mux`'s
 allocation, so this is definitely too aggressive.  When a terminal symbol is
 used, it should update the depth of the corresponding allocation.
 
-## Expression Re-use
-
-We know these are non-modifiable assignments as they are not true symbols.
-Should we reflect this somewhere?  Because if we try to fail safe and default to
-copying things, only to go back later and change those that don't need copying,
-we really need to make sure we detect this.
-
-A challenge is that when we add an assignment to replace an expression, what
-used to be a single call, becomes two.  So any positions indices won't work.
-We also have the awkwardness or our rename call array potentially doing a double
-rename if we don't handle it correctly.
-
-Maybe for each element in the call.rename array, we track the original call
-index.
-
-First need to deparse all non terminal expressions
-
 ## Memory
 
 IIRC currently each call can re-use a memory slot deeper than itself.  This
@@ -445,7 +377,6 @@ We then need to figure out how to resolve symbols.
 
 In the reduce step, we can just change the depth of the prior call's result on
 the stack (remember to test sequential allocations `a <- b <- fun(c)`).
-
 
 Things to do:
 

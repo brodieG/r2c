@@ -59,6 +59,13 @@ r2c_sum <- r2cq(sum(x))
 r2c_add <- r2cq(x + y)
 r2c_len <- r2cq(length(x))
 
+slope2 <- function(x, y) {
+  mux <- mean(x)
+  x_mux <- x - mux
+  sum(x_mux * (y - mean(y))) / sum(x_mux^2)
+}
+r2c_slope2 <- r2cf(slope2)
+
 # Helper Functions
 show_bits <- function(x, n=as.integer(max(c(log2(x), 0), na.rm=TRUE)) + 1L) {
   raw <- vapply(x, intToBits, raw(32))
