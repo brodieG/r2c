@@ -111,12 +111,13 @@ reuse_calls_int <- function(x) {
   # modified calls to the original ones
   flat <- flatten_call(x)
   calls.flat <- flat[['calls']]
-  calls.indices <- flat[['indices']]
-  index.lookup <- vapply(calls.indices, toString, "")
-  index.max <- max(lengths(calls.indices))
-  calls.indices.mx <- vapply(
-    calls.indices, function(x) {length(x) <- index.max; x}, integer(index.max)
+  calls.ix <- flat[['indices']]
+  index.lookup <- vapply(calls.ix, toString, "")
+  index.max <- max(calls.ix.len)
+  calls.ix.mx <- vapply(
+    calls.ix, function(x) {length(x) <- index.max; x}, integer(index.max)
   )
+  calls.ix.len <- lengths(calls.ix)
 
   # Deparse in order to match calls
   is.call <- vapply(calls.flat, typeof, "") == "language"
@@ -152,54 +153,68 @@ reuse_calls_int <- function(x) {
   braces <- which(vapply(calls.flat, is.brace_call, TRUE))
   for(j in seq_along(calls.first)) {
     i <- calls.first[j]
+    # Find start of enclosing brace.  Non trivial because brace is listed
+    # *after* all its constitutent expressions.
     enc.brace <- min(c(length(calls.flat), braces[braces > i]))
+    call.same.lvl.grps <- cumsum(calls.ix.len == length(calls.ix[[enc.brace]]))
+    enc.brace.start <-
+      max(which(call.same.lvl.grps == call.same.lvl.grps[enc.brace] - 1L)) + 1L
+    if(enc.brace.start >= i || enc.brace < i)
+      stop("Internal Error: brace location non-sensical.")
+
+    # Find index to hoist into (i.e. insert just before).  The idea is to find
+    # the enclosing brace, and then get the next level index that our call is in
+    # relative to the brace, and insert just before that.
+    if(!enc.brace) {
+      brace.root <- integer()
+      brace.i.len <- 0L
+    }
+    else {
+      brace.i.len <- length(calls.ix[[enc.brace]])
+      brace.root <- calls.ix.mx[seq_len(brace.i.len), , drop=FALSE]
+    }
+    brace.match <-
+      colSums(brace.root == calls.ix[[enc.brace]], na.rm=TRUE) ==
+      brace.i.len
+    brace.content.lvl <- calls.ix.len ==  brace.i.len + 1L
+    brace.contents <- brace.content.lvl & brace.match
+    # Get our call's next level index
+    call.root.i <- seq_len(brace.i.len + 1L)
+    call.root <- calls.ix.mx[call.root.i, , drop=FALSE]
+    call.root.match <- call.root == calls.ix[[i]][call.root.i]
+    call.match <- colSums(call.root.match, na.rm=TRUE) == brace.i.len + 1L
+    hoist.point <-
+      which(call.match & calls.ix.len == brace.i.len + 1L)
+
+    # Check whether the hoist point is valid, and if not remove expression from
+    # consideration as a substitutable one
     call.syms <- collect_call_symbols(calls.flat[[i]])
-    sym.hoist.lim <- max(match(call.syms, sym.assign, nomatch=0))
-    if(sym.hoist.lim >= enc.brace) {
+    sym.hoist.lim <- max(match(call.syms, syms, nomatch=0))
+    if(sym.hoist.lim >= hoist.point) {
       # can't hoist b/c component symbol defined too late; void the replacement
       calls.first <- calls.first[!calls.first == i]
       calls.rep <- calls.rep[
         !calls.rep %in% match(calls.dep[[i]], calls.dep, nomatch=0)
       ]
     } else {
-      # ok to hoist, find index to hoist into (i.e. insert just before).  The
-      # idea is to find the enclosing brace, and then get the next level index
-      # that our call is in relative to the brace, and insert just before that.
-      if(!enc.brace) {
-        brace.root <- integer()
-        brace.i.len <- 0L
-      }
-      else {
-        brace.i.len <- length(calls.indices[[enc.brace]])
-        brace.root <- calls.indices.mx[seq_len(brace.i.len), , drop=FALSE]
-      }
-      brace.match <-
-        colSums(brace.root == calls.indices[[enc.brace]], na.rm=TRUE) ==
-        brace.i.len
-      brace.content.lvl <- lengths(calls.indices) ==  brace.i.len + 1L
-      brace.contents <- brace.content.lvl & brace.match
-      # Get our call's next level index
-      call.root.i <- seq_len(brace.i.len + 1L)
-      call.root <- calls.indices.mx[call.root.i, , drop=FALSE]
-      call.root.match <- call.root == calls.indices[[i]][call.root.i]
-      call.match <- colSums(call.root.match, na.rm=TRUE) == brace.i.len + 1L
-      hoist.point <-
-        which(call.match & lengths(calls.indices) == brace.i.len + 1L)
+      # can hoist it, so record the hoist
       if(length(hoist.point) != 1L)
         stop("Internal Error: failed to find unique hoist point.")
       if(hoist.point < hoist.last)
         stop("Internal Error: non-sequential hoist points?")
       hoists[[j]] <- list(
-        i=i, hoist=calls.indices[[hoist.point]], expr=calls.flat[[i]],
+        i=i, hoist=calls.ix[[hoist.point]], expr=calls.flat[[i]],
         expr.sub=NULL
       )
       hoist.last <- hoist.point
   } }
+  hoists <- hoists[!vapply(hoists, is.null, TRUE)]
+
   # Eliminate Redundant repeated calls caused by a repeated call with subcalls
   # as obviously the subcalls will be repeated too
   rep.counts <- table(calls.match[calls.match %in% which(is.call)])
   index.lookup.parent <-
-    vapply(calls.indices[calls.first], function(x) toString(x[-length(x)]), "")
+    vapply(calls.ix[calls.first], function(x) toString(x[-length(x)]), "")
   index.parent <- match(index.lookup.parent, index.lookup)
   rep.count.first <- rep.counts[as.character(calls.first)]
   rep.count.parent <- rep.counts[as.character(index.parent)]
@@ -223,7 +238,7 @@ reuse_calls_int <- function(x) {
     ru.arg <- as.name(ru.char)
     ru.i <- ru.i + 1L
     hoists[[i]][['expr.sub']] <- call("<-", ru.arg, hoists[[i]][['expr']])
-    for(j in to.sub) x[[calls.indices[[j]]]] <- ru.arg
+    for(j in to.sub) x[[calls.ix[[j]]]] <- ru.arg
   }
   # Merge all the hoists that happen at the same point
   hoist.indices <- vapply(hoists, function(x) toString(x[['hoist']]), "")
