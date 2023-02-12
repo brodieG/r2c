@@ -103,6 +103,7 @@ reuse_calls <- function(x) reuse_calls_int(x)[['x']]
 reuse_calls_int <- function(x) {
   x.orig <- x
   # Add braces if there are none
+  no.braces <- FALSE
   if(!is.brace_call(x)) {
     x <- call("{", x)
     no.braces <- TRUE
@@ -152,11 +153,12 @@ reuse_calls_int <- function(x) {
   # closeset enclosing brace.  Enclosing calls are listed after their leaves,
   # but at any given call depth the arguments are in the order they are in the
   # call.
-  hoists <- vector("list", length(calls.first))
+  hoists <- list()
   hoist.last <- 0L
   braces <- which(vapply(calls.flat, is.brace_call, TRUE))
-  for(j in seq_along(calls.first)) {
-    i <- calls.first[j]
+  hoist.candidates <- calls.first
+  while(length(hoist.candidates)) {
+    i <- hoist.candidates[1L]
 
     # Find index to hoist into (i.e. insert just before).  The idea is to find
     # the enclosing brace, and then get the next level index that our call is in
@@ -170,10 +172,10 @@ reuse_calls_int <- function(x) {
       brace.i.len <- length(calls.ix[[enc.brace]])
       brace.root <- calls.ix.mx[seq_len(brace.i.len), , drop=FALSE]
     }
-    # Get our call's next level index.  To understand this know that calls.ix
-    # contains the tree index of every sub-call, lengths(calls.ix) thus gives
-    # the depth of each sub-call (and is stored in calls.ix.len).  calls.ix.mx
-    # is a matrix version of calls.ix made regular by NA padding.
+    # Get our call's next level index.  calls.ix contains the tree index of
+    # every sub-call, lengths(calls.ix) thus gives the depth of each sub-call
+    # (and is stored in calls.ix.len).  calls.ix.mx is a matrix version of
+    # calls.ix made regular by NA padding.
     call.root.i <- seq_len(brace.i.len + 1L)
     call.root <- calls.ix.mx[call.root.i, , drop=FALSE]
     call.root.match <- call.root == calls.ix[[i]][call.root.i]
@@ -193,42 +195,60 @@ reuse_calls_int <- function(x) {
     sym.hoist.lim <- max(match(call.syms, syms, nomatch=0))
     if(hoist.start <= sym.hoist.lim) {
       # can't hoist b/c component symbol defined too late; void the replacement
-      calls.first <- calls.first[calls.first != i]
-      calls.rep <- calls.rep[
-        !calls.rep %in% match(calls.dep[[i]], calls.dep, nomatch=0)
-      ]
+      # check how many repeated calls for this one are after the limit, if more
+      # than two update the listing to try substituting those.
+      calls.rep.i <- match(call.dep[i], call.dep, 0L)
+      calls.rep.i <- calls.rep.i[calls.rep.i > sym.hoist.lim]
+      if(length(calls.rep.i) > 1L)
+        hoist.candidates <- c(
+          hoist.candidates[hoist.candidates < call.rep.i[1L]],
+          call.rep.i[1L],
+          hoist.candidates[hoist.candidates > call.rep.i[1L]]
+        )
     } else {
       # can hoist it, so record the hoist
       if(length(hoist.point) != 1L)
         stop("Internal Error: failed to find unique hoist point.")
       if(hoist.point < hoist.last)
         stop("Internal Error: non-sequential hoist points?")
-      hoists[[j]] <- list(
-        i=i, hoist=calls.ix[[hoist.point]], expr=calls.flat[[i]],
-        expr.sub=NULL
-      )
+      hoists <- c(
+        hoists,
+        list(
+          list(
+            i=i, hoist=calls.ix[[hoist.point]], expr=calls.flat[[i]],
+            expr.sub=NULL
+      ) ) )
       hoist.last <- hoist.point
-  } }
-  hoists <- hoists[!vapply(hoists, is.null, TRUE)]
-
+    }
+    hoist.candidates <- hoist.candidates[-1L]
+  }
   # Eliminate Redundant repeated calls caused by a repeated call with subcalls
-  # as obviously the subcalls will be repeated too
-  rep.counts <- table(calls.match[calls.match %in% which(is.call)])
-  index.lookup.parent <-
-    vapply(calls.ix[calls.first], function(x) toString(x[-length(x)]), "")
-  index.parent <- match(index.lookup.parent, index.lookup)
-  rep.count.first <- rep.counts[as.character(calls.first)]
-  rep.count.parent <- rep.counts[as.character(index.parent)]
-  calls.first.keep <- calls.first[rep.count.first > rep.count.parent]
-  if(any(rep.count.first < rep.count.parent) || anyNA(calls.first.keep))
-    stop("Internal Error: implied nonsensical call hierarchy.")
-
-  # Now also eliminate redundant from hoists; we do this after because hoisting
-  # itself can eliminate calls from eligibility differently than redundant
-  # elimination, so this reduces chance of eliminating something made
-  # non-redundant by hoisting.
-  hoist.i <- vapply(hoists, "[[", 0L, "i")
-  hoists <- hoists[hoist.i %in% calls.first.keep]
+  # as obviously the subcalls will be repeated too.  Redundant calls are those
+  # that have for every instance the same hoisted call as a parent.
+  calls.i.hoisted <- vapply(hoists, "[[", 0L, "i")
+  redundant <- logical(length(hoists))
+  for(i in calls.i.hoisted) {
+    call.depth <- length(calls.ix[[i]])
+    call.match <- which(calls.dep == calls.dep[[i]])
+    call.match <- call.match[call.match >= i]
+    parents <- integer(length(call.match))
+    for(j in seq_along(call.match)) {
+      k <- call.match[j]
+      depth.par <- calls.ix.len[k] - 1L
+      par.i <- seq_len(depth.par)
+      call.ix.mx <- calls.ix.mx[par.i,,drop=FALSE]
+      call.par.ix <- calls.ix[[k]][par.i]
+      parent <- which(
+        colSums(call.ix.mx == call.par.ix, na.rm=TRUE) == depth.par &
+        calls.ix.len == depth.par
+      )
+      if(length(parent) != 1L) stop("Internal Error: bad parent seek.")
+      parents[j] <- parent
+    }
+    if(length(unique(calls.dep[parents])) == 1L)
+      redundant[match(i, calls.i.hoisted)] <- TRUE
+  }
+  hoists <- hoists[!redundant]
 
   # Modify calls so each expression becomes a reference to the re-use symbol.
   ru.i <- 1L
