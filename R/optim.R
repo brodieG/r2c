@@ -112,13 +112,12 @@ reuse_calls_int <- function(x) {
   flat <- flatten_call(x)
   calls.flat <- flat[['calls']]
   calls.ix <- flat[['indices']]
-  index.lookup <- vapply(calls.ix, toString, "")
-  index.max <- max(calls.ix.len)
-  calls.ix.mx <- vapply(
-    calls.ix, function(x) {length(x) <- index.max; x}, integer(index.max)
-  )
   calls.ix.len <- lengths(calls.ix)
-
+  index.lookup <- vapply(calls.ix, toString, "")
+  depth.max <- max(calls.ix.len)
+  calls.ix.mx <- vapply(
+    calls.ix, function(x) {length(x) <- depth.max; x}, integer(depth.max)
+  )
   # Deparse in order to match calls
   is.call <- vapply(calls.flat, typeof, "") == "language"
   calls.dep <- character(length(calls.flat))
@@ -153,18 +152,11 @@ reuse_calls_int <- function(x) {
   braces <- which(vapply(calls.flat, is.brace_call, TRUE))
   for(j in seq_along(calls.first)) {
     i <- calls.first[j]
-    # Find start of enclosing brace.  Non trivial because brace is listed
-    # *after* all its constitutent expressions.
-    enc.brace <- min(c(length(calls.flat), braces[braces > i]))
-    call.same.lvl.grps <- cumsum(calls.ix.len == length(calls.ix[[enc.brace]]))
-    enc.brace.start <-
-      max(which(call.same.lvl.grps == call.same.lvl.grps[enc.brace] - 1L)) + 1L
-    if(enc.brace.start >= i || enc.brace < i)
-      stop("Internal Error: brace location non-sensical.")
 
     # Find index to hoist into (i.e. insert just before).  The idea is to find
     # the enclosing brace, and then get the next level index that our call is in
     # relative to the brace, and insert just before that.
+    enc.brace <- min(c(length(calls.flat), braces[braces > i]))
     if(!enc.brace) {
       brace.root <- integer()
       brace.i.len <- 0L
@@ -173,12 +165,10 @@ reuse_calls_int <- function(x) {
       brace.i.len <- length(calls.ix[[enc.brace]])
       brace.root <- calls.ix.mx[seq_len(brace.i.len), , drop=FALSE]
     }
-    brace.match <-
-      colSums(brace.root == calls.ix[[enc.brace]], na.rm=TRUE) ==
-      brace.i.len
-    brace.content.lvl <- calls.ix.len ==  brace.i.len + 1L
-    brace.contents <- brace.content.lvl & brace.match
-    # Get our call's next level index
+    # Get our call's next level index.  To understand this know that calls.ix
+    # contains the tree index of every sub-call, lengths(calls.ix) thus gives
+    # the depth of each sub-call (and is stored in calls.ix.len).  calls.ix.mx
+    # is a matrix version of calls.ix made regular by NA padding.
     call.root.i <- seq_len(brace.i.len + 1L)
     call.root <- calls.ix.mx[call.root.i, , drop=FALSE]
     call.root.match <- call.root == calls.ix[[i]][call.root.i]
@@ -187,12 +177,18 @@ reuse_calls_int <- function(x) {
       which(call.match & calls.ix.len == brace.i.len + 1L)
 
     # Check whether the hoist point is valid, and if not remove expression from
-    # consideration as a substitutable one
+    # consideration as a substitutable one.  hoist.point is enclosing call, find
+    # all sub-calls too
+    hoist.call <- colSums(
+      calls.ix.mx[length(hoist.point), ,drop=FALSE] == calls.ix[[hoist.point]],
+      na.rm=TRUE
+    ) == length(hoist.point)
+    hoist.start <- min(which(hoist.call))
     call.syms <- collect_call_symbols(calls.flat[[i]])
     sym.hoist.lim <- max(match(call.syms, syms, nomatch=0))
-    if(sym.hoist.lim >= hoist.point) {
+    if(hoist.start <= sym.hoist.lim) {
       # can't hoist b/c component symbol defined too late; void the replacement
-      calls.first <- calls.first[!calls.first == i]
+      calls.first <- calls.first[calls.first != i]
       calls.rep <- calls.rep[
         !calls.rep %in% match(calls.dep[[i]], calls.dep, nomatch=0)
       ]
