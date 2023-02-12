@@ -234,11 +234,12 @@ reuse_calls_int <- function(x) {
       list(hoist=x[[1L]][['hoist']], exprs=lapply(x, "[[", "expr.sub"))
   } )
   # Insert assignment calls at the hoist points.
-  extra.i <- integer()
+  x <- list(x)              # so there is always a parent
+  extra.i <- 1L
   if(length(hoists.merged) && !length(braces)) {
     # Need to add an outermost brace
     x <- call("{", x)
-    extra.i <- 2L
+    extra.i <- c(extra.i, 2L)
   }
   for(h.i in seq_along(hoists.merged)) {
     hoist <- hoists.merged[[h.i]]
@@ -259,6 +260,8 @@ reuse_calls_int <- function(x) {
     expr.target[right + new.len] <- expr.tmp[right]
     x[[hoist.parent]] <- expr.target
   }
+  x <- x[[1L]]   # drop fake parent
+
   # Undo the renames we used to ensure call reuse did not incorrectly reuse
   # things that are different due to e.g. assignment
   x <- unrename_call(x, rename.dat[['rn']])
