@@ -101,8 +101,13 @@ reuse_calls <- function(x) reuse_calls_int(x)[['x']]
 ## expressions they replace.
 
 reuse_calls_int <- function(x) {
-  # rename assigned-to symbols, etc
   x.orig <- x
+  # Add braces if there are none
+  if(!is.brace_call(x)) {
+    x <- call("{", x)
+    no.braces <- TRUE
+  }
+  # rename assigned-to symbols, etc
   rename.dat <- rename_call(x)
   x <- rename.dat[['x']]
 
@@ -247,11 +252,6 @@ reuse_calls_int <- function(x) {
   # Insert assignment calls at the hoist points.
   x <- list(x)              # so there is always a parent
   extra.i <- 1L
-  if(length(hoists.merged) && !length(braces)) {
-    # Need to add an outermost brace
-    x <- call("{", x)
-    extra.i <- c(extra.i, 2L)
-  }
   for(h.i in seq_along(hoists.merged)) {
     hoist <- hoists.merged[[h.i]]
     hoist.point <- c(extra.i, hoist[['hoist']])
@@ -271,7 +271,9 @@ reuse_calls_int <- function(x) {
     expr.target[right + new.len] <- expr.tmp[right]
     x[[hoist.parent]] <- expr.target
   }
-  x <- x[[1L]]   # drop fake parent
+  # Drop fake layers
+  x <- x[[1L]]
+  if(no.braces && length(x) == 2L) x <- x[[2L]]
 
   # Undo the renames we used to ensure call reuse did not incorrectly reuse
   # things that are different due to e.g. assignment
