@@ -2,6 +2,7 @@
 
 ## Things to test
 
+* `reuse_call` with empty call.
 * That it is impossible to try to use an allocation before it would be created
   in the code.  Tricky with loops.
 * Test corner cases such as a repeated assignment to see if it get correctly
@@ -37,8 +38,10 @@
   everything under them to be protected by depth by virtue of being siblings,
   when really we only care about the last value.
 * `r2cq(test)` produces weird error (note that's just a symbol).
+
 * Are we okay with doing the call substitution before match-calling?  That's
   going to change param evaluation order.  Probably not okay.
+
 * Make sure vecrec works with `...`, e.g. as would be needed for `paste(...)`
   (although maybe that's not the best example given 0-len behavior).
 * Consider whether `x^2` -> `x * x` should be an optimization (especially given

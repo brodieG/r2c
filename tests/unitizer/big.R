@@ -37,13 +37,6 @@ unitizer_sect("Big Tests", {
   identical(slope(x[sixth.window], y[sixth.window]), rby.slope[6])
 
   # More complex expression
-  intercept <- function(x, y)
-    (
-      sum(y) -
-      sum(x) * (sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2))
-    ) / length(x)
-
-  r2c_int <- r2cf(intercept, check=TRUE)
   r2c.int <- r2c_int(x=x, y=y)
   if(!require("stats")) stop("Package stats required for tests")
   stats.coef <- unname(coefficients(lm(y ~ x, data.frame(x, y))))

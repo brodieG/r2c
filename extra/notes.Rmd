@@ -28,6 +28,27 @@ So maybe:
 * For expressions that can't be moved?
 * Perhaps this whole process needs to be done iteratively?
 
+A bit of trickiness in how indices are expressed
+
+    2     |  a
+    3 2   |  b
+    3 3 2 |  c
+    3 3   |  mean(c)
+    3     |  {  b; mean(c) }
+    -     |  {  a; {; b; mean(c); } }
+
+If `mean(c)` is our target, then we want to go right before the first instance
+of `mean(c)`'s brace level root, which is `(3 3)`.  So in this case we would
+insert an assignment as:
+
+    3 3 2 |  expression
+    3 3 3 |  symbol
+    3 3   |  symbol <- expression
+
+Between `b` and `c`, and then everything below that would get bumped.  But
+really, we're going to operate directly on the tree, so all we need is the `(3,
+3)`.  We'll apply these in the order they are generated.
+
 
 # Single Group Performance
 
@@ -50,29 +71,29 @@ extra vector being allocated that maybe doesn't need to be.
     ### Ncells    362973   19.4     698777   37.4         NA    677183   36.2
     ### Vcells 200733947 1531.5  362973722 2769.3      16384 300734934 2294.5
     system.time(slope2(a, b))
-    ##   user  system elapsed 
-    ##  0.834   0.192   1.026 
+    ##   user  system elapsed
+    ##  0.834   0.192   1.026
     gc()
     ##            used   (Mb) gc trigger   (Mb) limit (Mb)  max used   (Mb)
     ## Ncells    363549   19.5     698777   37.4         NA    677183   36.2
     ## Vcells 200735202 1531.5  579650024 4422.4      16384 400737393 3057.4
     system.time(r2c_slope2(a, b))
-    ##   user  system elapsed 
-    ##  0.807   0.210   1.069 
+    ##   user  system elapsed
+    ##  0.807   0.210   1.069
     gc()
     ##             used   (Mb) gc trigger   (Mb) limit (Mb)  max used   (Mb)
     ## Ncells    373739   20.0     698777   37.4         NA    677183   36.2
     ## Vcells 200759255 1531.7  579650024 4422.4      16384 550877897 4202.9
     system.time(slope2(a, b))
-    ##   user  system elapsed 
-    ##  0.867   0.228   1.094 
+    ##   user  system elapsed
+    ##  0.867   0.228   1.094
     gc()
     ##             used   (Mb) gc trigger   (Mb) limit (Mb)  max used   (Mb)
     ## Ncells    432238   23.1     885577   47.3         NA    677183   36.2
     ## Vcells 200891389 1532.7  579650024 4422.4      16384 550877897 4202.9
     system.time(r2c_slope2(a, b))
-    ##   user  system elapsed 
-    ##  0.864   0.326   1.265 
+    ##   user  system elapsed
+    ##  0.864   0.326   1.265
     gc()
     ##             used   (Mb) gc trigger   (Mb) limit (Mb)  max used   (Mb)
     ## Ncells    434879   23.3     885577   47.3         NA    677183   36.2
