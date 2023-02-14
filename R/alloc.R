@@ -246,13 +246,12 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
         stack.ctrl, stack.flag, call
       )
       call.dat <- append_call_dat(
-        call.dat, call=call,
-        ids=c(stack['id', stack['depth',] > depth], result=id),
+        call.dat, call=call, stack=stack, depth=depth, alloc=alloc,
         ctrl=stack.ctrl, flag=flag
       )
       stack <- append_stack(
-        stack[,stack['depth',] <= depth, drop=FALSE], id=id, depth=depth,
-        size=size, group=group, argn=argn
+        stack[,stack['depth',] <= depth, drop=FALSE], id=id,
+        alloc=alloc, depth=depth, size=size, group=group, argn=argn
       )
       stack.ctrl <- stack.flag <- list()
 
@@ -285,33 +284,31 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
         ctrl <- list(arg.e)
         names(ctrl) <- argn
         stack.ctrl <- c(stack.ctrl, ctrl)
-        id <- 0L
       } else if (type == "flag") {
         flag <- list(arg.e)
         names(flag) <- argn
         stack.flag <- c(stack.flag, flag)
-        id <- 0L
       } else {
         alloc <- append_dat(
           alloc, new=list(arg.e), sizes=size, depth=depth, type="ext"
         )
-        id <- alloc[['i']]
+        stack <- append_stack(
+          stack, alloc=alloc, id=alloc[['i']], depth=depth, size=size, group=0,
+          argn=argn
+        )
       }
-      stack <- append_stack(
-        stack, id=id, depth=depth, size=size, group=0, argn=argn
-      )
 
     # - Match a Symbol In Data -------------------------------------------------
     } else if (id <- name_to_id(alloc, name)) {
       is.grp <- alloc[['type']][id] == 'grp'
       # Record size (note `id` computed in conditional)
       stack <- append_stack(
-        stack, id=id, depth=depth,
+        stack, alloc=alloc, id=id, depth=depth,
         size=if(is.grp) NA_real_ else alloc[['size']][id],
         group=is.grp + 0, argn=argn
       )
       # Update symbol depth (needed for assigned-to symbols)
-      alloc[['depth']][id] <- depth
+      if(alloc[['depth']][id] > depth) alloc[['depth']][id] <- depth
       data.used <- union(data.used, id)
     } else stop("Internal Error: unexpected token.")
   }
@@ -329,7 +326,7 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
   stack['id',] <- match(stack['id',], ids.keep)
 
   alloc.fin <- lapply(
-    alloc[c('dat', 'alloc', 'depth', 'type', 'typeof', 'name')], "[", ids.keep
+    alloc[c('dat', 'alloc', 'depth', 'type', 'typeof')], "[", ids.keep
   )
   alloc.fin[['i']] <- match(alloc[['i']], ids.keep)
   list(alloc=alloc.fin, call.dat=call.dat, stack=stack)
@@ -387,6 +384,9 @@ vec_rec_max_size <- function(x, gmax) {
 ##   via R.
 ## * ids: an integer identifier for each item in `dat` (I think this is just
 ##   `seq_along(dat)`, but that seems silly and not sure now).
+## * ids0: a unique identifier for each allocation, differs from `ids`
+##   as soon as there is a re-use of a previous allocation.  This is to detect
+##   deviations between the stack and allocations.
 ## * alloc: the true size of the vector (should be equivalent to
 ##   `lengths(dat[['dat']])`?).
 ## * size: the size of the vector in use (can be less than 'alloc' if a smaller
@@ -462,6 +462,7 @@ alloc_dat <- function(dat, depth, size, call, typeof='double', i.call) {
       dat[['depth']][slot] <- depth
       dat[['size']][slot] <- size
       dat[['typeof']][slot] <- typeof
+      dat[['ids0']][slot] <- dat[['id0']] <- dat[['id0']] + 1L
       dat[['i']] <- dat[['ids']][slot]
     }
   }
@@ -511,8 +512,17 @@ append_dat <- function(dat, new, sizes, depth, type) {
   }
   dat
 }
-append_vec_dat <- function(dat, new, ids, sizes, depth, type, typeof) {
+append_vec_dat <- function(
+  dat, new, ids, ids0, sizes, depth, type, typeof
+) {
+  if(length(new) != length(ids))
+    stop("Internal Error: invalid ids.")
+
   dat[['ids']] <- c(dat[['ids']], ids)
+  ids0.new <- dat[['id0']] + seq_along(ids)
+  dat[['ids0']] <- c(dat[['ids0']], ids0.new)
+  dat[['id0']] <- ids0.new[length(ids0.new)]
+
   dat[['alloc']] <- c(dat[['alloc']], sizes)
   dat[['size']] <- c(dat[['size']], sizes)
   dat[['depth']] <- c(dat[['depth']], rep(depth, length(new)))
@@ -578,11 +588,13 @@ init_dat <- function(call, meta, scope) {
     alloc=numeric(),
     depth=integer(),
     ids=integer(),
+    ids0=integer(),
     type=character(),
     typeof=character(),
 
     # Other data
     i=0L,
+    id0=0L,
     scope=scope,
     meta=meta
   )
@@ -590,22 +602,49 @@ init_dat <- function(call, meta, scope) {
 ## Stack used to track parameters ahead of reduction when processing call.
 init_stack <- function() {
   matrix(
-    numeric(), nrow=4L,
+    numeric(), nrow=5L,
     dimnames=list(
       c(
         'id',      # id in our allocated data structure
+        'id0',     # unique id for integrity checks
         'depth',
         'size',    # size, possibly NA if unknown
         'group'    # size affected by group
       ),
       NULL
 ) ) }
-append_stack <- function(stack, id, depth, size, group, argn) {
-  stack <- cbind(stack, c(id, depth, size, group))
+append_stack <- function(stack, alloc, id, depth, size, group, argn) {
+  # ctrl and flag have id = 0
+  id0 <- if(!id) id else alloc[['ids0']][id]
+  stack <- cbind(stack, c(id, id0, depth, size, group))
   colnames(stack)[ncol(stack)] <- argn
   stack
 }
-append_call_dat <- function(call.dat, call, ids, ctrl, flag) {
+## Record Call Data
+##
+## Associates each call with the allocation data used, along with control and
+## flag data.
+##
+## @return list containing:
+##
+## * call: the call
+## * ids: the allocation ids of the parameter, followed by that of the result.
+## * ctrl, flag: evaluated control and flag data
+
+append_call_dat <- function(call.dat, call, stack, alloc, depth, ctrl, flag) {
+  param.ids <- stack['id', stack['depth',] > depth]
+  param.ids0 <- stack['id0', stack['depth',] > depth]
+  # Make sure that parameter ids tie out
+  param.check <- alloc[['ids0']][param.ids] == param.ids0
+  # For braces only the last parameter matters
+  if(is.brace_call(call)) param.check <- param.check[length(param.check)]
+  if(!all(param.check))
+    stop(
+      "Internal Error: alloc/stack mismatch for ",
+      toString(names(which(!param.check)))
+    )
+  # alloc[['i']] is the last made allocation, which will be the result
+  ids <- c(param.ids, alloc[['i']])
   c(call.dat, list(list(call=call, ids=ids, ctrl=ctrl, flag=flag)))
 }
 ## Check function validity

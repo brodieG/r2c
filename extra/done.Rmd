@@ -1,5 +1,10 @@
 ## Done
 
+* Consider giving each individual allocation a unique id, and putting those ids
+  in the stack, that way when there is a stack reduce we can confirm that the
+  allocation slots being pointed to actually contain the data intended (this is
+  to help detect errors in the code that might otherwise result in corrupted
+  data).
 * Figure out why single group eval so much slower for `group_exec` (see notes).
 * Change reserved symbols to be anything starting with `.R2C` so we have more
   flexibility and don't need to use the same format for dot args, replaced

@@ -22,11 +22,6 @@
   gets assigned to a sub-symbol.  This is not trivial because 
 * Test renames with potentially ambiguous names (too long for root, special
   symbols).
-* Consider giving each individual allocation a unique id, and putting those ids
-  in the stack, that way when there is a stack reduce we can confirm that the
-  allocation slots being pointed to actually contain the data intended (this is
-  to help detect errors in the code that might otherwise result in corrupted
-  data).
 * Symbol resolution apparently skips non-naked data; does that make sense or
   should it find it and error?
 * What happens if we have an assignment at depth 0?
