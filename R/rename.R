@@ -18,15 +18,17 @@
 ## See `rename_call` for spec this is checking.  We don't get into checking the
 ## symbols to try to reduce the cost of the check.
 
-is.renames <- function(x)
+is.renames <- function(x) {
+  map.root <- generate_root(x[['map']])
   stopifnot(
     is.list(x), identical(names(x), c("i", "renames", "map")),
     is.list(x[['renames']]), is.integer(x[['i']]), is.character(x[['map']]),
-    all(names(x[['renames']]) %in% generate_root(x[['map']])),
-    all(x[['map']] %in% names(x[['renames']])),
-    all(names(x[['i']]) %in% x[['map']]),
-    all(x[['map']] %in% names(x[['i']]))
+    all(names(x[['renames']]) %in% map.root),
+    all(map.root %in% names(x[['renames']])),
+    all(names(x[['i']]) %in% map.root),
+    all(map.root %in% names(x[['i']]))
   )
+}
 
 generate_root <- function(name)
   gsub("(^[^.[:alpha:]]|[^[:alnum:]_])", ".", substr(name, 1, 8))
@@ -42,7 +44,7 @@ generate_rename <- function(rn, name) {
   rn
 }
 apply_rename <- function(rn, symbol) {
-  name <- as.character(symbol)
+  name <- generate_root(as.character(symbol))
   if(name %in% names(rn[['renames']])) rn[['renames']][[name]]
   else symbol
 }
