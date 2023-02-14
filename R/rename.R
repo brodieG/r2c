@@ -109,8 +109,7 @@ rename_call <- function(x, rn=init_rename()) {
   # name is invalidated (e.g. overwritten), and generate new renames then for
   # application at appropriate time.
   is.renames(rn)
-  rename.loop <- c("for", "while", "repeat")
-  rename.ctrls <- c("if", rename.loop)
+  rename.ctrls <- c("if", LOOP.SYM)
   if(is.call_w_args(x)) {
     fun.name <- as.character(x[[1L]])
     rec.ids <- seq(2L, length(x), 1L)
@@ -146,7 +145,7 @@ rename_call <- function(x, rn=init_rename()) {
         else if(fun.name == 'if') x[c(1L, 3:4)]
         else x
       ctrl.symbols <- assigned_symbols(x.ctrl)
-      if(fun.name %in% rename.loop) {
+      if(fun.name %in% LOOP.SYM) {
         # for loops need to generate rn on entry
         for(sym.char in ctrl.symbols) rn <- generate_rename(rn, sym.char)
     } }

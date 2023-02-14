@@ -164,9 +164,10 @@ is.brace_call <- function(x)
 assigned_symbols <- function(x, symbols=character()) {
   if(is.assign_call(x)) {
     symbols <- c(symbols, get_target_symbol(x, fun.name))
-    for(j in seq(2L, length(x), 1L)) {
+  } else if (is.call_w_args(x)) {
+    for(j in seq(2L, length(x), 1L))
       symbols <- assigned_symbols(x[[j]], symbols=symbols)
-  } }
+  }
   unique(symbols)
 }
 
