@@ -111,6 +111,7 @@ preprocess <- function(call, formals, optimize=FALSE) {
   # We use this for match.call, but very questionable given the env might be
   # different when we actually run the code
   x <- pp_internal(call=call, depth=0L, x=x)
+  x[['call.optim']] <- call
 
   # Deduplicate the code and generate the final C file (need headers).
   headers <- unique(unlist(lapply(x[['code']], "[[", "headers")))

@@ -59,6 +59,9 @@ first_vec <- function(x) {
   x
 }
 
+is.r2c_fun <- function(x)
+  is.function(x) && inherits(x, "r2c_fun")
+
 is.num_naked <- function(x)
   vapply(x, is.vector, TRUE, "numeric") |
   vapply(x, is.vector, TRUE, "integer")

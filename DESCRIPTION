@@ -3,7 +3,7 @@ Title: Fast Iterated Statistic Computation in R
 Description: Compiles a subset of R into machine code so that expressions
     composed with that subset can be applied repeatedly on varying data without
     interpreter overhead.
-Version: 0.1.0.9000
+Version: 0.1.0.9001
 Authors@R: c(
     person("Brodie", "Gaslam", email="brodie.gaslam@yahoo.com",
     role=c("aut", "cre")))
