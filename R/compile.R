@@ -468,6 +468,18 @@ get_r2c_dat <- function(r2c.fun) {
   )
   if(!all(dat.contents %in% names(dat)))
     stop("`r2c.fun` missing some expected components.")
+  if(!identical(dat[['R.version']], R.version))
+    stop(
+      "`r2c.fun` was compiled with a different R.version:\n\n",
+      paste0(
+        capture.output(print(dat.contents[['R.version']])),
+        collapse="\n"
+    ) )
+  if(!identical(dat[['r2c.version']], packageVersion('r2c')))
+    stop(
+      "`r2c.fun` was compiled with a different r2c verson (",
+      dat.contents[['r2c.version']], ")"
+    )
 
   dat
 }
