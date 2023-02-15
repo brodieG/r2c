@@ -168,9 +168,10 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' r2c_sum_sub2 <- r2cq(sum(x - y), formals=c('y', 'x'))
 #' r2c_sum_sub2(-1, c(1, 2, 3))
 #'
-#' ## Leave symbols unbound
+#' ## Leave symbols unbound, here `y` is resolved in the lexical environment
+#' r2c_sum_sub3 <- r2cq(sum(x - y), formals='x')
 #' y <- 10
-#' r2c_sum_sub(x=3)
+#' r2c_sum_sub3(c(1, 2, 3))
 #'
 #' ##  Make a version that is checked
 #' r2c_sum_check <- r2cq(sum(x), check=TRUE)
