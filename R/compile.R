@@ -338,14 +338,14 @@ r2c_core <- function(call, formals, dir, check, quiet, clean, optimize) {
       )
     .DGRP <- if(length(.DAT)) .DAT[1L] else list()
     .FRM <- formals()
-    .ENV <- parent.frame()
+    .ENC <- parent.frame() # this is the *lexical* parent of the r2c fun
   })
   # We'll use group_exec with a single group to act as the runner for the
   # stand-alone use of this function, so ue `groups=NULL`.
   GEXE <- quote(
     bquote(
       group_exec_int(
-        NULL, formals=.(.FRM), enclos=.(.ENV), groups=NULL,
+        NULL, formals=.(.FRM), enclos=.(.ENC), groups=NULL,
         # Pretend first argument is group-varying, even though it's not
         data=.(.DGRP), MoreArgs=.(.DAT[-1L]), call=quote(.(.CALL))
   ) ) )
@@ -364,7 +364,7 @@ r2c_core <- function(call, formals, dir, check, quiet, clean, optimize) {
     bquote({
       .(PREAMBLE)
       test.i <- identical(
-        res0 <- eval(.(call), envir=.ENV),
+        res0 <- eval(.(call), envir=.ENC),
         res1 <- eval(.(GEXE), envir=getNamespace('r2c'))
       )
       test.ae <- if(!test.i) all.equal(res0, res1)
