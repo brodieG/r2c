@@ -189,8 +189,13 @@ preprocess <- function(call, formals, optimize=FALSE) {
 #
 # @param assign indicate whether current evaluation is of a symbol being
 #   assigned to to avoid recording that as a free symbol.
+# @param call.parent if `call` is being evaluated as an argument to a parent
+#   call, `call.parent` is that call.  Used so we can tell if we're e.g. called
+#   from braces.
 
-pp_internal <- function(call, depth, x, argn="", assign=FALSE) {
+pp_internal <- function(
+  call, depth, x, argn="", assign=FALSE, call.parent=NULL
+) {
   if(depth == .Machine$integer.max)
     stop("Expression max depth exceeded.") # exceedingly unlikely
 
@@ -228,6 +233,18 @@ pp_internal <- function(call, depth, x, argn="", assign=FALSE) {
     # Check if we're in assignment call
     name <- as.character(call[[1L]])
     next.assign <- name %in% ASSIGN.SYM
+    # Assignments only allowed at brace level or top level because we cannot
+    # assure the order of evaluation so safer to just disallow.  We _could_
+    # allow it but it just seems dangerous.
+    if(next.assign && !is.brace_call(call.parent) && !is.null(call.parent)) {
+      call.dep <- deparse(call)
+      msg <- sprintf(
+        "r2c disallows assignments inside arguments. Found: %s",
+        if(length(call.dep) == 1) call.dep
+        else paste0(c("", call.dep), collapse="\n")
+      )
+      stop(simpleError(msg, call.parent))
+    }
 
     for(i in seq_along(args)) {
       if(args.types[i] %in% c('control', 'flag')) { # shouldn't be assign symbol
@@ -240,7 +257,7 @@ pp_internal <- function(call, depth, x, argn="", assign=FALSE) {
       } else {
         x <- pp_internal(
           call=args[[i]], depth=depth + 1L, x=x, argn=names(args)[i],
-          assign=i == 1L && next.assign
+          assign=i == 1L && next.assign, call.parent=call
     ) } }
     # Bind assignments (we do it after processing of the rest of the call)
     if(next.assign) {
