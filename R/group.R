@@ -26,10 +26,11 @@ group_sizes <- function(go, levels=vector(mode='list', length(go))) {
   res
 }
 group_exec_int <- function(
-  obj, formals, enclos, groups, data, MoreArgs, call
+  obj, formals, groups, data, MoreArgs, call
 ) {
   preproc <- obj[['preproc']]
   shlib <- obj[['so']]
+  enclos <- obj[['envir']]
 
   # - Handle Groups ------------------------------------------------------------
 
@@ -318,9 +319,7 @@ r2c_groups_template <- function() {
 #' group_exec(r2c_mean, x, groups=list(g))
 #' group_exec(r2c_mean, x, groups=process_groups(list(g), sorted=TRUE))
 
-group_exec <- function(
-  fun, data, groups, MoreArgs=list(), enclos=parent.frame()
-) {
+group_exec <- function(fun, data, groups, MoreArgs=list()) {
   # FIXME: add validation for shlib
   vetr(
     fun=is.function(.) && inherits(., 'r2c_fun'),
@@ -344,7 +343,7 @@ group_exec <- function(
   obj <- get_r2c_dat(fun)
   call <- sys.call()
   group_exec_int(
-    obj, formals=formals(fun), enclos=enclos, groups=groups, data=data,
+    obj, formals=formals(fun), groups=groups, data=data,
     MoreArgs=MoreArgs, call=call
   )
 }

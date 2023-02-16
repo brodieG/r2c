@@ -183,11 +183,12 @@ rand_string <- function(len, pool=c(letters, 0:9))
 r2cf <- function(
   x, dir=NULL, check=getOption('r2c.check.result', FALSE),
   quiet=getOption('r2c.quiet', TRUE), clean=is.null(dir),
-  optimize=getOption('r2c.optimize', TRUE)
+  optimize=getOption('r2c.optimize', TRUE), envir=parent.frame()
 )
   r2c_core(
     body(x), formals=as.list(formals(x)),
-    dir=dir, check=check, quiet=quiet, clean=clean, optimize=optimize
+    dir=dir, check=check, quiet=quiet, clean=clean, optimize=optimize,
+    envir=envir
   )
 
 #' @export
@@ -196,11 +197,11 @@ r2cf <- function(
 r2cl <- function(
   x, formals=NULL, dir=NULL, check=getOption('r2c.check.result', FALSE),
   quiet=getOption('r2c.quiet', TRUE), clean=is.null(dir),
-  optimize=getOption('r2c.optimize', TRUE)
+  optimize=getOption('r2c.optimize', TRUE), envir=parent.frame()
 )
   r2c_core(
     x, formals=formals, dir=dir, check=check, quiet=quiet,
-    clean=clean, optimize=optimize
+    clean=clean, optimize=optimize, envir=envir
   )
 
 #' @export
@@ -209,19 +210,21 @@ r2cl <- function(
 r2cq <- function(
   x, formals=NULL, dir=NULL, check=getOption('r2c.check.result', FALSE),
   quiet=getOption('r2c.quiet', TRUE), clean=is.null(dir),
-  optimize=getOption('r2c.optimize', TRUE)
+  optimize=getOption('r2c.optimize', TRUE), envir=parent.frame()
 )
   r2c_core(
     substitute(x), formals=formals, dir=dir, check=check, quiet=quiet,
-    clean=clean, optimize=optimize
+    clean=clean, optimize=optimize, envir=envir
   )
 
 
-r2c_core <- function(call, formals, dir, check, quiet, clean, optimize) {
+r2c_core <- function(
+  call, formals, dir, check, quiet, clean, optimize, envir
+) {
   vetr(
     is.language(.), (list() && !is.null(names(.))) || NULL || CHR,
     dir=CHR.1 || NULL, check=LGL.1, quiet=LGL.1, clean=LGL.1,
-    optimize=LGL.1 || INT.1.POS
+    optimize=LGL.1 || INT.1.POS, envir=is.environment(.)
   )
   auto.formals <- FALSE
   if(is.character(formals)) {
@@ -255,7 +258,8 @@ r2c_core <- function(call, formals, dir, check, quiet, clean, optimize) {
     list(
       preproc=preproc, so=so[['so']], handle=handle,
       call=call, call.optim=preproc[['call.optim']], compile.out=so[['out']],
-      R.version=R.version, r2c.version=packageVersion('r2c')
+      R.version=R.version, r2c.version=packageVersion('r2c'),
+      envir=envir
     ),
     parent=emptyenv()
   )
@@ -272,7 +276,6 @@ r2c_core <- function(call, formals, dir, check, quiet, clean, optimize) {
   }
   fun <- fun.dummy <- function() NULL
   formals(fun) <- formals
-  environment(fun) <- .BaseNamespaceEnv
 
   # The generated function needs to be be callable stand-alone, and useable by
   # runners like group_exec.  We have the following requirements:
@@ -282,14 +285,14 @@ r2c_core <- function(call, formals, dir, check, quiet, clean, optimize) {
   #    it) in the function (we could alternatively use the `sys.call()` trick
   #    from `rlang` to get the attribute, but that feels like it relies on an
   #    implementation detail).
-  # 2. We need the function to survive a re-loading of r2c (but we probably
-  #    shouldn't allow it to survive across different versions)
+  # 2. We need the function to survive a re-loading of r2c (no runner allows
+  #    running r2c_fun compiled with different R/r2c versions).
   #
-  # Thus, we directly embed the object with `.(OBJ)`, and we make the enclosure
-  # of the function the base environment.  We use the same trick for several
-  # other objects, both directly those generated here, and also those that will
-  # be generated at call time, to ensure that no run-time objects can interfere
-  # with the symbol resolution of the "r2c_fun" against its parameters.
+  # Thus, we directly embed the object with `.(OBJ)`. We use the same trick for
+  # several other objects, both directly those generated here, and also those
+  # that will be generated at call time, to ensure that no run-time objects can
+  # interfere with the symbol resolution of the "r2c_fun" against its
+  # parameters.
 
   # Generate the docstring that will appear at beginning of function
   DOC <- as.call(
@@ -323,29 +326,32 @@ r2c_core <- function(call, formals, dir, check, quiet, clean, optimize) {
     .(DOC)
     .(OBJ)  # for ease of access, embedded in actual fun later
     try <- tryCatch(
-      .DAT <- as.list(environment(), all.names=TRUE), error=function(e) e
+      .DAT0 <- as.list(environment(), all.names=TRUE), error=function(e) e
     )
     .CALL <- sys.call()
     if(inherits(try, 'simpleError'))
       stop(simpleError(conditionMessage(try), .CALL))
-    if(dot.pos <- match('...', names(.DAT), nomatch=0))
+    if(dot.pos <- match('...', names(.DAT0), nomatch=0))
       tryCatch(
         .DAT <- c(
-          .DAT[seq_len(dot.pos - 1L)], list(...),
-          .DAT[seq_len(length(.DAT) - dot.pos) + dot.pos]
+          .DAT0[seq_len(dot.pos - 1L)], list(...),
+          .DAT0[seq_len(length(.DAT0) - dot.pos) + dot.pos]
         ),
         error=function(e) stop(simpleError(conditionMessage(e), .CALL))
       )
+    else .DAT <- .DAT0
     .DGRP <- if(length(.DAT)) .DAT[1L] else list()
     .FRM <- formals()
-    .ENC <- parent.frame() # this is the *lexical* parent of the r2c fun
+    # Correct lexical enclosure.  We cannot give The "r2c_fun" this
+    # enclosure because that would change the search path for all funs here.
+    .ENV <- list2env(.DAT0, envir=.(envir))
   })
   # We'll use group_exec with a single group to act as the runner for the
   # stand-alone use of this function, so ue `groups=NULL`.
   GEXE <- quote(
     bquote(
       group_exec_int(
-        NULL, formals=.(.FRM), enclos=.(.ENC), groups=NULL,
+        NULL, formals=.(.FRM), groups=NULL,
         # Pretend first argument is group-varying, even though it's not
         data=.(.DGRP), MoreArgs=.(.DAT[-1L]), call=quote(.(.CALL))
   ) ) )
@@ -359,12 +365,13 @@ r2c_core <- function(call, formals, dir, check, quiet, clean, optimize) {
       eval(.(GEXE), envir=getNamespace('r2c'))
     })
   } else {
-    # Symbol creation is order so that no created symbols will interfere with
-    # symbols referenced in the evaluated expressions.
+    # Symbol creation is ordered so that no created symbols will interfere with
+    # symbols referenced in the evaluated expressions (i.e. `call` is
+    # evaluated first when there are no symbols in the r2c_fun env).
     bquote({
       .(PREAMBLE)
       test.i <- identical(
-        res0 <- eval(.(call), envir=.ENC),
+        res0 <- evalq(.(call), envir=.ENV),
         res1 <- eval(.(GEXE), envir=getNamespace('r2c'))
       )
       test.ae <- if(!test.i) all.equal(res0, res1)

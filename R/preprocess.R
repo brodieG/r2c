@@ -245,7 +245,6 @@ pp_internal <- function(
       )
       stop(simpleError(msg, call.parent))
     }
-
     for(i in seq_along(args)) {
       if(args.types[i] %in% c('control', 'flag')) { # shouldn't be assign symbol
         if(next.assign) stop("Internal error: controls/flag on assignment.")
