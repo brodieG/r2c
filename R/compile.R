@@ -331,20 +331,20 @@ r2c_core <- function(
     .CALL <- sys.call()
     if(inherits(try, 'simpleError'))
       stop(simpleError(conditionMessage(try), .CALL))
-    if(dot.pos <- match('...', names(.DAT0), nomatch=0))
+    .DAT <- if(dot.pos <- match('...', names(.DAT0), nomatch=0))
       tryCatch(
-        .DAT <- c(
+        c(
           .DAT0[seq_len(dot.pos - 1L)], list(...),
           .DAT0[seq_len(length(.DAT0) - dot.pos) + dot.pos]
         ),
         error=function(e) stop(simpleError(conditionMessage(e), .CALL))
       )
-    else .DAT <- .DAT0
+    else .DAT0
     .DGRP <- if(length(.DAT)) .DAT[1L] else list()
     .FRM <- formals()
     # Correct lexical enclosure.  We cannot give The "r2c_fun" this
     # enclosure because that would change the search path for all funs here.
-    .ENV <- list2env(.DAT0, envir=.(envir))
+    .ENV <- list2env(.DAT0, parent=.(envir))
   })
   # We'll use group_exec with a single group to act as the runner for the
   # stand-alone use of this function, so ue `groups=NULL`.
