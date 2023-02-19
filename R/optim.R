@@ -57,12 +57,12 @@ flatten_call_rec <- function(x, calls, indices) {
 #' optimization for `r2c`, it can be applied to R expressions generally with
 #' some important caveats.  `r2c` should work correctly with all `r2c`
 #' compatible R expressions, but is not guaranteed to do so with all R
-#' expressions.  In particular, any expressions with side effects except for
-#' simple assignments with `<-` or `=` are likely to cause problems.
-#' Additionally, `r2c` processes function parameters in function order with
-#' depth first recursion, whereas R makes no guarantees about the order in which
-#' parameters are evaluated.  This could cause a normal R evaluation to evaluate
-#' temporary assignments out of intended order with bad consequences.
+#' expressions.  In particular, any expressions with side effects are likely to
+#' cause problems.  Simple assignments like `<-` or `=` are safe in cases where
+#' there is no ambiguity about the order in which they would be made (e.g.
+#' `{a <- b; b <- a}` is safe, but `fun(a <- b, b <- a)` might not be).  `r2c`
+#' allows only the unambiguous cases for the "r2c_fun" functions, but that is
+#' enforced by the [compilation functions][r2c-compile], not by `reuse_calls`.
 #'
 #' This function avoids potentially ambiguous substitutions, e.g. when component
 #' variables might be set to different values by different branches.  This might

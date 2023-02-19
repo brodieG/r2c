@@ -126,9 +126,11 @@ latest_action_call <- function(x) {
 #' @param x the result of preprocessing an expression
 
 alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
+  call.len <- length(x[['call']])
+  call.outer <- x[['call']][[call.len]]
+
   # - Initialize ---------------------------------------------------------------
   env <- list2env(MoreArgs, parent=par.env)
-  call.outer <- x[['call']][[length(x[['call']])]]
 
   # Call indices where various interesting things happen
   meta <- list(
@@ -157,8 +159,9 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
   # Bump scope so the data cannot be overwritten
   alloc[['scope']] <- alloc[['scope']] + 1L
 
+
   # - Process ------------------------------------------------------------------
-  #
+
   # Objective is to compute how much temporary storage we need to track all the
   # intermediate calculations in the call tree, and to allocate all the vectors
   # into a data structure.  This data structure will also include references to

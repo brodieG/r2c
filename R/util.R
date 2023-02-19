@@ -154,6 +154,7 @@ is.brace_call <- function(x)
   (is.name(x[[1L]]) || is.character(x[[1L]])) &&
   as.character(x[[1L]]) == "{"
 
+
 #' Identify Symbols Assigned
 #'
 #' Return names of all symbols assigned to within a call.  This is not super
