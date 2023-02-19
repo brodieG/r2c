@@ -248,6 +248,11 @@ VALID_FUNS <- list(
     "square", fun=square, defn=square,
     type=list("arglen", "x"),
     code.gen=code_gen_square
+  ),
+  fap_fun(
+    "r2c_copy", fun=r2c_copy, defn=r2c_copy,
+    type=list("arglen", "x"),
+    code.gen=code_gen_copy
   )
 )
 names(VALID_FUNS) <- vapply(VALID_FUNS, "[[", "", "name")

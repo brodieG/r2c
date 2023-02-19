@@ -465,6 +465,9 @@ alloc_dat <- function(dat, depth, size, call, typeof='double', i.call) {
       dat[['ids0']][slot] <- dat[['id0']] <- dat[['id0']] + 1L
       dat[['i']] <- dat[['ids']][slot]
     }
+  } else if (call.name %in% PASSIVE.SYM) {
+    # Don't do anything for these, effectively causing `dat[[i]]` to remain
+    # unchanged for use by the next call.
   }
   # "free" the data produced by arguments.  Not in the malloc sense, just an
   # indication that next time this function is called it can re-use the
