@@ -238,6 +238,7 @@ r2c_core <- function(
   }
   # Parse R expression and Generate the C code
   preproc <- preprocess(call, formals=names(formals), optimize=optimize)
+  optimized <- optimize && !identical(call, preproc[['call.processed']])
 
   # Generate directory, use dirname/basename to normalize it to same format as
   # file.path
@@ -257,7 +258,7 @@ r2c_core <- function(
   OBJ <- list2env(
     list(
       preproc=preproc, so=so[['so']], handle=handle,
-      call=call, call.optim=preproc[['call.optim']], compile.out=so[['out']],
+      call=call, call.processed=preproc[['call.processed']], compile.out=so[['out']],
       R.version=R.version, r2c.version=packageVersion('r2c'),
       envir=envir
     ),
@@ -305,14 +306,11 @@ r2c_core <- function(
             c(
               "**R2C** implementation of:", strrep(" ", 60),
               deparse(call, width.cutoff=40),
-              if(check || optimize)
+              if(check || optimized)
                 c(
                   "",
                   if(check) "self-check ON",
-                  if(
-                    optimize &&
-                    !identical(call ,preproc[['call.optim']])
-                  ) "optimize ON (see `?get_r_code`)",
+                  if(optimized) "optimize ON (see `?get_r_code`)",
                   ""
                 )
         ) ) ),
@@ -410,7 +408,7 @@ r2c_core <- function(
 #'   the portion directly corresponding to the primary runner function.
 #' @return for `get_r_code` a list with on or two members, the first "original"
 #'   is the R language object provided to the [compilation
-#'   functions][r2c-compile], the second "optimized" is the version that the C
+#'   functions][r2c-compile], the second "processed" is the version that the C
 #'   code is based on.  For all other functions a character vector, invisibly
 #'   for `show_c_code`.
 #' @examples
@@ -434,10 +432,10 @@ get_c_code <- function(r2c.fun, all=TRUE) {
 
 get_r_code <- function(r2c.fun) {
   orig <- get_r2c_dat(r2c.fun)[['call']]
-  optim <- get_r2c_dat(r2c.fun)[['call.optim']]
+  processed <- get_r2c_dat(r2c.fun)[['call.processed']]
   res <- list()
   res[['original']] <- orig
-  if(!identical(orig, optim)) res[['optimized']] <- optim
+  if(!identical(orig, optim)) res[['processed']] <- processed
   res
 }
 
@@ -471,7 +469,7 @@ get_r2c_dat <- function(r2c.fun) {
 
   dat <- as.list(dat)
   dat.contents <- c(
-    'preproc', 'call', 'call.optim', 'so', 'compile.out',
+    'preproc', 'call', 'call.processed', 'so', 'compile.out',
     'R.version', 'r2c.version'
   )
   if(!all(dat.contents %in% names(dat)))
