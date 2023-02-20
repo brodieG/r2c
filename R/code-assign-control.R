@@ -85,8 +85,10 @@ code_gen_copy <- function(fun, args.reg, args.ctrl, args.flags) {
 #' compilation process.  In some cases, it is necessary for `r2c` to explicitly
 #' copy a variable into the result vector.  This is achieved by the C
 #' counterpart of this function.  Since all other `r2c` C functions have R
-#' counterparts, we add this R counterpart for consistency.  There is no reason
-#' for you to ever use this function.
+#' counterparts, we add this R counterpart for consistency.  Unlike all the
+#' other `r2c` supported function, this one is never looked up on the search
+#' path so even if it is masked there will not be an error.  There is no reason
+#' to ever use this function directly.
 #'
 #' @param x numeric vector to copy
 #' @return `x`, copied to a new location

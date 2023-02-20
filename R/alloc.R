@@ -660,7 +660,10 @@ append_call_dat <- function(call.dat, call, stack, alloc, depth, ctrl, flag) {
 check_fun <- function(x, env) {
   if(!x %in% names(VALID_FUNS))
     stop("`", as.character(call[[1L]]), "` is not a supported function.")
-  if(
+  if(identical(x, 'r2c_copy')) {
+    # waive check for `r2c_copy` so that `r2c` does not need to be attached
+    # to the search path given user doesn't control when this gets injected.
+  } else if(
     !identical(
       got.fun <- try(get(x, envir=env, mode="function"), silent=TRUE),
       VALID_FUNS[[c(x, "fun")]]
