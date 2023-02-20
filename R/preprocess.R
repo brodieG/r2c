@@ -112,6 +112,7 @@ copy_last <- function(x) {
     }
     else if(call.sym %in% PASSIVE.SYM)
       stop("Internal Error: unhandled passive calls")
+    else stop("Internal Error: invalid call format.")
   }
   x
 }
