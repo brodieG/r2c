@@ -272,7 +272,10 @@ pp_internal <- function(
     # Assignments only allowed at brace level or top level because we cannot
     # assure the order of evaluation so safer to just disallow.  We _could_
     # allow it but it just seems dangerous.
-    if(next.assign && !is.brace_call(call.parent) && !is.null(call.parent)) {
+    if(
+      next.assign &&
+      !is.brace_or_assign_call(call.parent) && !is.null(call.parent)
+    ) {
       call.dep <- deparse(call)
       msg <- sprintf(
         "r2c disallows assignments inside arguments. Found: %s",
