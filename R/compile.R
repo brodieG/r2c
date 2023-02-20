@@ -94,11 +94,6 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' Empty braces are disallowed, and assignments may only be done at the top
 #' level or at a brace level (see examples).
 #'
-#' Outside of the aforementioned constraints, `r2c` attempts to mimic the
-#' corresponding R function semantics to the `identical` level, but there may be
-#' corner cases that differ, particularly those involving missing or infinite
-#' values.
-#'
 #' For `r2cl` and `r2cq`, symbols used as parameters to `call` and its
 #' constituent sub-calls (e.g. the `x` and `y` in `sum(x) + y`) will become
 #' parameters to the "r2c_fun" function.  There must be at least one such symbol
@@ -106,6 +101,11 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' everything is [`match.call`]ed.  Symbols beginning with `.R2C` are reserved
 #' for use by `r2c` and thus disallowed in `call`.  You may also directly set
 #' the parameter list with the `formals` parameter, or with `r2cf`.
+#'
+#' Outside of the aforementioned constraints, `r2c` attempts to mimic the
+#' corresponding R function semantics to the `identical` level, but there may be
+#' corner cases that differ, particularly those involving missing or infinite
+#' values.
 #'
 #' Parameters used with "r2c_fun" supported functions are categorized into data
 #' parameters and control parameters.  For example, in `sum(x, na.rm=TRUE)`, `x`
@@ -117,6 +117,12 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' copying) the otherwise numeric result to integer.  There are no general
 #' type restrictions on control parameters, but each implemented function will
 #' only accept values for them that would make sense for the R counterparts.
+#'
+#' `r2c` may process the provided call either to apply optimizations (see
+#' `optimize` paramter) or because a call needs to be modified to work correctly
+#' with `r2c`.  The processing leaves call semantics unchanged.  If `r2c`
+#' modified a call, [`get_r_code`] will show a "processed" member with the
+#' modified call.
 #'
 #' `r2c` requires a C99 or later compatible implementation with floating point
 #' infinity defined and the `R_xlen_t` range representable without precision
