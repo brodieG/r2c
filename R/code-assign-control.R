@@ -58,8 +58,9 @@ static void %s(%s) {
   R_xlen_t len0 = lens[di[0]];
   double * res = data[di[1]];
   double * input = data[di[0]];
+  // this should be a debug mode check only
   if(res == input) Rf_error("Internal Error: copying in-place.");
-  memcpy(res, input, len0);
+  memcpy(res, input, sizeof(*res) * len0);
   lens[1] = len0;
 }'
 # This function will get run, but the results discarded.  We started off using
