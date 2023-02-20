@@ -109,10 +109,8 @@ copy_last <- function(x) {
       if(length(x) != 3L)
         stop("Internal Error: bad assign call structure.")
       x[[3L]] <- copy_last(x[[3L]])
-    }
-    else if(call.sym %in% PASSIVE.SYM)
+    } else if(call.sym %in% PASSIVE.SYM)
       stop("Internal Error: unhandled passive calls")
-    else stop("Internal Error: invalid call format.")
   }
   x
 }
