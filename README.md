@@ -254,7 +254,7 @@ rolling window statistics:
 [7]: https://github.com/eddelbuettel/inline
 [8]: https://twitter.com/BrodieGaslam/status/1527829442374025219?s=20&t=rg6aybJlGxPEUwBsI0ii1Q
 [9]: https://www.brodieg.com/tags/hydra/
-[10]: https://htmlpreview.github.io/?https://raw.githubusercontent.com/brodieG/r2c/3caf106980e558c931aea554e1f0197a82d031a3/extra/benchmarks/benchmarks-public.html
+[10]: https://htmlpreview.github.io/?https://raw.githubusercontent.com/brodieG/r2c/abf1dd726beb980b12ae1b554e8bcd2df8b47e18/extra/benchmarks/benchmarks-public.html
 [11]: https://www.zeileis.org/
 [12]: https://cran.r-project.org/package=zoo
 [13]: https://github.com/DavisVaughan
