@@ -69,7 +69,10 @@ latest_action_call <- function(x) {
     function(x) !as.character(x[[1L]]) %in% PASSIVE.SYM,
     TRUE
   )
-  max(seq_along(x)[calls][call.sym][call.active])
+  call.active.i <- seq_along(x)[calls][call.sym][call.active]
+  if(!length(call.active.i))
+    stop("Internal Error: no active return call found.")
+  max(call.active.i)
 }
 
 #' Allocate Required Storage
