@@ -24,6 +24,28 @@ statistic instead of recomputing it.  This function detects reuses of
 sub-calls and modifies the call tree to implement the store-and-reuse
 optimization.
 }
+\details{
+While this function is intended primarily for use as a pre-processing
+optimization for \code{r2c}, it can be applied to R expressions generally with
+some important caveats.  \code{r2c} should work correctly with all \code{r2c}
+compatible R expressions, but is not guaranteed to do so with all R
+expressions.  In particular, any expressions with side effects are likely to
+cause problems.  Simple assignments like \verb{<-} or \code{=} are safe in cases where
+there is no ambiguity about the order in which they would be made (e.g.
+\code{{a <- b; b <- a}} is safe, but \code{fun(a <- b, b <- a)} might not be).  \code{r2c}
+allows only the unambiguous cases for the "r2c_fun" functions, but that is
+enforced by the \link[=r2c-compile]{compilation functions}, not by \code{reuse_calls}.
+
+This function avoids potentially ambiguous substitutions, e.g. when component
+variables might be set to different values by different branches.  This might
+void substitutions that at run-time would have turned out to be valid, and
+even some that could have been known to be valid with more sophisticated
+static analysis (e.g. \code{if(TRUE) ... else ...} will be treated as a branch
+even though it is not really).  Substitutions involving loop modified
+variables are also limited due to the possibility of their value changing
+during e.g. the first and nth loop iteration, or the possibility of the loop
+not running at all.
+}
 \examples{
 x <- runif(100)
 y <- runif(100)

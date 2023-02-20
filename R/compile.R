@@ -85,17 +85,27 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #'
 #' * Binary operators: `+`, `-`, `*`, `/`, and `^`.
 #' * Statistics: `mean`, `sum`, `length`.
+#' * Assignment and braces: `<-`, `=`, and `{`.
 #'
-#' Calls comprises must be in the form `fun(...)` or for operators `a fun b`
-#' where `fun` is the unquoted name of the function (i.e.  not `"fun"(...)` or
-#' many of the other variations that R will normally allow for function
-#' invocation).  Functions must be bound to their original symbols for them to
-#' be recognized.  Symbols used as parameters to `call` and its constituent
-#' sub-calls (e.g. the `x` and `y` in `sum(x) + y`) will become parameters to
-#' the "r2c_fun" function.  There must be at least one such symbol in `call`.
-#' Symbol order in the "r2c_fun" parameter list is based on order of appearance
-#' in the call tree after everything is [`match.call`]ed.  Symbols beginning
-#' with `.R2C` are reserved for use by `r2c` and thus disallowed in `call`.
+#' Calls must be in the form `fun(...)` (`a fun b` for operators)  where `fun`
+#' is the unquoted name of the function (i.e.  not `"fun"(...)` or many of the
+#' other variations that R will normally allow for function invocation).
+#' Functions must be bound to their original symbols for them to be recognized.
+#' Empty braces are disallowed, and assignments may only be done at the top
+#' level or at a brace level (see examples).
+#'
+#' Outside of the aforementioned constraints, `r2c` attempts to mimic the
+#' corresponding R function semantics to the `identical` level, but there may be
+#' corner cases that differ, particularly those involving missing or infinite
+#' values.
+#'
+#' For `r2cl` and `r2cq`, symbols used as parameters to `call` and its
+#' constituent sub-calls (e.g. the `x` and `y` in `sum(x) + y`) will become
+#' parameters to the "r2c_fun" function.  There must be at least one such symbol
+#' in `call`.  Parameter order follows that of appearance in the call tree after
+#' everything is [`match.call`]ed.  Symbols beginning with `.R2C` are reserved
+#' for use by `r2c` and thus disallowed in `call`.  You may also directly set
+#' the parameter list with the `formals` parameter, or with `r2cf`.
 #'
 #' Parameters used with "r2c_fun" supported functions are categorized into data
 #' parameters and control parameters.  For example, in `sum(x, na.rm=TRUE)`, `x`
@@ -108,13 +118,9 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' type restrictions on control parameters, but each implemented function will
 #' only accept values for them that would make sense for the R counterparts.
 #'
-#' In general `r2c` attempts to mimic the corresponding R function semantics to
-#' the `identical` level, but there may be corner cases that differ,
-#' particularly those involving missing or infinite values.
-#'
-#' `r2c` requires a C99 compatible implementation with floating point infinity
-#' defined and the `R_xlen_t` range representable without precision loss as
-#' double precision floating point.  It is unknown whether R supports C
+#' `r2c` requires a C99 or later compatible implementation with floating point
+#' infinity defined and the `R_xlen_t` range representable without precision
+#' loss as double precision floating point.  It is unknown whether R supports C
 #' implementations that fail this requirement, and if it does they are probably
 #' rare.
 #'
@@ -163,7 +169,7 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' r2c_sum_sub <- r2cq(sum(x - y))
 #' r2c_sum_sub <- r2cl(quote(sum(x - y)))  ## equivalently
 #' sum_sub <- function(x, y) sum(x - y)
-#' r2c_sum_sub <- r2cf(sum_sub)           ## equivalently
+#' r2c_sum_sub <- r2cf(sum_sub)            ## equivalently
 #' r2c_sum_sub(-1, c(1, 2, 3))
 #'
 #' ## Set parameter order for r2cq
@@ -172,15 +178,39 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #'
 #' ## Leave symbols unbound, here `y` is resolved in the lexical environment
 #' r2c_sum_sub3 <- r2cq(sum(x - y), formals='x')
-#' y <- 10
-#' r2c_sum_sub3(c(1, 2, 3))
+#' y <- 999
+#' local({y <- -1; r2c_sum_sub3(c(1, 2, 3))})
 #'
 #' ##  Make a version that is checked
 #' r2c_sum_check <- r2cq(sum(x), check=TRUE)
+#' r2c_sum_check(1:10)                                 # checked
 #'
 #' ## Checks are disabled when using runners
-#' r2c_sum_check(1:10)                                 # checked
 #' group_exec(r2c_sum_check, 1:10, groups=rep(1L, 10)) # not checked
+#'
+#' ## Multi-line statements with assignments are supported
+#' slope <- function(x, y) {
+#'   mux <- mean(x)
+#'   x_mux <- x - mux
+#'   sum(x_mux * (y - mean(y))) / sum(x_mux^2)
+#' }
+#' r2c_slope <- r2cf(slope)
+#' u <- runif(10)
+#' v <- runif(10)
+#' r2c_slope(u, v)
+#'
+#' ## Note `r2c` automatically optimizes re-used calls, so intermediate
+#' ## assignments may be unnecessary:
+#' slope2 <- function(x, y)
+#'   sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x))^2)
+#' r2c_slope2 <- r2cf(slope2)
+#' get_r_code(r2c_slope2)
+#' identical(r2c_slope(u, v), r2c_slope2(u, v))
+#'
+#' ## But assignments in arguments to other calls are disallowed
+#' slope2 <- function(x, y)
+#'   sum((x_mux <- x - mean(x)) * (y - mean(y))) / sum(x_mux^2)
+#' try(r2c_slope2 <- r2cf(slope2))  # Error
 
 r2cf <- function(
   x, dir=NULL, check=getOption('r2c.check.result', FALSE),

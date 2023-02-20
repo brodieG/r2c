@@ -11,8 +11,7 @@ rolli_exec(
   by = 1L,
   align = "center",
   partial = FALSE,
-  MoreArgs = list(),
-  enclos = parent.frame()
+  MoreArgs = list()
 )
 }
 \arguments{
@@ -53,9 +52,6 @@ passed in full to the native code for each iteration  This is useful for
 arguments that are intended to remain constant across iterations.  Matching
 of these objects to \code{fun} parameters is the same as for \code{data}, with
 positional matching occurring after the elements in \code{data} are matched.}
-
-\item{enclos}{environment to use as the \code{enclos} parameter to
-\code{\link[base:eval]{base::eval}} when evaluating expressions or matching calls (see \code{data}).}
 }
 \value{
 a numeric vector of length \code{length(first_vec(data)) \%/\% by}.
@@ -73,7 +69,9 @@ implicitly the data elements are equally spaced.
 
 
 \code{align} specifies which end of the window aligns with the anchor.  Here we
-illustrate on the fourth iteration of a call to \code{rolli_exec}:\preformatted{## rolli_exec(..., data=1:7,  n=4)
+illustrate on the fourth iteration of a call to \code{rolli_exec}:
+
+\if{html}{\out{<div class="sourceCode">}}\preformatted{## rolli_exec(..., data=1:7,  n=4)
        +--------- On the 4th iteration, anchor is 4
        v
  1 2 3 4 5 6 7    | seq_along(first_vec(data))
@@ -82,7 +80,7 @@ illustrate on the fourth iteration of a call to \code{rolli_exec}:\preformatted{
        * * * *    | "left"    \{4, 5, 6, 7\}
      * * * *      | "center"  \{3, 4, 5, 6\}  <- default
  * * * *          | "right"   \{1, 2, 3, 4\}
-}
+}\if{html}{\out{</div>}}
 
 For the case of "center" with even sized windows more elements will be to the
 right than to the left of the anchor.
@@ -91,7 +89,9 @@ right than to the left of the anchor.
 \section{Correspondence to \code{\link{rollby_exec}}}{
 
 
-\code{rolli_exec} is a slightly more efficient implementation of:\preformatted{function(fun, data, n, align, ...)
+\code{rolli_exec} is a slightly more efficient implementation of:
+
+\if{html}{\out{<div class="sourceCode">}}\preformatted{function(fun, data, n, align, ...)
   roll_by_exec(
     fun, data,
     width=n - 1,
@@ -99,11 +99,13 @@ right than to the left of the anchor.
     bounds="[]",
     ...
    )
-}
+}\if{html}{\out{</div>}}
 
-Window element counts correspond to an interval width as \code{n - 1}, e.g.:\preformatted{1  2  3     |  n = 3
+Window element counts correspond to an interval width as \code{n - 1}, e.g.:
+
+\if{html}{\out{<div class="sourceCode">}}\preformatted{1  2  3     |  n = 3
 [     ]     |  width = 3 - 1 = 2 = n - 1
-}
+}\if{html}{\out{</div>}}
 
 Unlike \code{rolli_exec}, \code{\link{rollby_exec}} only supports fixed width windows.
 
@@ -150,7 +152,7 @@ rolli_exec(r2c_len, dat, n=c(1,3,1,3,1), align='left', partial=TRUE)
 }
 \seealso{
 \code{\link{r2c}} for more details on the behavior and constraints of
-"r2c_fun" functions, \code{\link[base:eval]{base::eval}} for the semantics of \code{enclos}.
+"r2c_fun" functions.
 
 Other runners: 
 \code{\link{group_exec}()},
