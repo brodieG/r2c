@@ -38,8 +38,10 @@ make_shlib <- function(x, dir, quiet) {
     stdout=TRUE, stderr=TRUE
   )
   status <- attr(comp.out, 'status')
-  if(!is.null(status) && status != 0)
-    stop("Compilation failed with output:\n\n", paste0(comp.out, collapse="\n"))
+  if(!is.null(status) && status != 0) {
+    writeLines(comp.out, stderr())
+    stop("Compilation failed, see output above.n")
+  }
   else if(!quiet) writeLines(comp.out)
   # is this what's returned on windows (we can specify, but should make sure if
   # the extension matters)?
