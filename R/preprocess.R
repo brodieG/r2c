@@ -100,18 +100,19 @@ match_call <- function(definition, call, name) {
 
 copy_last <- function(x) {
   if(!is.call(x)) x <- call("r2c_copy", x)
-  else if (is.call_w_args(x)) {
+  else {
     call.sym <- as.character(x[[1L]])
-    if(call.sym == "{")
+    if(call.sym == "{") {
+      if(length(x) < 2L) stop("Empty braces (`{}`) disallowed.")
       x[[length(x)]] <- copy_last(x[[length(x)]])
-    else if(call.sym %in% ASSIGN.SYM) {
+    } else if(call.sym %in% ASSIGN.SYM) {
       if(length(x) != 3L)
         stop("Internal Error: bad assign call structure.")
       x[[3L]] <- copy_last(x[[3L]])
     }
     else if(call.sym %in% PASSIVE.SYM)
       stop("Internal Error: unhandled passive calls")
-  } else stop("Internal Error: invalid call format.")
+  }
   x
 }
 
