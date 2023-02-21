@@ -175,6 +175,8 @@ preprocess <- function(call, formals, optimize=FALSE) {
   c.narg <- vapply(x[['code']][calls.keep], "[[", TRUE, "narg")
   c.flag <- vapply(x[['code']][calls.keep], "[[", TRUE, "flag")
   c.ctrl <- vapply(x[['code']][calls.keep], "[[", TRUE, "ctrl")
+  c.noop <- vapply(x[['code']][calls.keep], "[[", TRUE, "noop")
+
   any.inc <- c.narg | c.flag | c.ctrl
 
   calls.fin <- lapply(
@@ -190,7 +192,7 @@ preprocess <- function(call, formals, optimize=FALSE) {
             paste(
               c(
                 if(any(c.narg)) INC.VAR, if(any(c.flag)) INC.FLAG,
-                if(any(c.ctrl)) INC.CTRL
+                if(any(c.ctrl)) INC.CTRL, if(c.noop[i]) INC.DAT
               ),
               collapse="; "
       )   ) )

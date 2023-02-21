@@ -296,7 +296,8 @@ r2c_core <- function(
   OBJ <- list2env(
     list(
       preproc=preproc, so=so[['so']], handle=handle,
-      call=call, call.processed=preproc[['call.processed']], compile.out=so[['out']],
+      call=call, call.processed=preproc[['call.processed']],
+      compile.out=so[['out']],
       R.version=R.version, r2c.version=packageVersion('r2c'),
       envir=envir
     ),

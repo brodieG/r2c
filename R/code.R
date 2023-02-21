@@ -292,12 +292,15 @@ call_valid <- function(call) {
 #' @param narg TRUE if function has variable number of arguments
 #' @param flag TRUE if function has flag parameters
 #' @param ctrl TRUE if function has control parameters
+#' @param noop TRUE if function is a noop, in which case will be commented out
 
 code_res <- function(
-  defn, name, narg=FALSE, flag=FALSE, ctrl=FALSE, headers=character()
+  defn, name, narg=FALSE, flag=FALSE, ctrl=FALSE,
+  headers=character(), noop=FALSE
 ) {
   call <- sprintf(
-    "%s(%s%s%s%s);",
+    "%s%s(%s%s%s%s);",
+    if(noop) "// NO-OP: " else "",
     name,
     toString(CALL.BASE),
     if(narg) paste0(", ", CALL.VAR) else "",
@@ -306,6 +309,6 @@ code_res <- function(
   )
   list(
     defn=defn, name=name, call=call, headers=headers,
-    narg=narg, flag=flag, ctrl=ctrl
+    narg=narg, flag=flag, ctrl=ctrl, noop=noop
   )
 }

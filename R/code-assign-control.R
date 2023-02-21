@@ -13,15 +13,10 @@
 ##
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
-
 f_braces <- '
-// Braces are a no-op; the effect is handled allocation side
-static void %s(%s) {
-  data; di; narg; lens;
-}'
-# This function will get run, but the results discarded.  We started off using
-# it, but decided later easier to skip braces altogether, and it was easier to
-# leave this vestigial code here.
+// Braces are a no-op; allocation handles them.
+// static void %s(%s) { /* NOOP */ }'
+
 code_gen_braces <- function(fun, args.reg, args.ctrl, args.flags) {
   vetr(
     identical(., "{"),
@@ -32,14 +27,12 @@ code_gen_braces <- function(fun, args.reg, args.ctrl, args.flags) {
   if(length(args.reg) < 1L) stop("Empty braces expresssions disallowed.")
   name <- "braces"
   defn <- sprintf(f_braces, name, toString(c(F.ARGS.BASE, F.ARGS.VAR)))
-  code_res(defn=defn, narg=TRUE, name=name)
+  code_res(defn=defn, narg=TRUE, name=name, noop=TRUE)
 }
 
 f_assign <- '
-// Read-only assignments are a no-op; the effect is handled allocation side
-static void %s(%s) {
-  data; di; lens;
-}'
+// Read-only assignments are a no-op; allocation handles them.
+// static void %s(%s) { /* NOOP */ }'
 code_gen_assign <- function(fun, args.reg, args.ctrl, args.flags) {
   vetr(
     isTRUE(. %in% c("=", "<-")),
@@ -49,11 +42,11 @@ code_gen_assign <- function(fun, args.reg, args.ctrl, args.flags) {
   )
   name <- "assign"
   defn <- sprintf(f_assign, name, toString(F.ARGS.BASE))
-  code_res(defn=defn, name=name)
+  code_res(defn=defn, name=name, noop=TRUE)
 }
 
 f_copy <- '
-// Braces are a no-op; the effect is handled allocation side
+// Copy a vector, intended to be copied to result
 static void %s(%s) {
   R_xlen_t len0 = lens[di[0]];
   double * res = data[di[1]];
