@@ -424,19 +424,19 @@ r2c_core <- function(
 #' Extract Data from "r2c_fun" Objects
 #'
 #' "r2c_fun" functions contain embedded data used by the runners to call the
-#' compiled native code associated with the functions.  The `get_*` functions
-#' documented here extract various aspects of this data.
+#' compiled native code associated with the functions.  The functions documented
+#' here extract various aspects of this data.
 #'
 #' * `get_so_loc` the file system location of the shared object file.
-#' * `get_c_code` the generated C code used to produce the shared object.
-#' * `get_r_code` the R call that was translated into the C code; if
-#'   optimization was turned on it may have been modified from the original into
-#'   a semantically equivalent but in theory more efficient version (see
-#'   [`r2cq`]).
-#' * `get_compile_out` the "stdout" produced during the compilation of the
-#'   shared object.
+#' * `get_c_code` the generated C code used to produce the shared object, but
+#'   for quick inspection `show_c_code` is best.
 #' * `show_c_code` retrieves code with `get_c_code` and outputs to screen the
 #'   portion corresponding to the compiled expression, or optionally all of it.
+#' * `get_r_code` the R call that was translated into the C code; if
+#'   processing modified the original call the processed version will also be
+#'   shown (see [`r2cq`]).
+#' * `get_compile_out` the "stdout" produced during the compilation of the
+#'   shared object.
 #'
 #' @rdname get_r2c_data
 #' @aliases get_c_code get_r_code
