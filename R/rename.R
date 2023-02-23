@@ -69,7 +69,7 @@ init_rename <- function() list(i=integer(), renames=list(), map=character())
 #' structures.
 #'
 #' The objective of the renaming is to ensure that any same-name symbols that
-#' might possibly contain different values to end up with different names.  It
+#' might possibly contain different values end up with different names.  It
 #' is not intended that the renamed call will have the same semantics as the
 #' original call (and it definitely won't with loops that do assignments), only
 #' that there is no chance of the same symbol referring to two different values
@@ -79,7 +79,8 @@ init_rename <- function() list(i=integer(), renames=list(), map=character())
 #' variables which have additional constraints.  E.g. an `if` statement could
 #' assign to a variable as a scalar in one branch and as length 100 vector in
 #' another.  This is resolved in the allocation step (later) by disallowing
-#' variables from having ambiguous sizes.
+#' variables from having ambiguous sizes, and requiring that they all resolve to
+#' the same memory allocation..
 #'
 #' Once re-use substitution is completed, we restore the original symbol names
 #' with `unrename_call`.
@@ -97,7 +98,7 @@ init_rename <- function() list(i=integer(), renames=list(), map=character())
 #' * renames: a named list in which the names are the original symbol name, and
 #'   the values are the symbol to rename the original symbol to.  This list is
 #'   updated as `rename_call` invokes itself recursively.
-#' * map: named character vector 
+#' * map: named character vector.
 #'
 #' @return a list with elements:
 #'

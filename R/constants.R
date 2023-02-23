@@ -78,6 +78,9 @@ LOOP.SYM <- c("for", "while", "repeat")
 # "compute" the counter value.
 PASSIVE.SYM <- unique(c(ASSIGN.SYM, LOOP.SYM, "if", "{"))
 
+# For `record_call_dat`.
+CALL.DAT.VEC <- c('argn', 'depth', 'type', 'assign')
+
 # - Internal Symbols -----------------------------------------------------------
 
 R2C.PRIV.BASE <- ".R2C"

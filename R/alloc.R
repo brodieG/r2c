@@ -63,7 +63,11 @@ latest_symbol_instance <- function(x) {
 
 latest_action_call <- function(x) {
   calls <- vapply(x, is.call, TRUE)
-  call.sym <- vapply(x[calls], function(x) length(x) && is.name(x[[1L]]), TRUE)
+  call.sym <- vapply(
+    x[calls],
+    function(x) length(x) && (is.name(x[[1L]]) || is.character(x[[1L]])),
+    TRUE
+  )
   call.active <- vapply(
     x[calls][call.sym],
     function(x) !as.character(x[[1L]]) %in% PASSIVE.SYM,
@@ -162,7 +166,6 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
   # Bump scope so the data cannot be overwritten
   alloc[['scope']] <- alloc[['scope']] + 1L
 
-
   # - Process ------------------------------------------------------------------
 
   # Objective is to compute how much temporary storage we need to track all the
@@ -176,9 +179,6 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
   call.dat <- list()
 
   for(i in seq_along(x[['call']])) {
-    # Assigned symbol is processed as part of the assignment call, not here
-    if(x[['assign']][i]) next
-
     type <- x[['type']][[i]]
     call <- x[['call']][[i]]
     depth <- x[['depth']][[i]]
@@ -210,21 +210,29 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
         group <- 0
       } else if(ftype[[1L]] %in% c("arglen", "vecrec")) {
         # Length of a specific argument, like `probs` for `quantile`
-        if(!all(ftype[[2L]] %in% colnames(stack)))
+        stack.cand <- stack['depth',] == depth + 1L
+        stack.ids <-
+          if(is.character(ftype[[2L]])) colnames(stack)[stack.cand]
+          else seq_len(ncol(stack))[stack.cand]
+        if(!all(ftype[[2L]] %in% stack.ids))
           stop(
             simpleError(
               paste0(
                 "Parameter(s) ",
-                deparse1(ftype[[2L]][!ftype[[2L]]%in% colnames(stack)]),
-                " missing but required for sizing."
+                deparse1(ftype[[2L]][!ftype[[2L]] %in% stack.ids]),
+                " missing but required for sizing in ",
+                deparse1(call)
               ),
               .CALL
           ) )
         # Get parameter data. depth + 1L should be params to current call, note
         # this is not generally true for the stuff in `x`, only for the stack.
-        param.cand <- which(
-          colnames(stack) %in% ftype[[2L]] & stack['depth',] == depth + 1L
-        )
+        param.cand <- if(is.integer(ftype[[2L]])) {
+          seq_len(ncol(stack))[stack.cand][ftype[[2L]]]
+        } else if (is.character(ftype[[2L]])) {
+          which(colnames(stack) %in% ftype[[2L]] & stack.cand)
+        } else stop("Internal Error: bad sizing parameters.")
+
         # Arglen needs to disambiguate multiple params (e.g. `...` may show up
         # multiple times in `colnames(stack)` for any given depth).
         if(length(ftype) > 2L && is.function(ftype[[3L]])) {
@@ -261,6 +269,17 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
       )
       stack.ctrl <- stack.flag <- list()
 
+    # - Assigned-To Symbol -----------------------------------------------------
+    } else if(x[['assign']][i]) {
+      # We want to record this on the stack for consistency, but it doesn't
+      # really need to be there as it's never used
+      alloc <- append_dat(
+        alloc, new=numeric(), sizes=0L, depth=depth, type="tmp"
+      )
+      stack <- append_stack(
+        stack, alloc=alloc, id=alloc[['i']], depth=depth,
+        size=0L, group=0, argn=argn
+      )
     # - Control Parameter ------------------------------------------------------
     } else if (
       type %in% c("control", "flag") || !name %in% colnames(alloc[['names']])
@@ -270,7 +289,7 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
         arg.e <- eval(call, envir=data, enclos=env),
         error=function(e) stop(simpleError(conditionMessage(e), call.outer))
       )
-      # Validate external args after eval
+      # Validate non-control external args after eval
       if(type == "leaf" && !is.num_naked(list(arg.e))) {
         # Next call, if any
         next.call.v <- which(seq_along(x[['call']]) > i & x[['type']] == 'call')
@@ -287,10 +306,12 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
       ) ) }
       size <- length(arg.e)
       if(type == "control") {
+        if(!nzchar(argn)) stop("Internal Error: missing arg name for control.")
         ctrl <- list(arg.e)
         names(ctrl) <- argn
         stack.ctrl <- c(stack.ctrl, ctrl)
       } else if (type == "flag") {
+        if(!nzchar(argn)) stop("Internal Error: missing arg name for flag")
         flag <- list(arg.e)
         names(flag) <- argn
         stack.flag <- c(stack.flag, flag)
@@ -423,7 +444,8 @@ alloc_dat <- function(dat, depth, size, call, typeof='double', i.call) {
     stop("Expression max depth exceeded for alloc.") # exceedingly unlikely
 
   call.name <-
-    if(is.call(call) && is.symbol(call[[1L]])) as.character(call[[1L]])
+    if(is.call(call) && (is.symbol(call[[1L]]) || is.character(call[[1L]])))
+      as.character(call[[1L]])
     else ""
 
   # Cleanup expired symbols

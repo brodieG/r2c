@@ -18,71 +18,98 @@
 
 NULL
 
-## `match.call` but with default arguments
-##
-## Also, result is a list with just the arguments, not the original call.
+#' Recursively match.call Call and Sub-Calls
+#'
+#' Additionally fills in default values, and guarantees (possibly zero length)
+#' names.
+#'
+#' @noRd
 
-match_call <- function(definition, call, name) {
-  frm <- formals(definition)
-  frm.req <-
-    vapply(frm, function(x) is.name(x) && !nzchar(as.character(x)), TRUE)
-  frm.bad <- vapply(frm[!frm.req], function(x) is.language(x), TRUE)
-  if(any(frm.bad))
-    stop("Functions with non-constant defaults are unsupported.")
+match_call_rec <- function(call) {
+  # strip parentheses as they are implicit in call structure
+  while(is.call(call) && identical(as.character(call[[1L]]), "(")) {
+    if(length(call) != 2L)
+      stop("Internal Error: call to `(` with wrong parameter count.")  # nocov
+    call <- call[[2L]]
+  }
+  if(is.call(call)) {
+    func <- call_valid(call)
+    if(!is.null(defn <- VALID_FUNS[[c(func, "defn")]])) {
+      call[[1L]] <- as.character(call[[1L]]) # hack for e.g. `+`
+      # Replace dots (note these are dots as an argument, as opposed to dots in
+      # the formals of the function we'll generate); we do not want these dots
+      # to be matched against anything since that will be done at run-time, not
+      # now (i.e.  dots might not even exist at the moment).
+      any.dots <- vapply(call[-1L], identical, TRUE, quote(...))
+      any.r2cdots <- vapply(call[-1L], identical, TRUE, quote(.R2C.DOTS))
+      if(any(any.r2cdots)) stop("Symbol `.R2C.DOTS` is disallowed.")
+      if(any(any.dots)) call[-1L][which(any.dots)] <- list(quote(.R2C.DOTS))
+      # since we don't resolve dots env does not matter.
+      call <- match.call(definition=defn, call=call, expand.dots=FALSE)
+    } else {
+      names(call) <- character(length(call))
+    }
+    if(length(call) > 1) {
+      for(i in seq(2L, length(call), by=1L)) {
+        if(names(call)[i] == "...") {
+          for(j in seq_along(call[[i]]))
+            call[[i]][[j]] <- match_call_rec(call[[i]][[j]])
+        } else call[[i]] <- match_call_rec(call[[i]])
+      }
+    }
+    # Fill in defaults
+    frm <- formals(defn)
+    frm.req <-
+      vapply(frm, function(x) is.name(x) && !nzchar(as.character(x)), TRUE)
+    frm.bad <- vapply(frm[!frm.req], function(x) is.language(x), TRUE)
+    if(any(frm.bad))
+      stop("Functions with non-constant defaults are unsupported.")
 
-  # Match, check call
-  call[[1L]] <- as.character(call[[1L]]) # hack for e.g. `+`
-  # Replace dots (note these are dots as an argument, as opposed to dots in the
-  # formals of the function we'll generate); we do not want these dots to be
-  # matched against anything since that will be done at run-time, not now (i.e.
-  # dots might not even exist at the moment).
-  any.dots <- vapply(call[-1L], identical, TRUE, quote(...))
-  any.r2cdots <- vapply(call[-1L], identical, TRUE, quote(.R2C.DOTS))
-  if(any(any.r2cdots)) stop("Symbol `.R2C.DOTS` is disallowed.")
-  if(any(any.dots)) call[-1L][which(any.dots)] <- list(quote(.R2C.DOTS))
-
-  mcall <- match.call(definition=definition, call=call, expand.dots=FALSE)
-  mcall.nm <- names(mcall)[-1L]
-
-  frms.req <- names(frm)[frm.req]
-  # recall: these dots (from formals) are not the ones replaced by .R2C.DOTS
-  # (forwarded as an argument)!
-  frms.req <- frms.req[frms.req != "..."]
-  if(!all(frms.req.have <- frms.req %in% mcall.nm))
-    stop(
-      "Missing required formals ",
-      toString(sprintf("`%s`", frms.req[!frms.req.have])),
-      " for `", name, "`."
+    call.nm <- names(call)[-1L]
+    frms.req <- names(frm)[frm.req]
+    # recall: these dots (from formals) are not the ones replaced by .R2C.DOTS
+    # (forwarded as an argument)!  See match_call_rec.
+    frms.req <- frms.req[frms.req != "..."]
+    if(!all(frms.req.have <- frms.req %in% call.nm))
+      stop(
+        "Missing required formals ",
+        toString(sprintf("`%s`", frms.req[!frms.req.have])),
+        " for `", name, "`."
+      )
+    # Add defaults, expand formals dots, order matters
+    call.nm.missing <- names(frm)[!names(frm) %in% c(call.nm, "...")]
+    call.dots <- call[['...']]
+    if(is.null(call.dots)) call.dots <- list()
+    args.nm <- c(
+      names(call[seq_along(call) != 1L & names(call) != "..."]),
+      "...",
+      names(frm[call.nm.missing])
     )
-  # Add defaults, expand formals dots, order matters
-  mcall.nm.missing <- names(frm)[!names(frm) %in% c(mcall.nm, "...")]
-  mcall.dots <- mcall[['...']]
-  if(is.null(mcall.dots)) mcall.dots <- list()
-  args.nm <- c(
-    names(mcall[seq_along(mcall) != 1L & names(mcall) != "..."]),
-    "...",
-    names(frm[mcall.nm.missing])
-  )
-  args.dummy <- c(
-    as.list(mcall[seq_along(mcall) != 1L & names(mcall) != "..."]),
-    list(NULL),     # placeholder for dots
-    frm[mcall.nm.missing]
-  )
-  args.pos <- match(args.nm, names(frm))
-  args.ord <- order(args.pos)
-  args <- args.dummy[args.ord]
-  args.dot.pos <- if(length(mcall.dots)) {
-    names(mcall.dots) <- rep('...', length(mcall.dots))
-    match("...", args.nm[args.ord])
-  } else length(args)
-  # expand the dots
-  res <- c(
-    args[seq_len(args.dot.pos - 1L)],
-    mcall.dots,
-    if(length(args.dummy) > args.dot.pos)
-      args[seq(args.dot.pos + 1L, length(args), by=1L)]
-  )
+    args.dummy <- c(
+      as.list(call[seq_along(call) != 1L & names(call) != "..."]),
+      list(NULL),     # placeholder for dots
+      frm[call.nm.missing]
+    )
+    args.pos <- match(args.nm, names(frm))
+    args.ord <- order(args.pos)
+    args <- args.dummy[args.ord]
+    args.dot.pos <- if(length(call.dots)) {
+      names(call.dots) <- rep('...', length(call.dots))
+      match("...", args.nm[args.ord])
+    } else length(args)
+    # expand the dots
+    res <- c(
+      args[seq_len(args.dot.pos - 1L)],
+      call.dots,
+      if(length(args.dummy) > args.dot.pos)
+        args[seq(args.dot.pos + 1L, length(args), by=1L)]
+    )
+    # reconstitute the call
+    call <- as.call(c(list(call[[1L]]), res))
+  }
+  call
 }
+
 # Ensure Final Result is Written to Results Vector
 #
 # If the last statement is one that computes (e.g. a call to a function other
@@ -99,7 +126,7 @@ match_call <- function(definition, call, name) {
 # @return `x`, with a `r2c_copy` directive call added if needed
 
 copy_last <- function(x) {
-  if(!is.call(x)) x <- call("r2c_copy", x)
+  if(!is.call(x)) x <- call("r2c_copy", x=x)
   else {
     call.sym <- as.character(x[[1L]])
     if(call.sym == "{") {
@@ -133,12 +160,17 @@ copy_last <- function(x) {
 #' @return a call dat list as described in `init_call_dat`.
 
 preprocess <- function(call, formals, optimize=FALSE) {
+  # - Call Manipulations -------------------------------------------------------
+  call <- match_call_rec(call)
+  # WARNING: all subsequent call in injections must have names attached as
+  # `match.call` would produce since we've already done the match.call above
   if(optimize > 0L) {
     callr <- reuse_calls_int(call)
     call <- callr[['x']]  # also contains renames
   }
   # Ensure last value is copied into result
   call <- copy_last(call)
+  # - End Call Manipulations ---------------------------------------------------
 
   # All the data generated goes into x
   x <- init_call_dat(formals)
@@ -191,8 +223,10 @@ preprocess <- function(call, formals, optimize=FALSE) {
             "%s;",
             paste(
               c(
-                if(any(c.narg)) INC.VAR, if(any(c.flag)) INC.FLAG,
-                if(any(c.ctrl)) INC.CTRL, if(c.noop[i]) INC.DAT
+                if(any(c.narg)) INC.VAR,
+                if(any(c.flag)) INC.FLAG,
+                if(any(c.ctrl)) INC.CTRL,
+                if(c.noop[i]) INC.DAT # only for the specific `i`
               ),
               collapse="; "
       )   ) )
@@ -237,12 +271,6 @@ pp_internal <- function(
 
   # - Prep ---------------------------------------------------------------------
 
-  # Remove any parentheses calls
-  while(is.call(call) && identical(as.character(call[[1L]]), "(")) {
-    if(length(call) != 2L)
-      stop("Internal Error: call to `(` with wrong parameter count.")  # nocov
-    call <- call[[2L]]
-  }
   # Transform call (e.g. x^2 becomes square(x)); ideally the transformation
   # function would have the matched call, but since the only use we have for it
   # is a primitive that doesn't match arguments we don't worry about that right
@@ -255,13 +283,9 @@ pp_internal <- function(
   }
   if(is.call(call)) {
     # - Recursion on Params ----------------------------------------------------
-    func <- call_valid(call)
     # Classify Params
-    args <- if(!is.null(defn <- VALID_FUNS[[c(func, "defn")]])) {
-      match_call(definition=defn, call=call, name=func)
-    } else {
-      as.list(call[-1L])
-    }
+    args <- as.list(call[-1L])
+    if(is.null(names(args))) names(args) <- character(length(args))
     args.types <- rep("other", length(args))
     args.types[names(args) %in% VALID_FUNS[[c(func, "ctrl")]]] <- "control"
     args.types[names(args) %in% VALID_FUNS[[c(func, "flag")]]] <- "flag"
@@ -400,6 +424,8 @@ record_call_dat <- function(
   x[['depth']] <- c(x[['depth']], depth)
   x[['type']] <- c(x[['type']], type)
   x[['assign']] <- c(x[['assign']], assign)
+  if(length(unique(lengths(x[CALL.DAT.VEC]))) != 1L)
+    stop("Internal Error: irregular vector cal data.")
 
   # symbols only bound after first instance of being bound, i.e. can start off
   # as free until actually gets assigned to.
@@ -423,7 +449,7 @@ sym_free <- function(x, sym) {
 ## data matched to dots to the number of dots.
 
 expand_dots <- function(x, arg.names) {
-  exp.fields <- c('argn', 'type', 'depth', 'assign')
+  exp.fields <- CALL.DAT.VEC
   is.dots <- vapply(x[['call']], identical, TRUE, QDOTS)
   is.dots.m <- grepl(DOT.ARG.RX, arg.names)
   if(any(is.dots)) {

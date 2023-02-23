@@ -22,14 +22,14 @@ NULL
 
 
 is.valid_arglen <- function(type)
-  is.character(type[[2L]]) &&
+  (is.character(type[[2L]]) || is.integer(type[[2L]])) &&
   length(type[[2L]]) == 1L &&
   !is.na(type[[2L]]) &&
   (length(type) <= 2L || is.function(type[[3L]]))
 
 is.valid_vecrec <- function(type)
   type[[1L]] == "vecrec" &&
-  is.character(type[[2L]]) &&
+  (is.character(type[[2L]]) || is.integer(type[[2L]])) &&
   !anyNA(type[[2L]])
 
 is.valid_constant <- function(type)
@@ -221,12 +221,12 @@ VALID_FUNS <- list(
 
   fap_fun(
     "<-", fun=base::`<-`, defn=function(x, value) NULL,
-    type=list("arglen", "value"),
+    type=list("arglen", 2L),
     code.gen=code_gen_assign
   ),
   fap_fun(
     "=", fun=base::`=`, defn=function(x, value) NULL,
-    type=list("arglen", "value"),
+    type=list("arglen", 2L),
     code.gen=code_gen_assign
   ),
   fap_fun(

@@ -295,8 +295,11 @@ reuse_calls_int <- function(x) {
     x[[hoist.parent]] <- expr.target
   }
 
-  # Drop fake layers
+  # Drop fake layers, part 1
   x <- x[[1L]]
+  # Give names to added braces (needed b/c logic assumes every arg is named)
+  if(is.null(names(x))) names(x) <- c("", rep("...", length(x) - 1L))
+  # Drop fake layers, part 2
   if(no.braces && length(x) == 2L) x <- x[[2L]]
 
   # Undo the renames we used to ensure call reuse did not incorrectly reuse
