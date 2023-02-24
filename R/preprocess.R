@@ -119,6 +119,25 @@ match_call_rec <- function(call) {
   }
   call
 }
+#' Transform a Call Into An Alternate Equivalent Call
+#'
+#' This could be for optimization purposes (x^2 -> x * x).
+#'
+#' @noRd
+
+transform_call_rec <- function(call) {
+  while(is.call(call)) { # equivalent to if(...) repeat
+    func <- call_valid(call)
+    call.transform <- VALID_FUNS[[c(func, "transform")]](call)
+    if(identical(call.transform, call)) break
+    call <- call.transform
+  }
+  if(is.call(call) && length(call) > 1L) {
+    for(i in seq(2L, length(call), 1L))
+      call[[i]] <- transform_call_rec(call[[i]])
+  }
+  call
+}
 
 # Ensure Final Result is Written to Results Vector
 #
@@ -171,21 +190,27 @@ copy_last <- function(x) {
 
 preprocess <- function(call, formals, optimize=FALSE) {
   # - Call Manipulations -------------------------------------------------------
+
+  # WARNING: all subsequent call modifications after this step must have names
+  # attached (and be in matched order) for closures.
   call <- match_call_rec(call)
-  # WARNING: all subsequent call in injections must have names attached as
-  # `match.call` would produce since we've already done the match.call above
+
+  # Transform call. Should be an "optimization"?  Some transforms might not be.
+  call <- transform_call_rec(call)
+
+  # Apply optimizations
   if(optimize > 0L) {
     callr <- reuse_calls_int(call)
     call <- callr[['x']]  # also contains renames
   }
   # Ensure last value is copied into result
   call <- copy_last(call)
-  # - End Call Manipulations ---------------------------------------------------
+
+  # - Code Gen -----------------------------------------------------------------
 
   # All the data generated goes into x
   x <- init_call_dat(formals)
-  # We use this for match.call, but very questionable given the env might be
-  # different when we actually run the code (uh, great, what was this about?)
+  # Classify parameters and generate code recursively
   x <- pp_internal(call=call, depth=0L, x=x)
   x[['call.processed']] <- call
 
@@ -267,6 +292,9 @@ preprocess <- function(call, formals, optimize=FALSE) {
 }
 # Recursion portion of preprocess
 #
+# Classify parameters and generate code.
+#
+# @param call a recursively `match.call`ed call.
 # @param assign indicate whether current evaluation is of a symbol being
 #   assigned to to avoid recording that as a free symbol.
 # @param call.parent if `call` is being evaluated as an argument to a parent
@@ -279,23 +307,12 @@ pp_internal <- function(
   if(depth == .Machine$integer.max)
     stop("Expression max depth exceeded.") # exceedingly unlikely
 
-  # - Prep ---------------------------------------------------------------------
-
-  # Transform call (e.g. x^2 becomes square(x)); ideally the transformation
-  # function would have the matched call, but since the only use we have for it
-  # is a primitive that doesn't match arguments we don't worry about that right
-  # now.  Should this be done as an "optimization"?
-  while(is.call(call)) { # equivalent to if(...) repeat
-    func <- call_valid(call)
-    call.transform <- VALID_FUNS[[c(func, "transform")]](call)
-    if(identical(call.transform, call)) break
-    call <- call.transform
-  }
   if(is.call(call)) {
     # - Recursion on Params ----------------------------------------------------
     # Classify Params
     args <- as.list(call[-1L])
     if(is.null(names(args))) names(args) <- character(length(args))
+    func <- call_valid(call)
     args.types <- rep("other", length(args))
     args.types[names(args) %in% VALID_FUNS[[c(func, "ctrl")]]] <- "control"
     args.types[names(args) %in% VALID_FUNS[[c(func, "flag")]]] <- "flag"

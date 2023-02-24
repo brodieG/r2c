@@ -232,7 +232,6 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
             )
         } else stop("Internal Error: unexpected arg index type.")
 
-
         # Arglen needs to disambiguate multiple params (e.g. `...` may show up
         # multiple times in `colnames(stack)` for any given depth).
         if(length(ftype) > 2L && is.function(ftype[[3L]])) {
