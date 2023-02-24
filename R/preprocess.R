@@ -102,7 +102,8 @@ match_call_rec <- function(call) {
       args.ord <- order(args.pos)
       args <- args.dummy[args.ord]
       args.dot.pos <- if(length(call.dots)) {
-        names(call.dots) <- rep('...', length(call.dots))
+        # names(call.dots) <- rep('...', length(call.dots))
+        names(call.dots) <- character(length(call.dots))
         match("...", args.nm[args.ord])
       } else length(args)
       # expand the dots
