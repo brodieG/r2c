@@ -644,6 +644,7 @@ init_dat <- function(call, meta, scope) {
     ids0=integer(),
     type=character(),
     typeof=character(),
+    group=numeric(),     # because it is used in a numeric matrix too
 
     # Other data
     i=0L,
