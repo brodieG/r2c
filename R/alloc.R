@@ -149,11 +149,11 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
   # Status control placeholder.
   alloc <- append_dat(
     alloc, new=list(numeric(IX[['STAT.N']])),
-    sizes=IX[['STAT.N']], depth=0L, type="sts"
+    sizes=IX[['STAT.N']], depth=0L, type="sts", group=0
   )
   # Result placeholder, to be alloc'ed once we know group sizes.
   alloc <- append_dat(
-    alloc, new=list(numeric()), sizes=0L, depth=0L, type="res"
+    alloc, new=list(numeric()), sizes=0L, depth=0L, type="res", group=0
   )
   # Add group data.
   if(!all(nzchar(names(data)))) stop("All data must be named.")
@@ -161,7 +161,7 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
   data.used <- integer()
   alloc <- append_dat(
     alloc, new=data.naked, sizes=rep(gmax, length(data.naked)),
-    depth=0L, type="grp"
+    depth=0L, type="grp", group=1
   )
   # Bump scope so the data cannot be overwritten
   alloc[['scope']] <- alloc[['scope']] + 1L
@@ -204,34 +204,34 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
       if(ftype[[1L]] == "constant") {
         # Always constant size, e.g. 1 for `sum`
         size <- ftype[[2L]]
-        alloc <- alloc_dat(
-          alloc, depth, size=size, call=call, typeof=res.typeof, i.call=i
-        )
         group <- 0
+        alloc <- alloc_dat(
+          alloc, depth, size=size, call=call, typeof=res.typeof, i.call=i,
+          group=group
+        )
       } else if(ftype[[1L]] %in% c("arglen", "vecrec")) {
         # Length of a specific argument, like `probs` for `quantile`
+        # `depth + 1L` should be params to current call (this is only true for
+        # the stack, not necessarily for other things in `x`)
         stack.cand <- stack['depth',] == depth + 1L
-        stack.ids <-
-          if(is.character(ftype[[2L]])) colnames(stack)[stack.cand]
-          else seq_len(ncol(stack))[stack.cand]
-        if(!all(ftype[[2L]] %in% stack.ids))
-          stop(
-            simpleError(
-              paste0(
-                "Parameter(s) ",
-                deparse1(ftype[[2L]][!ftype[[2L]] %in% stack.ids]),
-                " missing but required for sizing in ",
-                deparse1(call)
-              ),
-              .CALL
-          ) )
-        # Get parameter data. depth + 1L should be params to current call, note
-        # this is not generally true for the stuff in `x`, only for the stack.
-        param.cand <- if(is.integer(ftype[[2L]])) {
-          seq_len(ncol(stack))[stack.cand][ftype[[2L]]]
-        } else if (is.character(ftype[[2L]])) {
-          which(colnames(stack) %in% ftype[[2L]] & stack.cand)
-        } else stop("Internal Error: bad sizing parameters.")
+        if(is.character(ftype[[2L]])) {
+          param.cand.tmp <- colnames(stack)[stack.cand]
+          if(!all(param.cand.match <- ftype[[2L]] %in% param.cand.tmp))
+            stack_param_missing(
+              ftype[[2L]][!param.cand.match], param.cand.tmp,
+              call, .CALL
+            )
+          param.cand <-
+            seq_len(ncol(stack))[colnames(stack) %in% ftype[[2L]] & stack.cand]
+        } else if(is.integer(ftype[[2L]])) {
+          param.cand <- seq_along(stack)[stack.cand][ftype[[2L]]]
+          if(anyNA(param.cand))
+            stack_param_missing(
+              ftype[[2L]][is.na(param.cand)], seq_along(stack)[stack.cand],
+              call, .CALL
+            )
+        } else stop("Internal Error: unexpected arg index type.")
+
 
         # Arglen needs to disambiguate multiple params (e.g. `...` may show up
         # multiple times in `colnames(stack)` for any given depth).
@@ -245,12 +245,12 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
           param.cand <- param.cand.tmp
         }
         sizes.tmp <- stack[c('size', 'group'), param.cand, drop=FALSE]
-        alloc <- alloc_dat(
-          alloc, depth, size=vec_rec_max_size(sizes.tmp, gmax), call=call,
-          typeof=res.typeof, i.call=i
-        )
         size <- vec_rec_known_size(sizes.tmp[1L,])  # knowable sizes
         group <- max(sizes.tmp[2L,])                # any group size in the lot?
+        alloc <- alloc_dat(
+          alloc, depth, size=vec_rec_max_size(sizes.tmp, gmax), call=call,
+          typeof=res.typeof, i.call=i, group=group
+        )
       } else stop("Internal Error: unknown function type.")
 
       id <- alloc[['i']]
@@ -274,7 +274,7 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
       # We want to record this on the stack for consistency, but it doesn't
       # really need to be there as it's never used
       alloc <- append_dat(
-        alloc, new=numeric(), sizes=0L, depth=depth, type="tmp"
+        alloc, new=numeric(), sizes=0L, depth=depth, type="tmp", group=0
       )
       stack <- append_stack(
         stack, alloc=alloc, id=alloc[['i']], depth=depth,
@@ -317,7 +317,7 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
         stack.flag <- c(stack.flag, flag)
       } else {
         alloc <- append_dat(
-          alloc, new=list(arg.e), sizes=size, depth=depth, type="ext"
+          alloc, new=list(arg.e), sizes=size, depth=depth, type="ext", group=0
         )
         stack <- append_stack(
           stack, alloc=alloc, id=alloc[['i']], depth=depth, size=size, group=0,
@@ -327,7 +327,7 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
 
     # - Match a Symbol In Data -------------------------------------------------
     } else if (id <- name_to_id(alloc, name)) {
-      is.grp <- alloc[['type']][id] == 'grp'
+      is.grp <- alloc[['group']][id]
       # Record size (note `id` computed in conditional)
       stack <- append_stack(
         stack, alloc=alloc, id=id, depth=depth,
@@ -357,6 +357,17 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
   )
   alloc.fin[['i']] <- match(alloc[['i']], ids.keep)
   list(alloc=alloc.fin, call.dat=call.dat, stack=stack)
+}
+stack_param_missing <- function(params, stack.avail, call, .CALL) {
+  stop(
+    simpleError(
+      paste0(
+        "Parameter(s) ",
+        deparse1(params[!params %in% stack.avail]),
+        " missing but required for sizing in ", deparse1(call)
+      ),
+      .CALL
+  ) )
 }
 
 ## Compute Max Possible Size
@@ -432,6 +443,11 @@ vec_rec_max_size <- function(x, gmax) {
 ##   scope level the symbol was created in, and `i.max` is the largest index in
 ##   the linearized call list that the symbol exists in as a leaf (indicating
 ##   that beyond that the name binding need not prevent release of memory).
+## * group: whether the allocation is of group size.  This is distinct to
+##   `type=="grp"`, which refers to data from the original group varying data.
+##   This designation is needed so that if a group sized allocation is bound to
+##   a variable, that that allocation is group sized is still available when the
+##   variable is retrieved later.
 ##
 ## We're mixing return value elements and params, a bit, but there are some
 ## differences, e.g.:
@@ -439,7 +455,9 @@ vec_rec_max_size <- function(x, gmax) {
 ## @param i.call the index of the element being processed in the linearized call
 ##   tree.
 
-alloc_dat <- function(dat, depth, size, call, typeof='double', i.call) {
+alloc_dat <- function(
+  dat, depth, size, call, typeof='double', i.call, group
+) {
   if(depth == .Machine$integer.max)
     stop("Expression max depth exceeded for alloc.") # exceedingly unlikely
 
@@ -466,6 +484,7 @@ alloc_dat <- function(dat, depth, size, call, typeof='double', i.call) {
     slot <- which(dat[['type']] == "res")
     dat[['i']] <- slot
     dat[['typeof']][slot] <- typeof
+    dat[['group']][slot] <- group
   } else if(!call.name %in% PASSIVE.SYM) {
     # We have a computing expression in need of a free slots
     free <-
@@ -478,7 +497,7 @@ alloc_dat <- function(dat, depth, size, call, typeof='double', i.call) {
       id <- if(length(dat[['ids']])) max(dat[['ids']]) + 1L else 1L
       dat <- append_vec_dat(
         dat, new=new, ids=id, sizes=size, depth=depth, type="tmp",
-        typeof=typeof
+        typeof=typeof, group=group
       )
       dat[['dat']] <- c(dat[['dat']], new)
       dat[['i']] <- id
@@ -491,6 +510,7 @@ alloc_dat <- function(dat, depth, size, call, typeof='double', i.call) {
       dat[['size']][slot] <- size
       dat[['typeof']][slot] <- typeof
       dat[['ids0']][slot] <- dat[['id0']] <- dat[['id0']] + 1L
+      dat[['group']][slot] <- group
       dat[['i']] <- dat[['ids']][slot]
     }
   } else if (call.name %in% PASSIVE.SYM) {
@@ -508,7 +528,7 @@ alloc_dat <- function(dat, depth, size, call, typeof='double', i.call) {
 ## our r2c data tracking structure.  Temporary variables are added by
 ## `alloc_dat`, not this function.
 
-append_dat <- function(dat, new, sizes, depth, type) {
+append_dat <- function(dat, new, sizes, depth, type, group) {
   if(length(new)) { # it's possible `data` has no numeric nums
     if(is.null(names(new))) names(new) <- character(length(new))
     if(!is.list(new)) stop("Internal Error: `new` must be list.")
@@ -532,7 +552,8 @@ append_dat <- function(dat, new, sizes, depth, type) {
     )
     dat <- append_vec_dat(
       dat, new, ids=new.ids, sizes=sizes, depth=depth, type=type,
-      typeof=vapply(new, typeof, "character")
+      typeof=vapply(new, typeof, "character"),
+      group=rep(group, length(new.ids))
     )
 
     # Bind names
@@ -544,7 +565,7 @@ append_dat <- function(dat, new, sizes, depth, type) {
   dat
 }
 append_vec_dat <- function(
-  dat, new, ids, ids0, sizes, depth, type, typeof
+  dat, new, ids, ids0, sizes, depth, type, typeof, group
 ) {
   if(length(new) != length(ids))
     stop("Internal Error: invalid ids.")
@@ -559,6 +580,7 @@ append_vec_dat <- function(
   dat[['depth']] <- c(dat[['depth']], rep(depth, length(new)))
   dat[['type']] <- c(dat[['type']], rep(type, length(new)))
   dat[['typeof']] <- c(dat[['typeof']], typeof)
+  dat[['group']] <- c(dat[['group']], group)
   dat
 }
 

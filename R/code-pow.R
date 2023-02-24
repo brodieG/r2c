@@ -78,7 +78,7 @@ pow_transform <- function(call) {
   exp <- call[[3L]]
   if(is.integer(exp)) exp <- as.numeric(exp)
   if(identical(exp, 2)) {
-    call <- call("square", call[[2L]])
+    call <- call("square", x=call[[2L]])
   }
   ## # We'll add these once we implement the re-used calculations
   ## else if(identical(exp, 1)) {

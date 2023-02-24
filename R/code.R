@@ -85,7 +85,8 @@ is.valid_constant <- function(type)
 #' @param name character(1L) symbol that will reference the function
 #' @param fun the function we're trying to emulate
 #' @param defn NULL if fun is a closure, otherwise a function template to use
-#'   for [`match.call`]'s `definition` parameter.
+#'   for [`match.call`]'s `definition` parameter.  Also can be NULL for
+#'   primitives that only do positional matching.
 #' @param ctrl.params character names of all the formal parameters that are
 #'   to be evaluated once up front and not for each group in the data.  If any
 #'   data columns are referenced by these parameters, the entire data column
@@ -125,7 +126,8 @@ is.valid_constant <- function(type)
 #' @return a list containing the above information after validating it.
 
 fap_fun <- function(
-  name, fun, defn, ctrl.params=character(), flag.params=character(),
+  name, fun, defn=if(typeof(fun) == 'closure') fun,
+  ctrl.params=character(), flag.params=character(),
   type, code.gen, ctrl.validate=function(...) 0L, transform=identity,
   preserve.int=FALSE
 ) {
@@ -133,13 +135,14 @@ fap_fun <- function(
     name=CHR.1,
     fun=is.function(.),
     # really should have put some parens to resolve ambiguity below
-    defn=typeof(fun) == "closure" && NULL || is.function(.),
-    ctrl.params=
-      character() && !anyNA(.) && all(. %in% names(formals(defn))) &&
-      !"..." %in% .,
-    flag.params=
-      character() && !anyNA(.) && all(. %in% names(formals(defn))) &&
-      !"..." %in% . && length(.) < 32L,
+    defn=typeof(.) == "closure" || NULL,
+    ctrl.params=identity(
+      is.null(defn) || all(. %in% names(formals(defn))) && !"..." %in% .
+    ),
+    flag.params=identity(
+      is.null(defn) ||
+      all(. %in% names(formals(defn))) && !"..." %in% . && length(.) < 32L
+    ),
     type=list() && length(.) %in% 2:3,
     code.gen=is.function(.),
     ctrl.validate=is.function(.),
@@ -156,7 +159,12 @@ fap_fun <- function(
       (type[[1L]] == "constant" && is.valid_constant(type)) ||
       (type[[1L]] == "arglen" && is.valid_arglen(type)) ||
       (type[[1L]] == "vecrec" && is.valid_vecrec(type))
-  ) )
+    ),
+    # positional matching or match.call?
+    type[[1L]] == "constant" ||
+      (is.null(defn) && is.integer(type[[2L]])) ||
+      (!is.null(defn) && is.character(type[[2L]]))
+  )
   list(
     name=name, fun=fun, defn=defn, ctrl=ctrl.params, flag=flag.params,
     type=type, code.gen=code.gen, ctrl.validate=ctrl.validate,
@@ -183,27 +191,27 @@ VALID_FUNS <- list(
     ctrl.validate=ctrl_val_summary
   ),
   fap_fun(
-    "length", base::length, defn=function(x) NULL,
+    "length", base::length, defn=NULL,
     type=list("constant", 1L), code.gen=code_gen_length
   ),
   fap_fun(
-    "+", base::`+`, defn=function(e1, e2) NULL,
-    type=list("vecrec", c("e1", "e2")), code.gen=code_gen_arith,
+    "+", base::`+`, defn=NULL,
+    type=list("vecrec", 1:2), code.gen=code_gen_arith,
     preserve.int=TRUE
   ),
   fap_fun(
-    "-", base::`-`, defn=function(e1, e2) NULL,
-    type=list("vecrec", c("e1", "e2")), code.gen=code_gen_arith,
+    "-", base::`-`, defn=NULL,
+    type=list("vecrec", 1:2), code.gen=code_gen_arith,
     preserve.int=TRUE
   ),
   fap_fun(
-    "*", base::`*`, defn=function(e1, e2) NULL,
-    type=list("vecrec", c("e1", "e2")), code.gen=code_gen_arith,
+    "*", base::`*`, defn=NULL,
+    type=list("vecrec", 1:2), code.gen=code_gen_arith,
     preserve.int=TRUE
   ),
   fap_fun(
-    "/", base::`/`, defn=function(e1, e2) NULL,
-    type=list("vecrec", c("e1", "e2")), code.gen=code_gen_arith
+    "/", base::`/`, defn=NULL,
+    type=list("vecrec", 1:2), code.gen=code_gen_arith
   ),
   ## # Not implemented for now given not just a simple counterpart, but
   ## # could add a function like square to deal with it..
@@ -213,19 +221,19 @@ VALID_FUNS <- list(
   ##   preserve.int=TRUE
   ## ),
   fap_fun(
-    "^", base::`^`, defn=function(e1, e2) NULL,
-    type=list("vecrec", c("e1", "e2")), code.gen=code_gen_pow,
+    "^", base::`^`, defn=NULL,
+    type=list("vecrec", 1:2), code.gen=code_gen_pow,
     transform=pow_transform
   ),
   # - Assign / Control----------------------------------------------------------
 
   fap_fun(
-    "<-", fun=base::`<-`, defn=function(x, value) NULL,
+    "<-", fun=base::`<-`, defn=NULL,
     type=list("arglen", 2L),
     code.gen=code_gen_assign
   ),
   fap_fun(
-    "=", fun=base::`=`, defn=function(x, value) NULL,
+    "=", fun=base::`=`, defn=NULL,
     type=list("arglen", 2L),
     code.gen=code_gen_assign
   ),
@@ -250,8 +258,8 @@ VALID_FUNS <- list(
     code.gen=code_gen_square
   ),
   fap_fun(
-    "r2c_copy", fun=r2c_copy, defn=r2c_copy,
-    type=list("arglen", "x"),
+    "r2c_copy", fun=r2c_copy, defn=NULL,
+    type=list("arglen", 1L),
     code.gen=code_gen_copy
   )
 )
