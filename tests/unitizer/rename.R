@@ -27,6 +27,14 @@ unitizer_sect("Basic Rename", {
   })
   (res1 <- r2c:::rename_call(call1))
   identical(call1, r2c:::unrename_call(res1[['x']], res1[['rn']]))
+
+  call1b <- quote({
+    x <- a
+    x <- b
+    x <- c
+    x
+  })
+  r2c:::rename_call(call1b)
 })
 unitizer_sect("Control Structs", {
   call2 <- quote({
@@ -137,5 +145,20 @@ unitizer_sect("Control Structs", {
   (res5 <- r2c:::rename_call(call5))
   identical(call5, r2c:::unrename_call(res5[['x']], res5[['rn']]))
 
+})
+unitizer_sect("Ambiguous Symbols", {
+  # expressions with symbols that produce non-unique roots
+  call6 <- quote({
+    `a$b` <- x
+    `a%b` <- `a$b`
+  })
+  (res6 <- r2c:::rename_call(call6))
+  identical(call6, r2c:::unrename_call(res6[['x']], res6[['rn']]))
+  call7 <- quote({
+    abcdefghi <- x
+    abcdefghX <- abcdefghi
+  })
+  (res7 <- r2c:::rename_call(call7))
+  identical(call7, r2c:::unrename_call(res7[['x']], res7[['rn']]))
 
 })

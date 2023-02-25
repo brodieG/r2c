@@ -1,5 +1,87 @@
 ## Done
 
+* Do we still use the 'assign' field in `record_call_dat`?  If not, excise.  We
+  do use it to allow us to putty dummy calls on the stack.
+* Check that forwarding calls in `...` works correctly, e.g.
+  `sum(1 + x, 2 + y)`, not obvious from glancing at dots handling that it does.
+  Update: not clear what we though the issue was, seems to work fine?
+* Symbol resolution apparently skips non-naked data; does that make sense or
+  should it find it and error?  No, it doesn't, it looks through all the data.
+* Check into why compilation output is incomplete (try borking one of the
+  C functions, looks like only some of the output makes it out right now
+  compared to actually running the compilation command).
+* Make sure that the Function Environment in `r2cf` is captured somewhere.  In
+  particular we want to make sure unbound symbols are resolved according to that
+  environment.  Will also need to think about what this means for the `enclos`
+  parameter to the runners.  
+* `r2cq(test)` produces weird error (note that's just a symbol) (fixed).
+* Make sure that the no-op C functions don't return warnings.
+* Test corner cases such as a repeated assignment to see if it get correctly
+  detected as being repeated.
+* Test `reuse_call` with empty call.  Seems to work fine.
+* Calling `r2c_funs` without `r2c` loaded, in particular when we're using `r2c`
+  functions such as `r2c_copy` or `mean1`?  Should be okay, it should fail?  It
+  does, just need to deal with `r2c_copy`.  Just ended up waiving the lookup
+  check for `r2c_copy`.
+* Reuse with an inner expression that appears separately from a re-used outer
+  expression (yes, `r2c_int` is a good example of this working).
+* Final call is not a computation, will things work okay?  They do now.
+* Test empty braces (`{}`).
+* What happens if we have an assignment at depth 0?  Nothing much, works as
+  expected.
+* Are we okay with doing the call substitution before match-calling?  That's
+  going to change param evaluation order.  Probably not okay.  Is that what
+  we're doing though?  We disallowed expressions containing non top-level
+  assignments.
+* Renames:
+  * Don't change the structure of the tree
+  * Can be reversed (maybe this covers the prior point)
+* Add tests that confirm us overriding functions used by the "r2c_fun" does not
+  break anything.
+* Do we want to hoist out temporary code-reuses to the top level so that we can
+  enforce evaluation order, and also to try to make the code clearer?  Main
+  challenge is if there is an assignment at some point earlier in the expression
+  that conflicts with the hoisting (i.e. hoisting would result in the expression
+  referencing an undefined symbol).  And what does top-level mean when e.g.
+  there is a loop or branch (do we go all the way, or stop there)?
+* Assignment isn't re-using last available slot.  It should if it's unprotected.
+  Maybe it could under additional circumstances?
+* Can we optimize away `braces`?  They don't really do anything but return the
+  last value, which is what would happen anyway.  Maybe too annoying to deal
+  with in the current structure.  Another problem with braces is that they cause
+  everything under them to be protected by depth by virtue of being siblings,
+  when really we only care about the last value.
+* Test renames with potentially ambiguous names (too long for root, special
+  symbols).
+* Fix over-optimization where expression that is already assigned to a symbol
+  gets assigned to a sub-symbol.  This is not trivial because we need to
+  identify that an expression already has a name, etc., etc..  This is really
+  not a big deal so we'll leave it alone.  Here is an example.
+
+    reuse_calls(quote({a <- mean(x); mean(x)}))
+    ## {
+    ##     .R2C_SUB_1 <- mean(x)
+    ##     a <- .R2C_SUB_1
+    ##     .R2C_SUB_1
+    ## }
+
+* Disallow any optimization when there are assignments not at a brace level?
+  But even then the code evaluation is questionable.  We should probably just
+  disallow it altogether, as in `r2c` simply does not accept parameters with
+  side effects (need to think about controls, flags).
+* Make sure we understand when it's okay or not okay to assume about order of
+  evaluation of parameters (e.g. when they contain assignments in them).
+  Probably we'll just have to document that what we assume may be different than
+  what R does, and it's a really bad idea to do this in the first place in a way
+  where order matters. (we decided to just disallow this).
+* Rename `r2c` to `r2cf` or similar once we implement functions.  Partly this is
+  so `?r2c` will pull up the package docs, not the function docs.
+* To allow assignments we can just use a series of nested environments such that
+  each sub-call will then seek the symbol through the nested environments.
+  We'll need to bind the data symbols to e.g. environments so they may be
+  uniquely identified and we can confirm they've been found.  Err, what were we
+  thinking here?
+* Complex expressions with curly braces, etc.
 * Consider giving each individual allocation a unique id, and putting those ids
   in the stack, that way when there is a stack reduce we can confirm that the
   allocation slots being pointed to actually contain the data intended (this is
