@@ -102,8 +102,8 @@ match_call_rec <- function(call) {
       args.ord <- order(args.pos)
       args <- args.dummy[args.ord]
       args.dot.pos <- if(length(call.dots)) {
-        # names(call.dots) <- rep('...', length(call.dots))
-        names(call.dots) <- character(length(call.dots))
+        # Used when e.g. vecrec is done on dots
+        names(call.dots) <- rep('...', length(call.dots))
         match("...", args.nm[args.ord])
       } else length(args)
       # expand the dots
@@ -296,7 +296,8 @@ preprocess <- function(call, formals, optimize=FALSE) {
 #
 # @param call a recursively `match.call`ed call.
 # @param assign indicate whether current evaluation is of a symbol being
-#   assigned to to avoid recording that as a free symbol.
+#   assigned to to avoid recording that as a free symbol and also to tell the
+#   allocator to use a stub for it in the temp allocation list.
 # @param call.parent if `call` is being evaluated as an argument to a parent
 #   call, `call.parent` is that call.  Used so we can tell if we're e.g. called
 #   from braces.
@@ -452,7 +453,7 @@ record_call_dat <- function(
   x[['type']] <- c(x[['type']], type)
   x[['assign']] <- c(x[['assign']], assign)
   if(length(unique(lengths(x[CALL.DAT.VEC]))) != 1L)
-    stop("Internal Error: irregular vector cal data.")
+    stop("Internal Error: irregular vector call data.")
 
   # symbols only bound after first instance of being bound, i.e. can start off
   # as free until actually gets assigned to.

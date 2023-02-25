@@ -17,68 +17,6 @@
 
 NULL
 
-#' Find Latest Symbol Instance
-#'
-#' This currently allows control/flag parameter symbols to count, even though
-#' we're settling on them having different lookup semantics.  So this will be
-#' cause some inefficiency in some cases where a symbol will not be released as
-#' early as it should just because it's used as a control/flag.
-#'
-#' @noRd
-#' @param x object as produced by preproc
-
-latest_symbol_instance <- function(x) {
-  call <- x
-  # Compute symbol lifetime.  We only need to find the latest time it exists as
-  # a leaf because it will be protected by its expression level in expressions.
-  # This is to support protecting assignments across sub-expressions.
-  sym.steps <- vapply(
-    call, function(x) if(is.symbol(x)) as.character(x) else "", ""
-  )
-  sym.max <- tapply(seq_along(sym.steps), sym.steps, max)
-
-  # Unfortunately loops complicate matters as an early symbol can be re-used
-  # after first loop iteration, so get all the loops, and extract all the leaf
-  # symbols used by each loop.
-  loop.syms <- lapply(call, collect_loop_call_symbols)
-  loop.reps <- rep(seq_along(loop.syms), lengths(loop.syms))
-  loop.max <- tapply(loop.reps, unlist(loop.syms), max)
-
-  # Return max instance
-  max.names <- union(names(loop.max), names(sym.max))
-  max.instance <- integer(length(max.names))
-  names(max.instance) <- max.names
-  max.instance[names(sym.max)] <- sym.max
-  max.instance[names(loop.max)] <- pmax(max.instance[names(loop.max)], loop.max)
-  max.instance[nzchar(names(max.instance))]
-}
-#' Find Last Call That Computes
-#'
-#' Braces just return the last value (as do assignments and control structures).
-#' This is required to ensure the last computing call is written to the result
-#' vector and not to a temporary allocation.
-#'
-#' @noRd
-#' @param x linearized call list
-
-latest_action_call <- function(x) {
-  calls <- vapply(x, is.call, TRUE)
-  call.sym <- vapply(
-    x[calls],
-    function(x) length(x) && (is.name(x[[1L]]) || is.character(x[[1L]])),
-    TRUE
-  )
-  call.active <- vapply(
-    x[calls][call.sym],
-    function(x) !as.character(x[[1L]]) %in% PASSIVE.SYM,
-    TRUE
-  )
-  call.active.i <- seq_along(x)[calls][call.sym][call.active]
-  if(!length(call.active.i))
-    stop("Internal Error: no active return call found.")
-  max(call.active.i)
-}
-
 #' Allocate Required Storage
 #'
 #' For each call, we allocate a vector for the result in the storage list,
@@ -271,7 +209,7 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
     # - Assigned-To Symbol -----------------------------------------------------
     } else if(x[['assign']][i]) {
       # We want to record this on the stack for consistency, but it doesn't
-      # really need to be there as it's never used
+      # really need to be there because assign is a no-op at C level
       alloc <- append_dat(
         alloc, new=numeric(), sizes=0L, depth=depth, type="tmp", group=0
       )
@@ -279,7 +217,7 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
         stack, alloc=alloc, id=alloc[['i']], depth=depth,
         size=0L, group=0, argn=argn
       )
-    # - Control Parameter ------------------------------------------------------
+    # - Control Parameter / External -------------------------------------------
     } else if (
       type %in% c("control", "flag") || !name %in% colnames(alloc[['names']])
     ) {
@@ -357,49 +295,15 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
   alloc.fin[['i']] <- match(alloc[['i']], ids.keep)
   list(alloc=alloc.fin, call.dat=call.dat, stack=stack)
 }
-stack_param_missing <- function(params, stack.avail, call, .CALL) {
-  stop(
-    simpleError(
-      paste0(
-        "Parameter(s) ",
-        deparse1(params[!params %in% stack.avail]),
-        " missing but required for sizing in ", deparse1(call)
-      ),
-      .CALL
-  ) )
-}
 
-## Compute Max Possible Size
-##
-## This is affected by maximum group size as well as any non-group parameters.
-## This allows us to keep track of what the most significant size resulting from
-## prior calls is in the presence of some calls affected by group sizes.  That
-## way, if e.g. at some point we have a small group, but the limiting size is
-## from the non-group data, that info isn't lost.
-##
-## IMPORTANT: the result of this alone _must_ be combined with preserving
-## whether the data was group data or not.
+# - Data Structures ------------------------------------------------------------
 
-vec_rec_known_size <- function(x) {
-  tmp <- x[!is.na(x)]             # non-group sizes
-  if(!length(tmp)) NA_real_
-  else if(any(tmp == 0)) 0
-  else max(tmp)
-}
-# only difference with above is we use the max group size for alloc
+# We track:
+# * Alloctions for the intermediary vectors (and the actual vectors for
+#   external items / iteration varying data).
+# * Sub-calls, along with their allocations usage.
+# * State of the stack.
 
-vec_rec_max_size <- function(x, gmax) {
-  if(
-    !is.numeric(x) || !is.matrix(x) || nrow(x) != 2 ||
-    any(is.na(x[1L,] & !x[2L,]))
-  )
-    stop("Internal error, malformed size data.")
-
-  size <- x[1L,]
-  group <- as.logical(x[2L,])
-  size[is.na(size) | group] <- gmax
-  if(any(size == 0)) 0 else max(size)
-}
 ## Track Required Allocations for Intermediate vectors
 ##
 ## r2c keeps a list of every vector that it uses in computations, including the
@@ -563,73 +467,32 @@ append_dat <- function(dat, new, sizes, depth, type, group) {
   }
   dat
 }
+## Shared by alloc_dat and append_date
+
 append_vec_dat <- function(
   dat, new, ids, ids0, sizes, depth, type, typeof, group
 ) {
   if(length(new) != length(ids))
     stop("Internal Error: invalid ids.")
 
-  dat[['ids']] <- c(dat[['ids']], ids)
-  ids0.new <- dat[['id0']] + seq_along(ids)
-  dat[['ids0']] <- c(dat[['ids0']], ids0.new)
   dat[['id0']] <- ids0.new[length(ids0.new)]
+  ids0.new <- dat[['id0']] + seq_along(ids)
 
+  dat[['ids']] <- c(dat[['ids']], ids)
+  dat[['ids0']] <- c(dat[['ids0']], ids0.new)
   dat[['alloc']] <- c(dat[['alloc']], sizes)
   dat[['size']] <- c(dat[['size']], sizes)
   dat[['depth']] <- c(dat[['depth']], rep(depth, length(new)))
   dat[['type']] <- c(dat[['type']], rep(type, length(new)))
   dat[['typeof']] <- c(dat[['typeof']], typeof)
   dat[['group']] <- c(dat[['group']], group)
+
+  vec.el <- c('ids', 'ids', 'alloc', 'size', 'depth', 'type', 'typeof', 'group')
+  if(length(unique(lengths(dat[vec.el]))) != 1L)
+    stop("Internal Error: irregular vector alloc data.")
+
   dat
 }
-
-#' Helper Functions for Symbol Management
-#'
-#' * `names_clean` drops name that have no future references to them, which
-#'   makes it safe to release any memory that they've been bound to.
-#' * `names_free` frees any allocation previously bound to a symbol, use this
-#'   when you give a symbol a new binding in the same scope.
-#' * `names_bind` record new symbols and their binding to the data allocation.
-#'
-#' @noRd
-
-names_clean <- function(alloc, i.call) {
-  names <- alloc[['names']]
-  # Drop out ouf scope names
-  names <- names[, names['scope',] <= alloc[['scope']], drop=FALSE]
-  # Drop expired names
-  alloc[['names']] <- names[, names['i.max',] >= i.call, drop=FALSE]
-  alloc
-}
-names_free <- function(alloc, new.names) {
-  names <- alloc[['names']]
-  to.free <-
-    names['scope', ] == alloc[['scope']] &
-    colnames(names) %in% new.names
-  alloc[['names']] <- names[, !to.free, drop=FALSE]
-  alloc
-}
-names_bind <- function(alloc, new.names, new.ids) {
-  new.names.mx <- rbind(
-    ids=new.ids,
-    scope=rep(alloc[['scope']], length(new.names)),
-    i.max=alloc[['meta']][['i.sym.max']][new.names]
-  )
-  new.names.mx['i.max', is.na(new.names.mx['i.max',])] <- 0L
-  colnames(new.names.mx) <- new.names
-  alloc[['names']] <- cbind(alloc[['names']], new.names.mx)
-  alloc
-}
-name_to_id <- function(alloc, name) {
-  if (id <- match(name, rev(colnames(alloc[['names']])), nomatch=0)) {
-    # Reconvert the name id into data id (`rev` simulates masking)
-    id <- ncol(alloc[['names']]) - id + 1L
-    alloc[['names']]['ids', id]
-  }
-}
-
-
-
 init_dat <- function(call, meta, scope) {
   list(
     # Allocation data
@@ -652,6 +515,7 @@ init_dat <- function(call, meta, scope) {
     meta=meta
   )
 }
+
 ## Stack used to track parameters ahead of reduction when processing call.
 init_stack <- function() {
   matrix(
@@ -700,6 +564,119 @@ append_call_dat <- function(call.dat, call, stack, alloc, depth, ctrl, flag) {
   ids <- c(param.ids, alloc[['i']])
   c(call.dat, list(list(call=call, ids=ids, ctrl=ctrl, flag=flag)))
 }
+# - Other Helper Functions -----------------------------------------------------
+
+#' Find Latest Symbol Instance
+#'
+#' This currently allows control/flag parameter symbols to count, even though
+#' we're settling on them having different lookup semantics.  So this will be
+#' cause some inefficiency in some cases where a symbol will not be released as
+#' early as it should just because it's used as a control/flag.
+#'
+#' @noRd
+#' @param x object as produced by preproc
+
+latest_symbol_instance <- function(x) {
+  call <- x
+  # Compute symbol lifetime.  We only need to find the latest time it exists as
+  # a leaf because it will be protected by its expression level in expressions.
+  # This is to support protecting assignments across sub-expressions.
+  sym.steps <- vapply(
+    call, function(x) if(is.symbol(x)) as.character(x) else "", ""
+  )
+  sym.max <- tapply(seq_along(sym.steps), sym.steps, max)
+
+  # Unfortunately loops complicate matters as an early symbol can be re-used
+  # after first loop iteration, so get all the loops, and extract all the leaf
+  # symbols used by each loop.
+  loop.syms <- lapply(call, collect_loop_call_symbols)
+  loop.reps <- rep(seq_along(loop.syms), lengths(loop.syms))
+  loop.max <- tapply(loop.reps, unlist(loop.syms), max)
+
+  # Return max instance
+  max.names <- union(names(loop.max), names(sym.max))
+  max.instance <- integer(length(max.names))
+  names(max.instance) <- max.names
+  max.instance[names(sym.max)] <- sym.max
+  max.instance[names(loop.max)] <- pmax(max.instance[names(loop.max)], loop.max)
+  max.instance[nzchar(names(max.instance))]
+}
+#' Find Last Call That Computes
+#'
+#' Braces just return the last value (as do assignments and control structures).
+#' This is required to ensure the last computing call is written to the result
+#' vector and not to a temporary allocation.
+#'
+#' @noRd
+#' @param x linearized call list
+
+latest_action_call <- function(x) {
+  calls <- vapply(x, is.call, TRUE)
+  call.sym <- vapply(
+    x[calls],
+    function(x) length(x) && (is.name(x[[1L]]) || is.character(x[[1L]])),
+    TRUE
+  )
+  call.active <- vapply(
+    x[calls][call.sym],
+    function(x) !as.character(x[[1L]]) %in% PASSIVE.SYM,
+    TRUE
+  )
+  call.active.i <- seq_along(x)[calls][call.sym][call.active]
+  if(!length(call.active.i))
+    stop("Internal Error: no active return call found.")
+  max(call.active.i)
+}
+
+
+## Identify Missing Parameters on Stack
+##
+## Ends execution with Error
+
+stack_param_missing <- function(params, stack.avail, call, .CALL) {
+  stop(
+    simpleError(
+      paste0(
+        "Parameter(s) ",
+        deparse1(params[!params %in% stack.avail]),
+        " missing but required for sizing in ", deparse1(call)
+      ),
+      .CALL
+  ) )
+}
+
+## Compute Max Possible Size
+##
+## This is affected by maximum group size as well as any non-group parameters.
+## This allows us to keep track of what the most significant size resulting from
+## prior calls is in the presence of some calls affected by group sizes.  That
+## way, if e.g. at some point we have a small group, but the limiting size is
+## from the non-group data, that info isn't lost.
+##
+## IMPORTANT: the result of this alone _must_ be combined with preserving
+## whether the data was group data or not.
+
+vec_rec_known_size <- function(x) {
+  tmp <- x[!is.na(x)]             # non-group sizes
+  if(!length(tmp)) NA_real_
+  else if(any(tmp == 0)) 0
+  else max(tmp)
+}
+# only difference with above is we use the max group size for alloc
+
+vec_rec_max_size <- function(x, gmax) {
+  if(
+    !is.numeric(x) || !is.matrix(x) || nrow(x) != 2 ||
+    any(is.na(x[1L,] & !x[2L,]))
+  )
+    stop("Internal error, malformed size data.")
+
+  size <- x[1L,]
+  group <- as.logical(x[2L,])
+  size[is.na(size) | group] <- gmax
+  if(any(size == 0)) 0 else max(size)
+}
+
 ## Check function validity
 check_fun <- function(x, env) {
   if(!x %in% names(VALID_FUNS))
@@ -722,4 +699,49 @@ check_fun <- function(x, env) {
       if(is.function(got.fun) && !identical(env.fun,  environment(got.fun)))
         paste0(" (resolves to one from ", format(environment(got.fun)), ")")
 ) } }
+
+#' Helper Functions for Symbol Management
+#'
+#' * `names_clean` drops name that have no future references to them, which
+#'   makes it safe to release any memory that they've been bound to.
+#' * `names_free` frees any allocation previously bound to a symbol, use this
+#'   when you give a symbol a new binding in the same scope.
+#' * `names_bind` record new symbols and their binding to the data allocation.
+#'
+#' @noRd
+
+names_clean <- function(alloc, i.call) {
+  names <- alloc[['names']]
+  # Drop out ouf scope names
+  names <- names[, names['scope',] <= alloc[['scope']], drop=FALSE]
+  # Drop expired names
+  alloc[['names']] <- names[, names['i.max',] >= i.call, drop=FALSE]
+  alloc
+}
+names_free <- function(alloc, new.names) {
+  names <- alloc[['names']]
+  to.free <-
+    names['scope', ] == alloc[['scope']] &
+    colnames(names) %in% new.names
+  alloc[['names']] <- names[, !to.free, drop=FALSE]
+  alloc
+}
+names_bind <- function(alloc, new.names, new.ids) {
+  new.names.mx <- rbind(
+    ids=new.ids,
+    scope=rep(alloc[['scope']], length(new.names)),
+    i.max=alloc[['meta']][['i.sym.max']][new.names]
+  )
+  new.names.mx['i.max', is.na(new.names.mx['i.max',])] <- 0L
+  colnames(new.names.mx) <- new.names
+  alloc[['names']] <- cbind(alloc[['names']], new.names.mx)
+  alloc
+}
+name_to_id <- function(alloc, name) {
+  if (id <- match(name, rev(colnames(alloc[['names']])), nomatch=0)) {
+    # Reconvert the name id into data id (`rev` simulates masking)
+    id <- ncol(alloc[['names']]) - id + 1L
+    alloc[['names']]['ids', id]
+  }
+}
 
