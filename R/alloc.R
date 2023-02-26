@@ -19,22 +19,45 @@ NULL
 
 #' Allocate Required Storage
 #'
-#' For each call, we allocate a vector for the result in the storage list,
-#' possibly re-using a previously allocated but "freed" vector.  Additionally,
-#' we record the indices into the storage list for the result of each call, as
-#' well as for each argument to it.
+#' This is internal documentation.  Please be sure to read `?r2c-compile` and
+#' the documentation for the `preprocess` internal function before reading this.
 #'
-#' Leaf symbols are looked for through (in order):
+#' We iterate through the linearized call list (see `preprocess` for details) to
+#' determine the memory needs required to support the evaluation of the
+#' function, and pre-allocate this memory.  The allocations are sized to fit the
+#' largest group (and thus should fit all groups).  The allocations are appended
+#' to the storage list that is part of the `alloc` object (`alloc[['dat']]).
+#' See docs for `append_dat`.
 #'
-#' * Previously assigned symbols in the expression.
-#' * The naked data vectors (hmm..., another semantic wrinkle).
-#' * The outside environment.
+#' Every leaf expression that might affect allocation requirements (i.e.
+#' excluding control and flag values) is brought into the storage list if
+#' it is not there already.  External vectors (i.e. not part of the group data)
+#' are shallow copied into the storage list (i.e. just referenced, not actually
+#' copied, per standard R semantics).  The semantics of lookup should mimic
+#' those of e.g. `with`, where we first look through any symbols previously
+#' bound in the evaluation environment, then in the data in `with`, and finally
+#' in the calling environment.
 #'
-#' The calls have been linearized by `preprocess` (see that for details).
+#' The sizes of leaf expressions are tracked in the `stack` array, along with
+#' their depth, and where in the storage list they reside.  When we reach a
+#' sub-call all its inputs will be in the `stack` with a depth equal to 1 + its
+#' own depth.  We can use the input size information along with meta data about
+#' the function in the call to compute the output size.  The inputs are then
+#' removed from the stack and replaced by the output size from the sub call, and
+#' we allocate (or re-use a no-longer needed allocation) to/from the storage
+#' list.  For outputs that have size dependent on group size, we record the size
+#' as NA (this will need to change in the future to accommodate more complex
+#' functions like `c`), and allocate a vector large enough for the largest
+#' group.  Recording the size as NA allows us to propagate that the output is
+#' of group-size.
 #'
-#' This process converts `preproc$call` to `alloc$call.dat` (and `$depth`, and
-#' more).  `alloc$call.dat` should have as many entries as there are C calls
-#' in `preproc$code`.
+#' This continues until the stack contains the output size and location of the
+#' final call, and the allocation memory list contains all the vectors required
+#' to hold intermediate calculations.  We record the state of the stack at each
+#' sub-call along with other other useful data in `call.dat`.
+#'
+#' Control and Flags are tracked in separate stacks that are also merged into
+#' `call.dat`.
 #'
 #' @section Depth:
 #'
@@ -47,17 +70,39 @@ NULL
 #' parameters will have a `depth` of `depth+1`.  We use `stack` as a mechanism
 #' for tracking the current call's parameters.
 #'
-#' For the specific case of braces and assignments, we let `alloc_dat` "promote"
-#' the depth of their results so that there does not need to be a new allocation
-#' for what should be a no-op.  This will cause the `depth` values in the
-#' allocation data and the `stack` to diverge, but those should converge after
-#' the stack reduces.
+#' @section Special Sub-Calls:
+#'
+#' Assignments and braces are considered special because neither of them do any
+#' computations.  Assignments change the lifetime of the expression assigned to
+#' the symbol to last until the last use of that symbol-instance (a
+#' symbol-instance lifetime ends if it is overwritten).  This means that the
+#' storage list element containing the value bound to the symbol cannot be
+#' re-used until after the lifetime ends.  Braces just "output" the last
+#' expression they contain.  Both of these register on the stack by having their
+#' last input also be the output.  This works fine because both these functions
+#' are no-op at the C level so there is no risk of corrupting the input.
+#'
+#' @section Result Vector:
+#'
+#' All the allocations in the storage list are sized to contain a single
+#' iteration (group, window, etc.), but the result vector will hold the
+#' concatenation of all of them.  Thus, the final call is intercepted and
+#' redirected to the special result vector in the storage list.
+#'
+#' This is trivial to do so long as what is written to the result is a sub-call
+#' (e.g. something like `sum(x)` or `x + y`).  If instead it is just a symbol
+#' referencing a previous sub-call or external vector (e.g. just `x`), we would
+#' have to back-trace through the history of all the assignments to figure out
+#' what sub-call was effectively responsible for producing that value, and
+#' redirect that one to write to the result vector.  To simplify `r2c`
+#' modifies the last expression to be `r2c_copy(expression)` if it turns out
+#' that `expression` is a symbol.  See `copy_last` in preprocess.R
 #'
 #' @param x preprocess data as produced by `preprocess`
 #' @return an alloc object:
 #'
 #' alloc
-#'   $alloc: see `alloc_dat`.
+#'   $alloc: see `append_dat`.
 #'   $call.dat: each actual call with a C counterpart
 #'     $call: the R call
 #'     $ids: ids in `alloc$dat` for parameters, and then result
@@ -79,10 +124,11 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
 
   # Call indices where various interesting things happen
   meta <- list(
-    i.call.max=length(x[['call']]),               # call count
-    i.sym.max=latest_symbol_instance(x[['call']]),# last symbol maybe touched
-    i.last.action=latest_action_call(x[['call']]) # last computing call
+    i.call.max=length(x[['call']]),                # call count
+    i.sym.max=latest_symbol_instance(x[['call']])  # last symbol maybe touched
   )
+  i.last.action <- latest_action_call(x[['call']]) # last computing call
+
   alloc <- init_dat(x[['call']], meta=meta, scope=0L)
   # Status control placeholder.
   sts.vec <- numeric(IX[['STAT.N']])
@@ -109,11 +155,11 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
 
   # - Process ------------------------------------------------------------------
 
-  # Objective is to compute how much temporary storage we need to track all the
-  # intermediate calculations in the call tree, and to allocate all the vectors
-  # into a data structure.  This data structure will also include references to
-  # external vectors (if there are such references), and the result of
-  # evaluating the control/flag parameters.
+  # Compute how much temporary storage we need to track all the intermediate
+  # calculations in the call tree, and to allocate all the vectors into a data
+  # structure.  This data structure will also include references to external
+  # vectors (if there are such references).  The result of evaluating
+  # control/flag parameters is recorded separately in `call.dat`.
 
   stack <- init_stack()
   stack.ctrl <- stack.flag <- list()
@@ -124,10 +170,10 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
     call <- x[['call']][[i]]
     depth <- x[['depth']][[i]]
     argn <- x[['argn']][[i]]
-    name <-
+    name <-if(!type %in% CTRL.FLAG) {
       if(length(call) < 2L) as.character(call)
       else as.character(call[[1L]])
-
+    } else ""
     vec.dat <- init_vec_dat()
 
     # - Process Call -----------------------------------------------------------
@@ -137,14 +183,14 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
       check_fun(name, env)
       ftype <- VALID_FUNS[[c(name, "type")]]
 
-      # If all non-control, non-flag inputs were know to be integer, and we're
-      # dealing with a function that returns integer for those, make it known
-      # the result should be integer.
+      # If data inputs are know to be integer, and function returns integer for
+      # those, make it known the result should be integer.
       res.typeof <- if(
         VALID_FUNS[[c(name, "preserve.int")]] &&
         all(alloc[['typeof']][stack['id', ]] == "integer")
       ) "integer" else "double"
-      # If this is an assignment, protect the corresponding symbol
+
+      # Compute result size
       if(ftype[[1L]] == "constant") {
         # Always constant size, e.g. 1 for `sum`
         asize <- size <- ftype[[2L]]
@@ -164,10 +210,14 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
       # Cleanup expired symbols, and bind new ones
       alloc <- names_update(alloc, i, call, call.name=name)
 
-      if(i == alloc[['meta']][['i.last.action']]) {
-        # Last computing call should be written to result slot
-        warning("remove this aspect of meta data since we access direct")
-        alloc <- alloc_result(alloc, typeof=res.typeof, group=group)
+      # Prepare new vec data (if any), and tweak objet depending on situation.
+      # Alloc is made later, but only if vec.dat[['new']] is not null.
+      vec.dat <- vec_dat(NULL, "tmp", typeof=res.typeof, group=group, size=size)
+      if(i == i.last.action) {
+        # Last computing call should be written to result slot, vec.dat still
+        # used to populate the stack.
+        vec.dat[['type']] <- "res"
+        alloc <- alloc_result(alloc, vec.dat)
       } else if(!name %in% c(PASSIVE.SYM, ASSIGN.SYM)) {
         # We have a computing expression in need of a free slots.
         # (NB: PASSIVE includes ASSIGN, but use both in case that changes).
@@ -175,13 +225,9 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
           !is.finite(alloc[['depth']]) &
           !alloc[['ids']] %in% alloc[['names']]['ids',]
         fit <- free & alloc[['type']] == "tmp" & alloc[['alloc']] >= asize
-        vec.dat <- vec_dat(
-          NULL, "tmp", typeof=res.typeof, group=group, size=size
-        )
         # If none fit prep for new allocation, otherwise reuse free alloc
         if(!any(fit)) vec.dat[['new']] <- numeric(asize)
         else alloc <- reuse_dat(alloc, fit, vec.dat, depth=depth)
-
       } else if (name %in% PASSIVE.SYM) {
         # Don't do anything for these, effectively causing `dat[[i]]` to remain
         # unchanged for use by the next call.
@@ -190,12 +236,11 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
     # - Assigned-To Symbol -----------------------------------------------------
     } else if(x[['assign']][i]) {
       # in e.g. `x <- y`, this is the `x`, which isn't actually data,
-      # it just tells us what symbol to bind `y` to.  We don't need to record it
-      # but we do for consistency.
+      # We don't need to record it but we do for consistency.
       vec.dat <- vec_dat(numeric(), "tmp", typeof="double", group=0, size=0)
     # - Control Parameter / External -------------------------------------------
     } else if (
-      type %in% c("control", "flag") || !name %in% colnames(alloc[['names']])
+      type %in% CTRL.FLAG || !name %in% colnames(alloc[['names']])
     ) {
       # Need to eval parameter
       tryCatch(
@@ -213,7 +258,7 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
         names(flag) <- argn
         stack.flag <- c(stack.flag, flag)
       } else {
-        # Validate non-control external args after eval
+        # Validate non-control external args after eval, and add to vec.dat
         validate_ext(x, type, arg.e, name, call, .CALL)
         typeof <- typeof(arg.e)
         size <- length(arg.e)
@@ -231,7 +276,7 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
     # - Update Stack / Data ----------------------------------------------------
 
     # Append new data to our data array.  Not all branches produce data; those
-    # that do have non-NULL vec.dat$new.
+    # that do have non-NULL vec.dat[['new']].
     if(!is.null(vec.dat[['new']]))
       alloc <- append_dat(alloc, vec.dat, depth=depth)
 
@@ -249,7 +294,7 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
       stack.ctrl <- stack.flag <- list()
     }
     # Append new data/computation result to stack
-    if(!type %in% c('control', 'flag'))
+    if(!type %in% CTRL.FLAG)
       stack <- append_stack(stack, alloc=alloc, depth=depth, argn=argn)
   }
   # - Finalize -----------------------------------------------------------------
@@ -276,30 +321,24 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
 
 # - Data Structures ------------------------------------------------------------
 
-# We track:
-# * Alloctions for the intermediary vectors (and the actual vectors for
-#   external items / iteration varying data).
-# * Sub-calls, along with their allocations usage.
-# * State of the stack.
-
 ## Track Required Allocations for Intermediate vectors
 ##
 ## r2c keeps a list of every vector that it uses in computations, including the
 ## original data vectors, any referenced external vectors, and any temporary
 ## allocated vectors.  The temporary allocated vectors usage is tracked so that
 ## they may be re-used if their previously values are no longer needed.  The
-## tracking is done by keeping track of their depth in the call tree, and also
-## whether any symbols were bound to them.  Once allocated, a vector is never
-## truly freed until the whole function execution ends.  It will however be
-## re-used within a group if it becomes available, and all allocated vectors
-## will be re-used for each group.
+## tracking is done via their depth in the call tree, and also whether any
+## symbols were bound to them (using the `names` matrix).  Once allocated, a
+## vector is never truly freed until the whole function execution ends.  It will
+## however be re-used within a group if it becomes available, and all allocated
+## vectors will be re-used for each group.
 ##
 ## This is a description of the input `dat` (which is also the returned value
 ## after update).
 ##
 ## * dat: (this is `dat[['dat']]`) the actual data, for "tmp" type (i.e.
-##   generated by alloc_dat) this will be written to so should not be accessible
-##   via R.
+##   generated by computation of a sub-call) this will be written to so should
+##   not be accessible via R.
 ## * ids: an integer identifier for each item in `dat` (I think this is just
 ##   `seq_along(dat)`, but that seems silly and not sure now).
 ## * ids0: a unique identifier for each allocation, differs from `ids`
@@ -335,10 +374,12 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
 ## differences, e.g.:
 ##
 ## @param dat the allocation data structure
-## @param new a vector to add to the data structure
-## @param name e.g. group data comes with names
-## @param size could differ from `length(new)` when new is a special size vector
-##   like a group dependent one.
+## @param vdat see vec_dat
+## @param name group data comes with names, or things that are assigned to
+##   symbols
+## @param size could differ from `length(vdat[['new']])` when new is a special
+##   size vector like a group dependent one.
+## @return dat, updated
 
 append_dat <- function(dat, vdat, name=NULL, depth) {
   if(is.null(name)) name <- ""
@@ -519,16 +560,16 @@ alloc_free <- function(alloc, depth) {
 # This does not actually allocate as that's done at runtime once we know the
 # group size.
 
-alloc_result <- function(alloc, typeof, group ){
+alloc_result <- function(alloc, vdat){
   # Last call that computes anything should be written to result.  In
   # cases where the last expression is a symbol it is turned into a call
   # w/ r2c_copy
   slot <- which(alloc[['type']] == "res")
-  # 'size' is not upalloced because that's done at runtime, and 'depth', 'id0',
-  # are not relevant anymore as the stack is done.
+  # 'depth', 'id0', are not relevant anymore as the stack is done.
   alloc[['i']] <- slot
-  alloc[['typeof']][slot] <- typeof
-  alloc[['group']][slot] <- group
+  alloc[['typeof']][slot] <- vdat[['typeof']]
+  alloc[['group']][slot] <- vdat[['group']]
+  alloc[['size']][slot] <- vdat[['size']]
   alloc
 }
 
@@ -595,8 +636,6 @@ latest_action_call <- function(x) {
     stop("Internal Error: no active return call found.")
   max(call.active.i)
 }
-
-
 ## Identify Missing Parameters on Stack
 ##
 ## Ends execution with Error
@@ -750,7 +789,10 @@ names_update <- function(alloc, i, call, call.name) {
   }
   alloc
 }
-
+## Lookup a Name In Storage List
+##
+## Will find data vectors as well as any live assigned vectors that were
+## generated.
 
 name_to_id <- function(alloc, name) {
   if (id <- match(name, rev(colnames(alloc[['names']])), nomatch=0)) {
@@ -759,6 +801,7 @@ name_to_id <- function(alloc, name) {
     alloc[['names']]['ids', id]
   }
 }
+## Check That External Vectors are OK
 
 validate_ext <- function(x, type, arg.e, name, call, .CALL) {
   if(type == "leaf" && !is.num_naked(list(arg.e))) {

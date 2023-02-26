@@ -149,7 +149,7 @@ transform_call_rec <- function(call) {
 # the result vector.  To simplify things we always copy if the last thing is not
 # a call.  This will result in copies in potentially avoidable cases where a
 # symbol was populated by a calculation, but tracking this down properly is
-# complex and that should be a rare case..
+# complex and that should be a rare case.
 #
 # @param x a call
 # @return `x`, with a `r2c_copy` directive call added if needed
@@ -170,16 +170,16 @@ copy_last <- function(x) {
   }
   x
 }
-
 #' Generate C Code for Compilation
 #'
 #' Match each call and its parameters, identifying which parameters are control
-#' vs. flag, and associating the C call to each R call.  The call tree is
-#' linearized depth first, so the parameters are recorded before the call they
-#' belong to.  The depth of the parameters allows us to distinguish what call
-#' they belong to (note a parameter can be a call too).  The order of the
-#' elements in the linearized call implicitly contains all parameter matching
-#' information (i.e. everything has been `match.call`ed already).
+#' vs. flag (flag are TRUE/FALSE control parameters), and associating the C call
+#' to each R call.  The call tree is linearized depth first, so the parameters
+#' are recorded before the call they belong to.  The depth of the parameters
+#' allows us to distinguish what call they belong to (note a parameter can be a
+#' call too).  The order of the elements in the linearized call implicitly
+#' contains all parameter matching information (i.e. everything has been
+#' `match.call`ed already).
 #'
 #' See `alloc` and `init_call_dat` for more details.
 #'
@@ -387,7 +387,7 @@ pp_internal <- function(
     x, call=call, depth=depth, argn=argn, type=type, code=code, assign
   )
 }
-# See preprocess for some discussion of what the elements are
+#' See preprocess for some discussion of what the elements are
 #'
 #' $call: linearized call tree with parameters preceeding calls (recall that a
 #'   call can itself be a parameter to another call nearer the root).
