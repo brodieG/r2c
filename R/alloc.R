@@ -23,9 +23,9 @@ NULL
 #' the documentation for the `preprocess` internal function before reading this.
 #'
 #' We iterate through the linearized call list (see `preprocess` for details) to
-#' determine the memory needs required to support the evaluation of the
-#' function, and pre-allocate this memory.  The allocations are sized to fit the
-#' largest group (and thus should fit all groups).  The allocations are appended
+#' determine the memory needs to support the evaluation of the function, and
+#' pre-allocate this memory.  The allocations are sized to fit the largest
+#' iteration (and thus should fit all iterations).  The allocations are appended
 #' to the storage list that is part of the `alloc` object (`alloc[['dat']]).
 #' See docs for `append_dat`.
 #'
@@ -45,7 +45,7 @@ NULL
 #' the function in the call to compute the output size.  The inputs are then
 #' removed from the stack and replaced by the output size from the sub call, and
 #' we allocate (or re-use a no-longer needed allocation) to/from the storage
-#' list.  For outputs that have size dependent on group size, we record the size
+#' list.  For outputs that have iteration-dependent size, we record the size
 #' as NA (this will need to change in the future to accommodate more complex
 #' functions like `c`), and allocate a vector large enough for the largest
 #' group.  Recording the size as NA allows us to propagate that the output is
@@ -56,31 +56,31 @@ NULL
 #' to hold intermediate calculations.  We record the state of the stack at each
 #' sub-call along with other other useful data in `call.dat`.
 #'
-#' Control and Flags are tracked in separate stacks that are also merged into
+#' Control and flags are tracked in separate stacks that are also merged into
 #' `call.dat`.
 #'
 #' @section Depth:
 #'
 #' An allocation is considered "freed" as soon as we emerge above the call
 #' level (depth) for which it was originally made, unless it is also referenced
-#' by a symbol that is still in use (designated by the "protected" vector).  The
+#' by a symbol that is still in use (designated `alloc[['names']]`).  The
 #' `depth` variable semantics are strongly shaped by how it is generated (i.e.
 #' by incrementing it with each level of recursion in the call tree it
-#' originates from).  For example, for each call, it is a given that all of it's
-#' parameters will have a `depth` of `depth+1`.  We use `stack` as a mechanism
-#' for tracking the current call's parameters.
+#' originates from).  For example, for each call, it is a given that all of
+#' it's parameters will have a `depth` of `depth+1`.  We use `stack` as a
+#' mechanism for tracking the current call's parameters.
 #'
 #' @section Special Sub-Calls:
 #'
 #' Assignments and braces are considered special because neither of them do any
 #' computations.  Assignments change the lifetime of the expression assigned to
 #' the symbol to last until the last use of that symbol-instance (a
-#' symbol-instance lifetime ends if it is overwritten).  This means that the
-#' storage list element containing the value bound to the symbol cannot be
-#' re-used until after the lifetime ends.  Braces just "output" the last
-#' expression they contain.  Both of these register on the stack by having their
-#' last input also be the output.  This works fine because both these functions
-#' are no-op at the C level so there is no risk of corrupting the input.
+#' symbol-instance lifetime ends if it is overwritten).  A storage list element
+#' containing the value bound to the symbol cannot be re-used until after the
+#' lifetime ends.  Braces just "output" the last expression they contain.  Both
+#' braces and assignments register on the stack by having their last input also
+#' be the output.  This works fine because both these functions are no-op at the
+#' C level so there is no risk of corrupting the input.
 #'
 #' @section Result Vector:
 #'
@@ -403,6 +403,7 @@ append_dat <- function(dat, vdat, name=NULL, depth) {
   dat[['i']] <- length(dat[['dat']])
   id0.new <- dat[['id0']] <- dat[['id0']] + 1L
 
+  # need to test whether data.frame would slow things down too much
   dat[['ids']] <- c(dat[['ids']], dat[['i']])
   dat[['ids0']] <- c(dat[['ids0']], id0.new)
   dat[['alloc']] <- c(dat[['alloc']], length(new)) # true size

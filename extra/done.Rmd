@@ -1,5 +1,9 @@
 ## Done
 
+* Document side effects in external parameters?
+* Transform should be an optimization or processing?  It would make sense for it
+  to show up in the `$processed` member.
+* Read through all comments and make sure they are up to date.
 * Do we still use the 'assign' field in `record_call_dat`?  If not, excise.  We
   do use it to allow us to putty dummy calls on the stack.
 * Check that forwarding calls in `...` works correctly, e.g.
@@ -26,7 +30,7 @@
 * Reuse with an inner expression that appears separately from a re-used outer
   expression (yes, `r2c_int` is a good example of this working).
 * Final call is not a computation, will things work okay?  They do now.
-* Test empty braces (`{}`).
+* Test empty braces (`{}`). We disallow.
 * What happens if we have an assignment at depth 0?  Nothing much, works as
   expected.
 * Are we okay with doing the call substitution before match-calling?  That's

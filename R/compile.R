@@ -92,7 +92,11 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' other variations that R will normally allow for function invocation).
 #' Functions must be bound to their original symbols for them to be recognized.
 #' Empty braces are disallowed, and assignments may only be done at the top
-#' level or at a brace level (see examples).
+#' level or at a brace level (see examples).  References to external variables
+#' (i.e. not in `data` or `MoreArgs`) that cause side effects (e.g. [active
+#' bindings][bindenv], promises the evaluation of which cause side effects) may
+#' cause unexpected results.  All external references are evaluated once before
+#' any other computations are carried out.
 #'
 #' For `r2cl` and `r2cq`, symbols used as parameters to `call` and its
 #' constituent sub-calls (e.g. the `x` and `y` in `sum(x) + y`) will become
@@ -109,8 +113,9 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #'
 #' Parameters used with "r2c_fun" supported functions are categorized into data
 #' parameters and control parameters.  For example, in `sum(x, na.rm=TRUE)`, `x`
-#' is considered a data parameter and `na.rm` a control parameter.  All data
-#' parameters must be attribute-less numeric vectors.  Integer vectors are
+#' is considered a data parameter and `na.rm` a control parameter.  Control
+#' parameters are evaluated the same as external references (see above).  All
+#' data parameters must be attribute-less numeric vectors.  Integer vectors are
 #' supported, but they are coerced to numeric (and thus copied) before use.  If
 #' all data inputs are integer and the R counterpart functions in `call` support
 #' integer output, the result will be returned as integer by coercing (thus
@@ -119,7 +124,7 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' only accept values for them that would make sense for the R counterparts.
 #'
 #' `r2c` may process the provided call either to apply optimizations (see
-#' `optimize` paramter) or because a call needs to be modified to work correctly
+#' `optimize` parameter) or because a call needs to be modified to work correctly
 #' with `r2c`.  The processing leaves call semantics unchanged.  If `r2c`
 #' modified a call, [`get_r_code`] will show a "processed" member with the
 #' modified call.

@@ -1,3 +1,48 @@
+# Alloc cleanup
+
+`alloc_dat` is called only with a call, which means it has additional contextual
+data such as the written-to symbol in the call.  It needs to:
+
+* Cleanup expired symbols.
+* Rebind overwritten symbols.
+* Copy last action to result slot.
+* Allocate or re-use a slot.
+* Free depth-expired slots.
+
+`append_dat` is called on "leaves", so it needs to be given names.  Will it ever
+have names outside of the initial group data?  What about `MoreArgs` data?
+
+Ideally we would modularize the code so that `alloc_dat` generates a new vector
+to append, and then all the other pathways do something similar, and then they
+all use `append_dat` to add the data to the allocation.
+
+What doesn't work here is that `alloc_dat` might not append data, but instead
+could re-use a slot.  In this case skip by returning NULL data?
+
+So we'll need an additional branch for calls to:
+
+* Free allocations.
+* Reduce stack.
+* Append call data.
+
+Old Notes
+
+1. Update Allocation (alloc_dat or append_dat)
+2. If call, update call.dat (after updating allocation)
+3. Update stack
+
+Additionally the call branch will have reduced the stack.  Problems are:
+* The use of alloc for call vs everything else
+* The use of `id` instead of `alloc[['i']]` for name found in allocation
+* That `call.dat` must be updated after `alloc` is.
+
+Does `append_stack` really need to be told:
+* `size` (yes, could be different to alloc size by being NA, but would be
+  nice if it could infer it from `alloc`, can it?)
+
+We should have a different `append_dat` for adding the group data vs a
+single vector, should cleanup the interface.
+
 # Match Call
 
 We kind of want to match the call ahead of `pp_internal` so that we can properly
