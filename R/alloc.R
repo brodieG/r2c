@@ -259,7 +259,7 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
         stack.flag <- c(stack.flag, flag)
       } else {
         # Validate non-control external args after eval, and add to vec.dat
-        validate_ext(x, type, arg.e, name, call, .CALL)
+        validate_ext(x, i, type, arg.e, name, call, .CALL)
         typeof <- typeof(arg.e)
         size <- length(arg.e)
         vec.dat <- vec_dat(arg.e, "ext", typeof=typeof, group=0, size=size)
@@ -803,7 +803,7 @@ name_to_id <- function(alloc, name) {
 }
 ## Check That External Vectors are OK
 
-validate_ext <- function(x, type, arg.e, name, call, .CALL) {
+validate_ext <- function(x, i, type, arg.e, name, call, .CALL) {
   if(type == "leaf" && !is.num_naked(list(arg.e))) {
     # Next call, if any
     next.call.v <- which(seq_along(x[['call']]) > i & x[['type']] == 'call')
