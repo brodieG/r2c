@@ -404,7 +404,6 @@ append_dat <- function(dat, vdat, name=NULL, depth) {
   id0.new <- dat[['id0']] <- dat[['id0']] + 1L
 
   # need to test whether data.frame would slow things down too much
-  dat[['ids']] <- c(dat[['ids']], dat[['i']])
   dat[['ids0']] <- c(dat[['ids0']], id0.new)
   dat[['alloc']] <- c(dat[['alloc']], length(new)) # true size
   dat[['size']] <- c(dat[['size']], size)          # could be NA
@@ -414,7 +413,7 @@ append_dat <- function(dat, vdat, name=NULL, depth) {
   dat[['group']] <- c(dat[['group']], group)
 
   vec.el <- c(
-    'ids', 'ids0', 'alloc', 'size', 'depth', 'type', 'typeof', 'group'
+    'ids0', 'alloc', 'size', 'depth', 'type', 'typeof', 'group'
   )
   if(length(unique(lengths(dat[vec.el]))) != 1L)
     stop("Internal Error: irregular vector alloc data.")
@@ -440,7 +439,7 @@ reuse_dat <- function(alloc, fit, vec.dat, depth) {
   alloc[['typeof']][slot] <- vec.dat[['typeof']]
   alloc[['ids0']][slot] <- alloc[['id0']] <- alloc[['id0']] + 1L
   alloc[['group']][slot] <- vec.dat[['group']]
-  alloc[['i']] <- alloc[['ids']][slot]
+  alloc[['i']] <- slot
   alloc
 }
 init_dat <- function(call, meta, scope) {
@@ -452,7 +451,6 @@ init_dat <- function(call, meta, scope) {
     # Equal length vector data
     alloc=numeric(),
     depth=integer(),
-    ids=integer(),
     ids0=integer(),
     type=character(),
     typeof=character(),
@@ -496,7 +494,7 @@ init_stack <- function() {
     numeric(), nrow=5L,
     dimnames=list(
       c(
-        'id',      # id in our allocated data structure
+        'id',      # index in our allocated data structure
         'id0',     # unique id for integrity checks
         'depth',
         'size',    # size, possibly NA if unknown
