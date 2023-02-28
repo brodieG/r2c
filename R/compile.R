@@ -226,7 +226,7 @@ rand_string <- function(len, pool=c(letters, 0:9))
 r2cf <- function(
   x, dir=NULL, check=getOption('r2c.check.result', FALSE),
   quiet=getOption('r2c.quiet', TRUE), clean=is.null(dir),
-  optimize=getOption('r2c.optimize', TRUE), envir=parent.frame()
+  optimize=getOption('r2c.optimize', TRUE), envir=environment(x)
 )
   r2c_core(
     body(x), formals=as.list(formals(x)),
@@ -330,8 +330,8 @@ r2c_core <- function(
   #    it) in the function (we could alternatively use the `sys.call()` trick
   #    from `rlang` to get the attribute, but that feels like it relies on an
   #    implementation detail).
-  # 2. We need the function to survive a re-loading of r2c (no runner allows
-  #    running r2c_fun compiled with different R/r2c versions).
+  # 2. We need the function to survive a re-loading of r2c (for safety no runner
+  #    allows running r2c_fun compiled with different R/r2c versions).
   #
   # Thus, we directly embed the object with `.(OBJ)`. We use the same trick for
   # several other objects, both directly those generated here, and also those
