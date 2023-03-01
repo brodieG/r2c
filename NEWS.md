@@ -7,6 +7,8 @@
 * Implement assignment (`<-`, `=`) and multi-line statements with braces (`{`)
 * `r2cf` directly compiles R functions composed of `r2c` compatible calls.
 * Add `reuse_calls` to avoid repeated evaluation of repeated sub-calls.
+* Add limited `::` support so it is possible to use the compilation functions on
+  `r2c` provided R functions without `r2c` attached.
 
 ### Breaking Changes
 

@@ -14,7 +14,7 @@ r2cf(
   quiet = getOption("r2c.quiet", TRUE),
   clean = is.null(dir),
   optimize = getOption("r2c.optimize", TRUE),
-  envir = parent.frame()
+  envir = environment(x)
 )
 
 r2cl(
@@ -123,19 +123,24 @@ for \code{r2cf}):
 }
 
 Calls must be in the form \code{fun(...)} (\verb{a fun b} for operators)  where \code{fun}
-is the unquoted name of the function (i.e.  not \code{"fun"(...)} or many of the
-other variations that R will normally allow for function invocation).
-Functions must be bound to their original symbols for them to be recognized.
-Empty braces are disallowed, and assignments may only be done at the top
-level or at a brace level (see examples).
+is the name of the function.  Functions must be bound to their original
+symbols for them to be recognized.  For \code{r2c} provided functions like
+\code{\link{mean1}} you may use the \code{::} form to compile expressions that contain them
+without attaching the \code{{r2c}} package.  Empty braces are disallowed, and
+assignments may only be done at the top level or at a brace level (see
+examples).  References to external variables (i.e. not in \code{data} or
+\code{MoreArgs}) that cause side effects (e.g. \link[=bindenv]{active bindings},
+promises the evaluation of which cause side effects)
+may cause unexpected results.  All external references are evaluated once
+before any other computations are carried out.
 
 For \code{r2cl} and \code{r2cq}, symbols used as parameters to \code{call} and its
 constituent sub-calls (e.g. the \code{x} and \code{y} in \code{sum(x) + y}) will become
-parameters to the "r2c_fun" function.  There must be at least one such symbol
-in \code{call}.  Parameter order follows that of appearance in the call tree after
-everything is \code{\link{match.call}}ed.  Symbols beginning with \code{.R2C} are reserved
-for use by \code{r2c} and thus disallowed in \code{call}.  You may also directly set
-the parameter list with the \code{formals} parameter, or with \code{r2cf}.
+parameters to the output "r2c_fun" function.  There must be at least one such
+symbol in \code{call}.  Parameter order follows that of appearance in the call
+tree after everything is \code{\link{match.call}}ed.  Symbols beginning with \code{.R2C} are
+reserved for use by \code{r2c} and thus disallowed in \code{call}.  You may also
+directly set the parameter list with the \code{formals} parameter, or with \code{r2cf}.
 
 Outside of the aforementioned constraints, \code{r2c} attempts to mimic the
 corresponding R function semantics to the \code{identical} level, but there may be
@@ -144,8 +149,9 @@ values.
 
 Parameters used with "r2c_fun" supported functions are categorized into data
 parameters and control parameters.  For example, in \code{sum(x, na.rm=TRUE)}, \code{x}
-is considered a data parameter and \code{na.rm} a control parameter.  All data
-parameters must be attribute-less numeric vectors.  Integer vectors are
+is considered a data parameter and \code{na.rm} a control parameter.  Control
+parameters are evaluated the same as external references (see above).  All
+data parameters must be attribute-less numeric vectors.  Integer vectors are
 supported, but they are coerced to numeric (and thus copied) before use.  If
 all data inputs are integer and the R counterpart functions in \code{call} support
 integer output, the result will be returned as integer by coercing (thus
@@ -154,7 +160,7 @@ type restrictions on control parameters, but each implemented function will
 only accept values for them that would make sense for the R counterparts.
 
 \code{r2c} may process the provided call either to apply optimizations (see
-\code{optimize} paramter) or because a call needs to be modified to work correctly
+\code{optimize} parameter) or because a call needs to be modified to work correctly
 with \code{r2c}.  The processing leaves call semantics unchanged.  If \code{r2c}
 modified a call, \code{\link{get_r_code}} will show a "processed" member with the
 modified call.

@@ -88,23 +88,24 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' * Assignment and braces: `<-`, `=`, and `{`.
 #'
 #' Calls must be in the form `fun(...)` (`a fun b` for operators)  where `fun`
-#' is the unquoted name of the function (i.e.  not `"fun"(...)` or many of the
-#' other variations that R will normally allow for function invocation).
-#' Functions must be bound to their original symbols for them to be recognized.
-#' Empty braces are disallowed, and assignments may only be done at the top
-#' level or at a brace level (see examples).  References to external variables
-#' (i.e. not in `data` or `MoreArgs`) that cause side effects (e.g. [active
-#' bindings][bindenv], promises the evaluation of which cause side effects) may
-#' cause unexpected results.  All external references are evaluated once before
-#' any other computations are carried out.
+#' is the name of the function.  Functions must be bound to their original
+#' symbols for them to be recognized.  For `r2c` provided functions like
+#' [`mean1`] you may use the `::` form to compile expressions that contain them
+#' without attaching the `{r2c}` package.  Empty braces are disallowed, and
+#' assignments may only be done at the top level or at a brace level (see
+#' examples).  References to external variables (i.e. not in `data` or
+#' `MoreArgs`) that cause side effects (e.g. [active bindings][bindenv],
+#' promises the evaluation of which cause side effects)
+#' may cause unexpected results.  All external references are evaluated once
+#' before any other computations are carried out.
 #'
 #' For `r2cl` and `r2cq`, symbols used as parameters to `call` and its
 #' constituent sub-calls (e.g. the `x` and `y` in `sum(x) + y`) will become
-#' parameters to the "r2c_fun" function.  There must be at least one such symbol
-#' in `call`.  Parameter order follows that of appearance in the call tree after
-#' everything is [`match.call`]ed.  Symbols beginning with `.R2C` are reserved
-#' for use by `r2c` and thus disallowed in `call`.  You may also directly set
-#' the parameter list with the `formals` parameter, or with `r2cf`.
+#' parameters to the output "r2c_fun" function.  There must be at least one such
+#' symbol in `call`.  Parameter order follows that of appearance in the call
+#' tree after everything is [`match.call`]ed.  Symbols beginning with `.R2C` are
+#' reserved for use by `r2c` and thus disallowed in `call`.  You may also
+#' directly set the parameter list with the `formals` parameter, or with `r2cf`.
 #'
 #' Outside of the aforementioned constraints, `r2c` attempts to mimic the
 #' corresponding R function semantics to the `identical` level, but there may be
