@@ -62,12 +62,12 @@ static void %s(%s) {
 
 code_gen_copy <- function(fun, args.reg, args.ctrl, args.flags) {
   vetr(
-    identical(., "r2c_copy"),
+    identical(., "vcopy"),
     args.reg=list(),
     args.ctrl=list() && length(.) == 0L,
     args.flags=list() && length(.) == 0L
   )
-  name <- "r2c_copy"
+  name <- "vcopy"
   defn <- sprintf(f_copy, name, toString(F.ARGS.BASE))
   code_res(defn=defn, name=name)
 }
@@ -87,4 +87,4 @@ code_gen_copy <- function(fun, args.reg, args.ctrl, args.flags) {
 #' @return `x`, copied to a new location
 #' @export
 
-r2c_copy <- function(x) x + 0
+vcopy <- function(x) x + 0

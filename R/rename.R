@@ -114,7 +114,7 @@ rename_call <- function(x, rn=init_rename()) {
   is.renames(rn)
   rename.ctrls <- c("if", LOOP.SYM)
   if(is.call_w_args(x)) {
-    fun.name <- as.character(x[[1L]])
+    fun.name <- get_lang_name(x[[1L]])
     rec.ids <- seq(2L, length(x), 1L)
 
     # Assignments both generate renames, but are special cases where we need to
@@ -147,7 +147,7 @@ rename_call <- function(x, rn=init_rename()) {
         if(fun.name == 'for') x[[4L]]
         else if(fun.name == 'if') x[c(1L, 3:4)]
         else x
-      ctrl.symbols <- assigned_symbols(x.ctrl)
+      ctrl.symbols <- assigned_symbols(x.ctrl, fun.name=fun.name)
       if(fun.name %in% LOOP.SYM) {
         # for loops need to generate rn on entry
         for(sym.char in ctrl.symbols) rn <- generate_rename(rn, sym.char)

@@ -20,7 +20,6 @@
 
 NULL
 
-
 is.valid_arglen <- function(type)
   (is.character(type[[2L]]) || is.integer(type[[2L]])) &&
   length(type[[2L]]) == 1L &&
@@ -258,12 +257,15 @@ VALID_FUNS <- list(
     code.gen=code_gen_square
   ),
   fap_fun(
-    "r2c_copy", fun=r2c_copy, defn=NULL,
+    "vcopy", fun=vcopy, defn=NULL,
     type=list("arglen", 1L),
     code.gen=code_gen_copy
   )
 )
 names(VALID_FUNS) <- vapply(VALID_FUNS, "[[", "", "name")
+# even though we allow ::, we don't allow duplicate function names for
+# simplicity.
+stopifnot(!anyDuplicated(names(VALID_FUNS)))
 
 code_blank <- function()
   list(
@@ -280,16 +282,29 @@ code_valid <- function(code, call) {
 
   TRUE
 }
+# Check whether a call is in valid format
+#
+# We allow pkg::fun for a select set of packages that r2c implements functions
+# from.  Duplicate `fun` across packages is assumed impossible (just b/c we have
+# not implemented such, and the assumption simplifies things).
+
 call_valid <- function(call) {
   fun <- call[[1L]]
-  if(!is.name(fun) && !is.character(fun))
+  if(is.call(fun)) {
+    if(is.dbl_colon_call(fun) && as.character(fun[[2L]]) %in% VALID.PKG) {
+      fun <- as.character(fun[[3L]])
+    } else {
+      stop("`", deparse1(call[[1L]]), "` is not a supported function.")
+    }
+  }
+  if(!is.chr_or_sym(fun))
     stop(
       "only calls in form `symbol(<parameters>)` are supported (i.e. not ",
       deparse1(call), ")."
     )
   func <- as.character(fun)
   if(!func %in% names(VALID_FUNS))
-    stop("`", func, "` is not a supported function.")
+    stop("`", deparse1(call[[1L]]), "` is not a supported function.")
   func
 }
 #' Organize Code Generation Output

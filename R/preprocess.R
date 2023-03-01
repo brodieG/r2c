@@ -167,7 +167,7 @@ pp_internal <- function(
     args.types[names(args) %in% VALID_FUNS[[c(func, "flag")]]] <- "flag"
 
     # Check if we're in assignment call
-    name <- as.character(call[[1L]])
+    name <- get_lang_name(call[[1L]])
     next.assign <- name %in% ASSIGN.SYM
     # Assignments only allowed at brace level or top level because we cannot
     # assure the order of evaluation so safer to just disallow.  We _could_
@@ -445,12 +445,13 @@ transform_call_rec <- function(call) {
 # complex and that should be a rare case.
 #
 # @param x a call
-# @return `x`, with a `r2c_copy` directive call added if needed
+# @return `x`, with a `vcopy` directive call added if needed
 
 copy_last <- function(x) {
-  if(!is.call(x)) x <- call("r2c_copy", x=x)
-  else {
-    call.sym <- as.character(x[[1L]])
+  if(!is.call(x)) {
+    x <- as.call(list(call("::", as.name("r2c"), as.name("vcopy")), x=x))
+  } else {
+    call.sym <- get_lang_name(x)
     if(call.sym == "{") {
       if(length(x) < 2L) stop("Empty braces (`{}`) disallowed.")
       x[[length(x)]] <- copy_last(x[[length(x)]])

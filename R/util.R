@@ -130,10 +130,34 @@ lcurry <- function (FUN, ...) {
 
 # - Internal Utility Tools -----------------------------------------------------
 
-is.call_w_args <- function(x)
-  is.call(x) && length(x) > 1L && (is.symbol(x[[1L]]) || is.character(x[[1L]]))
+is.chr_or_sym <- function(x) is.symbol(x) || is.character(x) && length(x) == 1L
 
+is.call_w_args <- function(x)
+  is.call(x) && length(x) > 1L && is.chr_or_sym(x[[1L]])
+
+is.assign_call <- function(x)
+  is.call(x) && isTRUE(get_lang_name(x) %in% ASSIGN.SYM)
+is.brace_call <- function(x)
+  is.call(x) && get_lang_name(x) == "{"
+
+## Specifically tests for pkg::name, not pkg::name(...) (for the latter you can
+## use e.g. `nzchar(get_lang_info(x)[['pkg']])`
+is.dbl_colon_call <- function(x)
+  is.call(x) && length(x) == 3L &&
+  is.chr_or_sym(x[[1L]]) && is.chr_or_sym(x[[2L]]) && is.chr_or_sym(x[[3L]]) &&
+  as.character(x[[1L]]) == "::"
+
+## These next two are currently equivalent
+is.brace_or_assign_call <- function(x)
+  is.call(x) && get_lang_name(x) %in% c("{", ASSIGN.SYM)
+is.passive_call <- function(x)
+  is.call(x) && get_lang_name(x) %in% c(PASSIVE.SYM, ASSIGN.SYM)
+
+# For `<symbol> <- y`, retrieve the symbol.  Obviously assumes `x` has been
+# checked previously to be an assignment.  Recall `for` includes an assignment.
 get_target_symbol <- function(x, fun.name) {
+  if(!fun.name %in% ASSIGN.SYM)
+    stop("Internal Error: ", fun.name, " is not an assignment function.")
   target.symbol <- x[[2L]]
   target.type <- typeof(target.symbol)
   if(target.type != 'symbol') {
@@ -145,20 +169,6 @@ get_target_symbol <- function(x, fun.name) {
   }
   as.character(target.symbol)
 }
-is.assign_call <- function(x)
-  is.call(x) && length(x) > 2 &&
-  (is.name(x[[1L]]) || is.character(x[[1L]])) &&
-  isTRUE(as.character(x[[1L]]) %in% ASSIGN.SYM)
-is.brace_call <- function(x)
-  is.call(x) &&
-  (is.name(x[[1L]]) || is.character(x[[1L]])) &&
-  as.character(x[[1L]]) == "{"
-is.brace_or_assign_call <- function(x)
-  is.call(x) &&
-  (is.name(x[[1L]]) || is.character(x[[1L]])) &&
-  as.character(x[[1L]]) %in% c("{", ASSIGN.SYM)
-
-
 #' Identify Symbols Assigned
 #'
 #' Return names of all symbols assigned to within a call.  This is not super
@@ -167,15 +177,21 @@ is.brace_or_assign_call <- function(x)
 #' theory, we could do a 1 pass version of it that can then be subset into in
 #' some way if this ever became a bottleneck.
 #'
+#' @param x a call
+#' @param fun.name could be deducible from `x`, but we've already computed it
+#'   wherever we call this from so we just pass it in.
+#'
 #' @noRd
 
-assigned_symbols <- function(x, symbols=character()) {
+assigned_symbols <- function(x, symbols=character(), fun.name) {
   if(is.assign_call(x)) {
     symbols <- c(symbols, get_target_symbol(x, fun.name))
   } else if (is.call_w_args(x)) {
-    for(j in seq(2L, length(x), 1L))
-      symbols <- assigned_symbols(x[[j]], symbols=symbols)
-  }
+    for(j in seq(2L, length(x), 1L)) {
+      if (is.call_w_args(x[[j]])) {
+        symbols <-
+          assigned_symbols(x[[j]], symbols=symbols, get_lang_name(x[[j]]))
+  } } }
   unique(symbols)
 }
 
@@ -192,7 +208,7 @@ collect_call_symbols <- function(x) {
 collect_loop_call_symbols <- function(x) {
   syms <- character()
   if(is.call(x) && length(x) > 1) {
-    name <- as.character(x[[1L]])
+    name <- get_lang_name(x[[1L]])
     syms <-
       if(name == "for" && length(x) == 4L) collect_call_symbols(x[[4L]])
       else if(name == "while" && length(x) == 3L) collect_call_symbols(x[[3L]])
@@ -202,6 +218,44 @@ collect_loop_call_symbols <- function(x) {
   syms
 }
 
+## Extract Function Name and Package From Call
+##
+## Designed to handle the `pkg::fun(...)` case.  In general the "pkg" part is
+## mostly decoration as we assume that all the allowable "name" values are
+## unique (i.e. no two supported packages both implement a function with a name
+## corresponding to an r2c supported function).
+##
+## Also handles standalone symbols, in which case "name" is that symbol coerced
+## to character.
+##
+## @return list with members "name" (function/symbol name) and "pkg" (package
+##   name, "" if no package specified) for `get_lang_info`, or just the
+##   function/symbol name for `get_lang_name`.
+
+get_lang_info <- function(call) {
+  pkg <- ""
+  name <-
+    if (is.chr_or_sym(call)) as.character(call)
+    else if (is.call(call)) {
+      if(is.dbl_colon_call(call[[1L]])) {
+        pgk <- as.character(call[[1L]][[2L]])
+        as.character(call[[1L]][[3L]])
+      }
+      else if (is.chr_or_sym(call[[1L]])) as.character(call[[1L]])
+      else stop("Internal Error: unexpected call format ", dep1(call))
+    }
+    else ""
+  list(name=name, pkg=pkg)
+}
+get_lang_name <- function(call) {
+  if (is.chr_or_sym(call)) as.character(call)
+  else if (is.call(call)) {
+    if(is.dbl_colon_call(call[[1L]])) as.character(call[[1L]][[3L]])
+    else if (is.chr_or_sym(call[[1L]])) as.character(call[[1L]])
+    else stop("Internal Error: unexpected call format ", dep1(call))
+  }
+  else ""
+}
 
 
 

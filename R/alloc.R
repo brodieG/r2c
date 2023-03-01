@@ -170,17 +170,19 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
     call <- x[['call']][[i]]
     depth <- x[['depth']][[i]]
     argn <- x[['argn']][[i]]
-    name <-if(!type %in% CTRL.FLAG) {
-      if(length(call) < 2L) as.character(call)
-      else as.character(call[[1L]])
-    } else ""
+    pkg <- name <- ""
+    if(!type %in% CTRL.FLAG) {
+      tmp <- get_lang_info(call)
+      name <- tmp[['name']]
+      pkg <- tmp[['pkg']]
+    }
     vec.dat <- init_vec_dat()
 
     # - Process Call -----------------------------------------------------------
     if(type == "call") {
       # Based on previously accrued stack and function type, compute call result
       # size, allocate for it, etc.  Stack reduction happens later.
-      check_fun(name, env)
+      check_fun(name, pkg, env)
       ftype <- VALID_FUNS[[c(name, "type")]]
 
       # If data inputs are know to be integer, and function returns integer for
@@ -620,17 +622,10 @@ latest_symbol_instance <- function(x) {
 
 latest_action_call <- function(x) {
   calls <- vapply(x, is.call, TRUE)
-  call.sym <- vapply(
-    x[calls],
-    function(x) length(x) && (is.name(x[[1L]]) || is.character(x[[1L]])),
-    TRUE
-  )
   call.active <- vapply(
-    x[calls][call.sym],
-    function(x) !as.character(x[[1L]]) %in% PASSIVE.SYM,
-    TRUE
+    x[calls], function(x) !get_lang_name(x) %in% PASSIVE.SYM, TRUE
   )
-  call.active.i <- seq_along(x)[calls][call.sym][call.active]
+  call.active.i <- seq_along(x)[calls][call.active]
   if(!length(call.active.i))
     stop("Internal Error: no active return call found.")
   max(call.active.i)
@@ -718,23 +713,21 @@ compute_call_res_size <- function(stack, depth, ftype) {
 }
 
 ## Check function validity
-check_fun <- function(x, env) {
-  if(!x %in% names(VALID_FUNS))
-    stop("`", as.character(call[[1L]]), "` is not a supported function.")
-  if(identical(x, 'r2c_copy')) {
-    # waive check for `r2c_copy` so that `r2c` does not need to be attached
-    # to the search path given user doesn't control when this gets injected.
-  } else if(
-    !identical(
-      got.fun <- try(get(x, envir=env, mode="function"), silent=TRUE),
-      VALID_FUNS[[c(x, "fun")]]
-  ) ) {
-    tar.fun <- VALID_FUNS[[c(x, "fun")]]
+check_fun <- function(name, pkg, env) {
+  if(!name %in% names(VALID_FUNS))
+    stop("`", name, "` is not a supported function.")
+  got.fun <- try(
+    if(nzchar(pkg)) eval(call("::", as.name(pkg), as.name(name)), envir=env)
+    else get(name, envir=env, mode="function"),
+    silent=TRUE
+  )
+  if(!identical(got.fun, VALID_FUNS[[c(name, "fun")]])) {
+    tar.fun <- VALID_FUNS[[c(name, "fun")]]
     env.fun <-
       if(is.null(environment(tar.fun))) getNamespace("base")
       else environment(tar.fun)
     stop(
-      "Symbol `", x, "` does not resolve to the expected function from ",
+      "Symbol `", name, "` does not resolve to the expected function from ",
       format(env.fun),
       if(is.function(got.fun) && !identical(env.fun,  environment(got.fun)))
         paste0(" (resolves to one from ", format(environment(got.fun)), ")")
@@ -782,7 +775,7 @@ names_update <- function(alloc, i, call, call.name) {
   if(call.name %in% ASSIGN.SYM) {
     # Remove protection from prev assignment to same name, and bind previous
     # computation (`alloc[[i]]`) to it.
-    sym <- get_target_symbol(call)
+    sym <- get_target_symbol(call, call.name)
     alloc <- names_free(alloc, sym)
     alloc <- names_bind(alloc, sym)
   }

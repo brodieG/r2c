@@ -84,6 +84,9 @@ CALL.DAT.VEC <- c('argn', 'depth', 'type', 'assign')
 # To avoid typos
 CTRL.FLAG <- c("control", "flag")
 
+# Packages allowable in `::`
+VALID.PKG <- c('base', 'r2c')
+
 # - Internal Symbols -----------------------------------------------------------
 
 R2C.PRIV.BASE <- ".R2C"

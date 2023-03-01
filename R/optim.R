@@ -154,9 +154,13 @@ reuse_calls_int <- function(x) {
   calls.first <- unique(match(calls.dep[calls.rep], calls.dep))
 
   # Find earliest index of each symbol.
-  sym.assign <- vapply(calls.flat, is.assign_call, TRUE)
+  calls.name <- vapply(calls.flat, get_lang_name, "")
+  sym.assign <- is.call & calls.name %in% ASSIGN.SYM
   syms <- character(length(calls.flat))
-  syms[sym.assign] <- vapply(calls.flat[sym.assign], get_target_symbol, "")
+  syms[sym.assign] <- vapply(
+    which(sym.assign),
+    function(i) get_target_symbol(calls.flat[[i]], calls.name[[i]]), ""
+  )
   if(anyDuplicated(syms[nzchar(syms)]))
     stop("Internal Error: duplicated assigned symbols, rename should prevent.")
 
@@ -172,7 +176,7 @@ reuse_calls_int <- function(x) {
   # call.
   hoists <- list()
   hoist.last <- 0L
-  braces <- which(vapply(calls.flat, is.brace_call, TRUE))
+  braces <- which(is.call & calls.name == "{")
   hoist.candidates <- calls.first
   while(length(hoist.candidates)) {
     i <- hoist.candidates[1L]
