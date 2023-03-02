@@ -13,7 +13,7 @@
 ##
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
-unitizer_sect("Parenthesis Remova", {
+unitizer_sect("Parenthesis Removal", {
   fp0 <- r2cq(((1 + 2) * x))
   args(fp0)
   fp0(10)
@@ -147,4 +147,18 @@ unitizer_sect("brackets/assign", {
 
   # Equal assignment
   r2cq({mu_x = mean(x); x - mu_x})(c(1,2,3))
+})
+unitizer_sect("processing display", {
+  get_r_code(r2c_int)
+  get_r_code(r2c_int, raw=TRUE)
+})
+unitizer_sect("optimization", {
+  get_r_code(r2c_int)
+  get_r_code(r2cf(intercept, optimize=FALSE))
+})
+unitizer_sect("double colon", {
+  local({`::` <- list; r2cq(base::sum(r2c::square(x)))})(5)
+  detach("package:r2c")
+  if("package:r2c" %in% search()) stop("r2c should not be attached yet.")
+  r2c::r2cq(base::sum(r2c::square(x)))(5)
 })

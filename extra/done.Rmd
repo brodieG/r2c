@@ -1,5 +1,21 @@
 ## Done
 
+* Add a cleanup pass for `get_r_code` (and document that's being done).  Drop
+  `...` in names, and maybe default args that are set to their default values.
+  Harder but potentially useful is any arguments that are in the same order they
+  were originally.  Maybe use something other than `.R2C_SUB_` as root.
+* try overriding `::` to check that errors correctly.
+* Is it okay for `square` to require `r2c` attached?  Inconsistent with what we
+  do with `r2c_copy`.  A possible solution would be to implement `::`.  Then we
+  could rename `r2c_copy` to `copy` or `copy_vec` (later to reduce collision
+  with e.g. `data.table`).
+* Make sure we think through the interaction of things with `sym.free` with
+  variable assignment as that could cause problems since that assumed the only
+  source of them was parameters.  Seems okay.
+* Does preproc `sym.free` `sym.bound` make sense now with `formals` supplied?  I
+  think so since it's still possible to do pass a language object.
+* Do we need `id` if it's always just `seq_along(id)`.  Probably not, `id0`
+  should be sufficient.  We don't need it, dropped.
 * Document side effects in external parameters?
 * Transform should be an optimization or processing?  It would make sense for it
   to show up in the `$processed` member.

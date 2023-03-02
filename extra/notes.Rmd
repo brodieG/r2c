@@ -1,4 +1,77 @@
+# Package Env
+
+Something somewhere is causing the package environment to be captured...
+
+    = Finalize Unitizer ========================================================
+
+    | You will IRREVERSIBLY modify 'unitizer/mechanics.unitizer' by:
+    | - Adding 1 out of 1 new tests
+
+    | Update unitizer ([Y]es, [N]o, [P]rev, [B]rowse, [R]erun)?
+
+    unitizer> Y
+
+    | unitizer updated.
+
+    Warning message:
+    In saveRDS(unitizer, paste0(store.id, "/data.rds"), version = 2) :
+      'package:r2c' may not be available when loading
+
+We reduced it to one file with `r2c_sum("hello")` but with `r2c_sum` defined
+in the "pre" file.  For some reason that causes the package environment to be
+captured.
+
+It seems very likely it is because of:
+
+    > x@items.ref@.items[[1]]@trace
+    [[1]]
+    r2c_sum("hello")
+
+    [[2]]
+    eval(bquote(group_exec_int(<environment>, formals = .(.FRM),
+        groups = NULL, data = .(.DGRP), MoreArgs = .(.DAT[-1L]),
+        call = quote(.(.CALL)))), envir = getNamespace("r2c"))
+
+Examining that object doesn't show the package environment, but the presence of
+trace would explain why this only happens when we have an error case.  It's not
+clear why it happens only though when the function is defined in "pre".  We must
+be doing some env surgery on the environments of the actual unitizers that
+doesn't happen for "pre" ones.  From `?unitize`:
+
+>  Unlike objects created during test evaluation, any objects created here will
+>  not be stored in the unitizer so you will have not direct way to check
+>  whether these objects changed across unitizer runs.
+
+
+The problem child is the "envir" slot of the environment, not the environment
+itself:
+
+    unitizer:::env_ancestry(x@items.ref@.items[[1]]@trace[[4]][[2]][['envir']], emptyenv())
+    ##  [1] "0x12b839b30"       "0x12b839af8"       "package:r2c"
+    ##  [4] "package:stats"     "package:graphics"  "package:grDevices"
+    ##  [7] "package:utils"     "package:datasets"  "package:methods"
+    ## [10] "0x14bab6d10"       "base"              "R_EmptyEnv"
+
+The problem sees to be that when that environment gets captured, the child env
+of the package env is not separated from the chain.  Unfortunately if we do
+things like this, we're going to retain the "pre" data for every single
+unitizer.  So to do this properly, we would have to separately store the pre
+data and integrate it into unitizer.
+
+We also tested just using directly `r2c_sum` as a test and that caused the same
+error.  Generating the function in the test file proper doesn't cause any issues
+at all.
+
+# Double Semicolon
+
+We want to allow `::`.  This would be a pre-process thing.
+
+This is to support `square`, `mean1`, etc., so that we can do `r2c::r2cq` or
+some such.
+
 # Alloc cleanup
+
+## Rationalize Appending Data
 
 `alloc_dat` is called only with a call, which means it has additional contextual
 data such as the written-to symbol in the call.  It needs to:
@@ -43,6 +116,16 @@ Does `append_stack` really need to be told:
 We should have a different `append_dat` for adding the group data vs a
 single vector, should cleanup the interface.
 
+## External Symbols
+
+Currently these are added as many times as they are referenced. To avoid this we
+would need a secondary names lookup table for external symbols.  By the
+structure of the code it is subordinate to any assigned symbols.  Then, when we
+go to eval a leaf expression, if it is a symbol, we can first look in our
+external symbol table.  In fact, we could modify the `if` condition to check the
+external symbol table in addition to the internal one, and fall back to the
+`name_to_id` branch.  The only change would have to be for `data.used` tracking.
+
 # Match Call
 
 We kind of want to match the call ahead of `pp_internal` so that we can properly
@@ -78,7 +161,7 @@ business which gave everything names.
 Increasingly feeling like not worth it...  What a disaster.
 
 * Now we need to work on seeing if we can get of all the primitive `defn` since
-they should not be needed anymore and we have positional matching.  
+they should not be needed anymore and we have positional matching.
 * Then, can we get rid of the `as.character` on the name of the function.
 * Finally, can we clean up the processed version of the calls.
   * Drop default arguments?
@@ -147,16 +230,23 @@ We have an inconsistency with how evaluation environments are handled in runners
 vs naked calls.  As we've settled on the interface to the `r2c` code to be
 functions, we should respect that those define their own enclosing environment.
 
-But the drawback is that then people that compile "r2c_fun" functions need to be
-aware of the internals of the resulting function to avoid conflicts with their
-symbols, which is a no go?
+We've set this up so that the compilation stores the lexical environment, which
+is then used stand-alone and runners.
 
-We should be able to fix the code to handle this:
+In the case we store the function in a library, `saveRDS` appears to save the
+entire environment chain, although presumably it will complain about those saved
+in packages, which will be the biggest issue?  We can intercept the package envs
+and instead provide a stub that maybe points to the empty env, to be restored
+later.  Or we just rely on R to do the right thing, possibly capturing the
+warning about such and such namespace may not be available.
 
-    (<fun>)(<base::environemnt>(), <base::sys.call()>)
-    (<base_eval>)(<base_bquote>)(group_exec_int(...))
+Should we support that someone might want to change the lexical environment?  We
+can't do that with `environment()<-` since the actual environment of the `r2c`
+function is going to be the `r2c` namespace (currently it is albeit indirectly,
+as we don't set the environment when we create the function inside `r2c_core`)?
 
-Second is probably our own
+Not clear why R isn't warning about package environment not available when
+saving an "r2c_fun" (maybe it only warns about package environments?).
 
 # Reuse
 
