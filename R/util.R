@@ -132,8 +132,7 @@ lcurry <- function (FUN, ...) {
 
 is.chr_or_sym <- function(x) is.symbol(x) || is.character(x) && length(x) == 1L
 
-is.call_w_args <- function(x)
-  is.call(x) && length(x) > 1L && is.chr_or_sym(x[[1L]])
+is.call_w_args <- function(x) is.call(x) && length(x) > 1L
 
 is.assign_call <- function(x)
   is.call(x) && isTRUE(get_lang_name(x) %in% ASSIGN.SYM)
@@ -238,7 +237,7 @@ get_lang_info <- function(call) {
     if (is.chr_or_sym(call)) as.character(call)
     else if (is.call(call)) {
       if(is.dbl_colon_call(call[[1L]])) {
-        pgk <- as.character(call[[1L]][[2L]])
+        pkg <- as.character(call[[1L]][[2L]])
         as.character(call[[1L]][[3L]])
       }
       else if (is.chr_or_sym(call[[1L]])) as.character(call[[1L]])

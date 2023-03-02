@@ -68,6 +68,7 @@ stopifnot(
 
 IX <- list()
 QDOTS <- quote(...)
+MISSING <- formals(base::identical)[[1L]]
 
 # `for` assigns to the counter variable.  `->` becomes `<-` on parsing.
 ASSIGN.SYM <- c("<-", "=", "for")
