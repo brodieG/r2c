@@ -18,11 +18,12 @@
 ## Run steps that share a close resemblance to those in `group_exec`
 
 roll_prep <- function(
-  obj, data, r.len, formals, enclos, call, runner, MoreArgs, wmax
+  obj, data, r.len, formals, call, runner, MoreArgs, wmax
 ) {
   if(!r.len > 0) stop("Internal Error: prep only when there is result length.")
   preproc <- obj[['preproc']]
   shlib <- obj[['so']]
+  enclos <- obj[['envir']]
 
   if(!is.list(data)) data <- list(data)
   if(length(d.len <- unique(lengths(data))) > 1L)
@@ -74,7 +75,7 @@ roll_finalize <- function(prep, status) {
 ## Allocation computations, running the C code, cleaning up results.
 
 roll_call <- function(
-  r.len, data, fun, enclos, call, runner, crunner, csizer, MoreArgs, ...
+  r.len, data, fun, call, runner, crunner, csizer, MoreArgs, ...
 ) {
   if(r.len) {
     size <-
@@ -83,7 +84,7 @@ roll_call <- function(
 
     obj <- get_r2c_dat(fun)
     prep <- roll_prep(
-      obj, data=data, r.len=r.len, formals=formals(fun), enclos=enclos,
+      obj, data=data, r.len=r.len, formals=formals(fun),
       call=call, runner=runner, MoreArgs=MoreArgs, wmax=size
     )
     status <- .Call(
@@ -243,9 +244,8 @@ bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 #' @export
 #' @inheritParams group_exec
 #' @family runners
-#' @seealso [`r2c`] for more details on the behavior and constraints of
-#'   "r2c_fun" functions, [`base::eval`] for the semantics of `enclos`,
-#'   [`first_vec`] to retrieve first atomic vector.
+#' @seealso [`r2c-compile`] for more details on the behavior and constraints of
+#'   "r2c_fun" functions, [`first_vec`] to retrieve first atomic vector.
 #' @param fun an "r2c_fun" function as produced by [`r2c`], except with the
 #'   additional restriction that it must be guaranteed to produce scalar
 #'   results as used with this function.
@@ -362,7 +362,7 @@ rollby_exec <- function(
   fun, data, width, by, offset=0,
   position=seq(1, length(first_vec(data)), 1),
   start=position[1L], end=position[length(position)],
-  bounds="[)", MoreArgs=list(), enclos=parent.frame()
+  bounds="[)", MoreArgs=list()
 ) {
   # FIXME: add validation for shlib
   vetr(
@@ -376,7 +376,6 @@ rollby_exec <- function(
     by=NUM.1.POS,
     offset=NUM.1,
     MoreArgs=list(),
-    enclos=is.environment(.),
     start=NUM.1,
     end=NUM.1 && . >= start,
     bounds=CHR.1 && . %in% c("()", "[)", "(]", "[]")
@@ -399,7 +398,7 @@ rollby_exec <- function(
   roll_call(
     runner=r2c::rollby_exec, crunner=R2C_run_window_by,
     csizer=R2C_size_window_by,
-    r.len=r.len, data=data, fun=fun, enclos=enclos, call=call,
+    r.len=r.len, data=data, fun=fun, call=call,
     MoreArgs=MoreArgs,
     width, offset, by, position,
     start, end, bounds_num(bounds)
@@ -411,7 +410,7 @@ rollby_exec <- function(
 rollat_exec <- function(
   fun, data, width, at=position, offset=0,
   position=seq(1, length(first_vec(data)), 1),
-  bounds="[)", MoreArgs=list(), enclos=parent.frame()
+  bounds="[)", MoreArgs=list()
 ) {
   vetr(
     fun=is.function(.) && inherits(., 'r2c_fun'),
@@ -424,7 +423,6 @@ rollat_exec <- function(
     at=numeric(),
     offset=NUM.1,
     MoreArgs=list(),
-    enclos=is.environment(.),
     bounds=CHR.1 && . %in% c("()", "[)", "(]", "[]")
   )
   width <- as.numeric(width)
@@ -440,7 +438,7 @@ rollat_exec <- function(
   roll_call(
     runner=r2c::rollat_exec, crunner=R2C_run_window_at,
     csizer=R2C_size_window_at,
-    r.len=length(at), data=data, fun=fun, enclos=enclos, call=call,
+    r.len=length(at), data=data, fun=fun, call=call,
     MoreArgs=MoreArgs,
     width, offset, at, position,
     bounds_num(bounds)
@@ -452,7 +450,7 @@ rollat_exec <- function(
 rollbw_exec <- function(
   fun, data, left, right,
   position=seq(1, length(first_vec(data)), 1),
-  bounds="[)", MoreArgs=list(), enclos=parent.frame()
+  bounds="[)", MoreArgs=list()
 ) {
   vetr(
     fun=is.function(.) && inherits(., 'r2c_fun'),
@@ -462,7 +460,6 @@ rollbw_exec <- function(
       (list() && all(is.num_naked(.)))
     ),
     MoreArgs=list(),
-    enclos=is.environment(.),
     bounds=CHR.1 && . %in% c("()", "[)", "(]", "[]")
   )
   # Don't coerce underlying numeric vectors (e.g. POSIXct)
@@ -475,7 +472,7 @@ rollbw_exec <- function(
   roll_call(
     runner=r2c::rollbw_exec, crunner=R2C_run_window_bw,
     csizer=R2C_size_window_bw,
-    r.len=length(left), data=data, fun=fun, enclos=enclos, call=call,
+    r.len=length(left), data=data, fun=fun, call=call,
     MoreArgs=MoreArgs,
     left, right, position,
     bounds_num(bounds)
@@ -547,7 +544,7 @@ rollbw_exec <- function(
 #' @family runners
 #' @export
 #' @seealso [`r2c`] for more details on the behavior and constraints of
-#'   "r2c_fun" functions, [`base::eval`] for the semantics of `enclos`.
+#'   "r2c_fun" functions.
 #' @param n integer number of adjacent data "elements" to compute `fun` on.
 #'   It is called `n` and not `width` to emphasize it is a discrete count
 #'   instead of an interval width as in [`rollby_exec`] and friends.  Must be
@@ -585,7 +582,7 @@ rollbw_exec <- function(
 
 rolli_exec <- function(
   fun, data, n, by=1L, align='center', partial=FALSE,
-  MoreArgs=list(), enclos=parent.frame()
+  MoreArgs=list()
 ) {
   # FIXME: add validation for shlib
   vetr(
@@ -600,8 +597,7 @@ rolli_exec <- function(
     align=
       (CHR.1 && . %in% c('center', 'left', 'right')) ||
       (INT.1 && . <= .Machine[['integer.max']] && . >= -.Machine[['integer.max']]),
-    MoreArgs=list(),
-    enclos=is.environment(.)
+    MoreArgs=list()
   )
   if(!is.integer(n)) {
     n <- as.integer(n)
@@ -630,7 +626,7 @@ rolli_exec <- function(
 
   roll_call(
     runner=r2c::rolli_exec, crunner=R2C_run_window, csizer=nmax,
-    r.len=r.len, data=data, fun=fun, enclos=enclos, call=call,
+    r.len=r.len, data=data, fun=fun, call=call,
     MoreArgs=MoreArgs,
     n, offset, by, partial
   )

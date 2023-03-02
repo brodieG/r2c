@@ -11,9 +11,10 @@ with R semantics, and without the challenges of directly compilable languages.
 ## "Compiling" R
 
 Currently `{r2c}` can "compile" R expressions or functions composed of basic
-binary operators and statistics.  "Compile" is in quotes because `{r2c}`
-generates an equivalent C program, and compiles that.  To compute the slope of a
-single variable regression we might use:
+binary operators and statistics.  `{r2c}` also supports multi-line statements
+and assignment.  "Compile" is in quotes because `{r2c}` generates an equivalent
+C program, and compiles that.  To compute the slope of a single variable
+regression we might use:
 
     library(r2c)
 
@@ -89,7 +90,7 @@ and for packages to compile `{r2c}` functions at install-time.
 More importantly, we cannot compile and execute arbitrary R expressions:
 
 * Only `{r2c}` implemented counterpart functions may be used (currently: basic
-  arithmetic operators and `sum`/`mean`/`length`)
+  arithmetic operators, `sum`/`mean`/`length`, `{`, and `<-`).
 * Primary numeric inputs must be attribute-less (e.g. to avoid expectations of
   S3 method dispatch or attribute manipulation), and any `.numeric` methods
   defined will be ignored[^10].
@@ -124,13 +125,10 @@ be built on this proof of concept.  Some are listed below.  How many I end up
 working on will depend on some interaction of external interest and my own.
 
 * Expand the set of R functions that can be translated.
+* Nested "r2c_fun" functions.
 * Multi/character/factor grouping variables.
 * Additional runners (e.g. an `apply` analogue).
-* Optimizations (identify repeated calculations, re-use memory more
-  aggressively).
-* Preserve previously "compiled" functions.
-* Assignment operator (`<-`).
-* Multi-line expressions (and also functions composed of compatible functions).
+* Library for previously "compiled" functions.
 * Basic loop support, and maybe logicals and branches.
 * Get on CRAN (there is currently at least one questionable thing we do).
 * API to allow other native code to invoke `{r2c}` functions.
@@ -193,9 +191,9 @@ easily interface it with R.
 ### Fast Group and Rolling Statistics
 
 I do not know of any packages that compile R expressions to avoid interpreter
-overhead in applying them over groups or windows of data.  The closest is
-packages that recognize expressions they have equivalent pre-compiled code.
-This is limited to simple statistics:
+overhead in applying them over groups or windows of data.  The closest are
+packages that recognize expressions for which they have equivalent pre-compiled
+code they run instead.  This is limited to simple statistics:
 
 * [`{data.table}`][1]'s Gforce (see `?data.table::datatable.optimize`).
 * In theory [`{dplyr}`][5]'s Hybrid Eval is similar to Gforce, but AFAICT it was
@@ -256,7 +254,7 @@ rolling window statistics:
 [7]: https://github.com/eddelbuettel/inline
 [8]: https://twitter.com/BrodieGaslam/status/1527829442374025219?s=20&t=rg6aybJlGxPEUwBsI0ii1Q
 [9]: https://www.brodieg.com/tags/hydra/
-[10]: https://htmlpreview.github.io/?https://raw.githubusercontent.com/brodieG/r2c/3caf106980e558c931aea554e1f0197a82d031a3/extra/benchmarks/benchmarks-public.html
+[10]: https://htmlpreview.github.io/?https://raw.githubusercontent.com/brodieG/r2c/abf1dd726beb980b12ae1b554e8bcd2df8b47e18/extra/benchmarks/benchmarks-public.html
 [11]: https://www.zeileis.org/
 [12]: https://cran.r-project.org/package=zoo
 [13]: https://github.com/DavisVaughan

@@ -16,8 +16,7 @@ rollby_exec(
   start = position[1L],
   end = position[length(position)],
   bounds = "[)",
-  MoreArgs = list(),
-  enclos = parent.frame()
+  MoreArgs = list()
 )
 
 rollat_exec(
@@ -28,8 +27,7 @@ rollat_exec(
   offset = 0,
   position = seq(1, length(first_vec(data)), 1),
   bounds = "[)",
-  MoreArgs = list(),
-  enclos = parent.frame()
+  MoreArgs = list()
 )
 
 rollbw_exec(
@@ -39,8 +37,7 @@ rollbw_exec(
   right,
   position = seq(1, length(first_vec(data)), 1),
   bounds = "[)",
-  MoreArgs = list(),
-  enclos = parent.frame()
+  MoreArgs = list()
 )
 }
 \arguments{
@@ -101,9 +98,6 @@ passed in full to the native code for each iteration  This is useful for
 arguments that are intended to remain constant across iterations.  Matching
 of these objects to \code{fun} parameters is the same as for \code{data}, with
 positional matching occurring after the elements in \code{data} are matched.}
-
-\item{enclos}{environment to use as the \code{enclos} parameter to
-\code{\link[base:eval]{base::eval}} when evaluating expressions or matching calls (see \code{data}).}
 
 \item{at}{non-NA, finite, monotonically increasing numeric vector of anchor
 positions on the real line for each window (see notes).
@@ -333,9 +327,8 @@ transform(
 options(old.opt)
 }
 \seealso{
-\code{\link{r2c}} for more details on the behavior and constraints of
-"r2c_fun" functions, \code{\link[base:eval]{base::eval}} for the semantics of \code{enclos},
-\code{\link{first_vec}} to retrieve first atomic vector.
+\code{\link{r2c-compile}} for more details on the behavior and constraints of
+"r2c_fun" functions, \code{\link{first_vec}} to retrieve first atomic vector.
 
 Other runners: 
 \code{\link{group_exec}()},

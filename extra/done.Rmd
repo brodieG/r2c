@@ -1,0 +1,276 @@
+## Done
+
+* Add a cleanup pass for `get_r_code` (and document that's being done).  Drop
+  `...` in names, and maybe default args that are set to their default values.
+  Harder but potentially useful is any arguments that are in the same order they
+  were originally.  Maybe use something other than `.R2C_SUB_` as root.
+* try overriding `::` to check that errors correctly.
+* Is it okay for `square` to require `r2c` attached?  Inconsistent with what we
+  do with `r2c_copy`.  A possible solution would be to implement `::`.  Then we
+  could rename `r2c_copy` to `copy` or `copy_vec` (later to reduce collision
+  with e.g. `data.table`).
+* Make sure we think through the interaction of things with `sym.free` with
+  variable assignment as that could cause problems since that assumed the only
+  source of them was parameters.  Seems okay.
+* Does preproc `sym.free` `sym.bound` make sense now with `formals` supplied?  I
+  think so since it's still possible to do pass a language object.
+* Do we need `id` if it's always just `seq_along(id)`.  Probably not, `id0`
+  should be sufficient.  We don't need it, dropped.
+* Document side effects in external parameters?
+* Transform should be an optimization or processing?  It would make sense for it
+  to show up in the `$processed` member.
+* Read through all comments and make sure they are up to date.
+* Do we still use the 'assign' field in `record_call_dat`?  If not, excise.  We
+  do use it to allow us to putty dummy calls on the stack.
+* Check that forwarding calls in `...` works correctly, e.g.
+  `sum(1 + x, 2 + y)`, not obvious from glancing at dots handling that it does.
+  Update: not clear what we though the issue was, seems to work fine?
+* Symbol resolution apparently skips non-naked data; does that make sense or
+  should it find it and error?  No, it doesn't, it looks through all the data.
+* Check into why compilation output is incomplete (try borking one of the
+  C functions, looks like only some of the output makes it out right now
+  compared to actually running the compilation command).
+* Make sure that the Function Environment in `r2cf` is captured somewhere.  In
+  particular we want to make sure unbound symbols are resolved according to that
+  environment.  Will also need to think about what this means for the `enclos`
+  parameter to the runners.  
+* `r2cq(test)` produces weird error (note that's just a symbol) (fixed).
+* Make sure that the no-op C functions don't return warnings.
+* Test corner cases such as a repeated assignment to see if it get correctly
+  detected as being repeated.
+* Test `reuse_call` with empty call.  Seems to work fine.
+* Calling `r2c_funs` without `r2c` loaded, in particular when we're using `r2c`
+  functions such as `r2c_copy` or `mean1`?  Should be okay, it should fail?  It
+  does, just need to deal with `r2c_copy`.  Just ended up waiving the lookup
+  check for `r2c_copy`.
+* Reuse with an inner expression that appears separately from a re-used outer
+  expression (yes, `r2c_int` is a good example of this working).
+* Final call is not a computation, will things work okay?  They do now.
+* Test empty braces (`{}`). We disallow.
+* What happens if we have an assignment at depth 0?  Nothing much, works as
+  expected.
+* Are we okay with doing the call substitution before match-calling?  That's
+  going to change param evaluation order.  Probably not okay.  Is that what
+  we're doing though?  We disallowed expressions containing non top-level
+  assignments.
+* Renames:
+  * Don't change the structure of the tree
+  * Can be reversed (maybe this covers the prior point)
+* Add tests that confirm us overriding functions used by the "r2c_fun" does not
+  break anything.
+* Do we want to hoist out temporary code-reuses to the top level so that we can
+  enforce evaluation order, and also to try to make the code clearer?  Main
+  challenge is if there is an assignment at some point earlier in the expression
+  that conflicts with the hoisting (i.e. hoisting would result in the expression
+  referencing an undefined symbol).  And what does top-level mean when e.g.
+  there is a loop or branch (do we go all the way, or stop there)?
+* Assignment isn't re-using last available slot.  It should if it's unprotected.
+  Maybe it could under additional circumstances?
+* Can we optimize away `braces`?  They don't really do anything but return the
+  last value, which is what would happen anyway.  Maybe too annoying to deal
+  with in the current structure.  Another problem with braces is that they cause
+  everything under them to be protected by depth by virtue of being siblings,
+  when really we only care about the last value.
+* Test renames with potentially ambiguous names (too long for root, special
+  symbols).
+* Fix over-optimization where expression that is already assigned to a symbol
+  gets assigned to a sub-symbol.  This is not trivial because we need to
+  identify that an expression already has a name, etc., etc..  This is really
+  not a big deal so we'll leave it alone.  Here is an example.
+
+    reuse_calls(quote({a <- mean(x); mean(x)}))
+    ## {
+    ##     .R2C_SUB_1 <- mean(x)
+    ##     a <- .R2C_SUB_1
+    ##     .R2C_SUB_1
+    ## }
+
+* Disallow any optimization when there are assignments not at a brace level?
+  But even then the code evaluation is questionable.  We should probably just
+  disallow it altogether, as in `r2c` simply does not accept parameters with
+  side effects (need to think about controls, flags).
+* Make sure we understand when it's okay or not okay to assume about order of
+  evaluation of parameters (e.g. when they contain assignments in them).
+  Probably we'll just have to document that what we assume may be different than
+  what R does, and it's a really bad idea to do this in the first place in a way
+  where order matters. (we decided to just disallow this).
+* Rename `r2c` to `r2cf` or similar once we implement functions.  Partly this is
+  so `?r2c` will pull up the package docs, not the function docs.
+* To allow assignments we can just use a series of nested environments such that
+  each sub-call will then seek the symbol through the nested environments.
+  We'll need to bind the data symbols to e.g. environments so they may be
+  uniquely identified and we can confirm they've been found.  Err, what were we
+  thinking here?
+* Complex expressions with curly braces, etc.
+* Consider giving each individual allocation a unique id, and putting those ids
+  in the stack, that way when there is a stack reduce we can confirm that the
+  allocation slots being pointed to actually contain the data intended (this is
+  to help detect errors in the code that might otherwise result in corrupted
+  data).
+* Figure out why single group eval so much slower for `group_exec` (see notes).
+* Change reserved symbols to be anything starting with `.R2C` so we have more
+  flexibility and don't need to use the same format for dot args, replaced
+  names, etc.
+* `reuse_call` and `rename_call` need to realize that for loops assign values!
+  It should be okay to just rename the counter; I think everything else works
+  out.
+* Currently we require at least one data column so we can get away with using
+  the group logic for the stand alone evaluation of the r2c funs.
+* Error case where the matching doesn't work and data or MoreArgs is e.g. a
+  variable or a complex expression.
+* Test that everything works if there is no group varying data (i.e. everything
+  fed through MoreArgs).  Not completely trivial to test as we need a function
+  that allows us to specify a `data` parameter, but then uses it as a control
+  instead of data (at least for `group_exec`).  We just need the group varying
+  data to be referenced somewhere in the call, which ...
+* Test:
+  * Zero element data and non-zero row groups
+  * Zero element data and zero row groups
+  * No iteration varying data at all
+  * Windows, in particular should still be possible with things that specify
+    position.
+* Doc page for "runner" functions.
+* UBSAN / valgrind, and more.
+* Installation instructions?
+* Remove benchmarks from `roll*_exec` docs.
+* Suppress compiler version output from R CMD SHLIB, check that compile error
+  handling is okay.
+* Make `group_exec` interface consistent with `roll*_exec`
+* Numeric group vectors provoke weird error from `group_exec`
+* Acknowledge that runner also uses `at` (but I think this was independent).
+  Decided against, it really was independent I think and it's pretty trivial.
+* Recycle warning for windows, does it make sense?  It might with the partial
+  windows, but for the main section we should only need to check once?  This is
+  actually significant for the `w=1` case, taking about 40% of the time the
+  function evaluation takes (`r2c_sum`).  But probably in the noise for all
+  other cases.  Similarly, can we get away with not checking return length?
+  Implicitly we probably don't for group functions, so maybe we don't have to?
+  IIRC we settled on whatever we do ATM.
+* Should `x` be `x` or `pos`?  `x` feels most correct, but also confusing
+  because of the use of `x` as a data variable.
+* Figure out segfault in slope window case.
+* Add big tests including the one causing the segfault.  Come up with a more
+  complex expression than the slope.
+* Look into whether we can efficiently iterate over an altrep without expanding
+  it.  Update: We can by partially expanding it using the stuff from iter.h,
+  e.g. iterate by region which would generate and expand small chunks.  For now
+  we're not going to bother with this.
+* Decide whether partial should default to TRUE or FALSE.
+* Zero width windows with "[]" bounds.
+* Ensure partial condition is good on the new implementation (in particular,
+  still feels weird that it doesn't matter what the bounds types are).
+* Use `REAL_RO` for `x`, `at`, `left`, `right`?  Performance should be fine?
+  But there is no way that a sequence can give a useful pointer without
+  expanding.  Would have to use `ITERATE_BY_REGION` which AFAICT generates
+  smaller vectors to iterate through so the whole thing doesn't have to be
+  generated.
+    * No, this is way to complicated to embed in the existing loop.
+* Should start/end really do a hard subset?  Starting to feel that's wrong.
+    * No, we won't have them to do a hard subset.  We could add an e.g. `hard`
+      parameter but the use case for it seems tenuous.
+* Be sure to test a window that is wider than the data to see that partial
+  windows are computed correctly on both sides?  Should be okay.
+* `DYNLOAD` warnings around `run()`; maybe that function doesn't need to be of
+  the type DYNLOAD?  We know what the interface of it is, so we just need to
+  check whether that's compatible with R's compilation mechanism.
+    * Turns out R-devel was in a weird state where their own transition from
+      empty arglist was incomplete.
+* We should be able to specify align values that exceed the window range.
+* Tests groups that aren't just 1:n or 0:n (I think we do this)?
+* Test on windows.  Instructions for windows users about toolchain, etc?
+* Fill out acknowledgments.
+* Rename `mean0` to `mean1`
+* Benchmarks:
+  * Randomly ordered groups?
+  * Larger group sizes?
+* Try to interfere with r2c funs.  Need to document exactly what environment
+  they are exposed to (base namespace).
+* Pass data around in environments for better deparse (can't do this because the
+  parameters might be unnamed via dots, or at least not easily, plus it only
+  matters for the naked call).
+* Add tests:
+    * For parenthesis removal in mechanics.
+    * For square tranform.
+* When we dropped the use of env to match the arguments, how did keep track of
+  the environment to look up functions in?  We don't, we just check function
+  validity at run time.
+* Emit warning/errors with the function call.
+* Can we come up with a better error message for the matching of arguments?  Do
+  we need our own matching instead of relying on `match.call`.
+* Check dots with names (i.e. names that don't match formas but are caught by
+  dots).  What should be done with these?  They probably should be unnamed.
+* Check dots with multiple sets of dots, trying to e.g. pass both to group
+  varying and flags/control params.
+* Can we truly support dots (I think so, see dots section).
+* Does arg order matching make sense?  We get: `function (y, x, ..., na.rm)` out
+  of `r2cq(y - sum(x, na.rm = na.rm, ...), check = TRUE)`, dots get moved up,
+  doesn't seem right.
+* Are we checking that the functions resolve correctly at run time (and not just
+  at compile time)? Yes, we check in `alloc`.
+* Test that dots still work after we changed the eval environment; almost
+  certainly won't so we have to think how to handle things that get matched to
+  e.g. `..1`, etc.
+* How can we efficiently warn of "longer object length is not a multiple" in
+  vecrec?  We don't want a modulo for each group.  But we could check that the
+  shorter object has not hit its length at the end of the loop and set a global
+  variable?  Or use `flags` to communicate back?  When we compute each
+  interaction size, we do (or could know) the group sizes, including possibly
+  max and min group size.  But to be certain of a multiple you must be certain
+  that there are no groups of odd sizes...  So I think it has to be done at run
+  time, annoyingly.
+* Do we need to handle the issue of `envir` for `match.call` at allocation time
+  instead of at compile time?  Seems like the way this goes wrong is if the
+  expression being looked at itself contains dots, e.g. literally `sum(...)`
+  where the `...` need to be fetched.
+
+    > (\(...) r2cq(sum(...)))(1, 2)
+    Error in match.call(definition = definition, call = call, envir = envir,  : 
+      ... used in a situation where it does not exist
+
+Right now preprocess is just using `parent.frame()` for match.call, which
+doesn't make any sense.
+
+* Check assumption that double will hold `R_xlen_t`?  Or that length is no
+  longer that the allowable size?  A bit tricky; no way to know what double size
+  is.  This is because we return the group size to R; otherwise it would just be
+  an R_xlen_t vector.  We need this to get the group max for the allocation.
+  It's possible R guarantees this will be no bigger than e.g. 2^53 or some such.
+  We added a check to assumptions.c.
+* Ensure that all pointer parameters are allocated one extra element at end so
+  that we can use the fun(++pointer) pattern without worrying about the last
+  call overflowing (I think this might be allowed by the standard anyway,
+  check).  Yes, allowed by C99 6.5.6 p8.
+* Is it possible that set.seed could interfere badly with the random file name
+  generation?  Yes, maybe try to initialize the pool
+* Evaluation of non-compilable expressions in an env child of an env with
+  appropriate symbols protected?  Such would be the symbols in the data, but
+  what about the functions that are used?  That seems excessive.  No, we won't
+  support this.
+* Think though corner case of R_NA, NaN, Inf, etc: are we preserving semantics.
+  Yes, mostly, but maybe not always (e.g. when we use `pow` instead of `square`)
+* Look into GraalVM, Renjin?
+* Only sort the columns that are used.  This is the case already as only things
+  that match to the `r2c_fun` are submitable.
+* Be sure to test situations where we have external data larger and smaller than
+  group sizes.
+* What do we do with NA groups?  Each it's own, or one big NA group?  One big NA
+  group.  Single group; now documented.
+* Document that we assume IEEE-754 (and thus existence of infinity and no
+  overflow on conversion from long double to double), and check whether this is
+  a reasonable assumption under C99 (probably no), or failing that under R.
+* Figure out why external vectors are being duplicated.  Were seeing:
+
+    Browse[2]> .Internal(inspect(alloc$alloc$dat[[5]]))
+    @7fe16de86b68 14 REALSXP g0c0 [MARK,REF(65535)]  1 : 3 (compact)
+    Browse[2]> .Internal(inspect(alloc$alloc$dat[[6]]))
+    @7fe16de8b7b8 14 REALSXP g0c0 [MARK,REF(65535)]  1 : 3 (compact)
+
+  for the slope calculation with y as 1:3 (literal).  Duh, is this just because
+  we use `as.numeric`.
+
+* Really need to figure out whether we want a formal interface to the functions.
+  It could be auto-generated from all the unbound symbols like gsubfn does it.
+* Annotate code with the call that it corresponds to
+
+
+
