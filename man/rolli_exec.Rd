@@ -11,8 +11,7 @@ rolli_exec(
   by = 1L,
   align = "center",
   partial = FALSE,
-  MoreArgs = list(),
-  enclos = parent.frame()
+  MoreArgs = list()
 )
 }
 \arguments{
@@ -53,9 +52,6 @@ passed in full to the native code for each iteration  This is useful for
 arguments that are intended to remain constant across iterations.  Matching
 of these objects to \code{fun} parameters is the same as for \code{data}, with
 positional matching occurring after the elements in \code{data} are matched.}
-
-\item{enclos}{environment to use as the \code{enclos} parameter to
-\code{\link[base:eval]{base::eval}} when evaluating expressions or matching calls (see \code{data}).}
 }
 \value{
 a numeric vector of length \code{length(first_vec(data)) \%/\% by}.
@@ -156,7 +152,7 @@ rolli_exec(r2c_len, dat, n=c(1,3,1,3,1), align='left', partial=TRUE)
 }
 \seealso{
 \code{\link{r2c}} for more details on the behavior and constraints of
-"r2c_fun" functions, \code{\link[base:eval]{base::eval}} for the semantics of \code{enclos}.
+"r2c_fun" functions.
 
 Other runners: 
 \code{\link{group_exec}()},

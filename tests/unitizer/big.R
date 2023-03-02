@@ -37,17 +37,12 @@ unitizer_sect("Big Tests", {
   identical(slope(x[sixth.window], y[sixth.window]), rby.slope[6])
 
   # More complex expression
-  r2c_int <- r2cq(
-    (
-      sum(y) -
-      sum(x) * (sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2))
-    ) / length(x),
-    check=TRUE
-  )
   r2c.int <- r2c_int(x=x, y=y)
   if(!require("stats")) stop("Package stats required for tests")
   stats.coef <- unname(coefficients(lm(y ~ x, data.frame(x, y))))
   all.equal(c(r2c.int, r2c_slope(x, y)), stats.coef)
   ri.int <- rolli_exec(r2c_int, list(x, y), n=w)
 
+  # With intermediate assignments
+  identical(ri.slope, rolli_exec(r2c_slope2, list(x, y), n=w))
 })

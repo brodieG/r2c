@@ -4,7 +4,7 @@
 \alias{group_exec}
 \title{Execute r2c Function Iteratively on Groups in Data}
 \usage{
-group_exec(fun, data, groups, MoreArgs = list(), enclos = parent.frame())
+group_exec(fun, data, groups, MoreArgs = list())
 }
 \arguments{
 \item{fun}{an "r2c_fun" function as produced by \code{\link{r2c}}.}

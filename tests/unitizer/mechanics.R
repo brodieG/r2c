@@ -13,7 +13,7 @@
 ##
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
-unitizer_sect("Parenthesis Remova", {
+unitizer_sect("Parenthesis Removal", {
   fp0 <- r2cq(((1 + 2) * x))
   args(fp0)
   fp0(10)
@@ -21,13 +21,9 @@ unitizer_sect("Parenthesis Remova", {
   args(fp1)
   fp1(10)
 })
-unitizer_sect("Symbol Resolution", {
-  xghf <- 42
-  local(r2c_sum(xghf))
-  local(r2c_sum(xghf), list2env(list(xghf=51)))
-})
 unitizer_sect("Bad Args", {
   r2c_sum('hello')
+  with(iris, group_exec(r2c_sum, Species, Species))
 })
 unitizer_sect("Square Transform", {
   grep("square(", get_c_code(r2c_slope), fixed=TRUE, value=TRUE)
@@ -88,4 +84,81 @@ unitizer_sect("Forwarded Dots", {
 unitizer_sect("Self Check", {
   sum_check <- r2cq(sum(x), check=TRUE)
   sum_check(x)
+})
+unitizer_sect("Formals / Symbol Resolution", {
+  r2c_sub_rev <- r2cq(x - y, formals=c('y', 'x'))
+  r2c_sub_rev(1, -3)
+  r2c_sub_rev2 <- r2cq(x - y, formals=alist(y=, x=10))
+  r2c_sub_rev2(-1)
+
+  # Resolve unbound in lexical environment
+  x <- c(10, 20)
+  r2c_sub_rev3 <- r2cf(function(y) x - y)
+  local({x <- 1; group_exec(r2c_sub_rev3, 1:3, 1:3)})
+  local({x <- 1; r2c_sub_rev3(1)})
+
+  # Argument should be resolved in calling environment
+  xghf <- 42
+  local(r2c_sum(xghf))
+  local(r2c_sum(xghf), list2env(list(xghf=51)))
+
+  # But we cannot affect the actual internal symbol resolution
+  local({
+    eval <- stop
+    r2c_test <- r2cq(sum(x))
+    r2c_test(31)
+  })
+})
+unitizer_sect("brackets/assign", {
+  external <- 1:5
+  bracket <- r2cq({
+    a <- 10
+    c <- {
+      b <- 3
+      b * a * external
+    }
+    d <- sum(tmp)
+    c * d
+  }, formals=c('tmp'))
+  group_exec(bracket, 1:10, rep(1:2, each=5))
+
+  # Can't assign inside arguments
+  r2cq(sum(z <- x, z))
+
+  # But double assignment okay
+  r2cq(z <- y <- x)(42)
+
+  # Empty braces disallowed
+  r2cq({})
+  r2cq({a;{}})
+
+  # Symbol return gains a r2c_copy
+  sym_return <- r2cq({a <- x + y; a})
+  get_r_code(sym_return)
+  sym_return(x, y)
+
+  sym_return2 <- r2cq(test)
+  get_r_code(sym_return2)
+  sym_return2(1)
+
+  sym_return3 <- r2cq(test <- x)
+  get_r_code(sym_return3)
+  sym_return3(c(1, 2))
+
+  # Equal assignment
+  r2cq({mu_x = mean(x); x - mu_x})(c(1,2,3))
+})
+unitizer_sect("processing display", {
+  get_r_code(r2c_int)
+  get_r_code(r2c_int, raw=TRUE)
+})
+unitizer_sect("optimization", {
+  get_r_code(r2c_int)
+  get_r_code(r2cf(intercept, optimize=FALSE))
+})
+unitizer_sect("double colon", {
+  local({`::` <- list; r2cq(base::sum(r2c::square(x)))})(5)
+  detach("package:r2c")
+  if("package:r2c" %in% search()) stop("r2c should not be attached yet.")
+  r2c::r2cq(base::sum(r2c::square(x)))(5)
 })

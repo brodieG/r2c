@@ -1,6 +1,824 @@
-# r2c
+# Package Env
+
+Something somewhere is causing the package environment to be captured...
+
+    = Finalize Unitizer ========================================================
+
+    | You will IRREVERSIBLY modify 'unitizer/mechanics.unitizer' by:
+    | - Adding 1 out of 1 new tests
+
+    | Update unitizer ([Y]es, [N]o, [P]rev, [B]rowse, [R]erun)?
+
+    unitizer> Y
+
+    | unitizer updated.
+
+    Warning message:
+    In saveRDS(unitizer, paste0(store.id, "/data.rds"), version = 2) :
+      'package:r2c' may not be available when loading
+
+We reduced it to one file with `r2c_sum("hello")` but with `r2c_sum` defined
+in the "pre" file.  For some reason that causes the package environment to be
+captured.
+
+It seems very likely it is because of:
+
+    > x@items.ref@.items[[1]]@trace
+    [[1]]
+    r2c_sum("hello")
+
+    [[2]]
+    eval(bquote(group_exec_int(<environment>, formals = .(.FRM),
+        groups = NULL, data = .(.DGRP), MoreArgs = .(.DAT[-1L]),
+        call = quote(.(.CALL)))), envir = getNamespace("r2c"))
+
+Examining that object doesn't show the package environment, but the presence of
+trace would explain why this only happens when we have an error case.  It's not
+clear why it happens only though when the function is defined in "pre".  We must
+be doing some env surgery on the environments of the actual unitizers that
+doesn't happen for "pre" ones.  From `?unitize`:
+
+>  Unlike objects created during test evaluation, any objects created here will
+>  not be stored in the unitizer so you will have not direct way to check
+>  whether these objects changed across unitizer runs.
+
+
+The problem child is the "envir" slot of the environment, not the environment
+itself:
+
+    unitizer:::env_ancestry(x@items.ref@.items[[1]]@trace[[4]][[2]][['envir']], emptyenv())
+    ##  [1] "0x12b839b30"       "0x12b839af8"       "package:r2c"
+    ##  [4] "package:stats"     "package:graphics"  "package:grDevices"
+    ##  [7] "package:utils"     "package:datasets"  "package:methods"
+    ## [10] "0x14bab6d10"       "base"              "R_EmptyEnv"
+
+The problem sees to be that when that environment gets captured, the child env
+of the package env is not separated from the chain.  Unfortunately if we do
+things like this, we're going to retain the "pre" data for every single
+unitizer.  So to do this properly, we would have to separately store the pre
+data and integrate it into unitizer.
+
+We also tested just using directly `r2c_sum` as a test and that caused the same
+error.  Generating the function in the test file proper doesn't cause any issues
+at all.
+
+# Double Semicolon
+
+We want to allow `::`.  This would be a pre-process thing.
+
+This is to support `square`, `mean1`, etc., so that we can do `r2c::r2cq` or
+some such.
+
+# Alloc cleanup
+
+## Rationalize Appending Data
+
+`alloc_dat` is called only with a call, which means it has additional contextual
+data such as the written-to symbol in the call.  It needs to:
+
+* Cleanup expired symbols.
+* Rebind overwritten symbols.
+* Copy last action to result slot.
+* Allocate or re-use a slot.
+* Free depth-expired slots.
+
+`append_dat` is called on "leaves", so it needs to be given names.  Will it ever
+have names outside of the initial group data?  What about `MoreArgs` data?
+
+Ideally we would modularize the code so that `alloc_dat` generates a new vector
+to append, and then all the other pathways do something similar, and then they
+all use `append_dat` to add the data to the allocation.
+
+What doesn't work here is that `alloc_dat` might not append data, but instead
+could re-use a slot.  In this case skip by returning NULL data?
+
+So we'll need an additional branch for calls to:
+
+* Free allocations.
+* Reduce stack.
+* Append call data.
+
+Old Notes
+
+1. Update Allocation (alloc_dat or append_dat)
+2. If call, update call.dat (after updating allocation)
+3. Update stack
+
+Additionally the call branch will have reduced the stack.  Problems are:
+* The use of alloc for call vs everything else
+* The use of `id` instead of `alloc[['i']]` for name found in allocation
+* That `call.dat` must be updated after `alloc` is.
+
+Does `append_stack` really need to be told:
+* `size` (yes, could be different to alloc size by being NA, but would be
+  nice if it could infer it from `alloc`, can it?)
+
+We should have a different `append_dat` for adding the group data vs a
+single vector, should cleanup the interface.
+
+## External Symbols
+
+Currently these are added as many times as they are referenced. To avoid this we
+would need a secondary names lookup table for external symbols.  By the
+structure of the code it is subordinate to any assigned symbols.  Then, when we
+go to eval a leaf expression, if it is a symbol, we can first look in our
+external symbol table.  In fact, we could modify the `if` condition to check the
+external symbol table in addition to the internal one, and fall back to the
+`name_to_id` branch.  The only change would have to be for `data.used` tracking.
+
+# Match Call
+
+We kind of want to match the call ahead of `pp_internal` so that we can properly
+implement transform as a distinct pass.
+
+Fundamentally we should be able to split the existing `match_call` into two
+steps, the first simply does the `match.call` including dots replacement,
+recursively on the whole three.  The second does all the business of
+re-organizing the arguments, adding defaults, and classifying them.
+
+One issue is in doing this we will automatically cause our calls to be
+different because `match.call` will make calls non-identical.  Maybe that's
+okay?  Could potentially help detect weird behavior with `r2cq` and bad argument
+order, and closer in spirit to what is supposed to happen.
+
+Also, doing this requires us to leave dots unexpanded, which just looks ugly:
+
+    sum(... = pairlist((x - mean(x = x)) * (y - mean(x = y)))) /
+    sum(... = pairlist((x - mean(x = x))^2))
+
+This also breaks `reuse_calls` because of the pair lists.  If we fix
+`reuse_calls` to operate with pairlists, we could probably continue until
+eventually we merge the dots back in once we compute the defaults.
+
+Is all this complication worth it?  Maybe.
+
+Urgh, that re-use calls doesn't name everything, but we assume that everything
+has names, is messing everything up.  We need a check in `record_call_dat` that
+all vector fields are being grown to the same length.  This used to work before
+because we did the re-use calls first, and only after did we do the `match_call`
+business which gave everything names.
+
+Increasingly feeling like not worth it...  What a disaster.
+
+* Now we need to work on seeing if we can get of all the primitive `defn` since
+they should not be needed anymore and we have positional matching.
+* Then, can we get rid of the `as.character` on the name of the function.
+* Finally, can we clean up the processed version of the calls.
+  * Drop default arguments?
+  * Don't include names on arguments that were positionally matched to same
+    position?
+  * Drop dots in names?
+
+# Last Statement
+
+So far we had relied on the last computation to be written to the result, but
+what if the last computation is just a symbol, e.g. one that was written to.
+
+And how do we handle e.g.:
+
+    function(a) {
+      if(a) z <- x else y
+    }
+
+I guess the one above is easy, `if` is a function and returns its value, they
+just need to be compatible size.  In this case, the last call is the `if` (or
+should be anyway).
+
+    function(a) {
+      x <- a * 2  # does something, used by `x`
+      y <- x * 3  # does something, used, but by something that does nothing
+      z <- y * 2  # does something, unusued
+      x           # does nothing
+    }
+
+Ideally we would recognize that `x <- a * 2` is the last used statement.  In
+order to qualify a call must do something, and must be the last used call.  See
+annotations above.
+
+A call is considered used if it is an argument to a non-passive call, or it is
+the last parameter of a braces call, or if it is an assignment call and the
+symbol it assigns to appears again.
+
+We should change our criteria to be not the last call, but instead the last
+argument of a braces call.
+
+One problem is that right now we rely on calls that do something to actually
+write to the result vector.  Calls that do nothing (e.g. the case where we just
+return a symbol) actively need to be copied into the result vector.
+
+Strawman, for the last braces call, find the last argument:
+
+* If it is a braces call, recurse.
+* If it is a symbol or assignment to a symbol
+  * track down the call that generated the expression assigned to the symbol.
+    * If it is an external symbol, insert a copy call?
+    * If we have a call, record the id for `alloc_dat` to copy to result.
+* If it is a call record the id for `alloc_dat` to copy to result.
+
+So the main challenge is the copy call.  We probably can't generate the copy
+call before we run alloc because we won't know whether the symbol is external or
+generated by a function until after running alloc.  This will mess with anything
+that relies on the position of things in the linearized call list, possibly
+including the protection, etc.  But it should be knowable whether a symbol
+resulted from an assignment or not.  To know that we need to use renamed
+symbols so there is no ambiguity from a branch or something.
+
+
+# Eval Env
+
+We have an inconsistency with how evaluation environments are handled in runners
+vs naked calls.  As we've settled on the interface to the `r2c` code to be
+functions, we should respect that those define their own enclosing environment.
+
+We've set this up so that the compilation stores the lexical environment, which
+is then used stand-alone and runners.
+
+In the case we store the function in a library, `saveRDS` appears to save the
+entire environment chain, although presumably it will complain about those saved
+in packages, which will be the biggest issue?  We can intercept the package envs
+and instead provide a stub that maybe points to the empty env, to be restored
+later.  Or we just rely on R to do the right thing, possibly capturing the
+warning about such and such namespace may not be available.
+
+Should we support that someone might want to change the lexical environment?  We
+can't do that with `environment()<-` since the actual environment of the `r2c`
+function is going to be the `r2c` namespace (currently it is albeit indirectly,
+as we don't set the environment when we create the function inside `r2c_core`)?
+
+Not clear why R isn't warning about package environment not available when
+saving an "r2c_fun" (maybe it only warns about package environments?).
+
+# Reuse
+
+We want to hoist stuff out so that instead of:
+
+    (.R2C_SUB_2 <- mean(y)) -
+    (.R2C_SUB_1 <- mean(x)) *
+      (sum((.R2C_SUB_3 <- (x - .R2C_SUB_1)) * (y - .R2C_SUB_2)) /
+        sum(.R2C_SUB_3^2)
+      )
+
+We have:
+
+    .R2C_SUB_2 <- mean(y)
+    .R2C_SUB_1 <- mean(x)
+    .R2C_SUB_3 <- (x - .R2C_SUB_1)
+    .R2C_SUB_2 - .R2C_SUB_1 * sum(.R2C_SUB_3 *
+      (y - .R2C_SUB_2)) / sum(.R2C_SUB_3^2)
+
+So maybe:
+
+* For every symbol, find out the point at which it has been defined.
+* For every expr to sub, find the earliest point it can be moved forward to:
+  * Stopping at the first set of braces
+* Move the sub-expression there if we're at a set of braces (if not don't sub?)
+  * We could still possibly be safe if every nested call just had one parameter,
+    and we add the constraint that all `r2c` expressions must evaluate their
+    single parameter.
+* For expressions that can't be moved?
+* Perhaps this whole process needs to be done iteratively?
+
+A bit of trickiness in how indices are expressed
+
+    2     |  a
+    3 2   |  b
+    3 3 2 |  c
+    3 3   |  mean(c)
+    3     |  {  b; mean(c) }
+    -     |  {  a; {; b; mean(c); } }
+
+If `mean(c)` is our target, then we want to go right before the first instance
+of `mean(c)`'s brace level root, which is `(3 3)`.  So in this case we would
+insert an assignment as:
+
+    3 3 2 |  expression
+    3 3 3 |  symbol
+    3 3   |  symbol <- expression
+
+Between `b` and `c`, and then everything below that would get bumped.  But
+really, we're going to operate directly on the tree, so all we need is the `(3,
+3)`.  We'll apply these in the order they are generated.
+
+
+# Single Group Performance
+
+Much slower than base, would be interesting to track down what's going on.  It's
+particularly bad if we reverse the order, but it looks like we've got a whole
+extra vector being allocated that maybe doesn't need to be.
+
+    library(r2c)
+    slope2 <- function(x, y) {
+      mux <- mean(x)
+      x_mux <- x - mux
+      sum(x_mux * (y - mean(y))) / sum(x_mux^2)
+    }
+    r2c_slope2 <- r2cf(slope2)
+    n <- 1e8
+    a <- runif(n)
+    b <- runif(n) * .5 + a * .5
+    gc()
+    ###             used   (Mb) gc trigger   (Mb) limit (Mb)  max used   (Mb)
+    ### Ncells    362973   19.4     698777   37.4         NA    677183   36.2
+    ### Vcells 200733947 1531.5  362973722 2769.3      16384 300734934 2294.5
+    system.time(slope2(a, b))
+    ##   user  system elapsed
+    ##  0.834   0.192   1.026
+    gc()
+    ##            used   (Mb) gc trigger   (Mb) limit (Mb)  max used   (Mb)
+    ## Ncells    363549   19.5     698777   37.4         NA    677183   36.2
+    ## Vcells 200735202 1531.5  579650024 4422.4      16384 400737393 3057.4
+    system.time(r2c_slope2(a, b))
+    ##   user  system elapsed
+    ##  0.807   0.210   1.069
+    gc()
+    ##             used   (Mb) gc trigger   (Mb) limit (Mb)  max used   (Mb)
+    ## Ncells    373739   20.0     698777   37.4         NA    677183   36.2
+    ## Vcells 200759255 1531.7  579650024 4422.4      16384 550877897 4202.9
+    system.time(slope2(a, b))
+    ##   user  system elapsed
+    ##  0.867   0.228   1.094
+    gc()
+    ##             used   (Mb) gc trigger   (Mb) limit (Mb)  max used   (Mb)
+    ## Ncells    432238   23.1     885577   47.3         NA    677183   36.2
+    ## Vcells 200891389 1532.7  579650024 4422.4      16384 550877897 4202.9
+    system.time(r2c_slope2(a, b))
+    ##   user  system elapsed
+    ##  0.864   0.326   1.265
+    gc()
+    ##             used   (Mb) gc trigger   (Mb) limit (Mb)  max used   (Mb)
+    ## Ncells    434879   23.3     885577   47.3         NA    677183   36.2
+    ## Vcells 200897934 1532.8  579650024 4422.4      16384 550990626 4203.8
+
+Ok, some more testing, the problem is almost certainly that there we generate an
+integer group vector that is the difference here.  Almost certainly the group
+order vector that isn't altrep as noted.  That might be enough to explain the
+difference in timing (note there is a lot of sensitivity to the order in which
+things happen above given we make big memory requests from the OS).
+
+# Braces
+
+# Linearized vs Not
+
+One big advantage of the linearlized processing is that it lets us track lots of
+relevant meta data in the same form.
+
+One issue we're running into is that we lose some of the context.  For example,
+in an assignment expression the first thing we hit in the linearized call is the
+symbol to assign to, with no understanding that symbol is being assigned to
+later.  So we'll try to resolve it and will fail because it does not exist yet.
+
+For now the hack would be to leave the symbol unresolved?  Yes, but how do we
+make sure that it does get resolved and allocated at the right time?  We can
+mark it as an assignment symbol, along with the depth at which it should be
+resolved, and once we get to the assignment call that matches that depth, we can
+do all the update stuff.  I think if we just ignore it completely it's fine.  We
+just need to record that it's an assign target.
+
+# If / Loop
+
+## Constraint Overview
+
+The over riding constraint is that every symbol must resolve to an unambiguous
+size.  `if` and `for` control structures can create ambiguity in sizes (e.g.
+different sizes in branches of if, different sizes within the loop / loop can
+act like a branch if not taken).
+
+Disallow cases where a variable might not be created that is later used:
+
+* for:
+  * Zero iterations (maybe).
+  * `break` / `continue`
+* if:
+  * Brand new symbol.
+  * Not all branches contain it.
+  * What if the symbol exists from elsewhere?
+
+Additionally:
+
+* for:
+  * variables read and written from must be consistent size before and
+    after loop
+  * variables must remain constant size in the loop (e.g. cannot grow)
+  * variables written to in loop must be either unchanged in size, or the loop
+    must be guaranteed to have at least one iteration.
+* if:
+  * variables written to must be the same size across all branches; branches
+    that don't write ok so long as prior var same size.
+
+Need to think about what compatible allocations are.  Certainly different
+branches must produce the same size result.  Does the result need to end up in
+the same allocation id?
+
+## Loop C Implementation
+
+Probably the way a loop would work is:
+
+```
+void run(
+  double ** data, R_xlen_t * lens, int ** di, int * narg, int * flag, SEXP ctrl
+) {
+  (void) narg; // unused
+  (void) ctrl; // unused
+
+  dibase = *di;
+  flagbase= *flag;
+  for(i = 0; i < n; ++i) {
+    // - Loop Overhead ---------------------------------------------------------
+    // Do something to update the value of `i` in the data
+    ...
+
+    // Then reset index, flags, more args
+    di = dibase;
+    flag = flag;
+
+    // - Normal Code -----------------------------------------------------------
+    // mean(x)
+    mean(data, lens, *di++, *flag);
+    ++flag;
+
+    // x - mean(x)
+    subtract(data, lens, *di++);
+    ++flag;
+  }
+}
+```
+
+## Interesting Example
+
+Pretty challenging dealing with loops.
+
+```
+x <- integer()
+for(i in 1:10) {
+  x <- c(x, i)
+}
+```
+
+Each loop iteration is going to have a different size for x. The best we can
+hope for is consistent size every iteration including the first.  This should
+handle the case where the loop doesn't even run.
+
+What about variables created in loops that are not taken?
+
+## Tracking Implementation
+
+### Implementation
+
+Trick with all this is we need to check the state of the stack at every use of a
+symbol, so we're back to doing the whole tree as described in (old)...
+
+        x
+      / | \
+     a  b  |
+     |  |  |
+     a  b  x
+
+Not only that, we can't even know if everything is the same size or not unless
+we process the expressions.
+
+So we do all the renaming and stuff first, and allocation time, we build the
+symbol mapping tree for each symbol with each step in the evaluation.
+
+```
+x <- w
+if(a) {
+  x <- r
+} else if (b) {
+  x <- s
+} else {
+  if(c) {
+    x <- t
+  } else if (d) {
+    x <- u
+  }
+}
+```
+
+`if` stack contains a count of how many `else` at any given `if` depth.  For
+each depth, for each variable, what symbol-nodes it has been bound to (a symbol
+node can contain the result of a nested if).
+
+So the processing of an `if` should return a list with as many elements as there
+are `else` clauses, plus 1 for the original, plus an indication if there is not
+a terminal else.  Then, the function that initiated the processing of the `if`,
+can check whether for each symbol, there are the right number of things.  For
+those that don't have enough, add the previously bound symbol(s).  Then, flatten
+all the lists in case there was any nesting.
+
+Within each branch of the if, we don't have to worry about what's going on in
+the alternate branches, only the symbol ambiguities accrued to date.
+
+`for` loops are different because we need to forward check all the symbols due
+to the same code being run more than once.  We simply disallow `for` loops from
+changing a variable size.
+
+Maybe overcomplicating this.  A `for` loop can only add a new rename for each
+
+Ugh, and almost forgot about parameter order (it's okay, this is "unknowable" in
+R anyway because it depends on when the params are touched inside functions, so
+we have to declare it as a difference to `r2c`).
+
+Maybe this isn't too bad, the main thing is to distinguish between data/external
+symbols and new ones we add.  So when we enter a branch, we just create a copy
+of the whole allocation structure, and when we exit, we compare to all the other
+branches (including the original) and make sure they are compatible.  Actually,
+for the `if` statements maybe we first compare across all branches and replace a
+missing `else` with the original.  This should work recursively I think.  From
+this perspective we don't need to keep any of the assignment symbol renames.
+The only renames we care about are the subexpression substitutions.  The initial
+renames were just to prevent invalid substitutions, but once that's handled, we
+can revert them all (so we need to track original symbol).  This seems like it
+could work.
+
+Next steps:
+
+* Tests (or do we wait to make sure this stuff actually works)?  Kind of, the
+  code is all broken atm.
+* If the first instance of an expression is assigned, and the assigned symbol is
+  available, can we just use that as the name of the sub-expression?  Reasons
+  not to are that these symbols can be overwritten (that's okay, renaming
+  handles this), and it's also harder to debug because we won't be able to
+  distinguish that a particular subexpression was replaced.  So probably lean
+  against, as it would only "help" in the weird case where a user saved an
+  intermediate expression, but then failed to use it.
+* Start rebuilding the allocations mechanism.
+
+## Track Substituted Expressions
+
+* For the substituted ones it's trivial because their own index is the index
+  of what should be referenced.
+* For the one with the assignment....
+* Seems like we really want for each call in the new tree, a reference to the
+  old.
+
+But, what we actually want is when we're going through the pre-process
+linearization, for each thing in the tree we're traversing, have the original
+call.  We can't do this for one tree alone.  Conceivably we could if we attached
+the original call as an attribute, but stops working with symbols.  Maybe we
+attach the original call to calls when there is a difference, and separately we
+return a list of the calls corresponding to the re-use symbols.  This should
+make it relatively straight-forward.
+
+# Assignments
+
+## Re-Writeable assignment
+
+This raises an interesting point: if we allow modification of the assignment we
+must create a new allocation and make a copy.  Maybe we can forward analyze and
+see if future calls modify the symbol?
+
+So, if each assignment generates a call, if it is to a RO variable it can record
+the parameter and result ids as the same, and set the depth of that variable to
+zero.  If it is a RW variable, then it allocates something to hold the copy, and
+sets the depth of that to zero.
+
+`preproc` will have separately generated a C command that is a either a NULL
+operation (so that all the parameter incrementing stays in sync - hmm, looks
+we do have some incrementing that doesn't require a call, e.g. for flag) or a
+`memcpy`.  So `preproc` needs to track whether a variable is written to which it
+can do in a second pass.  Actually not that trivial because `code.gen` is run
+during the recursion stage, so we can't just go back and change it in the
+linearized list.  We would have to defer running it, which means recording all
+the parameters for it.
+
+So how would we detect that an assign created variable is written to later?
+preproc has the argument name.  It would then keep a top-level list of all the
+assigned to arg names accumulated to date, and if at some point later down the
+track a write function involves that parameter, it would know.  That means that
+
+## Memory Re-Use
+
+### Arith Assign, and Other Potential Re-use targets.
+
+Can we use `+=` to avoid having to have memory allocated for both LHS and RHS
+for the arithmetic operators?  Might complicate things substantially.  The main
+problem with this is we have a protected expression for re-use, we cannot
+overwrite it.  Additionally, we only ever want to overwrite the longer of the
+two parameters.  So we could do this in the subset of situations where the first
+argument is longer, but to do it `alloc` would have to realize this, know that
+is a special vecrec + arith situation, and then set the result vector to be the
+same.  We would also need to modify the arith code to have one additional
+conditional layer that needs to be called once per iteration.
+
+In general, we could tag a set of functions as being able to re-use memory if
+they are vecrec and the internal code is single pass.  Then `alloc` will check
+to see if the longer of the two parameters is protected by symbol reference, and
+if not set that as the result.  Obviously functions tagged this way need to be
+very aware that's what they are doing.  We don't need to use `+=` or whatever as
+the target will be the same, but the C compiler won't be able to know that,
+which might affect performance a little?
+
+Better would be to have a second version of arith that does the `+=` business
+and we substitute that one in for the calls that support it.  This doesn't
+resolve `alloc` still having to do work.
+
+It does create a second situation where we want to be able to code gen two
+different pathways depending on the nature of subsequent code.  This should all
+be able to happen at the preproc level though, I think.
+
+### Do we do it already?
+
+For the case of assigned to variables it seems maybe the code already does it,
+as we see things like:
+
+    ..$ :List of 4
+    .. ..$ call: language square(x_mux)
+    .. ..$ ids : int [1:2] 5 5
+    .. ..$ ctrl: list()
+    .. ..$ flag: int 0
+
+In this case, `x_mux` is not referenced any further, and is thus free.  Seems
+like this can work in some cases, but not all?
+
+    f(x_mux, some_calc)
+
+In this case, there is a risk that `some_calc` will end up using `x_mux`'s
+allocation, so this is definitely too aggressive.  When a terminal symbol is
+used, it should update the depth of the corresponding allocation.
+
+## Memory
+
+IIRC currently each call can re-use a memory slot deeper than itself.  This
+makes sense in the context of a completely nested single line expression.  It
+should extend naturally to assignments that are made at the top level.  Gets a
+bit tricky if there is an assignment made inside a call (and also we need to be
+able to distinguish between a param specification and an assignment; it's
+probably okay though b/c of `match.call`).
+
+So all assignments are made directly at the top level automatically since we do
+not support `local` or anything like it.  Possibly instead of "top-level" we
+just keep track of the current function's depth to allow for nested "r2c_fun"
+functions.
+
+We then need to figure out how to resolve symbols.
+
+In the reduce step, we can just change the depth of the prior call's result on
+the stack (remember to test sequential allocations `a <- b <- fun(c)`).
+
+Things to do:
+
+1. Allow preproc to match to newly created variables.
+2. Add generator functions for RO and RW assignment.
+3. Add a mechanism for alloc to know how to set the depth for assignment
+   (actually this might be fine since `preproc` does it, problem is that `alloc`
+   uses `depth + 1` to get parameters to current call, which won't work anymore.
+4. Related to ^, change how `alloc` finds the parameters to each call.  We might
+   need a separate flag to have `alloc` change the depth after identifying
+   parameters, or alternative set a `callid` of some sort to identify parameters.
+   Maybe have `preproc` add a `protect` flag.
+5. Structure to track variables needs to contain:
+   * Depth?
+   * Size (including NA for group size).
+   * Read Only flag.
+   * Id of call that generated them (so we can go back and edit the call if an
+     RO flag was toggled off).
+6. Auto-free memory once there are no further calls to it (also true of
+   sub-expressions).
+
+First thing to solve then is allowing preproc to match to newly created
+variables.  Hmm, not sure preproc is the one that does this.  preproc only
+matches to parameter names.  So it's alloc that needs to do it.
+
+We could do it by adding an additional match layer ahead of the `data.naked`
+one.  If there is a match in this additional layer, then we use the variable
+(and inherit size, etc.).
+
+How does an overwrite work in this scheme?  It should mark the data allocation
+as available, and ...
+
+Also, things are a bit complicated by the call being in effect `"<-"(x, value)`.
+We need to get the target name from the call, which isn't hard, but just doesn't
+quite fit into the framework we have.
+
+## Assignment and Control Variables
+
+One big complication is that control variables could reference variables that
+are created as part of the expression, e.g.:
+
+    x <- a > b
+    sum(y, na.rm=x)
+
+How do we resolve this?  Currently the semantics are to treat symbols as if they
+are the full data the symbols.  We could have a version of each assignment that
+resolves also to the full data symbols used purely for the controls, but this is
+very tricky because we don't want to carry out all those evaluations that define
+each of the symbols unless we actually have to as those would compute on the
+entire data vectors potentially.  We could define them as `delayedAssign`
+into an environment, and then evaluate the control parameters with that as an
+environment in the chain.
+
+So every time we encounter an assignment, we need to record the assignment
+expression as a `delayedAssign` in our special environment that has `data` for
+parent.
+
+Possibly even worse:
+
+    sum(x, na.rm=(x <- y))
+
+As it stands now we'll make a copy of `x` in the initial allocation pass,
+whereas probably we would expect the opposite to happen (i.e. actually get `y`).
+Probably we just warn people about it and let them make their bed.  Since we use
+a new environment each time that `x` likely is lost.
+
+## Assignment and Allocation
+
+When we encounter an assignment, we need to know not to allocate additional
+memory.  Additionally, we need to know to free whatever data was previously
+pointed to by that symbol.
+
+When we encounter a symbol, we need a mapping table to know whether the symbol
+is an assigned symbol.  If it is, then we know it's size from the `alloc` value.
+
+We want to track when each symbol is last used so we know we can trash the
+allocation.  We can probably do this in a first pass through the linearized
+calls where, for each symbol, we find the latest read reference to it.  Then,
+anytime a symbol is "protected" by being written to, the "protected" value is
+the last reference to it.  Each iteration then frees all the wrong depth stuff,
+and any expired protections.
+
+Any overwriting of a symbol will also effectively free the prior allocation (and
+transfer the protection value to the new allocation (although they may be the
+same size and re-use the slot).
+
+## Renaming
+
+Preprocess does match each call.  Whenever it matches a call, we can check if
+any of the parameter expressions reference a prior expression, and at that point
+we can go back and mark as protected.  Need to make sure anything data/external
+is default protected.  Interestingly we don't need to auto-protect an
+assignment, it only needs to be protected if at some point it is re-used (but it
+would be interesting to let ppl know if it is never used).
+
+So we want a structure with all the prior expressions so we can test them, and
+go back and mark them as needing to be protected, and also the point at which
+they are last used.
+
+Assignment can use this.
+
+Then, at the end we can go back and code gen everything, substituting when
+appropriate functions that are dealing with protected parameters.
+
+The renaming process likely needs to be a shadow rename, meaning we need the
+original copy too.
+
+Anytime we rename, we need to process all remaining expressions and rename them
+too.  Likely we want a deferred rename, i.e. it happens just before each
+expression is processed, so we need to accumulate all the renames.  If we don't
+do this we have to maintain two copies of the call tree which is going to be
+annoying to recurse through.
+
+* Need a stack of renames.
+* Need a stack of past expressions to identify re-use (we have this already from
+  the linearized stack).
+
+## Nested Functions
+
+In order to support nested functions, we need to prevent renames of external
+variables.  We also need to affect symbol resolution.  So essentially each
+function layer will need a whole frame of `call_dat` or some such.  We will also
+need to re-match to the outer function environment as that could cause renaming
+of the data variables, etc.
+
+What a nested function does is effectively:
+
+    function(a, b) {
+      a <- force(a)
+      b <- force(b)
+      ...
+    }
+
+In other words, it generates implicit bindings to its local variables.  To
+shoehorn it into our framework we can just keep applying the renames on a
+rolling basis, and they should then naturally expire by the time the function
+exits scope.  So `preprocess` will need to identify a function to symbol in the
+call, realize that it can get a body for it, bind the formals to force-renamed
+symbols, and proceed as normal.  The allocator should then behave correctly from
+that point forward, without needing an explicit frame stack.
+
+What we can do is anytime we encounter a function, generate the assignment calls
+for all the parameters.  We only allow constant default params, so should be
+okay (but need to double check what we do with those at preprocess time).
+
+One problem to resolve with the renaming is the nested function might use a
+component from the outer one (e.g. internally it computes `mean(a)`, but
+`mean(a)` has already been computed previously); the renaming would prevent
+re-use of the expression.  So maybe we don't need to worry about renaming.  The
+only real issue is how unbound symbols are resolved, and making sure that
+such symbols are not resolved against symbols bound in the calling frame.
+
+So it seems that anytime we enter a new function, we need to reset the portion
+of the allocated data structure that we can look through.
+
+## Preproc
+
+Shouldn't actually generate any code?  But we need a mechanism to tell the
+allocator that the result of the prior call should be assigned to the top level,
+and we need to bind it to a symbol (duh) that will be on the search path.
+
 
 # Function vs. Expression
+
+## Free vs. Bound
 
 One complexity to think about is that in the auto-generated "functions", there
 is no possibility for a free symbol to exist, whereas in the manually specified
@@ -8,7 +826,34 @@ ones we might allow completely free symbols such as `pi`.  Currently (0.1.0) the
 structure supports this at the expense of quietly finding symbols bound to e.g.
 the global environment.  So we need to add a check that detects this.
 
-How to default values work for functions?
+How to default values work for functions?  This should be fine so long as they
+are either control or flag parameters.   So we need to check as we process the
+expression that we don't try to use a control/flag parameter as a data parameter
+somewhere.
+
+    > f <- r2cq(sum(x, na.rm=y) + sum(y, na.rm=x))
+    > f(1, 2)
+    Error in VALID_FUNS[[c(name, "ctrl.validate")]](stack.ctrl, stack.flag,  :
+      `na.rm` should be type "logical" (is "double") in `sum(x, na.rm = y)`.
+    > f(1, 2)
+
+Seems like it should actually be fine except for the possibility that a variable
+will get interpreted in full in one context (control) and in part in the other
+(data).  We should disallow it as the described case should never be something
+we actually want (and would be unsemantic), even though technically it could
+work.
+
+If we specify `formals` for expressions, we need to distinguish the case where
+we don't specify any formals at all and want them all swallowed into the actual
+formals, vs. the case where we want everything left unbound.  Maybe leave NULL?
+
+For the case we do have formals, it might be as simple as initializing
+`x[['sym.free']]`.  One thing is we'll probably have to add tracking of whether
+a symbol is ever used or not to possibly report that there is an unused formal
+(or at least think through the consequences of such; maybe none?).
+
+To conclude, we allow free symbols either via the function formals or by giving
+a list of symbols to bind to formals.
 
 # Window Implementation
 
@@ -553,7 +1398,7 @@ It's kind of an accident that we generate the `..1` symbol, and only because
 `1:10` is a call:
 
     > (function(...) r2cq(sum(...)))(1, 2)
-    function () 
+    function ()
     {
 
 So probably just need to figure out why the call version generates the `..1`
@@ -721,11 +1566,11 @@ On my system this is the cost of accessing the vectors at random (well, this
 includes the physical re-ordering):
 
 > system.time(x[io])       # ordered
-   user  system elapsed 
-  0.052   0.003   0.057 
+   user  system elapsed
+  0.052   0.003   0.057
 > system.time(x[ir])       # random
-   user  system elapsed 
-  0.286   0.007   0.311 
+   user  system elapsed
+  0.286   0.007   0.311
 
 And most of the cost is just accessing the vector (`order_sum` below adds each
 value to a single accumulator in the order specified by io).
@@ -735,25 +1580,25 @@ value to a single accumulator in the order specified by io).
 > io <- seq_len(n) - 1L
 > ir <- sample(io)
 > system.time(order_sum(x, io))
-   user  system elapsed 
-  0.022   0.000   0.023 
+   user  system elapsed
+  0.022   0.000   0.023
 > system.time(order_sum(x, ir))
-   user  system elapsed 
-  0.210   0.006   0.230 
+   user  system elapsed
+  0.210   0.006   0.230
 
 The key to collapse speed is that it reads the large input vectors in order, but
 then writes to the small group vector out of order.
 
 > system.time(fsum(x, g4, na.rm=FALSE))
-   user  system elapsed 
-  0.081   0.004   0.087 
+   user  system elapsed
+  0.081   0.004   0.087
 
 This advantage falls apart as we grow the size of the group vector by increasing
 the number of repeats:
 
 > system.time(fsum(x, g6, na.rm=FALSE))
-   user  system elapsed 
-  0.865   0.017   0.910 
+   user  system elapsed
+  0.865   0.017   0.910
 
 But exactly what is happening is not 100% clear:
 
@@ -802,11 +1647,11 @@ higher sizes.  Let
     g.ar <- sample(all.range, n, replace=TRUE)
     g <- sample(ng, n, replace=TRUE)
     system.time(fsum(x, g.ar, na.rm=FALSE))
-    ##   user  system elapsed 
-    ##  0.069   0.003   0.072 
+    ##   user  system elapsed
+    ##  0.069   0.003   0.072
     system.time(fsum(x, g, na.rm=FALSE))
-    ##   user  system elapsed 
-    ##  0.064   0.004   0.068 
+    ##   user  system elapsed
+    ##  0.064   0.004   0.068
 
 
     n <- 1e7; ng <- 1e4
@@ -814,11 +1659,11 @@ higher sizes.  Let
     g.ar <- sample(all.range, n, replace=TRUE)
     g <- sample(ng, n, replace=TRUE)
     system.time(fsum(x, g.ar, na.rm=FALSE))
-    ##   user  system elapsed 
-    ##  0.132   0.003   0.136 
+    ##   user  system elapsed
+    ##  0.132   0.003   0.136
     system.time(fsum(x, g, na.rm=FALSE))
-    ##   user  system elapsed 
-    ##  0.077   0.003   0.080 
+    ##   user  system elapsed
+    ##  0.077   0.003   0.080
 
 Let's try with different types to see what happens:
 
@@ -830,48 +1675,48 @@ Let's try with different types to see what happens:
     g.ar <- sample(all.range, n, replace=TRUE)
     gt <- as.character(g)
     system.time(fsum(x, gt, na.rm=FALSE))
-    ##   user  system elapsed 
-    ##  0.373   0.020   0.401 
+    ##   user  system elapsed
+    ##  0.373   0.020   0.401
     gt <- as.character(g.ar)
     system.time(fsum(x, gt, na.rm=FALSE))
-    ##   user  system elapsed 
-    ##  0.412   0.016   0.435 
+    ##   user  system elapsed
+    ##  0.412   0.016   0.435
     gt <- g + 0
     system.time(fsum(x, gt, na.rm=FALSE))
-    ##   user  system elapsed 
-    ##  0.621   0.030   0.668 
+    ##   user  system elapsed
+    ##  0.621   0.030   0.668
     gt <- g.ar + 0
     system.time(fsum(x, gt, na.rm=FALSE))
-    ##   user  system elapsed 
-    ##  0.693   0.027   0.730 
+    ##   user  system elapsed
+    ##  0.693   0.027   0.730
     gt <- factor(as.character(g))
     system.time(fsum(x, gt, na.rm=FALSE))
-    ##   user  system elapsed 
-    ##  0.032   0.000   0.033 
+    ##   user  system elapsed
+    ##  0.032   0.000   0.033
     system.time(fsum(x, g, na.rm=FALSE))
-    ##   user  system elapsed 
-    ##  0.085   0.007   0.094 
+    ##   user  system elapsed
+    ##  0.085   0.007   0.094
     system.time(res <- group_exec(f, g, x))
-    ##   user  system elapsed 
-    ##  0.763   0.020   0.802 
+    ##   user  system elapsed
+    ##  0.763   0.020   0.802
     system.time(fsum(x, g.ar, na.rm=FALSE))
-    ##   user  system elapsed 
-    ##  0.142   0.016   0.160 
+    ##   user  system elapsed
+    ##  0.142   0.016   0.160
 
 Pretty much as expected.  Big benefit from factors.  So really the hashes work
 very well with sequential integers, whereas the sorting version should be about
 the same for everything?.
 
     system.time(order(x))
-    ##   user  system elapsed 
-    ##  0.587   0.026   0.620 
+    ##   user  system elapsed
+    ##  0.587   0.026   0.620
     system.time(order(g))
-    ##   user  system elapsed 
-    ##  0.201   0.005   0.208 
+    ##   user  system elapsed
+    ##  0.201   0.005   0.208
     gt <- as.character(g)
     system.time(order(gt, method='radix'))
-    ##   user  system elapsed 
-    ##  0.271   0.006   0.281 
+    ##   user  system elapsed
+    ##  0.271   0.006   0.281
 
 Largest number of groups that will fit in L1 would be 16K, not enough to start
 evicting out of L2 for the all range one.  To do that we need 32K entries.  At
@@ -882,11 +1727,11 @@ evicting out of L2 for the all range one.  To do that we need 32K entries.  At
     g.ar <- sample(all.range, n, replace=TRUE)
     g <- sample(ng, n, replace=TRUE)
     system.time(fsum(x, g.ar, na.rm=FALSE))
-    ##    user  system elapsed 
-    ##   0.358   0.008   0.371 
+    ##    user  system elapsed
+    ##   0.358   0.008   0.371
     system.time(fsum(x, g, na.rm=FALSE))
-    ##    user  system elapsed 
-    ##   0.136   0.004   0.140 
+    ##    user  system elapsed
+    ##   0.136   0.004   0.140
 
 This suggests a massive crash in performance as for all range half will have
 been done in L2, and half out.  We can go up to 500K entries contiguous before
@@ -897,11 +1742,11 @@ we start exhausting L2 cache, so let's try with 250K groups:
     g.ar <- sample(all.range, n, replace=TRUE)
     g <- sample(ng, n, replace=TRUE)
     system.time(fsum(x, g.ar, na.rm=FALSE))
-    ##    user  system elapsed 
-    ##   0.599   0.010   0.616 
+    ##    user  system elapsed
+    ##   0.599   0.010   0.616
     system.time(fsum(x, g, na.rm=FALSE))
-    ##    user  system elapsed 
-    ##   0.343   0.007   0.353 
+    ##    user  system elapsed
+    ##   0.343   0.007   0.353
 
 **We're assuming no hash collisions whatsoever**
 
@@ -1033,33 +1878,33 @@ we're dealing with group sizes that in the contiguous case just fit in cache at
     ng <- n/10
 
     system.time(res <- group_exec(f, g, x))
-    ##   user  system elapsed 
-    ##  7.421   0.477   7.919 
+    ##   user  system elapsed
+    ##  7.421   0.477   7.919
     system.time(fsum(x, g, na.rm=FALSE))
-    ##   user  system elapsed 
-    ## 12.264   0.580  12.888 
+    ##   user  system elapsed
+    ## 12.264   0.580  12.888
 
     ng <- n/100
     system.time(res <- group_exec(f, g, x))
-    ##   user  system elapsed 
-    ##  7.174   0.571   7.766 
+    ##   user  system elapsed
+    ##  7.174   0.571   7.766
     system.time(fsum(x, g, na.rm=FALSE))
-    ##   user  system elapsed 
-    ##  5.101   0.401   5.520 
+    ##   user  system elapsed
+    ##  5.101   0.401   5.520
 
     ng <- n/1000
     system.time(res <- group_exec(f, g, x))
-    ##   user  system elapsed 
-    ##  6.512   0.543   7.077 
+    ##   user  system elapsed
+    ##  6.512   0.543   7.077
     system.time(fsum(x, g, na.rm=FALSE))
-    ##   user  system elapsed 
-    ##  1.280   0.184   1.471 
+    ##   user  system elapsed
+    ##  1.280   0.184   1.471
 
     all.range <- as.integer(seq(1, n, length.out=ng))
     g.ar <- sample(all.range, n, replace=TRUE)
     system.time(fsum(x, g.ar, na.rm=FALSE))
-    ##   user  system elapsed 
-    ##  3.672   0.445   4.131 
+    ##   user  system elapsed
+    ##  3.672   0.445   4.131
 
 At n/1000 we're talking 400KB contiguous or 6.4MB, so for the latter just 50%
 overflowing L3 cache.
@@ -1068,8 +1913,8 @@ overflowing L3 cache.
     all.range <- as.integer(seq(1, n, length.out=ng))
     g.ar <- sample(all.range, n, replace=TRUE)
     system.time(fsum(x, g.ar, na.rm=FALSE))
-    ##   user  system elapsed 
-    ##  6.877   0.590   7.566 
+    ##   user  system elapsed
+    ##  6.877   0.590   7.566
 
 At 2n with n/100 we're 50% in cache for the contiguous case.  Maybe should try
 the n/10 case with g.ar?
@@ -1080,16 +1925,16 @@ the n/10 case with g.ar?
     x <- runif(n) * runif(n)
     g <- sample(ng, n, replace=TRUE)
     ## system.time(res <- group_exec(f, g, x))
-    ##    user  system elapsed 
-    ##  18.133   1.306  19.516 
+    ##    user  system elapsed
+    ##  18.133   1.306  19.516
     ## system.time(fsum(x, g, na.rm=FALSE))
-    ##    user  system elapsed 
-    ##  10.954   0.814  11.783 
+    ##    user  system elapsed
+    ##  10.954   0.814  11.783
     all.range <- as.integer(seq(1, n, length.out=ng))
     g.ar <- sample(all.range, n, replace=TRUE)
     ## system.time(fsum(x, g.ar, na.rm=FALSE))
-    ##    user  system elapsed 
-    ##  17.222   1.158  18.458 
+    ##    user  system elapsed
+    ##  17.222   1.158  18.458
 
 ## Notes vs data.table
 
@@ -1306,31 +2151,31 @@ Some costs of not being able to do the full optimization:
     > x <- runif(n)
     > g <- sample(n)
     > sys.time(res <- run_group(shlib, "fun4", list(x), g, 0L))
-       user  system elapsed 
-      1.077   0.005   1.087 
+       user  system elapsed
+      1.077   0.005   1.087
     > sys.time(res <- run_group(shlib, "fun4", list(x), g, 1L))
-       user  system elapsed 
-      1.076   0.004   1.085 
+       user  system elapsed
+      1.076   0.004   1.085
 
 These above are with `na.rm` as an explicit if/else, where group size is 1..
 
     > sys.time(res <- run_group0(shlib, "fun3", list(x), g))
-       user  system elapsed 
-      1.030   0.004   1.040 
+       user  system elapsed
+      1.030   0.004   1.040
 
 Here instead we assume `na.rm = FALSE` so no extra if/else.  For reference this
 is what the above looks like with group size = 10:
 
     > sys.time(res <- run_group0(shlib, "fun3", list(x), g))
-       user  system elapsed 
-      0.778   0.004   0.788 
+       user  system elapsed
+      0.778   0.004   0.788
 
 And finally back to group size = 1 we now add a `asInteger(VECTOR_ELT(x, 0))` to
 retrieve the `na.rm` flag:
 
     > sys.time(res <- run_group1(shlib, "fun5", list(x), g, 0L))
-       user  system elapsed 
-      1.147   0.002   1.149 
+       user  system elapsed
+      1.147   0.002   1.149
 
 So a 10% penalty, which suggests some value in allowing for a single flag to be
 passed down.  But maybe this becomes a future feature.
@@ -1342,26 +2187,26 @@ with any other processes.  Given that sorting is such a big part of the cost,
 it's going to be hard to beat that.
 
     > sys.time(res1 <- run_group2(shlib, "fun6", list(x, y), g))
-       user  system elapsed 
-      1.058   0.007   1.071 
+       user  system elapsed
+      1.058   0.007   1.071
     > sys.time(res2 <- run_group2(shlib, "fun7", list(x, y), g))
-       user  system elapsed 
-      1.069   0.008   1.084 
+       user  system elapsed
+      1.069   0.008   1.084
     > sys.time({
     +   o <- order(g)
     +   xo <- x[o]
     +   yo <- y[o]
     + })
-       user  system elapsed 
-      0.783   0.005   0.794 
+       user  system elapsed
+      0.783   0.005   0.794
     > sys.time(res3 <- xo + yo)
-       user  system elapsed 
-      0.022   0.000   0.022 
+       user  system elapsed
+      0.022   0.000   0.022
     > all.equal(res1, res2)
     [1] TRUE
     > all.equal(res1, res3)
     [1] TRUE
-    > 
+    >
 
 ## Allocation
 
@@ -1399,11 +2244,11 @@ pointer offset access.
     w <- runif(5e6)
     >
     > sys.time(fapply:::test1(x, y, z, w))
-       user  system elapsed 
-      0.025   0.000   0.025 
+       user  system elapsed
+      0.025   0.000   0.025
     > sys.time(fapply:::test2(x, y, z, w))
-       user  system elapsed 
-      0.018   0.000   0.018 
+       user  system elapsed
+      0.018   0.000   0.018
 
 It is slightly faster to do x + y + z + w (test2) than do pairwise additions
 across the full vectors (test1).  Maybe because we only increment the loop
@@ -1412,19 +2257,19 @@ variable once?
 With `MOD_ITERATE_CHECK2` and checking every 1e6:
 
     > sys.time(fapply:::test3(x, y, z, w))
-     user  system elapsed 
-    0.036   0.000   0.038 
+     user  system elapsed
+    0.036   0.000   0.038
 
 Interestingly `MOD_ITERATE2` is no faster, so the check is basically free.
 
 `R_ITERATE_CHECK` is comparable to pairwise addition (test1):
 
     > sys.time(fapply:::test1(x, y, z, w))
-       user  system elapsed 
-      0.026   0.000   0.028 
+       user  system elapsed
+      0.026   0.000   0.028
     > sys.time(fapply:::test5(x, y, z, w))
-       user  system elapsed 
-      0.026   0.000   0.028 
+       user  system elapsed
+      0.026   0.000   0.028
 
 
 ## Function Types
@@ -2044,7 +2889,7 @@ If unnamed we can rely on the symbol.
 
 
 These are very appealing for group/window because we can easily re-use the same
-shared object, and additionally 
+shared object, and additionally
 
 ```
 obj <- r2c(<expr>)

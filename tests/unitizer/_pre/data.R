@@ -50,16 +50,27 @@ x.ovrf.ldbl.na <- x.ovrf.ldbl
 x.ovrf.ldbl.na[ldbl.na[1L]] <- NA_real_
 
 # r2c Functions used in multiple places
-
 slope <- function(x, y)
   sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2)
-r2c_slope <- r2cq(
-  sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2),
-  check=TRUE
-)
+r2c_slope <- r2cf(slope, check=TRUE)
+
 r2c_sum <- r2cq(sum(x))
 r2c_add <- r2cq(x + y)
 r2c_len <- r2cq(length(x))
+
+slope2 <- function(x, y) {
+  mux <- mean(x)
+  x_mux <- x - mux
+  sum(x_mux * (y - mean(y))) / sum(x_mux^2)
+}
+r2c_slope2 <- r2cf(slope2)
+
+intercept <- function(x, y)
+  (
+    mean(y) -
+    mean(x) * (sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2))
+  )
+r2c_int <- r2cf(intercept, check=TRUE)
 
 # Helper Functions
 show_bits <- function(x, n=as.integer(max(c(log2(x), 0), na.rm=TRUE)) + 1L) {
