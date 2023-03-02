@@ -244,7 +244,7 @@ bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 #' @export
 #' @inheritParams group_exec
 #' @family runners
-#' @seealso [`r2c`] for more details on the behavior and constraints of
+#' @seealso [`r2c-compile`] for more details on the behavior and constraints of
 #'   "r2c_fun" functions, [`first_vec`] to retrieve first atomic vector.
 #' @param fun an "r2c_fun" function as produced by [`r2c`], except with the
 #'   additional restriction that it must be guaranteed to produce scalar

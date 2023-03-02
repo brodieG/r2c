@@ -327,7 +327,7 @@ transform(
 options(old.opt)
 }
 \seealso{
-\code{\link{r2c}} for more details on the behavior and constraints of
+\code{\link{r2c-compile}} for more details on the behavior and constraints of
 "r2c_fun" functions, \code{\link{first_vec}} to retrieve first atomic vector.
 
 Other runners: 
