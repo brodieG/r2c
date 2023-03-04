@@ -4,8 +4,9 @@
 
 ### New Features
 
-* Implement assignment (`<-`, `=`) and multi-line statements with braces (`{`)
-* Add `reuse_calls` to avoid repeated evaluation of repeated sub-calls.
+* Implement assignment (`<-`, `=`) and multi-line statements with braces (`{`).
+* Optimize expressions by reusing repeated sub-calls instead of re-evaluating
+  them (see `reuse_calls`, which can potentially be used outside of `r2c`).
 * Add limited `::` support so it is possible to use the compilation functions on
   `r2c` provided R functions without `r2c` attached.
 * Add `r2cf` to directly compile R functions composed of `r2c` compatible calls.

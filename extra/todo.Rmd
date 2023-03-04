@@ -21,6 +21,9 @@
 
 ## Next
 
+* Make sure we don't directly capture "r2c_fun" functions from `_pre/data.R` in
+  tests as they will capture `_pre/data.R` values.
+
 * Make `fun` vs `r2c.fun` consistent across runners and compilation funs?
 
 * Profile a compilation call and track (maybe it doesn't matter because really
@@ -125,7 +128,6 @@
 
 ## Other
 
-* Add ability to use `::`?
 * Make sure there are interrupts.  Can we use "R_ext/Intermacros.h".  It seems
   yes generally, but they are not explicitly part of the API, and then there is
   the question of whether it makes sense to do so, or if we should just be doing

@@ -1,3 +1,51 @@
+# Big Unitizers
+
+Possibly part of the problem is the capture of the package env.
+
+Oddly the uncompressed size is pretty similar.
+
+Hmm, for summary it's not clear that's what's going on.  One difference is from:
+
+    > rds_size(body(b@items.ref[[1]]@env[['r2c_sum_n']])[[2]][[3]][['envir']][['r2c_sum_na']])
+    [1] 16778
+    > rds_size(body(a@items.ref[[1]]@env[['r2c_sum_n']])[[2]][[3]][['envir']])
+    [1] 43
+
+In the former all the functions defined in the environment like 'r2c_sum_na' are
+there.  In the latter they are not.  This is clearly related to the new capture
+of the lexical environment, which we did not use to do.
+
+So something about recording the lexical environment.  And it gets recorded in
+all sorts of places, not just in the embedded objects.  For example:
+
+    try <- tryCatch(.DAT0 <- as.list(environment(), all.names = TRUE), 
+        error = function(e) e)
+
+Captures the environment as a function to the anonymous error function.
+
+So there is a weird thing in the above case because we have several `r2c_sum_x`
+functions defined in the one one environment, we end up saving them twice, once
+as themselves, and once as a copy of the environment that they were created in.
+
+The summary test creates a bunch of functions, so it's not surprising that it
+ends up being much larger then as it doubles the storage necessary for all the
+r2c functions.
+
+Is there a way to work around this?  Does the serializer have special logic to
+avoid this problem? R seems smart enough to avoid this problem with closures.
+It's not obvious though how, thus how we can prevent this issue.  Hmm, no, it
+doesn't seem so.  Best thing we could do is create the functions someplace they
+are not stored?
+
+Ugh, but moving big stuff out to `_pre` now causes all the big stuff to be
+recorded.
+
+And even if we fix the package env issue it's not clear that we'll resolve this
+other issue.  We essentially need to declare all the functions up front, and
+then all the data in a child environment, and then have everything that follows
+be a child of that.  And even then all the functions are going to capture each
+other in the environment.
+
 # Package Env
 
 Something somewhere is causing the package environment to be captured...
@@ -42,7 +90,6 @@ doesn't happen for "pre" ones.  From `?unitize`:
 >  not be stored in the unitizer so you will have not direct way to check
 >  whether these objects changed across unitizer runs.
 
-
 The problem child is the "envir" slot of the environment, not the environment
 itself:
 
@@ -58,9 +105,16 @@ things like this, we're going to retain the "pre" data for every single
 unitizer.  So to do this properly, we would have to separately store the pre
 data and integrate it into unitizer.
 
-We also tested just using directly `r2c_sum` as a test and that caused the same
-error.  Generating the function in the test file proper doesn't cause any issues
-at all.
+We also tested just using directly `r2c_sum` (i.e. the function object itself)
+as a test and that caused the same error.  Generating the function in the test
+file proper doesn't cause any issues at all.
+
+Fixing this might be as simple as changing the parent environment of `par.env` /
+`gpar.frame` (from `unitizer_core`) prior to storing, same as we do with the
+zero env.  The challenge is that `par.env` depends on state, and might not be
+the special unitizer environment.  So probably check whether the global
+environment is in the ancestry (but need to be careful about having the correct
+termination conditions) and if not, change it.
 
 # Double Semicolon
 

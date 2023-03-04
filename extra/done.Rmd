@@ -1,5 +1,10 @@
 ## Done
 
+* Look into the big unitizers. "big.R" likely needs to be a regular test file,
+  not a unitizer one.  Also some of the other files are a bit big.  Some of the
+  other files got big without even any of tests changing (e.g. summary.R was not
+  modified, but the test file grew from 21K to 61K).  We dealt with big.  The
+  other ones are mostly a `unitizer` issue.
 * Add a cleanup pass for `get_r_code` (and document that's being done).  Drop
   `...` in names, and maybe default args that are set to their default values.
   Harder but potentially useful is any arguments that are in the same order they

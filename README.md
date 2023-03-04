@@ -10,11 +10,11 @@ with R semantics, and without the challenges of directly compilable languages.
 
 ## "Compiling" R
 
-Currently `{r2c}` can "compile" R expressions or functions composed of basic
-binary operators and statistics.  `{r2c}` also supports multi-line statements
-and assignment.  "Compile" is in quotes because `{r2c}` generates an equivalent
-C program, and compiles that.  To compute the slope of a single variable
-regression we might use:
+`{r2c}` "compiles" R expressions or functions composed of basic binary operators
+and statistics.  `{r2c}` also supports multi-line statements and assignment.
+"Compile" is in quotes because `{r2c}` generates an equivalent C program, and
+compiles that.  To compute the slope of a single variable regression we might
+use:
 
     library(r2c)
 
@@ -46,7 +46,7 @@ For example, to iterate the slope function by groups, we could use:
 
 I have not found good alternatives for the general[^14] use case of `{r2c}`, as
 can be seen from the timings of computing group and window slopes on [larger
-data][26] [sets][27]:
+data][26] [sets][27][^15]:
 
 <img src='extra/time_win-grp_slope.png' />
 
@@ -96,7 +96,7 @@ More importantly, we cannot compile and execute arbitrary R expressions:
   defined will be ignored[^10].
 * Future `{r2c}` counterparts will be limited to functions that return
   attribute-less numeric vectors of constant size (e.g. `mean`), or of the size
-  of one of their inputs (e.g. like `+`, or even `quantile`).
+  of one of their inputs (e.g. `+`, or even `quantile`).
 
 Within these constraints `r2c` is flexible.  For example, it is possible to have
 arbitrary R objects for secondary parameters, as well as to reference
@@ -190,7 +190,7 @@ easily interface it with R.
 
 ### Fast Group and Rolling Statistics
 
-I do not know of any packages that compile R expressions to avoid interpreter
+I am unaware of any packages that compile R expressions to avoid interpreter
 overhead in applying them over groups or windows of data.  The closest are
 packages that recognize expressions for which they have equivalent pre-compiled
 code they run instead.  This is limited to simple statistics:
@@ -296,3 +296,5 @@ rolling window statistics:
 [^14]: It turns out there is `roll::roll_lm` that can compute slopes, but it
   cannot handle the general case of composing arbitrary statistics from the
   ones it implements.
+[^15]: These timings do not include the `reuse_calls` optimization added in
+  0.2.0.
