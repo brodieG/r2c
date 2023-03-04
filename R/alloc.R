@@ -201,7 +201,7 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
         # Length of a specific argument, like `probs` for `quantile`
         # `depth + 1L` should be params to current call (this is only true for
         # the stack, not necessarily for other things in `x`)
-        sizes.tmp <- compute_call_res_size(stack, depth, ftype)
+        sizes.tmp <- compute_call_res_size(stack, depth, ftype, .CALL)
 
         # asize uses max group size instead of NA so we can allocate for it
         asize  <- vec_rec_max_size(sizes.tmp, gmax)
@@ -678,7 +678,7 @@ vec_rec_max_size <- function(x, gmax) {
   if(any(size == 0)) 0 else max(size)
 }
 
-compute_call_res_size <- function(stack, depth, ftype) {
+compute_call_res_size <- function(stack, depth, ftype, .CALL) {
   stack.cand <- stack['depth',] == depth + 1L
   if(is.character(ftype[[2L]])) {
     param.cand.tmp <- colnames(stack)[stack.cand]

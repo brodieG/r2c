@@ -375,7 +375,7 @@ match_call_rec <- function(call) {
         stop(
           "Missing required formals ",
           toString(sprintf("`%s`", frms.req[!frms.req.have])),
-          " for `", name, "`."
+          " for `", func, "`."
         )
       # Add defaults, expand formals dots, order matters
       call.nm.missing <- names(frm)[!names(frm) %in% c(call.nm, "...")]

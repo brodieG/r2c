@@ -263,8 +263,6 @@ r2c_groups_template <- function() {
 #'   arguments that are intended to remain constant across iterations.  Matching
 #'   of these objects to `fun` parameters is the same as for `data`, with
 #'   positional matching occurring after the elements in `data` are matched.
-#' @param enclos environment to use as the `enclos` parameter to
-#'   [`base::eval`] when evaluating expressions or matching calls (see `data`).
 #' @return If `groups` is an atomic vector, a named numeric or integer vector
 #'   with the results of executing `fun` on each group and the names set to the
 #'   groups.  Otherwise, a "data.frame" with the group vectors as columns and

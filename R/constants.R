@@ -68,7 +68,8 @@ stopifnot(
 
 IX <- list()
 QDOTS <- quote(...)
-MISSING <- formals(base::identical)[[1L]]
+# need to wrap in list because can't be a top level for R CMD check
+MISSING <- list(formals(base::identical)[[1L]])
 
 # `for` assigns to the counter variable.  `->` becomes `<-` on parsing.
 ASSIGN.SYM <- c("<-", "=", "for")

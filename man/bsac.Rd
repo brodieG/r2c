@@ -36,8 +36,8 @@ arguments that are intended to remain constant across iterations.  Matching
 of these objects to \code{fun} parameters is the same as for \code{data}, with
 positional matching occurring after the elements in \code{data} are matched.}
 
-\item{enclos}{environment to use as the \code{enclos} parameter to
-\code{\link[base:eval]{base::eval}} when evaluating expressions or matching calls (see \code{data}).}
+\item{enclos}{environment to use as the enclosure to the data in the
+evaluation call (see \code{\link{eval}}).}
 }
 \value{
 numeric vector

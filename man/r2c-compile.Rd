@@ -68,6 +68,15 @@ will only delete folders that have the same directory root as one generated
 by \code{tempfile()} to avoid accidents.  If you manually provide \code{dir} you will
 need to manually delete the directory yourself.}
 
+\item{optimize}{TRUE (default) or FALSE whether to enable "compiler"
+optimizations. Currently it is just the automatic re-use of repeated
+computation results.  You can use \code{\link{get_r_code}} to see if optimizations
+were applied.}
+
+\item{envir}{environment to use as the enclosure of the function evaluation
+environment.  It defaults to the environment from which the compilation
+function is called, or for \code{r2cf} the environment of \code{fun}.  See details.}
+
 \item{formals}{character vector of the names of the parameters for the
 resulting "r2c_fun", a list of formals as generated with e.g. \code{\link{alist}}, or
 NULL (default).  NULL causes all free symbols in \code{x} to become parameters
@@ -154,8 +163,9 @@ corner cases that differ, particularly those involving missing or infinite
 values.
 
 Like with regular functions, unbound symbols are resolved in the lexical
-environment of the function.  Currently there is no way to change the
-function environment (\code{environment(r2c_fun) <- x} will likely just break the
+environment of the function.  You can set a different environment on creation
+of the function with the \code{envir} parameter, but Currently there is no way to
+change it afterwards (\code{environment(r2c_fun) <- x} will likely just break the
 function).
 
 \code{r2c} may process the provided call either to apply optimizations (see
@@ -224,6 +234,6 @@ try(r2c_slope2 <- r2cf(slope2))  # Error
 }
 \seealso{
 \code{\link{runners}} to iterate "r2c_fun" functions on varying data,
-\code{\link{get_c_code}} for functions to retrieve meta data from the function,
+\code{\link{r2c-inspect}} for functions to retrieve meta data from the function,
 including the generated C code and the compiler output.
 }

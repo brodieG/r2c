@@ -21,6 +21,8 @@
 #' @export
 #' @inheritParams group_exec
 #' @param call quoted R call to apply to each group.
+#' @param enclos environment to use as the enclosure to the data in the
+#'   evaluation call (see [`eval`]).
 #' @return numeric vector
 
 bsac <- function(call, data, groups, MoreArgs=list(), enclos=parent.frame()) {
