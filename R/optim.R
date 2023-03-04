@@ -63,16 +63,23 @@ flatten_call_rec <- function(x, calls, indices) {
 #' `{a <- b; b <- a}` is safe, but `fun(a <- b, b <- a)` might not be).  `r2c`
 #' allows only the unambiguous cases for the "r2c_fun" functions, but that is
 #' enforced by the [compilation functions][r2c-compile], not by `reuse_calls`.
+#' Nested scopes will also trick `reuse_calls` (e.g. use of `local`, in-lined
+#' functions).
 #'
-#' This function avoids potentially ambiguous substitutions, e.g. when component
-#' variables might be set to different values by different branches.  This might
-#' void substitutions that at run-time would have turned out to be valid, and
-#' even some that could have been known to be valid with more sophisticated
-#' static analysis (e.g. `if(TRUE) ... else ...` will be treated as a branch
-#' even though it is not really).  Substitutions involving loop modified
-#' variables are also limited due to the possibility of their value changing
-#' during e.g. the first and nth loop iteration, or the possibility of the loop
-#' not running at all.
+#' Sub-calls are compared by equality of their deparsed forms after symbols are
+#' disambiguated to account for potential re-assignment.  `reuse_calls` is
+#' conservative about branches, assuming that variables might be set to
+#' different values by different branches.  This might void substitutions that
+#' at run-time would have turned out to be valid, and even some that could have
+#' been known to be valid with more sophisticated static analysis (e.g.
+#' `if(TRUE) ... else ...` will be treated as a branch even though it is not
+#' really).  Substitutions involving loop modified variables are also limited
+#' due to the possibility of their value changing during e.g.  the first and
+#' nth loop iteration, or the possibility of the loop not running at all.
+#'
+#' `reuse_calls` relies on functions being bound to their original symbols, so
+#' do not expect it to work correctly if e.g. you rebind `<-` to some other
+#' function.  `r2c` checks this in its own use.
 #'
 #' @export
 #' @param x a call
