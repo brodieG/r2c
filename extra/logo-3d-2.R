@@ -129,15 +129,20 @@ light <- sphere(
 # Mess with cone / spotlight
 
 width <- height <- 400
-samples <- 20
+samples <- 200
+spot.angle <- 17
+spot.z <- .3
+spot.y <- depth
+light.y <- 1.2
+light.z <- .75
+
 light.x.pos <- c(mean(range(R.xy2[,1])), 0, mean(range(c.xy[,1]))) * 1.05
-for(focus.x in light.x.pos) {
-  spot.angle <- 16
+for(focus.x in light.x.pos[2]) {
   light <- sphere(
-    x=0, y=1.25, z=.85, radius=.025,
+    x=0, y=light.y, z=light.z, radius=.025,
     material=light(
       # spotlight_focus=c(.657, depth, .25),
-      spotlight_focus=c(focus.x, depth, .25),
+      spotlight_focus=c(focus.x, spot.y, spot.z),
       spotlight_width=spot.angle,
       spotlight_start_falloff=spot.angle,
       intensity=4000, invisible=TRUE
@@ -155,7 +160,7 @@ for(focus.x in light.x.pos) {
   )
   out <- next_file(file.base)
   render_scene(
-    filename=out,
+    # filename=out,
     width=width, height=height, samples=samples, scene, fov=35,
     lookfrom=c(0, 2, 1) * 2, lookat=c(0,0,.35),
     clamp_value=5,
