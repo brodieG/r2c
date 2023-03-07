@@ -1,23 +1,18 @@
 
-New {r2c} release is available. {r2c} is an experimental package that compiles a
-small but useful subset of R for fast iterated statistics.  This new release
-adds window functions.
+New {r2c} release is available. {r2c} is an experimental #rstats package that compiles a small but useful subset of R for fast iterated statistics.  This new release adds window functions.
 
 <anim>
 <link-to-package>
 
 1/n
 
-For arbitrary statistics {r2c} is much faster.  For pre-defined statistics,
-{r2c} is as fast as dedicated compiled functions that compute each window in
-full (see README).
+For arbitrary statistics {r2c} is much faster.  For pre-defined statistics, {r2c} is as fast as dedicated compiled functions that compute each window in full (see README).
 
 <benchmarkplots>
 
 2/n
 
-`{r2c}` includes many window methods, some AFAICT unique.  E.g computing
-trailing quarter stats on arbitrarily-timed events as of the 1st of each month.
+`{r2c}` includes many window methods, some AFAICT unique.  E.g computing trailing quarter stats on arbitrarily-timed events as of the 1st of each month.
 
 Special thanks to @dvaughan32 for pointing me to {slider}'s `slide_index`.
 
@@ -25,8 +20,7 @@ Special thanks to @dvaughan32 for pointing me to {slider}'s `slide_index`.
 
 3/n
 
-{r2c} also implements fast iterated group statistics. See the previous
-announcement for details.
+{r2c} also implements fast iterated group statistics. See the previous announcement for details.
 
 4/n
 
@@ -77,3 +71,13 @@ p <- ggplot(data.frame(time, revenue)) +
   theme(text=element_text(size=14))
 ggsave("~/../Shared/tmp/window-ex.png", p)
 ```
+
+```
+weights <- c(.1, 1, .1)
+values <- 2^(0:5)
+r2c_wsum <- r2cq(sum(x * w))
+rolli_exec(r2c_wsum, values, n=3, MoreArgs=list(weights))
+## [1]   NA  2.5  5.0 10.0 20.0   NA
+c(filter(values, weights))                 # drop attrs
+## [1]   NA  2.5  5.0 10.0 20.0   NA
+

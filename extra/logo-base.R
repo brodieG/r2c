@@ -91,7 +91,7 @@ xy <- lapply(
     with(z,
       list(
         x=(x - ext$x[1]) / diff(ext$x),
-        y=(ext$y[2] - y) / diff(ext$y)
+        y=(ext$y[2] - y) / diff(ext$x)   # changed for 0.2.0 to preserve asp
     )
 ) )
 R.starts <- which(is.na(xy[[2]]$x))

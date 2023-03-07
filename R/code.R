@@ -13,11 +13,29 @@
 ##
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
+#' @include code-assign-control.R
 #' @include code-summary.R
 #' @include code-arith.R
 #' @include code-pow.R
 
 NULL
+
+is.valid_arglen <- function(type)
+  (is.character(type[[2L]]) || is.integer(type[[2L]])) &&
+  length(type[[2L]]) == 1L &&
+  !is.na(type[[2L]]) &&
+  (length(type) <= 2L || is.function(type[[3L]]))
+
+is.valid_vecrec <- function(type)
+  type[[1L]] == "vecrec" &&
+  (is.character(type[[2L]]) || is.integer(type[[2L]])) &&
+  !anyNA(type[[2L]])
+
+is.valid_constant <- function(type)
+  is.integer(type[[2L]]) &&
+  length(type[[2L]]) == 1L &&
+  !is.na(type[[2L]]) &&
+  type[[2L]] >= 0L
 
 #' Initializer for Function Registration Entries
 #'
@@ -31,13 +49,43 @@ NULL
 #' * Name of the C function.
 #' * Call to use to invoke the function.
 #'
-#' Function parameters are specifically defined.
+#' Right now one must manually verify that the definition is consistent with the
+#' call format.  The call format is generated with `code_res`, but unfortunately
+#' the actual function definition needs to be manually coded to match what
+#' `code_res` does.  `code_gen_summary` is a good one to look at for
+#' inspiration.
+#'
+#' Default parameters that every C function should have are in `ARGS.NM.BASE`,
+#' and include:
+#'
+#' * data: an array of pointers to double, which includes every every allocation
+#'   that exists at any point in time in the process, including those required
+#'   to support the inputs and the output of the C function.
+#' * lens: an array of `R_xlen_t` values, each one representing how many items
+#'   the corresponding array of doubles in `data` has.
+#' * di: an array of integers that represents, in order, the indices of the data
+#'   parameters (i.e. not control or flag) of the function, in `data`.  So for
+#'   example, `data[di[0]]` returns a pointer to the data backing the first data
+#'   parameter for the function.  If a function takes `n` args, then
+#'   `data[di[n]]` points to where the result of the function should be written
+#'   to.
+#'
+#' Generally a C function with `n` arguments is supposed to compute on the data
+#' in `data[di[0:(n-1)]]` and record the result into `data[di[n]]` and the
+#' length of the result into `lens[di[n]]` (although the latter in theory should
+#' be known ahead of time - maybe this allows a check?).
+#'
+#' For functions with variable arguments (e.g. because they have `...` in their
+#' signature), be sure to include `F.ARGS.VAR` in the definition, and to use
+#' `narg=TRUE` for `code_res` (see "code-summary.R" which handles both the case
+#' with a single parameter, and many parameters).
 #'
 #' @noRd
 #' @param name character(1L) symbol that will reference the function
 #' @param fun the function we're trying to emulate
 #' @param defn NULL if fun is a closure, otherwise a function template to use
-#'   for [`match.call`]'s `definition` parameter.
+#'   for [`match.call`]'s `definition` parameter.  Also can be NULL for
+#'   primitives that only do positional matching.
 #' @param ctrl.params character names of all the formal parameters that are
 #'   to be evaluated once up front and not for each group in the data.  If any
 #'   data columns are referenced by these parameters, the entire data column
@@ -48,14 +96,16 @@ NULL
 #'   may be conveyed to the function without the need to use `VECTOR_ELT`, etc.,
 #'   to access the specific control parameter.  Any parameters here are
 #'   exclusive of those listed in `ctrl.params`.
-#' @param type list(2L) containing the type of function in "constant", "arglen",
-#'   or "vecrec" at position one, and additional meta data at position two
-#'   that can be depending on the value in position one:
+#' @param type list(2:3) containing the type of function in "constant", "arglen",
+#'   or "vecrec" at position one, and additional meta data at position two or
+#'   three that can be depending on the value in position one:
 #'
 #'   * constant: a positive non-NA integer indicating the constant result size
 #'     (e.g. 1L for `mean`)
 #'   * arglen: character(1L) the name of the argument to use the length of as
-#'     the result size (e.g. `probs` for [`quantile`].
+#'     the result size (e.g. `probs` for [`quantile`]), also allows specifying a
+#'     function at position 3 to e.g. pick which of multiple arguments matching
+#'     `...` to use for the length.
 #'   * vecrec: character(n) the names of the arguments to use to compute result
 #'     size under assumption of recycling to longest, or zero if any argument is
 #'     zero length.
@@ -75,21 +125,24 @@ NULL
 #' @return a list containing the above information after validating it.
 
 fap_fun <- function(
-  name, fun, defn, ctrl.params=character(), flag.params=character(),
+  name, fun, defn=if(typeof(fun) == 'closure') fun,
+  ctrl.params=character(), flag.params=character(),
   type, code.gen, ctrl.validate=function(...) 0L, transform=identity,
   preserve.int=FALSE
 ) {
   vetr(
     name=CHR.1,
     fun=is.function(.),
-    defn=typeof(fun) == "closure" && NULL || is.function(.),
-    ctrl.params=
-      character() && !anyNA(.) && all(. %in% names(formals(defn))) &&
-      !"..." %in% .,
-    flag.params=
-      character() && !anyNA(.) && all(. %in% names(formals(defn))) &&
-      !"..." %in% . && length(.) < 32L,
-    type=list(NULL, NULL),
+    # really should have put some parens to resolve ambiguity below
+    defn=typeof(.) == "closure" || NULL,
+    ctrl.params=identity(
+      is.null(defn) || all(. %in% names(formals(defn))) && !"..." %in% .
+    ),
+    flag.params=identity(
+      is.null(defn) ||
+      all(. %in% names(formals(defn))) && !"..." %in% . && length(.) < 32L
+    ),
+    type=list() && length(.) %in% 2:3,
     code.gen=is.function(.),
     ctrl.validate=is.function(.),
     transform=is.function(.),
@@ -97,37 +150,27 @@ fap_fun <- function(
   )
   if(length(intersect(ctrl.params, flag.params)))
     stop("Control and Flag parameters may not overlap.")
-  # Bug in vetr prevents this being done directly above
+  # Limitation in vetr prevents this being done directly above
   stopifnot(
     is.character(type[[1L]]) && length(type[[1L]]) == 1L && !is.na(type[[1L]]),
     type[[1L]] %in% c("constant", "arglen", "vecrec"),
     (
-      (
-        type[[1L]] == "constant" &&
-        is.integer(type[[2L]]) &&
-        length(type[[2L]]) == 1L &&
-        !is.na(type[[2L]]) &&
-        type[[2L]] >= 0L
-      ) ||
-      (
-        type[[1L]] == "arglen" &&
-        is.character(type[[2L]]) &&
-        length(type[[2L]]) == 1L &&
-        !is.na(type[[2L]])
-      ) ||
-      (
-        type[[1L]] == "vecrec" &&
-        is.character(type[[2L]]) &&
-        !anyNA(type[[2L]])
-      )
-  ) )
+      (type[[1L]] == "constant" && is.valid_constant(type)) ||
+      (type[[1L]] == "arglen" && is.valid_arglen(type)) ||
+      (type[[1L]] == "vecrec" && is.valid_vecrec(type))
+    ),
+    # positional matching or match.call?
+    type[[1L]] == "constant" ||
+      (is.null(defn) && is.integer(type[[2L]])) ||
+      (!is.null(defn) && is.character(type[[2L]]))
+  )
   list(
     name=name, fun=fun, defn=defn, ctrl=ctrl.params, flag=flag.params,
     type=type, code.gen=code.gen, ctrl.validate=ctrl.validate,
     transform=transform, preserve.int=preserve.int
   )
 }
-# Make sure "(" is not added to this list.
+# Make sure "(" is not added to this list as it's pre-processed away.
 VALID_FUNS <- list(
   # - Base Funs ----------------------------------------------------------------
   fap_fun(
@@ -147,27 +190,27 @@ VALID_FUNS <- list(
     ctrl.validate=ctrl_val_summary
   ),
   fap_fun(
-    "length", base::length, defn=function(x) NULL,
+    "length", base::length, defn=NULL,
     type=list("constant", 1L), code.gen=code_gen_length
   ),
   fap_fun(
-    "+", base::`+`, defn=function(e1, e2) NULL,
-    type=list("vecrec", c("e1", "e2")), code.gen=code_gen_arith,
+    "+", base::`+`, defn=NULL,
+    type=list("vecrec", 1:2), code.gen=code_gen_arith,
     preserve.int=TRUE
   ),
   fap_fun(
-    "-", base::`-`, defn=function(e1, e2) NULL,
-    type=list("vecrec", c("e1", "e2")), code.gen=code_gen_arith,
+    "-", base::`-`, defn=NULL,
+    type=list("vecrec", 1:2), code.gen=code_gen_arith,
     preserve.int=TRUE
   ),
   fap_fun(
-    "*", base::`*`, defn=function(e1, e2) NULL,
-    type=list("vecrec", c("e1", "e2")), code.gen=code_gen_arith,
+    "*", base::`*`, defn=NULL,
+    type=list("vecrec", 1:2), code.gen=code_gen_arith,
     preserve.int=TRUE
   ),
   fap_fun(
-    "/", base::`/`, defn=function(e1, e2) NULL,
-    type=list("vecrec", c("e1", "e2")), code.gen=code_gen_arith
+    "/", base::`/`, defn=NULL,
+    type=list("vecrec", 1:2), code.gen=code_gen_arith
   ),
   ## # Not implemented for now given not just a simple counterpart, but
   ## # could add a function like square to deal with it..
@@ -177,10 +220,29 @@ VALID_FUNS <- list(
   ##   preserve.int=TRUE
   ## ),
   fap_fun(
-    "^", base::`^`, defn=function(e1, e2) NULL,
-    type=list("vecrec", c("e1", "e2")), code.gen=code_gen_pow,
+    "^", base::`^`, defn=NULL,
+    type=list("vecrec", 1:2), code.gen=code_gen_pow,
     transform=pow_transform
   ),
+  # - Assign / Control----------------------------------------------------------
+
+  fap_fun(
+    "<-", fun=base::`<-`, defn=NULL,
+    type=list("arglen", 2L),
+    code.gen=code_gen_assign
+  ),
+  fap_fun(
+    "=", fun=base::`=`, defn=NULL,
+    type=list("arglen", 2L),
+    code.gen=code_gen_assign
+  ),
+  fap_fun(
+    "{", fun=base::"{", defn=function(...) NULL,
+    # arglen of last argument matching dots
+    type=list("arglen", "...", function(x) x[length(x)]),
+    code.gen=code_gen_braces
+  ),
+
   # - r2c funs -----------------------------------------------------------------
   fap_fun(
     "mean1", fun=mean1, defn=mean1,
@@ -193,9 +255,17 @@ VALID_FUNS <- list(
     "square", fun=square, defn=square,
     type=list("arglen", "x"),
     code.gen=code_gen_square
+  ),
+  fap_fun(
+    "vcopy", fun=vcopy, defn=NULL,
+    type=list("arglen", 1L),
+    code.gen=code_gen_copy
   )
 )
 names(VALID_FUNS) <- vapply(VALID_FUNS, "[[", "", "name")
+# even though we allow ::, we don't allow duplicate function names for
+# simplicity.
+stopifnot(!anyDuplicated(names(VALID_FUNS)))
 
 code_blank <- function()
   list(
@@ -212,25 +282,48 @@ code_valid <- function(code, call) {
 
   TRUE
 }
+# Check whether a call is in valid format
+#
+# We allow pkg::fun for a select set of packages that r2c implements functions
+# from.  Duplicate `fun` across packages is assumed impossible (just b/c we have
+# not implemented such, and the assumption simplifies things).
+
 call_valid <- function(call) {
   fun <- call[[1L]]
-  if(!is.name(fun) && !is.character(fun))
+  if(is.call(fun)) {
+    if(is.dbl_colon_call(fun) && as.character(fun[[2L]]) %in% VALID.PKG) {
+      fun <- as.character(fun[[3L]])
+    } else {
+      stop("`", deparse1(call[[1L]]), "` is not a supported function.")
+    }
+  }
+  if(!is.chr_or_sym(fun))
     stop(
       "only calls in form `symbol(<parameters>)` are supported (i.e. not ",
       deparse1(call), ")."
     )
   func <- as.character(fun)
   if(!func %in% names(VALID_FUNS))
-    stop("`", func, "` is not a supported function.")
+    stop("`", deparse1(call[[1L]]), "` is not a supported function.")
   func
 }
-# To make sure we use the same structure everywhere.
+#' Organize Code Generation Output
+#'
+#' Additionally, generates the call to the function.
+#'
+#' @noRd
+#' @param narg TRUE if function has variable number of arguments
+#' @param flag TRUE if function has flag parameters
+#' @param ctrl TRUE if function has control parameters
+#' @param noop TRUE if function is a noop, in which case will be commented out
 
 code_res <- function(
-  defn, name, narg=FALSE, flag=FALSE, ctrl=FALSE, headers=character()
+  defn, name, narg=FALSE, flag=FALSE, ctrl=FALSE,
+  headers=character(), noop=FALSE
 ) {
   call <- sprintf(
-    "%s(%s%s%s%s);",
+    "%s%s(%s%s%s%s);",
+    if(noop) "// NO-OP: " else "",
     name,
     toString(CALL.BASE),
     if(narg) paste0(", ", CALL.VAR) else "",
@@ -239,6 +332,6 @@ code_res <- function(
   )
   list(
     defn=defn, name=name, call=call, headers=headers,
-    narg=narg, flag=flag, ctrl=ctrl
+    narg=narg, flag=flag, ctrl=ctrl, noop=noop
   )
 }

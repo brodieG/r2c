@@ -68,6 +68,7 @@ colors <- rgb(
   maxColorValue=255
 )
 file.base <- '~/../Shared/tmp/img-%04d.png'
+size <- 720
 # file.base <- '~/Downloads/r2c/slope-anim/img-%04d.png'
 {
   slope.x <- matrix(numeric(), nrow=2)
@@ -77,7 +78,7 @@ file.base <- '~/../Shared/tmp/img-%04d.png'
   x.u <- w.anchor[1]
   for(i in seq_along(w.anchor)) {
     cat(sprintf("Frame %04d\r", i))
-    png(sprintf(file.base, i), width=480, height=480)
+    png(sprintf(file.base, i), width=size, height=size)
     par(mai=numeric(4))
     plot.new()
     y.u.prev <- y.u
@@ -205,7 +206,7 @@ R.color <- "#1E64B6"
 {
   for(i in seq_along(w.anchor.2)) {
     cat(sprintf("Frame %04d\r", prev.frames + i))
-    png(sprintf(file.base, i + prev.frames), width=480, height=480)
+    png(sprintf(file.base, i + prev.frames), width=size, height=size)
     par(mai=numeric(4))
     plot.new()
     plot.window(x.plot, y.plot, xaxs='i', yaxs='i')
@@ -255,7 +256,7 @@ col_w_alpha <- function(color, fraction) {
   fade.frames <- 10
   for(i in seq_len(fade.frames)) {
     cat(sprintf("Frame %04d\r", prev.frames + i))
-    png(sprintf(file.base, i + prev.frames), width=480, height=480)
+    png(sprintf(file.base, i + prev.frames), width=size, height=size)
     par(mai=numeric(4))
     plot.new()
     plot.window(x.plot, y.plot, xaxs='i', yaxs='i')
@@ -268,5 +269,5 @@ col_w_alpha <- function(color, fraction) {
   cat('\n')
 }
 
-# ffmpeg -framerate 30 -pattern_type glob -i '*.png' -pix_fmt yuv420p out.mp
+# ffmpeg -framerate 40 -pattern_type glob -i 'img*.png' -pix_fmt yuv420p out.mp4
 

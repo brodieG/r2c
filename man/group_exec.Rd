@@ -4,7 +4,7 @@
 \alias{group_exec}
 \title{Execute r2c Function Iteratively on Groups in Data}
 \usage{
-group_exec(fun, data, groups, MoreArgs = list(), enclos = parent.frame())
+group_exec(fun, data, groups, MoreArgs = list())
 }
 \arguments{
 \item{fun}{an "r2c_fun" function as produced by \code{\link{r2c}}.}
@@ -35,9 +35,6 @@ passed in full to the native code for each iteration  This is useful for
 arguments that are intended to remain constant across iterations.  Matching
 of these objects to \code{fun} parameters is the same as for \code{data}, with
 positional matching occurring after the elements in \code{data} are matched.}
-
-\item{enclos}{environment to use as the \code{enclos} parameter to
-\code{\link[base:eval]{base::eval}} when evaluating expressions or matching calls (see \code{data}).}
 }
 \value{
 If \code{groups} is an atomic vector, a named numeric or integer vector

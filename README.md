@@ -10,22 +10,19 @@ with R semantics, and without the challenges of directly compilable languages.
 
 ## "Compiling" R
 
-Currently `{r2c}` can "compile" R expressions composed of basic binary operators
-and statistics.  "Compile" is in quotes because `{r2c}` generates an equivalent
-C program, and compiles that.  To compute the slope of a single variable
-regression we might use:
+`{r2c}` "compiles" R expressions or functions composed of basic binary operators
+and statistics.  `{r2c}` also supports multi-line statements and assignment.
+"Compile" is in quotes because `{r2c}` generates an equivalent C program, and
+compiles that.  To compute the slope of a single variable regression we might
+use:
 
     library(r2c)
-    r2c_slope <- r2cq(
-      sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x))^2)
-    )
+
+    slope <- function(x, y) sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x))^2)
+    r2c_slope <- r2cf(slope)
+
     with(iris, r2c_slope(Sepal.Width, Sepal.Length))
     ## [1] -0.2233611
-
-This is equivalent to:
-
-    slope <- function(x, y)
-      sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x))^2)
     with(iris, slope(Sepal.Width, Sepal.Length))
     ## [1] -0.2233611
 
@@ -49,7 +46,7 @@ For example, to iterate the slope function by groups, we could use:
 
 I have not found good alternatives for the general[^14] use case of `{r2c}`, as
 can be seen from the timings of computing group and window slopes on [larger
-data][26] [sets][27]:
+data][26] [sets][27][^15]:
 
 <img src='extra/time_win-grp_slope.png' />
 
@@ -93,13 +90,13 @@ and for packages to compile `{r2c}` functions at install-time.
 More importantly, we cannot compile and execute arbitrary R expressions:
 
 * Only `{r2c}` implemented counterpart functions may be used (currently: basic
-  arithmetic operators and `sum`/`mean`/`length`)
+  arithmetic operators, `sum`/`mean`/`length`, `{`, and `<-`).
 * Primary numeric inputs must be attribute-less (e.g. to avoid expectations of
   S3 method dispatch or attribute manipulation), and any `.numeric` methods
   defined will be ignored[^10].
 * Future `{r2c}` counterparts will be limited to functions that return
   attribute-less numeric vectors of constant size (e.g. `mean`), or of the size
-  of one of their inputs (e.g. like `+`, or even `quantile`).
+  of one of their inputs (e.g. `+`, or even `quantile`).
 
 Within these constraints `r2c` is flexible.  For example, it is possible to have
 arbitrary R objects for secondary parameters, as well as to reference
@@ -128,20 +125,17 @@ be built on this proof of concept.  Some are listed below.  How many I end up
 working on will depend on some interaction of external interest and my own.
 
 * Expand the set of R functions that can be translated.
+* Nested "r2c_fun" functions.
 * Multi/character/factor grouping variables.
 * Additional runners (e.g. an `apply` analogue).
-* Optimizations (identify repeated calculations, re-use memory more
-  aggressively).
-* Preserve previously "compiled" functions.
-* Assignment operator (`<-`).
-* Multi-line expressions (and also functions composed of compatible functions).
+* Library for previously "compiled" functions.
 * Basic loop support, and maybe logicals and branches.
 * Get on CRAN (there is currently at least one questionable thing we do).
 * API to allow other native code to invoke `{r2c}` functions.
 
 ## Installation
 
-This package is experimental and thus not available on CRAN yet.  To install:
+This package is not available on CRAN yet.  To install:
 
 ```
 f.dl <- tempfile()
@@ -196,10 +190,10 @@ easily interface it with R.
 
 ### Fast Group and Rolling Statistics
 
-I do not know of any packages that compile R expressions to avoid interpreter
-overhead in applying them over groups or windows of data.  The closest is
-packages that recognize expressions they have equivalent pre-compiled code.
-This is limited to simple statistics:
+I am unaware of any packages that compile R expressions to avoid interpreter
+overhead in applying them over groups or windows of data.  The closest are
+packages that recognize expressions for which they have equivalent pre-compiled
+code they run instead.  This is limited to simple statistics:
 
 * [`{data.table}`][1]'s Gforce (see `?data.table::datatable.optimize`).
 * In theory [`{dplyr}`][5]'s Hybrid Eval is similar to Gforce, but AFAICT it was
@@ -260,7 +254,7 @@ rolling window statistics:
 [7]: https://github.com/eddelbuettel/inline
 [8]: https://twitter.com/BrodieGaslam/status/1527829442374025219?s=20&t=rg6aybJlGxPEUwBsI0ii1Q
 [9]: https://www.brodieg.com/tags/hydra/
-[10]: https://htmlpreview.github.io/?https://raw.githubusercontent.com/brodieG/r2c/3caf106980e558c931aea554e1f0197a82d031a3/extra/benchmarks/benchmarks-public.html
+[10]: https://htmlpreview.github.io/?https://raw.githubusercontent.com/brodieG/r2c/abf1dd726beb980b12ae1b554e8bcd2df8b47e18/extra/benchmarks/benchmarks-public.html
 [11]: https://www.zeileis.org/
 [12]: https://cran.r-project.org/package=zoo
 [13]: https://github.com/DavisVaughan
@@ -302,3 +296,5 @@ rolling window statistics:
 [^14]: It turns out there is `roll::roll_lm` that can compute slopes, but it
   cannot handle the general case of composing arbitrary statistics from the
   ones it implements.
+[^15]: These timings do not include the `reuse_calls` optimization added in
+  0.2.0.

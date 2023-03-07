@@ -17,11 +17,12 @@
 #'
 #' Compiles a subset of R into machine code so that expressions composed with
 #' that subset can be applied repeatedly on varying data without interpreter
-#' overhead.  Use [`r2c`] to compile R, and [runners] to execute the resulting
-#' compiled code iteratively on varying data.
+#' overhead.  Use [the compilation functions][r2c-compile] to compile R, and
+#' [runners] to execute the resulting compiled code iteratively on varying data.
 #'
 #' @docType package
 #' @name r2c-package
+#' @aliases r2c
 #' @import vetr
 #' @importFrom utils globalVariables
 #' @useDynLib r2c, .registration=TRUE, .fixes="R2C_"

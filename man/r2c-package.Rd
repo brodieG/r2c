@@ -3,10 +3,11 @@
 \docType{package}
 \name{r2c-package}
 \alias{r2c-package}
+\alias{r2c}
 \title{Fast Iterated Statistic Computation in R}
 \description{
 Compiles a subset of R into machine code so that expressions composed with
 that subset can be applied repeatedly on varying data without interpreter
-overhead.  Use \code{\link{r2c}} to compile R, and \link{runners} to execute the resulting
-compiled code iteratively on varying data.
+overhead.  Use \link[=r2c-compile]{the compilation functions} to compile R, and
+\link{runners} to execute the resulting compiled code iteratively on varying data.
 }

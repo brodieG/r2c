@@ -39,15 +39,17 @@ F.ARGS.CTRL <- R.ARGS.CTRL <- 'SEXP ctrl'
 F.ARGS.ALL <- c(F.ARGS.BASE, F.ARGS.VAR, F.ARGS.FLAG, F.ARGS.CTRL)
 R.ARGS.ALL <- c(R.ARGS.BASE, R.ARGS.VAR, R.ARGS.FLAG, R.ARGS.CTRL)
 
+INC.VAR <- paste0("++", ARGS.NM.VAR);
+INC.FLAG <- paste0("++", ARGS.NM.FLAG);
+INC.CTRL <- "++v";
+INC.DAT <- paste0("++", ARGS.NM.BASE[3L]) # also used by CALL.BASE
+
 CALL.BASE <- c(ARGS.NM.BASE[1L:2L], paste0("*", ARGS.NM.BASE[3L], "++"))
 CALL.VAR <- "*narg"
 CALL.CTRL <- "VECTOR_ELT(ctrl, v)"  # this should be length 1 (see checks)
 CALL.FLAG <- "*flag";
 CALL.ALL <- c(CALL.BASE, CALL.VAR, CALL.FLAG, CALL.CTRL)
 
-INC.VAR <- paste0("++", ARGS.NM.VAR);
-INC.FLAG <- paste0("++", ARGS.NM.FLAG);
-INC.CTRL <- "++v";
 
 ## Sanity checks
 pat <- "\\bSEXP\\b|\\bdouble\\b|\\bint\\b|\\bR_xlen_t\\b|[ +*]"
@@ -66,8 +68,44 @@ stopifnot(
 
 IX <- list()
 QDOTS <- quote(...)
+# need to wrap in list because can't be a top level for R CMD check
+MISSING <- list(formals(base::identical)[[1L]])
 
-# - Regex ----------------------------------------------------------------------
+# `for` assigns to the counter variable.  `->` becomes `<-` on parsing.
+ASSIGN.SYM <- c("<-", "=", "for")
+LOOP.SYM <- c("for", "while", "repeat")
 
-RX.ARG <- "^\\.ARG\\.\\d+$"
+# Calls that don't actually do any computing themselves, rather rely on
+# computations that happen in their arguments `for` is a bit tricky as it does
+# "compute" the counter value.
+PASSIVE.SYM <- unique(c(ASSIGN.SYM, LOOP.SYM, "if", "{"))
+
+# For `record_call_dat`.
+CALL.DAT.VEC <- c('argn', 'depth', 'type', 'assign')
+
+# To avoid typos
+CTRL.FLAG <- c("control", "flag")
+
+# Packages allowable in `::`
+VALID.PKG <- c('base', 'r2c')
+
+# - Internal Symbols -----------------------------------------------------------
+
+R2C.PRIV.BASE <- ".R2C"
+R2C.PRIV.RX <- sprintf("^%s", R2C.PRIV.BASE)
+
+# For arguments that show up as `..1`, `..2`, replaced to match pattern below
+DOT.ARG.BASE <- sprintf("%s_DOT_", R2C.PRIV.BASE)
+DOT.ARG.RX <- sprintf("^\\%s\\d+$", DOT.ARG.BASE)
+DOT.ARG.TPL <- sprintf("%s%%d", DOT.ARG.BASE)
+
+# For renames symbols
+RENAME.ARG.BASE <- sprintf("%s_RN_", R2C.PRIV.BASE)
+RENAME.ARG.RX <- sprintf("^\\%s\\d+$", RENAME.ARG.BASE)
+RENAME.ARG.TPL <- sprintf("%s%%s_%%d", RENAME.ARG.BASE)
+
+# For substitution (re-use)
+REUSE.ARG.BASE <- sprintf("%s_SUB_", R2C.PRIV.BASE)
+REUSE.ARG.RX <- sprintf("^\\%s\\d+$", RENAME.ARG.BASE)
+REUSE.ARG.TPL <- sprintf("%s%%d", REUSE.ARG.BASE)
 
