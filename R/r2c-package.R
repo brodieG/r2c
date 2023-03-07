@@ -21,7 +21,8 @@
 #' [runners] to execute the resulting compiled code iteratively on varying data.
 #'
 #' @docType package
-#' @name r2c
+#' @name r2c-package
+#' @aliases r2c
 #' @import vetr
 #' @importFrom utils globalVariables
 #' @useDynLib r2c, .registration=TRUE, .fixes="R2C_"

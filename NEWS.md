@@ -4,7 +4,12 @@
 
 ### New Features
 
-* `r2cf` directly compiles R functions composed of `r2c` compatible calls.
+* Implement assignment (`<-`, `=`) and multi-line statements with braces (`{`).
+* Optimize expressions by reusing repeated sub-calls instead of re-evaluating
+  them (see `reuse_calls`, which can potentially be used outside of `r2c`).
+* Add limited `::` support so it is possible to use the compilation functions on
+  `r2c` provided R functions without `r2c` attached.
+* Add `r2cf` to directly compile R functions composed of `r2c` compatible calls.
 
 ### Breaking Changes
 
@@ -12,6 +17,9 @@ Recall the API is unstable and may still change further over the next few
 releases.
 
 * `r2c` has been renamed `r2cl`.
+* `envir` parameter to the runner functions has been dropped.  Now "r2c_fun"
+  functions always evaluate in the lexical environment they were created in.  In
+  the future there might be facilities to change that environment.
 
 ## 0.1.0
 

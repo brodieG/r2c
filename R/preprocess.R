@@ -14,97 +14,53 @@
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
 #' @include code.R
+#' @include optim.R
 
 NULL
 
-## `match.call` but with default arguments
-##
-## Also, result is a list with just the arguments, not the original call.
-
-match_call <- function(definition, call, name) {
-  frm <- formals(definition)
-  frm.req <-
-    vapply(frm, function(x) is.name(x) && !nzchar(as.character(x)), TRUE)
-  frm.bad <- vapply(frm[!frm.req], function(x) is.language(x), TRUE)
-  if(any(frm.bad))
-    stop("Functions with non-constant defaults are unsupported.")
-
-  # Match, check call
-  call[[1L]] <- as.character(call[[1L]]) # hack for e.g. `+`
-  # Replace dots (note these are dots as an argument, as opposed to dots in the
-  # formals of the function we'll generate); we do not want these dots to be
-  # matched against anything since that will be done at run-time, not now (i.e.
-  # dots might not even exist at the moment).
-  any.dots <- vapply(call[-1L], identical, TRUE, quote(...))
-  any.r2cdots <- vapply(call[-1L], identical, TRUE, quote(.R2C.DOTS))
-  if(any(any.r2cdots)) stop("Symbol `.R2C.DOTS` is disallowed.")
-  if(any(any.dots)) call[-1L][which(any.dots)] <- list(quote(.R2C.DOTS))
-
-  mcall <- match.call(definition=definition, call=call, expand.dots=FALSE)
-  mcall.nm <- names(mcall)[-1L]
-
-  frms.req <- names(frm)[frm.req]
-  # recall: these dots (from formals) are not the ones replaced by .R2C.DOTS
-  # (forwarded as an argument)!
-  frms.req <- frms.req[frms.req != "..."]
-  if(!all(frms.req.have <- frms.req %in% mcall.nm))
-    stop(
-      "Missing required formals ",
-      toString(sprintf("`%s`", frms.req[!frms.req.have])),
-      " for `", name, "`."
-    )
-  # Add defaults, expand formals dots, order matters
-  mcall.nm.missing <- names(frm)[!names(frm) %in% c(mcall.nm, "...")]
-  mcall.dots <- mcall[['...']]
-  if(is.null(mcall.dots)) mcall.dots <- list()
-  args.nm <- c(
-    names(mcall[seq_along(mcall) != 1L & names(mcall) != "..."]),
-    "...",
-    names(frm[mcall.nm.missing])
-  )
-  args.dummy <- c(
-    as.list(mcall[seq_along(mcall) != 1L & names(mcall) != "..."]),
-    list(NULL),     # placeholder for dots
-    frm[mcall.nm.missing]
-  )
-  args.pos <- match(args.nm, names(frm))
-  args.ord <- order(args.pos)
-  args <- args.dummy[args.ord]
-  args.dot.pos <- if(length(mcall.dots)) {
-    names(mcall.dots) <- rep('...', length(mcall.dots))
-    match("...", args.nm[args.ord])
-  } else length(args)
-  # expand the dots
-  c(
-    args[seq_len(args.dot.pos - 1L)],
-    mcall.dots,
-    if(length(args.dummy) > args.dot.pos)
-      args[seq(args.dot.pos + 1L, length(args), by=1L)]
-  )
-}
-
 #' Generate C Code for Compilation
 #'
-#' Match each R symbol to C code, possibly parameterized by some simple
-#' parameters such as which parameters are specified, but not much else as
-#' we need to know the groupwise data to make more decisions.
+#' Match each call and its parameters, identifying which parameters are control
+#' vs. flag (flag are TRUE/FALSE control parameters), and associating the C call
+#' to each R call.  The call tree is linearized depth first, so the parameters
+#' are recorded before the call they belong to.  The depth of the parameters
+#' allows us to distinguish what call they belong to (note a parameter can be a
+#' call too).  The order of the elements in the linearized call implicitly
+#' contains all parameter matching information (i.e. everything has been
+#' `match.call`ed already).
+#'
+#' See `alloc` and `init_call_dat` for more details.
 #'
 #' @noRd
 #' @param call an unevaluated R call
-#' @return a list containing (update):
-#'   * Accrued temporary storage requirements (is this still true?).
-#'   * Size of the current call being assessed.
-#'   * A linear list of generated code and associated calls.
+#' @param logical or integer, level of optimization to apply
+#' @return a call dat list as described in `init_call_dat`.
 
-preprocess <- function(call, formals) {
+preprocess <- function(call, formals, optimize=FALSE) {
+  # - Call Manipulations -------------------------------------------------------
+
+  # WARNING: all subsequent call modifications after this step must have names
+  # attached (and be in matched order) for closures.
+  call <- match_call_rec(call)
+
+  # Transform call. Should be an "optimization"?  Some transforms might not be.
+  call <- transform_call_rec(call)
+
+  # Apply optimizations
+  if(optimize > 0L) {
+    callr <- reuse_calls_int(call)
+    call <- callr[['x']]  # also contains renames
+  }
+  # Ensure last value is copied into result
+  call <- copy_last(call)
+
+  # - Code Gen -----------------------------------------------------------------
+
   # All the data generated goes into x
-  x <- list(
-    call=list(), depth=integer(), args=list(), args.type=list(), code=list(),
-    sym.free=formals, sym.bound=character(), dot.arg.i=1L
-  )
-  # We use this for match.call, but very questionable given the env might be
-  # different when we actually run the code
+  x <- init_call_dat(formals)
+  # Classify parameters and generate code recursively
   x <- pp_internal(call=call, depth=0L, x=x)
+  x[['call.processed']] <- call
 
   # Deduplicate the code and generate the final C file (need headers).
   headers <- unique(unlist(lapply(x[['code']], "[[", "headers")))
@@ -129,10 +85,13 @@ preprocess <- function(call, formals) {
   r.calls.dep.m <- grepl("\n", r.calls.dep.keep, fixed=TRUE)
   c.calls.fmt <- format(c.calls.keep)
 
-  # Do we need extra parameters that need to be incremented explicitly?
+  # Do we need extra parameters that need to be incremented explicitly across
+  # iterations?
   c.narg <- vapply(x[['code']][calls.keep], "[[", TRUE, "narg")
   c.flag <- vapply(x[['code']][calls.keep], "[[", TRUE, "flag")
   c.ctrl <- vapply(x[['code']][calls.keep], "[[", TRUE, "ctrl")
+  c.noop <- vapply(x[['code']][calls.keep], "[[", TRUE, "noop")
+
   any.inc <- c.narg | c.flag | c.ctrl
 
   calls.fin <- lapply(
@@ -147,8 +106,10 @@ preprocess <- function(call, formals) {
             "%s;",
             paste(
               c(
-                if(any(c.narg)) INC.VAR, if(any(c.flag)) INC.FLAG,
-                if(any(c.ctrl)) INC.CTRL
+                if(any(c.narg)) INC.VAR,
+                if(any(c.flag)) INC.FLAG,
+                if(any(c.ctrl)) INC.CTRL,
+                if(c.noop[i]) INC.DAT # only for the specific `i`
               ),
               collapse="; "
       )   ) )
@@ -177,53 +138,70 @@ preprocess <- function(call, formals) {
   x[['code']] <- structure(code.txt, class="code_text")
   x
 }
+# Recursion portion of preprocess
+#
+# Classify parameters and generate code.
+#
+# @param call a recursively `match.call`ed call.
+# @param assign indicate whether current evaluation is of a symbol being
+#   assigned to to avoid recording that as a free symbol and also to tell the
+#   allocator to use a stub for it in the temp allocation list.
+# @param call.parent if `call` is being evaluated as an argument to a parent
+#   call, `call.parent` is that call.  Used so we can tell if we're e.g. called
+#   from braces.
 
-pp_internal <- function(call, depth, x, argn="") {
+pp_internal <- function(
+  call, depth, x, argn="", assign=FALSE, call.parent=NULL
+) {
   if(depth == .Machine$integer.max)
     stop("Expression max depth exceeded.") # exceedingly unlikely
 
-  # - Prep ---------------------------------------------------------------------
-
-  # Remove any parentheses calls
-  while(is.call(call) && identical(as.character(call[[1L]]), "(")) {
-    if(length(call) != 2L)
-      stop("Internal Error: call to `(` with wrong parameter count.")  # nocov
-    call <- call[[2L]]
-  }
-  # Transform call (e.g. x^2 becomes x * x); ideally the transformation function
-  # would have the matched call, but since the only use we have for it is a
-  # primitive that doesn't match arguments we don't worry about that right now.
-
-  while(is.call(call)) { # equivalent to if(...) repeat
-    func <- call_valid(call)
-    call.transform <- VALID_FUNS[[c(func, "transform")]](call)
-    if(identical(call.transform, call)) break
-    call <- call.transform
-  }
   if(is.call(call)) {
     # - Recursion on Params ----------------------------------------------------
-    func <- call_valid(call)
     # Classify Params
-    args <- if(!is.null(defn <- VALID_FUNS[[c(func, "defn")]])) {
-      match_call(definition=defn, call=call, name=func)
-    } else {
-      as.list(call[-1L])
-    }
+    args <- as.list(call[-1L])
+    if(is.null(names(args))) names(args) <- character(length(args))
+    func <- call_valid(call)
     args.types <- rep("other", length(args))
     args.types[names(args) %in% VALID_FUNS[[c(func, "ctrl")]]] <- "control"
     args.types[names(args) %in% VALID_FUNS[[c(func, "flag")]]] <- "flag"
 
+    # Check if we're in assignment call
+    name <- get_lang_name(call[[1L]])
+    next.assign <- name %in% ASSIGN.SYM
+    # Assignments only allowed at brace level or top level because we cannot
+    # assure the order of evaluation so safer to just disallow.  We _could_
+    # allow it but it just seems dangerous.
+    if(
+      next.assign &&
+      !is.brace_or_assign_call(call.parent) && !is.null(call.parent)
+    ) {
+      call.dep <- deparse(call)
+      msg <- sprintf(
+        "r2c disallows assignments inside arguments. Found: %s",
+        if(length(call.dep) == 1) call.dep
+        else paste0(c("", call.dep), collapse="\n")
+      )
+      stop(simpleError(msg, call.parent))
+    }
     for(i in seq_along(args)) {
-      if(args.types[i] %in% c('control', 'flag')) {
+      if(args.types[i] %in% c('control', 'flag')) { # shouldn't be assign symbol
+        if(next.assign) stop("Internal error: controls/flag on assignment.")
         x <- record_call_dat(
           x, call=args[[i]], depth=depth + 1L, argn=names(args)[i],
           type=args.types[i], code=code_blank(),
-          sym.free=sym_free(x, args[[i]])
+          sym.free=sym_free(x, args[[i]]), assign=FALSE
         )
       } else {
         x <- pp_internal(
-          call=args[[i]], depth=depth + 1L, x=x, argn=names(args)[i]
+          call=args[[i]], depth=depth + 1L, x=x, argn=names(args)[i],
+          assign=i == 1L && next.assign, call.parent=call
     ) } }
+    # Bind assignments (we do it after processing of the rest of the call)
+    if(next.assign) {
+      sym.bound <- get_target_symbol(call, name)
+      x[['sym.bound']] <- union(sym.bound, x[['sym.bound']])
+    }
     type <- "call"
     # Generate Code
     code <- VALID_FUNS[[c(func, "code.gen")]](
@@ -244,21 +222,69 @@ pp_internal <- function(call, depth, x, argn="") {
     # defines .ARG9999999999 or whatever to try to overflow us).
     if(is.name(call)) {
       name <- as.character(call)
-      if(grepl("^\\.ARG[0-9]+$", name)) {
+      if(grepl(DOT.ARG.RX, name)) {
         stop(
-          "Symbols matching regex \"^\\.ARG[0-9]+$\" are disallowed (",
+          "Symbols matching regex \"", DOT.ARG.RX, "\" are disallowed (",
           name, ")."
         )
       } else if(grepl("^\\.\\.[0-9]+$", name)) {
-        call <- as.name(paste0(".ARG", x[['dot.arg.i']]))
+        call <- as.name(sprintf(DOT.ARG.TPL, x[['dot.arg.i']]))
         x[['dot.arg.i']] <- x[['dot.arg.i']] + 1L
   } } }
-  record_call_dat(x, call=call, depth=depth, argn=argn, type=type, code=code)
+  record_call_dat(
+    x, call=call, depth=depth, argn=argn, type=type, code=code, assign
+  )
 }
+#' See preprocess for some discussion of what the elements are
+#'
+#' $call: linearized call tree with parameters preceeding calls (recall that a
+#'   call can itself be a parameter to another call nearer the root).
+#' $depth: tree depth of each call or parameter
+#' $args: unused leftover from prior bad implementation?
+#' $args.type: unused leftover from prior bad implementation?
+#' $argn: parameter name argument is bound to.
+#' $code: the generated C code
+#' $sym.free/bound: ? Not sure this is still correct since we add the `formals`
+#'   parameter.
+#' $dot.arg.i: counter used when generating the symbols that replace
+#'   the `..1`, `..2`, ... symbols.
+#' $rename.arg.i: counter used when generating the symbols that replace
+#'   symbols that have been re-bound via assignment or are stand-ins for
+#'   repeated calculations.  Note that the difference between the dot version
+#'   and this one is that the dot numbering is "0###" whereas this one is
+#'   "1###".  We use such close name just to avoid having to add more
+#'   categories of disallowed variable names.
+#' $rename: named character vector with the symbols as they appear in the call
+#'   as the names, and their current renamed version as the value.  This is a
+#'   point in time snapshot and cannot be used to reconstruct the history of the
+#'   renames.
+#' $last.read: named integer of indeces in the linearized call tree of the last
+#'   _call_ that read a particular symbol.  This allow us to know when we can
+#'   free an allocation otherwise used by that symbol.  The names of this vector
+#'   correspond to the **renamed** variables.
+#' $call.rename: version of `call` with symbols renamed using `rename`.
+#' $type: argument type
+#'
+#' @noRd
+
+init_call_dat <- function(formals)
+  list(
+    call=list(),
+    depth=integer(),
+    args=list(),
+    args.type=list(),
+    code=list(),
+    sym.free=formals,
+    sym.bound=character(),
+    dot.arg.i=1L,
+    last.read=integer(),
+    assign=logical()
+  )
+
 ## Record Expression Data
 
 record_call_dat <- function(
-  x, call, depth, argn, type, code, sym.free=sym_free(x, call)
+  x, call, depth, argn, type, code, assign, sym.free=sym_free(x, call)
 ) {
   # list data
   x[['call']] <- c(
@@ -268,13 +294,177 @@ record_call_dat <- function(
   )
   x[['code']] <- c(x[['code']], list(code))
 
-  # vec data
+  # vec data, if we add any here, be sure to add them to `exp.fields` in
+  # `expand_dots`.
   x[['argn']] <- c(x[['argn']], argn)
   x[['depth']] <- c(x[['depth']], depth)
   x[['type']] <- c(x[['type']], type)
-  x[['sym.free']] <- union(x[['sym.free']], sym.free)
+  x[['assign']] <- c(x[['assign']], assign)
+  if(length(unique(lengths(x[CALL.DAT.VEC]))) != 1L)
+    stop("Internal Error: irregular vector call data.")
+
+  # symbols only bound after first instance of being bound, i.e. can start off
+  # as free until actually gets assigned to.
+  if(!assign) {
+    x[['sym.free']] <-
+      union(x[['sym.free']], setdiff(sym.free, x[['sym.bound']]))
+  }
   x
 }
+## Like names, but always return a character vector
+##
+## Used for calls for which we can't set empty names.
+
+names2 <- function(x)
+  if(is.null(names(x))) character(length(x)) else names(x)
+
+#' Recursively match.call Call and Sub-Calls
+#'
+#' Additionally fills in default values, and guarantees (possibly zero length)
+#' names.
+#'
+#' @noRd
+
+match_call_rec <- function(call) {
+  # strip parentheses as they are implicit in call structure
+  while(is.call(call) && identical(as.character(call[[1L]]), "(")) {
+    if(length(call) != 2L)
+      stop("Internal Error: call to `(` with wrong parameter count.")  # nocov
+    call <- call[[2L]]
+  }
+  if(is.call(call)) {
+    func <- call_valid(call)
+    # Only functions that have a closure definition are matched-called.  These
+    # are either closures, or primitives that do argument matching that we
+    # manually provided a stand-in closure for match.call purposes (e.g. `sum`)
+    if(!is.null(defn <- VALID_FUNS[[c(func, "defn")]])) {
+      # Replace dots (note these are dots as an argument, as opposed to dots in
+      # the formals of the function we'll generate); we do not want these dots
+      # to be matched against anything since that will be done at run-time, not
+      # now (i.e.  dots might not even exist at the moment).
+      any.dots <- vapply(call[-1L], identical, TRUE, quote(...))
+      any.r2cdots <- vapply(call[-1L], identical, TRUE, quote(.R2C.DOTS))
+      if(any(any.r2cdots)) stop("Symbol `.R2C.DOTS` is disallowed.")
+      if(any(any.dots)) call[-1L][which(any.dots)] <- list(quote(.R2C.DOTS))
+      # since we don't resolve dots env does not matter.
+      call <- match.call(definition=defn, call=call, expand.dots=FALSE)
+    }
+    if(length(call) > 1) {
+      for(i in seq(2L, length(call), by=1L)) {
+        if(names2(call)[i] == "...") {
+          for(j in seq_along(call[[i]]))
+            call[[i]][[j]] <- match_call_rec(call[[i]][[j]])
+        } else call[[i]] <- match_call_rec(call[[i]])
+      }
+    }
+    if(!is.null(defn)) {
+      # Fill in defaults
+      frm <- formals(defn)
+      frm.req <-
+        vapply(frm, function(x) is.name(x) && !nzchar(as.character(x)), TRUE)
+      frm.bad <- vapply(frm[!frm.req], function(x) is.language(x), TRUE)
+      if(any(frm.bad))
+        stop("Functions with non-constant defaults are unsupported.")
+
+      call.nm <- names2(call)[-1L]
+      frms.req <- names(frm)[frm.req]
+      # recall: these dots (from formals) are not the ones replaced by .R2C.DOTS
+      # (forwarded as an argument)!  See match_call_rec.
+      frms.req <- frms.req[frms.req != "..."]
+      if(!all(frms.req.have <- frms.req %in% call.nm))
+        stop(
+          "Missing required formals ",
+          toString(sprintf("`%s`", frms.req[!frms.req.have])),
+          " for `", func, "`."
+        )
+      # Add defaults, expand formals dots, order matters
+      call.nm.missing <- names(frm)[!names(frm) %in% c(call.nm, "...")]
+      call.dots <- call[['...']]
+      if(is.null(call.dots)) call.dots <- list()
+      args.nm <- c(
+        names2(call[seq_along(call) != 1L & names2(call) != "..."]),
+        "...",
+        names(frm[call.nm.missing])
+      )
+      args.dummy <- c(
+        as.list(call[seq_along(call) != 1L & names2(call) != "..."]),
+        list(NULL),     # placeholder for dots
+        frm[call.nm.missing]
+      )
+      args.pos <- match(args.nm, names(frm))
+      args.ord <- order(args.pos)
+      args <- args.dummy[args.ord]
+      args.dot.pos <- if(length(call.dots)) {
+        # Used when e.g. vecrec is done on dots
+        names(call.dots) <- rep('...', length(call.dots))
+        match("...", args.nm[args.ord])
+      } else length(args)
+      # expand the dots
+      res <- c(
+        args[seq_len(args.dot.pos - 1L)],
+        call.dots,
+        if(length(args.dummy) > args.dot.pos)
+          args[seq(args.dot.pos + 1L, length(args), by=1L)]
+      )
+      # reconstitute the call
+      call <- as.call(c(list(call[[1L]]), res))
+    }
+  }
+  call
+}
+#' Transform a Call Into An Alternate Equivalent Call
+#'
+#' This could be for optimization purposes (x^2 -> x * x).
+#'
+#' @noRd
+
+transform_call_rec <- function(call) {
+  while(is.call(call)) { # equivalent to if(...) repeat
+    func <- call_valid(call)
+    call.transform <- VALID_FUNS[[c(func, "transform")]](call)
+    if(identical(call.transform, call)) break
+    call <- call.transform
+  }
+  if(is.call(call) && length(call) > 1L) {
+    for(i in seq(2L, length(call), 1L))
+      call[[i]] <- transform_call_rec(call[[i]])
+  }
+  call
+}
+
+# Ensure Final Result is Written to Results Vector
+#
+# If the last statement is one that computes (e.g. a call to a function other
+# than `{` or `<-`), then we can tell the allocator to write that to the
+# result vector.  If it is a symbol, then we need to track down whether it was
+# generated by a computation, and tell the allocator to write that computation
+# to the result.  Otherwise, we need to add a copy directive to copy things into
+# the result vector.  To simplify things we always copy if the last thing is not
+# a call.  This will result in copies in potentially avoidable cases where a
+# symbol was populated by a calculation, but tracking this down properly is
+# complex and that should be a rare case.
+#
+# @param x a call
+# @return `x`, with a `vcopy` directive call added if needed
+
+copy_last <- function(x) {
+  if(!is.call(x)) {
+    x <- as.call(list(call("::", as.name("r2c"), as.name("vcopy")), x=x))
+  } else {
+    call.sym <- get_lang_name(x)
+    if(call.sym == "{") {
+      if(length(x) < 2L) stop("Empty braces (`{}`) disallowed.")
+      x[[length(x)]] <- copy_last(x[[length(x)]])
+    } else if(call.sym %in% ASSIGN.SYM) {
+      if(length(x) != 3L)
+        stop("Internal Error: bad assign call structure.")
+      x[[3L]] <- copy_last(x[[3L]])
+    } else if(call.sym %in% PASSIVE.SYM)
+      stop("Internal Error: unhandled passive calls")
+  }
+  x
+}
+
 sym_free <- function(x, sym) {
   if(is.symbol(sym)) {
     sym.chr <- as.character(sym)
@@ -289,9 +479,9 @@ sym_free <- function(x, sym) {
 ## data matched to dots to the number of dots.
 
 expand_dots <- function(x, arg.names) {
-  exp.fields <- c('argn', 'type', 'depth')
+  exp.fields <- CALL.DAT.VEC
   is.dots <- vapply(x[['call']], identical, TRUE, QDOTS)
-  is.dots.m <- grepl(RX.ARG, arg.names)
+  is.dots.m <- grepl(DOT.ARG.RX, arg.names)
   if(any(is.dots)) {
     dots.m.names <- lapply(arg.names[is.dots.m], as.name)
     # Could have multiple sets of dots

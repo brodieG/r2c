@@ -3,7 +3,7 @@ Title: Fast Iterated Statistic Computation in R
 Description: Compiles a subset of R into machine code so that expressions
     composed with that subset can be applied repeatedly on varying data without
     interpreter overhead.
-Version: 0.1.0
+Version: 0.2.0
 Authors@R: c(
     person("Brodie", "Gaslam", email="brodie.gaslam@yahoo.com",
     role=c("aut", "cre")))
@@ -20,11 +20,14 @@ RoxygenNote: 7.2.3
 Roxygen: list(markdown = TRUE)
 Encoding: UTF-8
 Collate: 
+    'rename.R'
+    'optim.R'
     'code-pow.R'
     'constants.R'
     'code-arith.R'
     'code-mean.R'
     'code-summary.R'
+    'code-assign-control.R'
     'code.R'
     'preprocess.R'
     'alloc.R'
