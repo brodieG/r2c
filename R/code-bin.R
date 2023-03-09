@@ -19,11 +19,16 @@ NULL
 
 
 OP.NAMES <- c(
-  "+"="add", "-"="subtract", "*"="multiply", "/"="divide", "%%"="modulo"
+  "+"="add", "-"="subtract", "*"="multiply", "/"="divide", "%%"="modulo",
+  ">"="gt", ">="="gte", "<"="lt", "<="="lte", "=="="eq", "!="="neq"
 )
-OP.OP <- c("+"="+", "-"="-", "*"="*", "/"="/", "%%"="%")
+OP.OP <- c
+(
+  "+"="+", "-"="-", "*"="*", "/"="/", "%%"="%",
+  ">"=">", ">="=">=", "<"="<", "<="="<=", "=="="==", "!="="!="
+)
 
-## Binary Opertors or Functions with Vecto Recycling
+## Binary Opertors or Functions with Vector Recycling
 ##
 ## Use %3$s for functions, %4$s for operators.
 ##
@@ -46,7 +51,7 @@ static void %1$s(%2$s) {
     lens[dires] = 0;
     return;
   }
-  // Not all "arith" operators are commutative
+  // Not all "bin" operators are commutative
   // so we cannot play tricks with switching parameter order
 
   // Mod iterate by region?
@@ -76,7 +81,7 @@ static void %1$s(%2$s) {
     lens[dires] = len2;
   }
 }')
-code_gen_arith <- function(fun, args.reg, args.ctrl, args.flags) {
+code_gen_bin <- function(fun, args.reg, args.ctrl, args.flags) {
   vetr(
     CHR.1 && . %in% names(OP.NAMES),
     args.reg=list(),

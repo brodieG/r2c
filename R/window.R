@@ -65,6 +65,8 @@ roll_finalize <- function(prep, status) {
   res.i <- which(alloc[['type']] == "res")
   res <- prep[['dat']][[res.i]]
   if(alloc[['typeof']][res.i] == "integer") res <- as.integer(res)
+  else if(alloc[['typeof']][res.i] == "logical") res <- as.logical(res)
+
   if(status) {
     warning("longer object length is not a multiple of shorter object length.")
   }

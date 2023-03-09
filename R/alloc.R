@@ -188,9 +188,9 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
       # If data inputs are know to be integer, and function returns integer for
       # those, make it known the result should be integer.
       res.typeof <- if(
-        VALID_FUNS[[c(name, "preserve.int")]] &&
-        all(alloc[['typeof']][stack['id', ]] == "integer")
-      ) "integer" else "double"
+        VALID_FUNS[[c(name, "res.type")]] == 'preserve.int' &&
+        all(alloc[['typeof']][stack['id', ]] %in% c("logical", "integer"))
+      ) "integer" else VALID_FUNS[[c(name, "res.type")]]
 
       # Compute result size
       if(ftype[[1L]] == "constant") {
