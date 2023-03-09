@@ -22,13 +22,12 @@ OP.NAMES <- c(
   "+"="add", "-"="subtract", "*"="multiply", "/"="divide", "%%"="modulo",
   ">"="gt", ">="="gte", "<"="lt", "<="="lte", "=="="eq", "!="="neq"
 )
-OP.OP <- c
-(
+OP.OP <- c(
   "+"="+", "-"="-", "*"="*", "/"="/", "%%"="%",
   ">"=">", ">="=">=", "<"="<", "<="="<=", "=="="==", "!="="!="
 )
 
-## Binary Opertors or Functions with Vector Recycling
+## Binary Operators or Functions with Vector Recycling
 ##
 ## Use %3$s for functions, %4$s for operators.
 ##

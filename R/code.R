@@ -128,7 +128,8 @@ is.valid_constant <- function(type)
 #' @return a list containing the above information after validating it.
 
 cgen <- function(
-  name, fun, defn=if(typeof(fun) == 'closure') fun,
+  name, fun=get(name, baseenv(), mode="function"),
+  defn=if(typeof(fun) == 'closure') fun,
   ctrl.params=character(), flag.params=character(),
   type, code.gen, ctrl.validate=function(...) 0L, transform=identity,
   res.type="double"
@@ -149,7 +150,7 @@ cgen <- function(
     code.gen=is.function(.),
     ctrl.validate=is.function(.),
     transform=is.function(.),
-    res.type=CHR.1 & . %in% c('logical', 'double', 'numeric', 'preserve.int')
+    res.type=CHR.1 && . %in% c('logical', 'double', 'numeric', 'preserve.int')
   )
   if(length(intersect(ctrl.params, flag.params)))
     stop("Control and Flag parameters may not overlap.")
@@ -176,7 +177,7 @@ cgen <- function(
 ## Specialized for binops
 cgen_bin <- function(name, res.type="preserve.int") {
   cgen(
-    name, fun=get(name, baseenv(), mode="function"), defn=NULL,
+    name, defn=NULL,
     type=list("vecrec", 1:2), code.gen=code_gen_bin, res.type=res.type
   )
 }
@@ -186,7 +187,7 @@ VALID_FUNS <- c(
   # - Base Stats ---------------------------------------------------------------
   list(
     cgen(
-      "sum", base::sum, function(..., na.rm=FALSE) NULL,
+      "sum", function(..., na.rm=FALSE) NULL,
       flag.params="na.rm",
       type=list("constant", 1L),
       code.gen=code_gen_summary,
@@ -194,25 +195,27 @@ VALID_FUNS <- c(
       res.type='preserve.int'
     ),
     cgen(
-      "mean", fun=base::mean, defn=base::mean.default,
+      "mean", defn=base::mean.default,
       flag.params="na.rm",
       ctrl.params="trim",
       type=list("constant", 1L),
       code.gen=code_gen_summary,
       ctrl.validate=ctrl_val_summary
     ),
-    cgen(
-      "length", base::length, defn=NULL,
-      type=list("constant", 1L), code.gen=code_gen_length
-    )
+    cgen("length", type=list("constant", 1L), code.gen=code_gen_length)
   ),
   # - Binops -------------------------------------------------------------------
 
-  lapply(c("+", "-", "*", "/" "^", cgen_bin),
-  lapply(c(">", ">=", "<", "<=" "==", "!=" cgen_bin, type="logical"),
+  lapply(c("+", "-", "*", "/"), cgen_bin),
+  list(
+    cgen( # this needs the transform
+       "^", type=list("vecrec", 1:2), code.gen=code_gen_pow,
+       transform=pow_transform
+  ) ),
+  lapply(c(">", ">=", "<", "<=", "==", "!="), cgen_bin, res.type="logical"),
 
   ## # Not implemented for now given not just a simple counterpart, but
-  ## # could add a function like square to deal with it..  See myfmod in 
+  ## # could add a function like square to deal with it..  See myfmod in
   ## src/arithmetic.c in R sources
   ## cgen(
   ##   "%%", base::`%%`, defn=function(e1, e2) NULL,
@@ -222,18 +225,10 @@ VALID_FUNS <- c(
   # - Assign / Control----------------------------------------------------------
 
   list(
+    cgen("<-", type=list("arglen", 2L), code.gen=code_gen_assign),
+    cgen("=", type=list("arglen", 2L), code.gen=code_gen_assign),
     cgen(
-      "<-", fun=base::`<-`, defn=NULL,
-      type=list("arglen", 2L),
-      code.gen=code_gen_assign
-    ),
-    cgen(
-      "=", fun=base::`=`, defn=NULL,
-      type=list("arglen", 2L),
-      code.gen=code_gen_assign
-    ),
-    cgen(
-      "{", fun=base::"{", defn=function(...) NULL,
+      "{", defn=function(...) NULL,
       # arglen of last argument matching dots
       type=list("arglen", "...", function(x) x[length(x)]),
       code.gen=code_gen_braces
@@ -242,7 +237,7 @@ VALID_FUNS <- c(
   # - r2c funs -----------------------------------------------------------------
   list(
     cgen(
-      "mean1", fun=mean1, defn=mean1,
+      "mean1", fun=mean1,
       flag.params="na.rm",
       type=list("constant", 1L),
       code.gen=code_gen_summary,
