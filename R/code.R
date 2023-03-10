@@ -181,6 +181,13 @@ cgen_bin <- function(name, res.type="preserve.int") {
     type=list("vecrec", 1:2), code.gen=code_gen_bin, res.type=res.type
   )
 }
+## Specialized for binops that require the macros
+cgen_bin2 <- function(name, res.type="preserve.int") {
+  cgen(
+    name, defn=NULL,
+    type=list("vecrec", 1:2), code.gen=code_gen_bin2, res.type=res.type
+  )
+}
 
 # Make sure "(" is not added to this list as it's pre-processed away.
 VALID_FUNS <- c(
@@ -228,8 +235,8 @@ VALID_FUNS <- c(
        "^", type=list("vecrec", 1:2), code.gen=code_gen_pow,
        transform=pow_transform
   ) ),
-  lapply(c(">", ">=", "<", "<=", "==", "!="), cgen_bin, res.type="logical"),
-  lapply(c("|", "&"), cgen_bin, res.type='logical'),
+  lapply(c(">", ">=", "<", "<=", "==", "!="), cgen_bin2, res.type="logical"),
+  lapply(c("|", "&"), cgen_bin2, res.type='logical'),
 
   ## # Not implemented for now given not just a simple counterpart, but
   ## # could add a function like square to deal with it..  See myfmod in
@@ -333,7 +340,7 @@ call_valid <- function(call) {
 
 code_res <- function(
   defn, name, narg=FALSE, flag=FALSE, ctrl=FALSE,
-  headers=character(), noop=FALSE
+  headers=character(), defines=character(), noop=FALSE
 ) {
   call <- sprintf(
     "%s%s(%s%s%s%s);",
@@ -345,7 +352,7 @@ code_res <- function(
     if(ctrl) paste0(", ", CALL.CTRL) else ""
   )
   list(
-    defn=defn, name=name, call=call, headers=headers,
+    defn=defn, name=name, call=call, headers=headers, defines=defines,
     narg=narg, flag=flag, ctrl=ctrl, noop=noop
   )
 }

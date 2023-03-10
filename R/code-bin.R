@@ -24,10 +24,23 @@ OP.NAMES <- c(
 )
 OP.OP <- c(
   "+"="+", "-"="-", "*"="*", "/"="/", "%%"="%",
-  ">"=">", ">="=">=", "<"="<", "<="="<=", "=="="==", "!="="!=",
-  "&"="&&", "|"="||"
+  ">"="GT", ">="="GTE", "<"="LT", "<="="LTE", "=="="EQ", "!="="NEQ",
+  "&"="AND", "|"="OR"
 )
-
+# Some question as to whether these would re-evalute the memory fetch, but
+# presumably compiler is smart enough to re-use the registers.  Also, presumably
+# we're just dealing with quiet NaNs, so don't need to deal with the math.h
+# macros here?
+OP.DEFN <- c(
+  ">"="#define GT(x, y) (isnan(x) || isnan(y) ? NAN : (x) > (y))",
+  ">="="#define GTE(x, y) (isnan(x) || isnan(y) ? NAN : (x) >= (y))",
+  "<"="#define LT(x, y) (isnan(x) || isnan(y) ? NAN : (x) < (y))",
+  "<="="#define LTE(x, y) (isnan(x) || isnan(y) ? NAN : (x) <= (y))",
+  "=="="#define EQ(x, y) (isnan(x) || isnan(y) ? NAN : (x) == (y))",
+  "!="="#define NEQ(x, y) (isnan(x) || isnan(y) ? NAN : (x) != (y))",
+  "&"="#define AND(x, y) ((x) == 0 || (y) == 0 ? 0 : isnan(x) || isnan(y) ? NAN : 1)",
+  "|"="#define OR(x, y) (!isnan(x) && (x) || !isnan(y) && (y) ? 1 : (x) == 0 && (y) == 0 ? 0 : NAN)"
+)
 ## Binary Operators or Functions with Vector Recycling
 ##
 ## Use %3$s for functions, %4$s for operators.
@@ -95,6 +108,24 @@ code_gen_bin <- function(fun, args.reg, args.ctrl, args.flags) {
     IX[['I.STAT']], IX[['STAT.RECYCLE']]
   )
   code_res(defn=defn, name=name, headers=character())
+}
+# For the 
+code_gen_bin2 <- function(fun, args.reg, args.ctrl, args.flags) {
+  vetr(
+    CHR.1 && . %in% names(OP.NAMES),
+    args.reg=list(),
+    args.ctrl=list() && length(.) == 0L,
+    args.flags=list() && length(.) == 0L
+  )
+  name <- OP.NAMES[fun]
+  op <- OP.OP[fun]      # needed for modulo
+  defn <- sprintf(
+    bin_op_vec_rec, name, toString(F.ARGS.BASE), op, ",",
+    IX[['I.STAT']], IX[['STAT.RECYCLE']]
+  )
+  code_res(
+    defn=defn, name=name, headers=character(), defines=OP.DEFN[fun]
+  )
 }
 
 

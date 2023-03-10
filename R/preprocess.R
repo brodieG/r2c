@@ -64,6 +64,7 @@ preprocess <- function(call, formals, optimize=FALSE) {
 
   # Deduplicate the code and generate the final C file (need headers).
   headers <- unique(unlist(lapply(x[['code']], "[[", "headers")))
+  defines <- unique(unlist(lapply(x[['code']], "[[", "defines")))
   codes <- vapply(x[['code']], "[[", "", "defn")
   names <- vapply(x[['code']], "[[", "", "name")
   codes.m <- match(codes, unique(codes))
@@ -117,6 +118,7 @@ preprocess <- function(call, formals, optimize=FALSE) {
   code.txt <- c(
     # Headers, system headers first (are these going to go in right order?)
     paste("#include", c(headers, "<R.h>", "<Rinternals.h>")),
+    if(length(defines)) c("", defines),
     "",
     # Function Definitions
     codes.u,
