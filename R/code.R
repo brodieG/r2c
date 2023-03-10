@@ -187,7 +187,7 @@ VALID_FUNS <- c(
   # - Base Stats ---------------------------------------------------------------
   list(
     cgen(
-      "sum", function(..., na.rm=FALSE) NULL,
+      "sum", defn=function(..., na.rm=FALSE) NULL,
       flag.params="na.rm",
       type=list("constant", 1L),
       code.gen=code_gen_summary,
@@ -202,7 +202,23 @@ VALID_FUNS <- c(
       code.gen=code_gen_summary,
       ctrl.validate=ctrl_val_summary
     ),
-    cgen("length", type=list("constant", 1L), code.gen=code_gen_length)
+    cgen("length", type=list("constant", 1L), code.gen=code_gen_length),
+    cgen(
+      "all", defn=function(..., na.rm=FALSE) NULL,
+      flag.params="na.rm",
+      type=list("constant", 1L),
+      code.gen=code_gen_summary,
+      ctrl.validate=ctrl_val_summary,
+      res.type='logical'
+    ),
+    cgen(
+      "any", defn=function(..., na.rm=FALSE) NULL,
+      flag.params="na.rm",
+      type=list("constant", 1L),
+      code.gen=code_gen_summary,
+      ctrl.validate=ctrl_val_summary,
+      res.type='logical'
+    )
   ),
   # - Binops -------------------------------------------------------------------
 
@@ -213,6 +229,7 @@ VALID_FUNS <- c(
        transform=pow_transform
   ) ),
   lapply(c(">", ">=", "<", "<=", "==", "!="), cgen_bin, res.type="logical"),
+  lapply(c("|", "&"), cgen_bin, res.type='logical'),
 
   ## # Not implemented for now given not just a simple counterpart, but
   ## # could add a function like square to deal with it..  See myfmod in
@@ -222,6 +239,10 @@ VALID_FUNS <- c(
   ##   type=list("vecrec", c("e1", "e2")), code.gen=code_gen_arith,
   ##   res.type='preserve.int'
   ## ),
+  # - Other Logical ------------------------------------------------------------
+
+  ## &&, ||, any, all, ifelse
+
   # - Assign / Control----------------------------------------------------------
 
   list(

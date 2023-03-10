@@ -17,11 +17,12 @@
 
 NULL
 
+# - Sum / Base -----------------------------------------------------------------
+
 f_summary_base <- '
 static void %%s(%%s) {
   int di0 = di[0];
   int di1 = di[1];
-  long double tmp = 0;
 
   R_xlen_t len_n = lens[di0];
   %sdouble * dat = data[di0];
@@ -33,21 +34,22 @@ static void %%s(%%s) {
   lens[di1] = 1;
 }'
 loop.base <- '
+long double tmp = 0;
 if(!narm)
   for(R_xlen_t i = 0; i < len_n; ++i) tmp += dat[i];
 else
   for(R_xlen_t i = 0; i < len_n; ++i)
     if(!isnan(dat[i])) tmp += dat[i];%s
 '
-make_loop_base <- function(count.na=FALSE, pad=2) {
-  sprintf(
-    paste0(
-      strrep(' ', pad),
-      unlist(strsplit(loop.base, '\n', fixed=TRUE))[-1L],
-      collapse="\n"
-    ),
-    if(count.na) " else ++na_n;" else ""
+repad <- function(x, pad=2)
+  paste0(
+    strrep(' ', pad),
+    unlist(strsplit(x, '\n', fixed=TRUE))[-1L],
+    collapse="\n"
   )
+
+make_loop_base <- function(count.na=FALSE, pad=2) {
+  sprintf(repad(loop.base), if(count.na) " else ++na_n;" else "")
 }
 
 f_mean1 <- sprintf(
@@ -76,13 +78,38 @@ static void %%s(%%s) {
 }'
 f_sum_n <- sprintf(f_sum_n_base, make_loop_base(count.na=FALSE, pad=4))
 
+# - Any / All ------------------------------------------------------------------
+
+logical.sum.base <- '
+double tmp = 1;
+R_xlen_t i;
+if(!narm)
+  for(i = 0; i < len_n; ++i) { if(isnan(dat[i]) || dat[i] %1$s 0) break; }
+else
+  for(i = 0; i < len_n; ++i) { if(!isnan(dat[i]) && dat[i] %1$s 0) break; }
+
+if(i < len_n) { if(!isnan(dat[i])) tmp = dat[i] != 0; else tmp = dat[i]; }
+'
+
+f_all <- sprintf(
+  f_summary_base, "", sprintf(repad(logical.sum.base), "=="),
+  ""
+)
+f_any <- sprintf(
+  f_summary_base, "", sprintf(repad(logical.sum.base), "!="),
+  ""
+)
+# - Any / All ------------------------------------------------------------------
+
 ## Structure all strings into a list for ease of selection
 
 f_summary <- list(
   sum=f_sum_1,
   sum_n=f_sum_n,
   mean1=f_mean1,   # single pass implementation, no infinity check
-  mean=f_mean      # R implementation
+  mean=f_mean,     # R implementation
+  all=f_all,
+  any=f_any
 )
 code_gen_summary <- function(fun, args.reg, args.ctrl, args.flag) {
   vetr(
