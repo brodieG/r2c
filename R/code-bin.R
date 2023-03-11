@@ -43,7 +43,8 @@ OP.DEFN <- c(
 )
 ## Binary Operators or Functions with Vector Recycling
 ##
-## Use %3$s for functions, %4$s for operators.
+## Use %3$s for functions like pow, %4$s for operators (which should be a comma
+## when using functions).
 ##
 ## This supports unequal sizes.  We looked at having specialized functions for
 ## each of the possible length pairings, but that didn't seem to improve things
