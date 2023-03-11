@@ -187,10 +187,11 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
 
       # If data inputs are know to be integer, and function returns integer for
       # those, make it known the result should be integer.
-      res.typeof <- if(
-        VALID_FUNS[[c(name, "res.type")]] == 'preserve.int' &&
-        all(alloc[['typeof']][stack['id', ]] %in% c("logical", "integer"))
-      ) "integer" else VALID_FUNS[[c(name, "res.type")]]
+      res.typeof <- if(VALID_FUNS[[c(name, "res.type")]] == 'preserve.int') {
+        if(all(alloc[['typeof']][stack['id', ]] %in% c("logical", "integer")))
+          "integer"
+        else "double"
+      } else VALID_FUNS[[c(name, "res.type")]]
 
       # Compute result size
       if(ftype[[1L]] == "constant") {
@@ -480,7 +481,8 @@ vec_dat <- function(
   vec.dat
 }
 is.vec_dat <- function(x)
-  is.list(x) && all(c('new', 'type', 'group', 'size') %in% names(x)) &&
+  is.list(x) &&
+  all(c('new', 'type', 'group', 'size', 'typeof') %in% names(x)) &&
   is.character(x[['type']]) &&
   isTRUE(x[['type']] %in% c("res", "grp", "ext", "tmp", "sts")) && (
     is.numeric(x[['new']]) || is.integer(x[['new']]) ||

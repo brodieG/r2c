@@ -14,6 +14,7 @@
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
 #' @include code-mean.R
+#' @include code-bin.R
 
 NULL
 
@@ -41,15 +42,13 @@ else
   for(R_xlen_t i = 0; i < len_n; ++i)
     if(!isnan(dat[i])) tmp += dat[i];%s
 '
-repad <- function(x, pad=2)
-  paste0(
-    strrep(' ', pad),
-    unlist(strsplit(x, '\n', fixed=TRUE))[-1L],
-    collapse="\n"
-  )
-
+repad <- function(x, pad=2) {
+  split <- unlist(strsplit(x, '\n', fixed=TRUE))
+  if(length(split) && !nzchar(split[1L])) split <- split[-1L]
+  paste0(strrep(' ', pad), split, collapse="\n")
+}
 make_loop_base <- function(count.na=FALSE, pad=2) {
-  sprintf(repad(loop.base), if(count.na) " else ++na_n;" else "")
+  sprintf(repad(loop.base, pad), if(count.na) " else ++na_n;" else "")
 }
 
 f_mean1 <- sprintf(
@@ -65,41 +64,62 @@ static void %%s(%%s) {
   *data[di[narg]] = 0;
 
   for(int arg = 0; arg < narg; ++arg) {
-    long double tmp = 0;
     int din = di[arg];
     R_xlen_t len_n = lens[din];
     double * dat = data[din];
 %s
-    // base uses a double, not long double, intermediate acc.
-    // Overflow to Inf (and we check Inf available in assumptions.c)
-    *data[di[narg]] += (double) tmp;
+    %s
   }
   lens[di[narg]] = 1;
 }'
-f_sum_n <- sprintf(f_sum_n_base, make_loop_base(count.na=FALSE, pad=4))
+f_sum_n <- sprintf(
+  f_sum_n_base, make_loop_base(count.na=FALSE, pad=4),
+  "*data[di[narg]] += (double) tmp; // R uses double cross-arg accumulator"
+)
 
 # - Any / All ------------------------------------------------------------------
 
 logical.sum.base <- '
-double tmp = 1;
+double tmp = 1;%s
 R_xlen_t i;
 if(!narm)
-  for(i = 0; i < len_n; ++i) { if(isnan(dat[i]) || dat[i] %1$s 0) break; }
+  for(i = 0; i < len_n; ++i) { if(isnan(dat[i]) || dat[i] %2$s 0) break; }
 else
-  for(i = 0; i < len_n; ++i) { if(!isnan(dat[i]) && dat[i] %1$s 0) break; }
+  for(i = 0; i < len_n; ++i) { if(!isnan(dat[i]) && dat[i] %2$s 0) break; }
 
 if(i < len_n) { if(!isnan(dat[i])) tmp = dat[i] != 0; else tmp = dat[i]; }
 '
+# For all, we need start value to be 1
+# For any, we need start value to be 0
 
-f_all <- sprintf(
-  f_summary_base, "", sprintf(repad(logical.sum.base), "=="),
-  ""
+make_loop_lgl <- function(pre, op, pad)
+  sprintf(repad(logical.sum.base, pad), pre, op)
+make_end_lgl <- function(op, pad)
+  sprintf(
+    repad(
+      "*data[di[narg]] = %s(*data[di[narg]], tmp);\nif(i < len_n) break;", pad
+    ),
+    op
+  )
+
+f_all_1 <- sprintf(
+  f_summary_base, "",
+  make_loop_lgl("", "==", 2), ""
 )
-f_any <- sprintf(
-  f_summary_base, "", sprintf(repad(logical.sum.base), "!="),
-  ""
+f_all_n <- sprintf(
+  f_sum_n_base,
+  make_loop_lgl("\n*data[di[narg]] = 1;", "==", 4), make_end_lgl("AND", 4)
 )
-# - Any / All ------------------------------------------------------------------
+f_any_1 <- sprintf(
+  f_summary_base, "", make_loop_lgl("double tmp = 1;", "!=", 2), ""
+)
+f_any_n <- sprintf(
+  f_sum_n_base,
+  make_loop_lgl("\n*data[di[narg]] = 1;", "!=", 4), make_end_lgl("OR", 4)
+)
+SUM.DEFN <- c(any_n=unname(OP.DEFN['|']), all_n=unname(OP.DEFN['&']))
+
+# - Gen Funs -------------------------------------------------------------------
 
 ## Structure all strings into a list for ease of selection
 
@@ -108,8 +128,10 @@ f_summary <- list(
   sum_n=f_sum_n,
   mean1=f_mean1,   # single pass implementation, no infinity check
   mean=f_mean,     # R implementation
-  all=f_all,
-  any=f_any
+  all=f_all_1,
+  any=f_any_1,
+  all_n=f_all_n,
+  any_n=f_any_n
 )
 code_gen_summary <- function(fun, args.reg, args.ctrl, args.flag) {
   vetr(
@@ -128,7 +150,8 @@ code_gen_summary <- function(fun, args.reg, args.ctrl, args.flag) {
       f_summary[[name]], name,
       toString(c(F.ARGS.BASE, if(multi) F.ARGS.VAR, F.ARGS.FLAG))
     ),
-    name=name, narg=multi, flag=TRUE, headers="<math.h>"
+    name=name, narg=multi, flag=TRUE, headers="<math.h>",
+    defines=if(name %in% names(SUM.DEFN)) SUM.DEFN[name]
   )
 }
 ## @param x a list of the matched parameters for the call `call`
