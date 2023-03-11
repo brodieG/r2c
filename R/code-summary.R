@@ -61,19 +61,18 @@ f_sum_1 <- sprintf(f_summary_base, "", make_loop_base(count.na=FALSE), "")
 f_sum_n_base <- '
 static void %%s(%%s) {
   int narm = flag;  // only one possible flag parameter
-  *data[di[narg]] = 0;
-
+%s
   for(int arg = 0; arg < narg; ++arg) {
     int din = di[arg];
     R_xlen_t len_n = lens[din];
     double * dat = data[din];
 %s
-    %s
+%s
   }
   lens[di[narg]] = 1;
 }'
 f_sum_n <- sprintf(
-  f_sum_n_base, make_loop_base(count.na=FALSE, pad=4),
+  f_sum_n_base, "", make_loop_base(count.na=FALSE, pad=4),
   "*data[di[narg]] += (double) tmp; // R uses double cross-arg accumulator"
 )
 
@@ -81,16 +80,16 @@ f_sum_n <- sprintf(
 
 logical.sum.base <- '
 int has_nan = 0;
-double tmp = 1;%s
+double tmp = %2$d;
 R_xlen_t i;
 if(!narm)
   for(i = 0; i < len_n; ++i) {
     if(isnan(dat[i])) has_nan = 1;
-    if(dat[i] %2$s 0) break;
+    else if(dat[i] %1$s 0) break;
   }
 else
   for(i = 0; i < len_n; ++i) {
-    if(!isnan(dat[i]) && dat[i] %2$s 0) break;
+    if(!isnan(dat[i]) && dat[i] %1$s 0) break;
   }
 
 if(i < len_n) tmp = dat[i] != 0;
@@ -99,29 +98,30 @@ else if(has_nan) tmp = NAN;
 # For all, if any FALSE, FALSE, otherwise if any NA, NA
 # For any, if any TRUE, TRUE, otherwise if any NA, NA
 
-make_loop_lgl <- function(pre, op, pad)
-  sprintf(repad(logical.sum.base, pad), pre, op)
+make_loop_lgl <- function(op, pad, init)
+  repad(sprintf(logical.sum.base, op, init), pad)
 make_end_lgl <- function(op, pad)
   sprintf(
     repad(
-      "*data[di[narg]] = %s(*data[di[narg]], tmp);\nif(i < len_n) break;", pad
+      '*data[di[narg]] = %1$s(*data[di[narg]], tmp);\nif(i < len_n) break;',
+      pad
     ),
     op
   )
 
 f_all_1 <- sprintf(
-  f_summary_base, "", make_loop_lgl("", "==", 2), ""
+  f_summary_base, "", make_loop_lgl("==", 2, 1), ""
 )
 f_all_n <- sprintf(
-  f_sum_n_base,
-  make_loop_lgl("\n*data[di[narg]] = 1;", "==", 4), make_end_lgl("AND", 4)
+  f_sum_n_base, "  *data[di[narg]] = 1;\n",
+  make_loop_lgl("==", 4, 1), make_end_lgl("AND", 4)
 )
 f_any_1 <- sprintf(
-  f_summary_base, "", make_loop_lgl("", "!=", 2), ""
+  f_summary_base, "", make_loop_lgl("!=", 2, 0), ""
 )
 f_any_n <- sprintf(
-  f_sum_n_base,
-  make_loop_lgl("\n*data[di[narg]] = 1;", "!=", 4), make_end_lgl("OR", 4)
+  f_sum_n_base, "  *data[di[narg]] = 0;\n",
+  make_loop_lgl("!=", 4, 0), make_end_lgl("OR", 4)
 )
 SUM.DEFN <- c(any_n=unname(OP.DEFN['|']), all_n=unname(OP.DEFN['&']))
 
