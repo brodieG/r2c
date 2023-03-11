@@ -58,6 +58,23 @@ unitizer_sect("Basic Logicals", {
   f_any_n(FALSE, FALSE)
   f_any_n(FALSE, c(TRUE, FALSE))
 })
+unitizer_sect("na.rm", {
+  f_all_narm <- r2cq(all(a, b, na.rm=na.rm), check=TRUE)
+  f_any_narm <- r2cq(any(a, b, na.rm=na.rm), check=TRUE)
+
+  f_all_narm(TRUE, NA, na.rm=FALSE)
+  f_all_narm(TRUE, NA, na.rm=TRUE)
+  f_all_narm(TRUE, c(FALSE, NA), na.rm=TRUE)
+  f_all_narm(TRUE, c(NA, FALSE), na.rm=TRUE)
+  f_all_narm(c(NA, TRUE), NA, na.rm=TRUE)
+
+  f_any_narm(FALSE, NA, na.rm=FALSE)
+  f_any_narm(FALSE, NA, na.rm=TRUE)
+  f_any_narm(FALSE, c(FALSE, NA), na.rm=TRUE)
+  f_any_narm(FALSE, c(NA, FALSE), na.rm=TRUE)
+  f_any_narm(FALSE, c(NA, TRUE), na.rm=TRUE)
+  f_any_narm(c(NA, FALSE), NA, na.rm=TRUE)
+})
 unitizer_sect("Relops", {
   f_gt <- r2cq(a > b, check=TRUE)
   f_gte <- r2cq(a >= b, check=TRUE)
