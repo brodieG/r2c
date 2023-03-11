@@ -228,7 +228,7 @@ VALID_FUNS <- c(
       res.type='logical'
     )
   ),
-  # - Binops -------------------------------------------------------------------
+  # - Vec Binops ---------------------------------------------------------------
 
   lapply(c("+", "-", "*", "/"), cgen_bin),
   list(
@@ -238,16 +238,6 @@ VALID_FUNS <- c(
   ) ),
   lapply(c(">", ">=", "<", "<=", "==", "!="), cgen_bin2, res.type="logical"),
   lapply(c("|", "&"), cgen_bin2, res.type='logical'),
-  list(
-    cgen(
-      "&&", type=list("constant", 1L), code.gen=code_gen_lgl2,
-      res.type="logical"
-    ),
-    cgen(
-      "||", type=list("constant", 1L), code.gen=code_gen_lgl2,
-      res.type="logical"
-    )
-  ),
   ## # Not implemented for now given not just a simple counterpart, but
   ## # could add a function like square to deal with it..  See myfmod in
   ## src/arithmetic.c in R sources
@@ -258,8 +248,20 @@ VALID_FUNS <- c(
   ## ),
   # - Other Logical ------------------------------------------------------------
 
-  ## &&, ||, any, all, ifelse
-
+  list(
+    cgen(
+      "&&", type=list("constant", 1L), code.gen=code_gen_lgl2,
+      res.type="logical"
+    ),
+    cgen(
+      "||", type=list("constant", 1L), code.gen=code_gen_lgl2,
+      res.type="logical"
+    ),
+    cgen(
+      "ifelse", type=list("arglen", "test"), code.gen=code_gen_ifelse,
+      res.type="preserve.int" # not faithful to what R does
+    )
+  ),
   # - Assign / Control----------------------------------------------------------
 
   list(

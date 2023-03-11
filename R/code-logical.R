@@ -56,3 +56,47 @@ code_gen_lgl2 <- function(fun, args.reg, args.ctrl, args.flags) {
 }
 
 
+f_ifelse <- '
+static void %s(%s) {
+  int di0 = di[0];
+  int di1 = di[1];
+  int di2 = di[2];
+  int dires = di[3];
+  double * cond = data[di0];
+  double * yes = data[di1];
+  double * no = data[di2];
+
+  R_xlen_t cond_len = lens[di0];
+  R_xlen_t yes_len = lens[di1];
+  R_xlen_t no_len = lens[di1];
+  double * res = data[dires];
+
+  if(cond_len == yes_len && cond_len == no_len) {
+    for(R_xlen_t i = 0; i < cond_len; ++i) {
+      if(!isnan(cond[i])) res[i] = cond[i] ? yes[i] : no[i];
+      else res[i] = NA_REAL;
+    }
+  } else {
+    R_xlen_t j = 0;
+    R_xlen_t k = 0;
+    for(R_xlen_t i = 0; i < cond_len; ++i, ++j, ++k) {
+      if(j > yes_len) j = 0;
+      if(k > no_len) k = 0;
+      if(!isnan(cond[i])) res[i] = cond[i] ? yes[j] : no[k];
+      else res[i] = NA_REAL;
+  } }
+  lens[dires] = cond_len;
+}'
+code_gen_ifelse <- function(fun, args.reg, args.ctrl, args.flags) {
+  vetr(
+    identical(., "ifelse"),
+    args.reg=list(NULL, NULL, NULL),
+    args.ctrl=list() && length(.) == 0L,
+    args.flags=list() && length(.) == 0L
+  )
+  name <- fun
+  defn <- sprintf(f_ifelse, name, toString(F.ARGS.BASE))
+  code_res(defn=defn, name=name)
+}
+
+

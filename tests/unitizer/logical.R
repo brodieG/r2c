@@ -140,3 +140,19 @@ unitizer_sect("'Double' Logicals", {
   f_or22(logical(), c(TRUE, FALSE))
   f_or22(c(TRUE, FALSE), logical())
 })
+unitizer_sect("ifelse", {
+  f_ifelse <- r2cq(ifelse(test, yes, no), check=TRUE)
+  f_ifelse(c(TRUE, FALSE, NA), 1:3, 1:3 * 10L)
+  f_ifelse(c(TRUE, FALSE, NA), 1:4, 1:4 * 10L)
+  f_ifelse(c(TRUE, FALSE, NA), 1:2, 1:2 * 10L)
+  f_ifelse(c(TRUE, FALSE, NA), 1:3, 1:3 * 10)
+  f_ifelse(logical(), 1:3, 1:3 * 10)
+
+  # r2c ifelse doesn't match the types exactly
+  f_ifelse(TRUE, TRUE, 1)
+  f_ifelse(TRUE, TRUE, 1L)
+  f_ifelse(FALSE, TRUE, 1)
+  f_ifelse(FALSE, TRUE, 1L)
+  f_ifelse(1, TRUE, 1)
+  f_ifelse(1, TRUE, 1L)
+})
