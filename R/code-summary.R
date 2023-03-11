@@ -103,15 +103,14 @@ make_end_lgl <- function(op, pad)
   )
 
 f_all_1 <- sprintf(
-  f_summary_base, "",
-  make_loop_lgl("", "==", 2), ""
+  f_summary_base, "", make_loop_lgl("", "==", 2), ""
 )
 f_all_n <- sprintf(
   f_sum_n_base,
   make_loop_lgl("\n*data[di[narg]] = 1;", "==", 4), make_end_lgl("AND", 4)
 )
 f_any_1 <- sprintf(
-  f_summary_base, "", make_loop_lgl("double tmp = 1;", "!=", 2), ""
+  f_summary_base, "", make_loop_lgl("", "!=", 2), ""
 )
 f_any_n <- sprintf(
   f_sum_n_base,
