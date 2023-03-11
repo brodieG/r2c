@@ -17,4 +17,6 @@
 
 NULL
 
-# ifelse, &&, ||
+## all/any are in code-summary.R, relops and &/| are in code-bin.R
+
+

@@ -80,17 +80,24 @@ f_sum_n <- sprintf(
 # - Any / All ------------------------------------------------------------------
 
 logical.sum.base <- '
+int has_nan = 0;
 double tmp = 1;%s
 R_xlen_t i;
 if(!narm)
-  for(i = 0; i < len_n; ++i) { if(isnan(dat[i]) || dat[i] %2$s 0) break; }
+  for(i = 0; i < len_n; ++i) {
+    if(isnan(dat[i])) has_nan = 1;
+    if(dat[i] %2$s 0) break;
+  }
 else
-  for(i = 0; i < len_n; ++i) { if(!isnan(dat[i]) && dat[i] %2$s 0) break; }
+  for(i = 0; i < len_n; ++i) {
+    if(!isnan(dat[i]) && dat[i] %2$s 0) break;
+  }
 
-if(i < len_n) { if(!isnan(dat[i])) tmp = dat[i] != 0; else tmp = dat[i]; }
+if(i < len_n) tmp = dat[i] != 0;
+else if(has_nan) tmp = NAN;
 '
-# For all, we need start value to be 1
-# For any, we need start value to be 0
+# For all, if any FALSE, FALSE, otherwise if any NA, NA
+# For any, if any TRUE, TRUE, otherwise if any NA, NA
 
 make_loop_lgl <- function(pre, op, pad)
   sprintf(repad(logical.sum.base, pad), pre, op)
