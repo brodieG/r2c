@@ -364,7 +364,9 @@ code_res <- function(
     if(ctrl) paste0(", ", CALL.CTRL) else ""
   )
   list(
-    defn=defn, name=name, call=call, headers=headers, defines=defines,
+    defn=defn, name=name, call=call,
+    headers=if(is.null(headers)) character() else headers,
+    defines=if(is.null(defines)) character() else defines,
     narg=narg, flag=flag, ctrl=ctrl, noop=noop
   )
 }
