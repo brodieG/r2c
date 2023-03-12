@@ -112,7 +112,7 @@ code_gen_bin <- function(fun, args.reg, args.ctrl, args.flags) {
   )
   code_res(defn=defn, name=name, headers=character())
 }
-# For the 
+# For the ones that need the defined macro
 code_gen_bin2 <- function(fun, args.reg, args.ctrl, args.flags) {
   vetr(
     CHR.1 && . %in% names(OP.NAMES),
