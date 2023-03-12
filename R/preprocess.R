@@ -71,6 +71,10 @@ preprocess <- function(call, formals, optimize=FALSE) {
   names.m <- match(names, unique(names))
   if(!identical(codes.m, names.m))
     stop("Internal error: functions redefined with changing definitions.")
+
+  # noops don't need their C code generated
+  noop <- vapply(x[['code']], "[[", TRUE, "noop")
+  codes <- codes[!noop]
   codes.u <- paste0(
     gsub("^(\\s|\\n)+|(\\s|\\n)+$", "", unique(codes[nzchar(codes)])),
     "\n"
@@ -461,6 +465,8 @@ copy_last <- function(x) {
       if(length(x) != 3L)
         stop("Internal Error: bad assign call structure.")
       x[[3L]] <- copy_last(x[[3L]])
+    } else if (call.sym == "uplus") {
+      x[[2L]] <- copy_last(x[[2L]])
     } else if(call.sym %in% PASSIVE.SYM)
       stop("Internal Error: unhandled passive calls")
   }
