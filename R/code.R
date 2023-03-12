@@ -319,18 +319,23 @@ VALID_FUNS <- c(
 names(VALID_FUNS) <- vapply(VALID_FUNS, "[[", "", "name")
 # even though we allow ::, we don't allow duplicate function names for
 # simplicity.
-stopifnot(!anyDuplicated(names(VALID_FUNS)))
+stopifnot(
+  !anyDuplicated(names(VALID_FUNS)),
+  identical(sort(names(VALID_FUNS)), sort(names(FUN.NAMES)))
+)
 
 code_blank <- function()
   list(
     defn="", name="", call="", narg=FALSE, flag=FALSE, ctrl=FALSE,
-    headers=character()
+    headers=character(), defines=character(), noop=FALSE
   )
 code_valid <- function(code, call) {
   isTRUE(check <- vet(CHR.1, code[['defn']])) &&
     isTRUE(check <- vet(CHR.1, code[['name']])) &&
     isTRUE(check <- vet(CHR.1, code[['call']])) &&
-    isTRUE(check <- vet(CHR, code[['headers']]))
+    isTRUE(check <- vet(CHR || NULL, code[['headers']])) &&
+    isTRUE(check <- vet(CHR || NULL, code[['defines']])) &&
+    isTRUE(check <- vet(LGL.1, code[['noop']]))
   if(!isTRUE(check))
     stop("Generated code format invalid for `", deparse1(call), "`:\n", check)
 
@@ -370,11 +375,16 @@ call_valid <- function(call) {
 #' @param flag TRUE if function has flag parameters
 #' @param ctrl TRUE if function has control parameters
 #' @param noop TRUE if function is a noop, in which case will be commented out
+#' @param headers character vector with header names that need to be #included
+#' @param defines character with #define directives
 
 code_res <- function(
   defn, name, narg=FALSE, flag=FALSE, ctrl=FALSE,
   headers=character(), defines=character(), noop=FALSE
 ) {
+  if(is.na(name)) stop("Internal Error: mismapped function name.")
+  if(noop && !name %in% FUN.NAMES[PASSIVE.SYM])
+    stop("Internal Error: noop declared for ", name, ", but not in PASSIVE.SYM")
   call <- sprintf(
     "%s%s(%s%s%s%s);",
     if(noop) "// NO-OP: " else "",

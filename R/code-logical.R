@@ -38,10 +38,9 @@ static void %s(%s) {
   lens[di[1]] = 1;
 }'
 
-LGL.NAMES <- c("&&"="and2", "||"="or2")
-LGL.OP <- c("&&"="AND", "||"="OR")
 LGL.OP <- c("&&"="AND", "||"="OR")
 LGL.DEFN <- c("&&"=unname(OP.DEFN['&']), "||"=unname(OP.DEFN['|']))
+stopifnot(all(names(LGL.OP) %in% names(FUN.NAMES)))
 
 code_gen_lgl2 <- function(fun, args.reg, args.ctrl, args.flags) {
   vetr(
@@ -50,7 +49,7 @@ code_gen_lgl2 <- function(fun, args.reg, args.ctrl, args.flags) {
     args.ctrl=list() && length(.) == 0L,
     args.flags=list() && length(.) == 0L
   )
-  name <- LGL.NAMES[fun]
+  name <- FUN.NAMES[fun]
   defn <- sprintf(f_lgl2, name, toString(F.ARGS.BASE), LGL.OP[fun], fun)
   code_res(defn=defn, name=name, defines=LGL.DEFN[fun])
 }

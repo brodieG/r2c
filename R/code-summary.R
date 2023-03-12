@@ -149,8 +149,7 @@ code_gen_summary <- function(fun, args.reg, args.ctrl, args.flag) {
   multi <-
     length(args.reg) > 1L ||
     (length(args.reg) == 1L && identical(args.reg[[1L]], quote(.R2C.DOTS)))
-  name <- paste0(fun, if(multi) "_n")
-
+  name <- paste0(FUN.NAMES[fun], if(multi) "_n")
   code_res(
     defn=sprintf(
       f_summary[[name]], name,
@@ -217,7 +216,7 @@ code_gen_length <- function(fun, args.reg, args.ctrl, args.flags) {
     args.ctrl=list() && length(.) == 0L,
     args.flags=list() && length(.) == 0L
   )
-  name <- "r2c_length"
+  name <- FUN.NAMES[fun]
   defn <- sprintf(f_length, name, toString(F.ARGS.BASE))
   code_res(defn=defn, name=name)
 }

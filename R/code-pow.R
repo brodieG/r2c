@@ -20,7 +20,7 @@ code_gen_pow <-  function(fun, args.reg, args.ctrl, args.flags) {
     args.ctrl=list() && length(.) == 0L,
     args.flags=list() && length(.) == 0L
   )
-  name <- "power"
+  name <- FUN.NAMES[fun]
   defn <- sprintf(
     bin_op_vec_rec, name, toString(F.ARGS.BASE), "pow", ",",
     IX[['I.STAT']], IX[['STAT.RECYCLE']]
@@ -54,7 +54,7 @@ code_gen_square <- function(fun, args.reg, args.ctrl, args.flags) {
     args.ctrl=list() && length(.) == 0L,
     args.flags=list() && length(.) == 0L
   )
-  name <- "sqr"
+  name <- FUN.NAMES[fun]
   defn <- sprintf(square_code, name, toString(F.ARGS.BASE))
   code_res(defn=defn, name=name, headers="<math.h>")
 }

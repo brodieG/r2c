@@ -18,13 +18,9 @@
 
 NULL
 
-OP.NAMES <- c(
-  "+"="add", "-"="subtract", "*"="multiply", "/"="divide", "%%"="modulo",
-  ">"="gt", ">="="gte", "<"="lt", "<="="lte", "=="="eq", "!="="neq",
-  "&"="vand", "|"="vor"
-)
 OP.OP <- c(
-  "+"="+", "-"="-", "*"="*", "/"="/", "%%"="%",
+  "+"="+", "-"="-", "*"="*", "/"="/",
+  # "%%"="%",
   ">"="GT", ">="="GTE", "<"="LT", "<="="LTE", "=="="EQ", "!="="NEQ",
   "&"="AND", "|"="OR"
 )
@@ -44,6 +40,11 @@ OP.DEFN <- c(
   "&"="#define AND(x, y) ((x) == 0 || (y) == 0 ? 0 : isunordered(x, y) ? NA_REAL : 1)",
   "|"="#define OR(x, y) (!ISNAN(x) && (x) || !ISNAN(y) && (y) ? 1 : (x) == 0 && (y) == 0 ? 0 : NA_REAL)"
 )
+stopifnot(
+  all(names(OP.OP) %in% names(FUN.NAMES)),
+  all(names(OP.DEFN) %in% names(OP.OP))
+)
+
 ## Binary Operators or Functions with Vector Recycling
 ##
 ## Use %3$s for functions like pow, %4$s for operators (which should be a comma
@@ -100,12 +101,12 @@ static void %1$s(%2$s) {
 }')
 code_gen_bin <- function(fun, args.reg, args.ctrl, args.flags) {
   vetr(
-    CHR.1 && . %in% names(OP.NAMES),
+    CHR.1 && . %in% setdiff(names(OP.OP), names(OP.DEFN)),
     args.reg=list(NULL, NULL),
     args.ctrl=list() && length(.) == 0L,
     args.flags=list() && length(.) == 0L
   )
-  name <- OP.NAMES[fun]
+  name <- FUN.NAMES[fun]
   op <- OP.OP[fun]      # needed for modulo
   defn <- sprintf(
     bin_op_vec_rec, name, toString(F.ARGS.BASE), "", op,
@@ -116,12 +117,12 @@ code_gen_bin <- function(fun, args.reg, args.ctrl, args.flags) {
 # For the ones that need the defined macro
 code_gen_bin2 <- function(fun, args.reg, args.ctrl, args.flags) {
   vetr(
-    CHR.1 && . %in% names(OP.NAMES),
+    CHR.1 && . %in% names(OP.DEFN),
     args.reg=list(),
     args.ctrl=list() && length(.) == 0L,
     args.flags=list() && length(.) == 0L
   )
-  name <- OP.NAMES[fun]
+  name <- FUN.NAMES[fun]
   op <- OP.OP[fun]      # needed for modulo
   defn <- sprintf(
     bin_op_vec_rec, name, toString(F.ARGS.BASE), op, ",",

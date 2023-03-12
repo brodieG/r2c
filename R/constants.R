@@ -78,7 +78,7 @@ LOOP.SYM <- c("for", "while", "repeat")
 # Calls that don't actually do any computing themselves, rather rely on
 # computations that happen in their arguments `for` is a bit tricky as it does
 # "compute" the counter value.
-PASSIVE.SYM <- unique(c(ASSIGN.SYM, LOOP.SYM, "if", "{"))
+PASSIVE.SYM <- unique(c(ASSIGN.SYM, LOOP.SYM, "if", "{", "uplus"))
 
 # For `record_call_dat`.
 CALL.DAT.VEC <- c('argn', 'depth', 'type', 'assign')
@@ -88,6 +88,32 @@ CTRL.FLAG <- c("control", "flag")
 
 # Packages allowable in `::`
 VALID.PKG <- c('base', 'r2c')
+
+FUN.NAMES <- c(
+  "+"="add", "-"="subtract", "*"="multiply", "/"="divide",
+
+  # "%%"="modulo",
+
+  "^"="power",
+
+  ">"="gt", ">="="gte", "<"="lt", "<="="lte", "=="="eq", "!="="neq",
+
+  "&"="vand", "|"="vor", "&&"="and2", "||"="or2",
+
+  all="all", any="any", ifelse="ifelse",
+
+  "!"="negate", uplus="uplus", uminus="uminus",
+
+  "<-"="assign", "="="assign", "{"="braces",
+
+  sum="sum", mean="mean", length="r2c_length", # conflicts with Rf_length
+
+  mean1="mean1", square="square",
+
+  vcopy="vcopy"
+
+  # "for"="for", "while"="while", "repeat"="repeat", "if"="if"
+)
 
 # - Internal Symbols -----------------------------------------------------------
 

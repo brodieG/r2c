@@ -25,7 +25,7 @@ code_gen_braces <- function(fun, args.reg, args.ctrl, args.flags) {
     args.flags=list() && length(.) == 0L
   )
   if(length(args.reg) < 1L) stop("Empty braces expresssions disallowed.")
-  name <- "braces"
+  name <- FUN.NAMES[fun]
   defn <- sprintf(f_braces, name, toString(c(F.ARGS.BASE, F.ARGS.VAR)))
   code_res(defn=defn, narg=TRUE, name=name, noop=TRUE)
 }
@@ -40,7 +40,7 @@ code_gen_assign <- function(fun, args.reg, args.ctrl, args.flags) {
     args.ctrl=list() && length(.) == 0L,
     args.flags=list() && length(.) == 0L
   )
-  name <- "assign"
+  name <- FUN.NAMES[fun]
   defn <- sprintf(f_assign, name, toString(F.ARGS.BASE))
   code_res(defn=defn, name=name, noop=TRUE)
 }
@@ -67,7 +67,7 @@ code_gen_copy <- function(fun, args.reg, args.ctrl, args.flags) {
     args.ctrl=list() && length(.) == 0L,
     args.flags=list() && length(.) == 0L
   )
-  name <- "vcopy"
+  name <- FUN.NAMES[fun]
   defn <- sprintf(f_copy, name, toString(F.ARGS.BASE))
   code_res(defn=defn, name=name)
 }
