@@ -77,8 +77,10 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' Currently the following functions are supported in `x` (or in the body of `x`
 #' for `r2cf`):
 #'
-#' * Binary operators: `+`, `-`, `*`, `/`, and `^`.
-#' * Statistics: `mean`, `sum`, `length`.
+#' * Arithmetic functions: `+`, `-`, `*`, `/`, and `^`.
+#' * Relational functions: `<`, `<=`, `>`, `>=`, `==`, `!=`.
+#' * Logical functions: `&`, `&&`, `|`, `||`, `!`, `ifelse`.
+#' * Statistics: `mean`, `sum`, `length`, `all`, `any`.
 #' * Assignment and braces: `<-`, `=`, and `{`.
 #'
 #' Calls must be in the form `fun(...)` (`a fun b` for operators)  where `fun`
@@ -89,9 +91,10 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' assignments may only be done at the top level or at a brace level (see
 #' examples).  References to external variables (i.e. not in `data` or
 #' `MoreArgs`) that cause side effects (e.g. [active bindings][bindenv],
-#' promises the evaluation of which cause side effects)
-#' may cause unexpected results.  All external references are evaluated once
-#' before any other computations are carried out.
+#' promises the evaluation of which cause side effects) may cause unexpected
+#' results.  All external references are evaluated once before any other
+#' computations are carried out. `ifelse` will return in a common type that can
+#' support both `yes` and `no` values.
 #'
 #' For `r2cl` and `r2cq`, symbols used as parameters to `call` and its
 #' constituent sub-calls (e.g. the `x` and `y` in `sum(x) + y`) will become
