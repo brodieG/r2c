@@ -1,5 +1,17 @@
 # r2c
 
+## 0.3.0
+
+### New Features
+
+* Relational (`>`, `>=`, `<`, `<=`) and equality operators (`==`, `!=`).
+* Logical functions:
+  * Operators (`&`, `|`, `&&`, `||`).
+  * `all` and `any`.
+  * `ifelse`, with the caveat the return value type is based on the combination of
+      `yes` and `no` irrespective of whether one or both of them are used.
+* Unary opertors (`-`, `+`, and `!`).
+
 ## 0.2.0
 
 ### New Features

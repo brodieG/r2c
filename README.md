@@ -114,9 +114,10 @@ iteration-invariant data:
 Notice the `na.rm`, and that the `u` in `list(y=u)` is re-used in full for each
 group setting the output size to 3.
 
-The C counterparts to the R functions are intended to produce identical outputs,
-but have different implementations.  As such, it is possible that for a
-particular set of inputs on a particular platform the results might diverge.
+With the exception of `ifelse`, the C counterparts to the R functions are
+intended to produce identical outputs, but have different implementations.  As
+such, it is possible that for a particular set of inputs on a particular
+platform the results might diverge.
 
 ## Future - Maybe?
 

@@ -1,3 +1,15 @@
+# Code Generation
+
+Function needs to:
+
+* Generate a signature.  Currently we auto-generate the call, but we then
+  mash-in the signature with the body of the code.  We should be able to separte
+  the two.
+* We should be able to tell whether we need to generate control or flag
+  parameters from the lengths of the `args.ctrl`, `args.flag` parameters.
+
+Eh, this is a bit of a mess, so we're going to defer.
+
 # Big Unitizers
 
 Possibly part of the problem is the capture of the package env.
@@ -116,13 +128,6 @@ the special unitizer environment.  So probably check whether the global
 environment is in the ancestry (but need to be careful about having the correct
 termination conditions) and if not, change it.
 
-# Double Semicolon
-
-We want to allow `::`.  This would be a pre-process thing.
-
-This is to support `square`, `mean1`, etc., so that we can do `r2c::r2cq` or
-some such.
-
 # Alloc cleanup
 
 ## Rationalize Appending Data
@@ -180,104 +185,6 @@ external symbol table.  In fact, we could modify the `if` condition to check the
 external symbol table in addition to the internal one, and fall back to the
 `name_to_id` branch.  The only change would have to be for `data.used` tracking.
 
-# Match Call
-
-We kind of want to match the call ahead of `pp_internal` so that we can properly
-implement transform as a distinct pass.
-
-Fundamentally we should be able to split the existing `match_call` into two
-steps, the first simply does the `match.call` including dots replacement,
-recursively on the whole three.  The second does all the business of
-re-organizing the arguments, adding defaults, and classifying them.
-
-One issue is in doing this we will automatically cause our calls to be
-different because `match.call` will make calls non-identical.  Maybe that's
-okay?  Could potentially help detect weird behavior with `r2cq` and bad argument
-order, and closer in spirit to what is supposed to happen.
-
-Also, doing this requires us to leave dots unexpanded, which just looks ugly:
-
-    sum(... = pairlist((x - mean(x = x)) * (y - mean(x = y)))) /
-    sum(... = pairlist((x - mean(x = x))^2))
-
-This also breaks `reuse_calls` because of the pair lists.  If we fix
-`reuse_calls` to operate with pairlists, we could probably continue until
-eventually we merge the dots back in once we compute the defaults.
-
-Is all this complication worth it?  Maybe.
-
-Urgh, that re-use calls doesn't name everything, but we assume that everything
-has names, is messing everything up.  We need a check in `record_call_dat` that
-all vector fields are being grown to the same length.  This used to work before
-because we did the re-use calls first, and only after did we do the `match_call`
-business which gave everything names.
-
-Increasingly feeling like not worth it...  What a disaster.
-
-* Now we need to work on seeing if we can get of all the primitive `defn` since
-they should not be needed anymore and we have positional matching.
-* Then, can we get rid of the `as.character` on the name of the function.
-* Finally, can we clean up the processed version of the calls.
-  * Drop default arguments?
-  * Don't include names on arguments that were positionally matched to same
-    position?
-  * Drop dots in names?
-
-# Last Statement
-
-So far we had relied on the last computation to be written to the result, but
-what if the last computation is just a symbol, e.g. one that was written to.
-
-And how do we handle e.g.:
-
-    function(a) {
-      if(a) z <- x else y
-    }
-
-I guess the one above is easy, `if` is a function and returns its value, they
-just need to be compatible size.  In this case, the last call is the `if` (or
-should be anyway).
-
-    function(a) {
-      x <- a * 2  # does something, used by `x`
-      y <- x * 3  # does something, used, but by something that does nothing
-      z <- y * 2  # does something, unusued
-      x           # does nothing
-    }
-
-Ideally we would recognize that `x <- a * 2` is the last used statement.  In
-order to qualify a call must do something, and must be the last used call.  See
-annotations above.
-
-A call is considered used if it is an argument to a non-passive call, or it is
-the last parameter of a braces call, or if it is an assignment call and the
-symbol it assigns to appears again.
-
-We should change our criteria to be not the last call, but instead the last
-argument of a braces call.
-
-One problem is that right now we rely on calls that do something to actually
-write to the result vector.  Calls that do nothing (e.g. the case where we just
-return a symbol) actively need to be copied into the result vector.
-
-Strawman, for the last braces call, find the last argument:
-
-* If it is a braces call, recurse.
-* If it is a symbol or assignment to a symbol
-  * track down the call that generated the expression assigned to the symbol.
-    * If it is an external symbol, insert a copy call?
-    * If we have a call, record the id for `alloc_dat` to copy to result.
-* If it is a call record the id for `alloc_dat` to copy to result.
-
-So the main challenge is the copy call.  We probably can't generate the copy
-call before we run alloc because we won't know whether the symbol is external or
-generated by a function until after running alloc.  This will mess with anything
-that relies on the position of things in the linearized call list, possibly
-including the protection, etc.  But it should be knowable whether a symbol
-resulted from an assignment or not.  To know that we need to use renamed
-symbols so there is no ambiguity from a branch or something.
-
-
 # Eval Env
 
 We have an inconsistency with how evaluation environments are handled in runners
@@ -301,58 +208,6 @@ as we don't set the environment when we create the function inside `r2c_core`)?
 
 Not clear why R isn't warning about package environment not available when
 saving an "r2c_fun" (maybe it only warns about package environments?).
-
-# Reuse
-
-We want to hoist stuff out so that instead of:
-
-    (.R2C_SUB_2 <- mean(y)) -
-    (.R2C_SUB_1 <- mean(x)) *
-      (sum((.R2C_SUB_3 <- (x - .R2C_SUB_1)) * (y - .R2C_SUB_2)) /
-        sum(.R2C_SUB_3^2)
-      )
-
-We have:
-
-    .R2C_SUB_2 <- mean(y)
-    .R2C_SUB_1 <- mean(x)
-    .R2C_SUB_3 <- (x - .R2C_SUB_1)
-    .R2C_SUB_2 - .R2C_SUB_1 * sum(.R2C_SUB_3 *
-      (y - .R2C_SUB_2)) / sum(.R2C_SUB_3^2)
-
-So maybe:
-
-* For every symbol, find out the point at which it has been defined.
-* For every expr to sub, find the earliest point it can be moved forward to:
-  * Stopping at the first set of braces
-* Move the sub-expression there if we're at a set of braces (if not don't sub?)
-  * We could still possibly be safe if every nested call just had one parameter,
-    and we add the constraint that all `r2c` expressions must evaluate their
-    single parameter.
-* For expressions that can't be moved?
-* Perhaps this whole process needs to be done iteratively?
-
-A bit of trickiness in how indices are expressed
-
-    2     |  a
-    3 2   |  b
-    3 3 2 |  c
-    3 3   |  mean(c)
-    3     |  {  b; mean(c) }
-    -     |  {  a; {; b; mean(c); } }
-
-If `mean(c)` is our target, then we want to go right before the first instance
-of `mean(c)`'s brace level root, which is `(3 3)`.  So in this case we would
-insert an assignment as:
-
-    3 3 2 |  expression
-    3 3 3 |  symbol
-    3 3   |  symbol <- expression
-
-Between `b` and `c`, and then everything below that would get bumped.  But
-really, we're going to operate directly on the tree, so all we need is the `(3,
-3)`.  We'll apply these in the order they are generated.
-
 
 # Single Group Performance
 
@@ -408,8 +263,6 @@ integer group vector that is the difference here.  Almost certainly the group
 order vector that isn't altrep as noted.  That might be enough to explain the
 difference in timing (note there is a lot of sensitivity to the order in which
 things happen above given we make big memory requests from the OS).
-
-# Braces
 
 # Linearized vs Not
 
@@ -870,388 +723,6 @@ allocator that the result of the prior call should be assigned to the top level,
 and we need to bind it to a symbol (duh) that will be on the search path.
 
 
-# Function vs. Expression
-
-## Free vs. Bound
-
-One complexity to think about is that in the auto-generated "functions", there
-is no possibility for a free symbol to exist, whereas in the manually specified
-ones we might allow completely free symbols such as `pi`.  Currently (0.1.0) the
-structure supports this at the expense of quietly finding symbols bound to e.g.
-the global environment.  So we need to add a check that detects this.
-
-How to default values work for functions?  This should be fine so long as they
-are either control or flag parameters.   So we need to check as we process the
-expression that we don't try to use a control/flag parameter as a data parameter
-somewhere.
-
-    > f <- r2cq(sum(x, na.rm=y) + sum(y, na.rm=x))
-    > f(1, 2)
-    Error in VALID_FUNS[[c(name, "ctrl.validate")]](stack.ctrl, stack.flag,  :
-      `na.rm` should be type "logical" (is "double") in `sum(x, na.rm = y)`.
-    > f(1, 2)
-
-Seems like it should actually be fine except for the possibility that a variable
-will get interpreted in full in one context (control) and in part in the other
-(data).  We should disallow it as the described case should never be something
-we actually want (and would be unsemantic), even though technically it could
-work.
-
-If we specify `formals` for expressions, we need to distinguish the case where
-we don't specify any formals at all and want them all swallowed into the actual
-formals, vs. the case where we want everything left unbound.  Maybe leave NULL?
-
-For the case we do have formals, it might be as simple as initializing
-`x[['sym.free']]`.  One thing is we'll probably have to add tracking of whether
-a symbol is ever used or not to possibly report that there is an unused formal
-(or at least think through the consequences of such; maybe none?).
-
-To conclude, we allow free symbols either via the function formals or by giving
-a list of symbols to bind to formals.
-
-# Window Implementation
-
-## Offset Direction
-
-It really makes more sense for the offset to be the negative of what it is now.
-
-## Start End
-
-Does partial make sense for `rollby_`?  Should start end really subset, or
-simply set where we start.  The latter is increasingly attractive.  What is the
-correspondence with `rolli`?
-
-We do really consider subsetting to be out of bounds of what this does.
-Although it would be nice and could do it.
-
-Actually, increasingly thinking that partial just doesn't make sense other than
-for the regularly spaced data where you would expect a specific count of
-observations inside the window.  There is the argument that you want windows to
-have the same amount of "eligible space", but that's also achievable by setting
-`start` and `end` at reasonable points wrt to `x`.
-
-## Incomplete
-
-A window is considered incomplete if the beginning of the data is to the right
-of the left end of the first window, or the opposite.
-
-So if:
-
-    ileft == 0 && index[ileft] > left ||
-    iright == imax && index[iright] < right
-
-## Rationalize
-
-We can rationalize the integer case to be:
-
-* `width = n - 1`
-* `bounds = "[]"`
-* `index = seq_along(<data>)`
-
-And it will be somewhat slower.  The biggest issue is that `seq_along()` could
-return either numeric or integer, and we don't want to generate that whole
-vector.  Maybe we just let it exist for this reason alone.  It would require a
-bit of contortion to handle the special iterative case?
-
-Maybe not, we would need to check whether the object is altrep sequence starting
-at 1 and with a stride of 1, and then we could, for just the "[]" bounds case,
-make the condition to check for be against the `i` instead of `index[ileft]`.
-
-## Discrete vs Continuous
-
-Is the "irregular" mode really about using a continuous variable, and thus the
-base index points to a zero-width instantaneous moment (`POSIXct`?).  Whereas
-instead the normal mode is pointing to a fixed width element.  What about
-something like a `Date`?  Which is it?  If it is continuous, do we just take it
-to be the instant the day switches, midnight?  Does it belong to the prior or
-the subsequent day?
-
-## Closed / Open intervals
-
-Related to the above, how do we treat the ends of a window?  Do we give the
-option of how to treat them?  What should be the default.
-
-It's tricky because there is no consistent answer.  For no overlapping windows,
-we get `n` if align is left or center, but `n-1` if it is right.
-
-I think what makes most sense is to have a half closed interval.  We're picking
-open on the right, so that e.g. if we pick a date, and we right align with width
-1 day, we'll get all the entries from the prior day excluding anything that
-happened at midnight, which we consider part of the current day.
-
-Maybe in the future we'll give the option to do something different.
-
-## End condition
-
-Struggling a little bit to figure out the natural end condition.  If `align =
-"left"` then it makes sense to have as many iterations as intervals.  We don't
-need end to get a go at being an base index because it is included in the prior
-window (notwithstanding smaller windows, etc.).
-
-I guess `end` needs a shot at being a window because there is no guarantee it
-was included in the prior window.  And it seems weird to use presence in the
-prior window as reason to give it a shot or not, although in the special case of
-`width = by` it does produce a "pleasing" outcome.
-
-## Alternative Irregular Windows
-
-Firstly we clearly need to rename our things.  There window size, window
-spacing, and window contents.  Our implementation is regular in the first two.
-We could allow:
-
-* Specifying indices.
-* Specifying window positions (where these could be the same as indices to
-  simulate what slider does).
-* Specifying window start/end points (equivalent to positions with variable
-  widths?)
-
-What should the names be?  Current `window_i_exec` is not actually irregular.
-
-* Is it step vs. slide?  But both are step.
-* Discrete vs continuous?
-* Integer vs real?  Maybe.
-* `window`
-* `window_c`
-* `window_ci`, this replaces `by` with `at`?
-
-    gexe(fun, groups, data, MoreArgs, enclos)
-    wexe(fun, width, data, MoreArgs, by, partial, align, enclos)
-    wcexe(fun, width, data, MoreArgs, by, partial, align, enclos)
-    wciexe(fun, width, index, data, MoreArgs, by, partial, align, enclos)
-
-    gexe(fun, d, g, args, enclos)
-    wexe(fun, d, w, by, align, partial, args, enclos)
-    wcexe(fun, d, i, w, by, align, partial, args, enclos)
-    wciexe(fun, d, i, w, at, align, partial, args, enclos)
-
-    g_exe(fun, data, g, args, enclos)
-    # discrete regular
-    wd_exe(fun, data, w, by, align, partial, args, enclos)
-    # continuous regular
-    wc_exe(fun, data, i, w, by, align, start, end, partial, args, enclos)
-    # continuous irregular
-    wi_exe(fun, data, i, w, at, align, start, end, partial, args, enclos)
-
-    g_exe
-    wd_by_exe
-    wd_at_exe
-    wc_by_exe
-    wc_at_exe
-
-    g_exe
-
-    wdby_exe
-    wdat_exe
-
-    wcby_exe
-    wcat_exe
-
-So is there a way to merge the discrete and continuous interfaces into one?  Not
-really, they are pretty different.  But continuous can completely cover the
-discrete case.
-
-Actually, they are pretty close because the following produce the same value:
-
-    wd_by(x, w=<odd number>)
-    wc_by(x, seq_along(x), w=<odd number>)
-
-One issue remaining is how to treat "align='right'".  In continuous it excludes
-the base index value due to the open interval on the right.  But in discrete it
-includes it.  If we defined it as `right = width - 1`, it works in continuous
-too?
-
-    |1|0|1|2|3|
-        ^
-      [ | )
-      ( | ]
-    [ | | | )
-    ( | | | ]
-
-
-
-    rolli_exec(f, data, n, align, by, partial, MoreArgs, enclos)
-
-    rollby_exec(
-      f, data, width, offset, by, x, start, end, bounds, partial,
-      MoreArgs, enclos
-    )
-    rollat_exec(
-      f, data, width, offset, at, x, bounds, partial, MoreArgs, enclos
-    )
-    rollin_exec(
-      f, data, width, offset, x, left, right, bounds, partial, MoreArgs, enclos
-    )
-
-
-    rollby_exec(
-      f, data, width, offset=w/2,
-      x=seq_along(if(is.list(data)) data[[1L]] else data),
-      by=(end - start) / (length(x) - 1L),
-      start=x[1], end=x[length(x)],
-      bounds="[)",
-      partial=FALSE,
-      MoreArgs=list(),
-      enclos=parent.frame()
-    )
-    rollat_exec()
-
-    auto_exec <- function(f, exec, ...) {
-
-    }
-
-    rollsum3 <- auto_exec(r2c_sum, roll_exec, width=3)
-    rollsum3(1:10, align='right')
-
-
-
-
-
-
-    w_exe(r2c_sum, x, w=5, partial=TRUE, args=list(na.rm=FALSE))
-    g_exe(r2c_sum, x, g, na.rm=TRUE)
-
-    wat_exe(
-      f, x, w,
-      i=seq_along(x), at=i, align='center',
-      partial, args, enclos
-    )
-
-    winx()
-    winatx()
-    grpx()
-
-    winX()
-    winatX()
-    grpX()
-
-    window_by_exec
-    window_at_exec
-
-
-
-
-What does `partial` mean for the continuous case?
-
-## r2c
-
-Advance: group size -> by
-Length: group size -> window
-
-Additionally, need to handle cases where the window overflows and fill it.
-
-Currently we advance the data pointer by group size, but instead we want to
-advance by 'by'.
-
-So we need to split the `grp_lens` into those two different things, that are the
-same for the group mode.
-
-Additionally, we need to add support for the recycling of the indices.  For
-simplicity we could start by recycling them in R?  Not ideal as it creates big
-vectors that are completely unnecessary for the default case of scalar offset
-and scalar window.  And these vectors are large.
-
-Need to ensure that we have nothing in the offset vector that causes a problem.
-
-Likely want a special branch for the scalar-scalar default case.
-
-Currently the code assumes that `g_lens` is equal in size to the number of
-offsets, which certainly won't be the case if we're recycling.  This also means
-that the looping is completely different because for the window case we're
-recycling offset and group size until the time we run out of data.  So we're
-going to have a double nested loop with a break.
-
-We need a check that the final result is scalar as it's not guaranteed ex-ante?
-We could guarantee it ex-ante, but that's dangerous if we're wrong (but then all
-our size calculations would be wrong anyway).
-
-What if we allow non-scalar results?  Probably immediate complication is that we
-can't just go straight to "NA" result when windows are OOB.  If we do resolve
-that, we need to do a first pass pre-computing the result vector size.
-
-For now focus on developing the scalar step and scalar window size, and
-recognize the possibility for:
-
-* Vector of steps.
-* Vector of window sizes.
-* A location vector to allow data to have different positions than their rank
-  in the input vector.
-
-## For Benchmarks
-
-* slider
-* data.table
-* zoo rollapply
-
-
-## Others Window Implementations
-
-### data.table
-
-#### Key Points
-
-* Slow and fast algorithm
-* Adaptive width
-
-#### Details
-
-https://github.com/Rdatatable/data.table/pull/5441#issuecomment-1236104263
-
-### Slider
-
-#### Key Points
-
-* Irregular series can still be windowed when providing an index.
-* Uses segment trees for the fast calculations to reduce cost from O(n^2) to
-  O(nlogn)
-* Uses before/after instead of left/center/right for more flexible window
-  computation.
-
-#### Details
-
-Interesting mention of "segment trees".  This allows to partially cache sums by
-pre-aggregating the vector in a binary fashion, and then re-using the aggregates
-when possible.
-
-Also interesting that instead of using "left", "right", etc., it uses before and
-after.
-
-Would it work with variance?  What does it generalize to?
-
-    sum((x - mean(x))^2)
-
-Default is to return a list.
-
-Concept of index column for irregular series.
-
-Referenced paper also has a few other interesting topics:
-
-* Partitions, where you compute the sliding function within each partition
-  independently.
-* Variable size windows, where you cannot easily deal with removal/addition
-  window because you don't know how much you need to remove/add and doing so
-  could require scanning the entire thing again.
-
-We can compute the variance of two buckets from the individual stats according
-to "Maintaining variance and k-medians over data stream windows." (referenced in
-[1])
-
-    n<i,j> = n<i> + n<j>
-    u<i,j> = (n<i>*u<i> + n<j>*u<j>) / (n<i> + n<j>)
-    V<i,j> = V<i> + V<j> + (n<i>*n<j> / n<i,j>) * (u<i> - u<j>)^2
-
-So it should be possible to derive the equivalent formulas for most statistics
-for combining buckets, but there might not be an automatic way of doing so given
-a function (hard to believe there would be looking at the above).  Once we have
-the statistics we can use segment trees to govern how we combine things.
-
-So ultimately this business comes down to how much it costs in common use cases
-to re-run the entire function.
-
-[1]: https://www.researchgate.net/publication/221559611_Variance_estimation_over_sliding_windows/link/56a2194208ae2afab885c5ba/download
-
-### runner
-
-Doesn't seem to add too much interesting.
 
 # Interface
 
@@ -1356,125 +827,6 @@ Are annoying.  This okay enough?
     with(iris, tcapply(list(Sepal.Width, Sepal.Length), Species, csum))
     with(iris, tcapply(l(Sepal.Width, Sepal.Length), Species, csum))
 
-# Dots
-
-## Trying to Get Dots Working normally
-
-### Preprocess
-
-Do we allow dots in `ctrl` and `flag`?  Maybe, they are not really used at all
-in preprocess.  The only thing we see is computing of length of dots to
-determine whether e.g. to use the multi-arg version of sum or not.  The only
-thing we seem to preserve is the name of the argument, and it's not clear that's
-actually used by alloc.
-
-One challenge is how do we distinguish between these two:
-
-    r2cq(sum(...))
-    r2cq(sum(x, y, z))
-
-In the former we want to literally match `...` against the dots argument,
-whereas in the latter we want the `x`, `y`, `z` to be expanded out.  In a more
-complex expression `...` might match more variables:
-
-    r2cq(sum(x, y, z) + sum(...))
-
-Produces:
-
-    function(x, y, z, ...)
-
-Consider for:
-
-    function(..., na.rm=TRUE)
-
-Things like:
-
-    f(..., x, na.rm=y)
-
-We need both dots and `x` to be matched to the actual dots.  So we need to
-replace `...` in the call with e.g. something like `.R2C.DOTS`, which will be
-recorded in the symbols as `...`.
-
-### Alloc / Run
-
-It seems here most of the work is done by the matching in `group_exec`.  Might
-just work?
-
-No, we need to expand out the dots in the linearized call and related data.
-Seems right now the fields that need to be expanded are call, argn, depth, and
-type, where we look for any `call` of type `leaf` that is `...`, and sub in as
-many leaves as there are elements.  One issue to figure out is if it's a problem
-that `argn` is just going to be "..." repeated.  Do we use this to match
-anyplace?  We must for allocation.
-
-`argn` is, what?  We're seeing:
-
-     $ argn     : chr [1:4] "..." "..." "na.rm" ""
-
-Not sure why there are two "...", although those do match to the `...` in the
-formals of `sum`.  So `argn` is the argument name in the original.  But why do
-we even use this in alloc?
-
-Strongly suggests that we just cannot allow "..." to be matched to control
-parameters?  Seems like we need to generate "..1", etc, to be orderly matched to
-the data proper, and that data derived from "..." should get those names (unless
-it already has names)?.
-
-## Previous Notes
-
-Do we allow dots in the call?  This could come up if there is an `r2c`
-construction inside of a function.  But it's a bit silly because if we don't do
-it inside a function we get a failure from dots not existing, but when we run
-elsewhere we might not be inside the function anymore.
-
-Let's say we allowed it, how would it play out?  Are we counting the args at
-compile time (probably).
-
-Should we disallow no free symbols?  Probably should be at least one, it
-complicates logic a bit if we don't as we need to know the size of the result.
-
-    f <- r2cq(sum(1, 2))
-    f
-
-Similarly, should this really work?
-
-    > f5 <- (function(...) r2cq(sum(...)))(1:10, 2)
-    > (function(...) f5(...))(1:10)  # okay
-    [1] 57
-    > sum(1:10
-    + )
-    [1] 55
-    > f5
-    function (..1)
-    {
-
-It's kind of an accident that we generate the `..1` symbol, and only because
-`1:10` is a call:
-
-    > (function(...) r2cq(sum(...)))(1, 2)
-    function ()
-    {
-
-So probably just need to figure out why the call version generates the `..1`
-parameter.  Has to do with the fact that for some reason dots generate `..1` for
-calls, but not for constants.  So there is a weirdness that something that seems
-like a constant (`1:10`) because R can't discern that it is and is in dots
-generates a free symbol.
-
-Maybe that's okay, and really what we need is a better error message when there
-are no data columns, or a better way to manage that scenario.  When there are no
-data columns all inputs are length 1 as that's the only way to truly generate a
-constant?  Can we use this or is that begging for trouble?
-
-We won't use that, we just require a free symbol.  There is the issue of
-"constants' like 1:10 generating free symbols
-
-Thinking about this a bit more on dots, all we need to do is make sure that the
-code gen functions are aware of dots, and have code that can handle dots.  We
-then need to make sure there are no issues of expanding or evaluating dots in
-the compile stage, that functions that support dots get told they are getting
-dots, and those that don't fail, and in the allocation stage the dots should
-match gracefully to the data and everything should be great.
 
 # Loop implementation
 
@@ -2008,57 +1360,6 @@ seeing (run 10x and profiled with instruments, cleaned up):
 
 Only ~1/10th of the time seems to be spent within gsum itself.
 
-# Benchmarks
-
-* 1e7 with group size 10, 1000.
-* Pre-sorted
-* sum(x), sum(x + y)
-
-In this case mean did not get inlined, whereas the others did.  Oddly subtract
-shows up three times, but still not inlined.
-
-    # 3.01 s   10.2%	54.00 ms	                       run
-    # 1.90 s    6.4%	1.75 s	 	                       mean
-    # 153.00 ms    0.5%	37.00 ms                        R_finite
-    # 166.00 ms    0.5%	166.00 ms                      multiply
-    # 160.00 ms    0.5%	160.00 ms                      sum
-    # 156.00 ms    0.5%	156.00 ms                      sum
-    # 128.00 ms    0.4%	128.00 ms                      subtract
-    # 125.00 ms    0.4%	125.00 ms                      subtract
-    # 109.00 ms    0.3%	109.00 ms                      sqr
-    # 105.00 ms    0.3%	105.00 ms                      subtract
-    # 96.00 ms    0.3%	96.00 ms                       divide
-    # 6.00 ms    0.0%	6.00 ms	 	                       DYLD-STUB$$R_finite
-
-We tried only having two calls to mean, but there is something preventing
-inlining, and non-inlining is expensive.  Maybe R_FINITE prevents inlining?
-Although that's weird b/c from timings, it seems the inlining stopped happening
-after we revised the interface to have all the parameters.
-
-`mean0` does show non-inlining.  Simplifying parameter structure does not seem
-to allow `mean` to become inlined.
-
-To conclude, there is no evidence that `mean` was ever inlined in the earlier
-tests.  This was a whole big red herring for a performance "regression" that was
-really just accidentally computing on `x` as integer instead of `numeric`.
-
-Comparing to `fsum`, `fsum` appears to have less overhead (as it should), at
-group sizes of 1000 its performance is comparable to `r2c`, at group sizes of 10
-it is twice as fast (i.e. overhead for r2c is about what it takes to compute 10
-additions).
-
-It appears `fmean` runs a single pass.  Additionally both `fsum` and `fmean` use
-64 bit accumulators, which performance wise is not an advantage on my CPU
-(looking at timings at group size of 1000).  It's actually a small disadvantage.
-
-
-# Done / Answered
-
-* Make sure that no non-numeric data exists other than the stuff going into
-  control.
-
-Yes, we only append the numeric data.
-
 # Other Implementations
 
 ## ast2ast
@@ -2116,43 +1417,7 @@ aggregated.
 We can get "vectors" in the sense we're used to in there, but they need to go in
 as matrices (but that's okay, we can just do this with 1D matrices).
 
-
-# Concept
-
-1. Given a parsed R expression
-2. Check that expression / function has symbols that resolve only to known
-   functions.
-3. Translate it into C code.
-4. Compile it.
-5. Feed it.
-
-# What needs to happen
-
-1. A compiled function that accepts N double pointers.
-2. A manager to call the compiled function repeatedly with variations.
-
-# Features
-
-1. Standard arithmetic.
-2. Sum. Mean.
-3. Assignment?  Probably not.
-
-# Translation
-
-## Memory
-
-* Calling function will allocate a vector sufficiently large to hold the
-  largest result and pass that to each computing function.
-* Computing functions may only write to that vector?  Specifically, computing
-  functions may not allocate?
-
-## Length Computation
-
-Each known function should have some method of ex-ante determining the length of
-the outputs as a function of the lengths of the inputs (e.g. `quantile` would be
-the length of the `probs` argument).
-
-## Ex Ante Size Computation
+# Ex Ante Size Computation
 
 We need some view of the size pre-compilation, but by virtue of allowing
 references to external objects we can't resolve them fully.  So we have options:
@@ -2262,32 +1527,7 @@ it's going to be hard to beat that.
     [1] TRUE
     >
 
-## Allocation
-
-Once we get to the run stage, we'll have for each sub-call, the type size of the
-result, and the inputs, and the type of function.  This means we can resolve the
-size requirements to a specific number for external things, and for external or
-group we now know the "external" part of it as well.  Since we'll know the max
-group size, we can run through?
-
-To do this properly we need to know which column each thing refers to, but we
-should be able to do it linearly.
-
-So start going column-wise through our size matrix.  First item should be
-standalone (i.e. not a call with arguments).  Add it to the allocation (unless
-it's data, in which case it is already there), evaluating first if needed, and
-recording the position in the data as well as the size (possibly NA if group).
-Keep accumulating this info in a stack until we get to a call, which will then
-reduce it down to a single value, and proceed accordingly.
-
-For each item, we need to know what it is:
-
-* Control (evaluate, store, and record index)
-* Symbol external (evaluate, store, record size and index)
-* Symbol data (record index)
-* Expression (recurse, record size and index)
-
-## Simple arithmetic
+# Simple arithmetic
 
 Compute length of each vector.  Generate the full C expression with index or
 pointer offset access.
@@ -2326,14 +1566,14 @@ Interestingly `MOD_ITERATE2` is no faster, so the check is basically free.
       0.026   0.000   0.028
 
 
-## Function Types
+# Function Types
 
 * Aggregation functions (result length == 1)
 * Vectorized functions  (result length == 0 or longest vector)
 * Arbitrary functions   (result length is known (above is degen case of this))
 
 Maybe use iterator macros.  E.g. `MOD_ITERATE2_CHECK`.  These should work fine
-and are fairly efficient (i.e. reset counter to zero intead of reading with
+and are fairly efficient (i.e. reset counter to zero instead of reading with
 modulo).
 
 When construction the expression, when do we need to recursively evaluate
@@ -2538,41 +1778,9 @@ should be either a constant per group, or `g`.
 The top level return should give us the result size, and our list should give us
 the set of intermediate vectors we'll need.
 
-## Parameter Types
+# Interface
 
-There are:
-
-* Numeric standard vectors from data
-* Numeric standard vectors external
-* Non-numeric data (do we even allow this?  How do offset work)
-* Non-numeric externals
-
-For non-numeric data, an example would be if someone wants to run e.g. a nested
-tapply on each group (this is silly, should just group on the interaction, but
-whatever).
-
-Some of these will be "control" parameters, which loosely speaking are those
-that are used in the code generation phase, and aren't necessarily (but can be)
-passed on to the compiled code.
-
-Key question right now is what gets into the `alloc.dat` structure.  Presumably
-it is anything that could possibly feed a C parameter that it intends to compute
-on, and more specifically, one that could be fed by the result of a previous
-calculation.  Our key restriction is that the functions must all return doubles
-no matter what.
-
-Or maybe it is any parameter that in theory could be fed by group data.  Which
-in theory is any numeric parameter that is not explicitly made to be a control
-parameter?  Yes, this seems to be the most manageable approach.  This also
-implies that all non-control parameters must be numeric.
-
-Do we allow non-numeric, non-control parameters?  Is there any use for them
-other than grouping?  Maybe something designating a type of calculation to be
-done?  But when do we ever want those to be the same length as the vector?
-
-## Interface
-
-### R Level
+## R Level
 
 Each special function must be pre-registered with some mechanism to distinguish
 which parameters are vector ones that will be fed, vs which one should be
@@ -2580,9 +1788,9 @@ evaluated immediately for dispatch decisions (e.g. `na.rm=TRUE`).
 
 How does this work for a newly defined function at the R level?  Does it matter?
 
-### C Level
+## C Level
 
-#### Basic
+### Basic
 
 Target function:
 
@@ -2610,7 +1818,7 @@ Parameters such as `na.rm=TRUE` actually cause dispatch to a different
 function.  So when we register a function we need to declare this?  I guess it
 should be optional and we use it to recreate `mean`, etc.
 
-#### Allow SEXP
+### Allow SEXP
 
 What about functions that accept non-double parameters?  In particular, we'll
 have expressions that reference external/evaluated things, which might not be
@@ -2706,7 +1914,6 @@ Each code gen call should return:
 We can check that if multiple instances of a function name show up, the
 definitions are the same, and then unique them out.
 
-
 # Compilation
 
 ## Cost
@@ -2793,253 +2000,3 @@ package?  Maybe?
 How is this different to Rcpp?  Very limited, but no learning curve.  Only
 doubles.
 
-# Interface
-
-Now leaning towards something like this:
-
-```
-group_exec(slope, data, groups, x=v)              ## remap
-group_exec_(slope, data, groups, remap=c(x='v'))  ## remap
-```
-
-But what if the `r2c` object contains `data`, or `groups`?  Then it becomes
-impossible to remap those.  We could make those reserved terms in the
-compilation analysis.  How does that evolve as we add more functions that have
-different parameter names?  Do we just lock up too much?  The alternative seems
-to be:
-
-```
-group_exec(r2c_slope, data, groups)()
-group(r2c_slope, data, groups)()
-slide(r2c_slope, data, width, ...)()
-r2c_slope()
-```
-
-Do we require parameters?  Yes.
-
-```
-group(r2c_slope, data, groups)(x, y)
-r2c_slope(x, y)
-slide(r2c_slope, data, window=5)(x, y)
-```
-
-Setting the following as default just won't work, since the lookup semantics are
-to look in the function environment (and would cause the recursive lookup
-issue):
-
-```
-function(x=x, y=y)
-```
-
-So we can't have a function that observes R semantics but then also has the
-unmapped parameters. So things like this won't work:
-
-```
-group(r2c_slope, data, groups)()
-```
-
-But this is okay:
-
-```
-group(r2c_slope, data, groups)(x, y)
-```
-
-Since we don't have a way to declare the mapping order in a way visible to
-users.  So even if the print method does something like:
-
-```
-group(r2c_slope, data, groups)
-## function(x, y) <...>
-```
-
-When in reality it's:
-
-```
-## function(...) <...>
-```
-
-What does `r2c_slope` look like:
-
-```
-r2c_slope
-## function(x, y) <...>
-```
-
-Hmm, but are we satisfied with the data/groups specification?
-
-```
-group(r2c_slope, data, data['g'])(x, y)
-with(data, group(r2c_slope, x, y, g))
-```
-
-How about this:
-
-```
-group(obj, ..., group)
-
-groupwise(obj, group, ...)
-groupwise(obj, data, .(group), .(remap))
-```
-
-If this is the NSE interface:
-
-```
-groupwise(data, group, obj(x=x, y=y))
-obj(x=x, y=y)
-
-with(data, groupwise(obj, list(x, y), list(g)))
-
-with(data, r2c_group(obj, list(x, y), list(g)))
-
-r2c_group(obj, x, g)
-
-set.seed(1)
-x <- y <- runif(1e5)
-y[sample(1e5, 1e4)] <- NA
-microbenchmark::microbenchmark(sum(x), sum(y), mean(x), mean(y), times=10)
-
-set.seed(1)
-x <- y <- runif(1e5)
-y[sample(1e5, 1e4)] <- NA
-microbenchmark::microbenchmark(sum(x), sum(y), mean(x), mean(y), times=10)
-## Unit: microseconds
-##     expr   min    lq  mean median    uq   max neval
-##   sum(x)   299   315   342    335   367   413    10
-##   sum(y) 18441 18684 19587  18973 20461 22382    10
-##  mean(x)   234   265   281    276   294   343    10
-##  mean(y) 33009 33201 34449  33421 34584 38751    10
-
-```
-
-So we need:
-
-* data
-* groups
-* r2c object
-* remap
-
-
-```
-groupwise(data, group, obj, x=x, y=y)
-
-groupwise(obj, data, group, x=x, y=y)
-groupwiseq(obj, data, group, x=x, y=y)
-
-run(obj, x, y)
-```
-
-This allows arbitrary objects in ..., and we can require that they are named.
-Group can be a single vector, does not need to be named, or it can be a list.
-
-```
-obj(x, y)
-objg <- with(data, group(obj, x, y, g))
-objg <- with(data, group(obj, x=x, y=y, g))
-objg(x, y)
-```
-
-If unnamed we can rely on the symbol.
-
-
-
-These are very appealing for group/window because we can easily re-use the same
-shared object, and additionally
-
-```
-obj <- r2c(<expr>)
-obj$run(data)                # intended for code with loops.
-obj$group(data, groups)
-obj$slide(data, size, ...)
-```
-
-Are `groups` quoted or as is?  Do we need:
-
-```
-obj$groupq(data, groups)
-```
-
-What if we want to remap args?
-
-```
-obj$group(data, groups)(x=z, y=v)
-obj $
-  map(x=z, y=v) $
-  group(data, groups)
-
-group(remap(obj, x=x, y=y), data, groups)
-```
-
-Or should we really do:
-
-```
-slope <- r2c(
-  function(x, y) (x - mean(x)) * (y - mean(y)) / (x - mean(x))^2
-)
-group(slope(x=v, y=z), data, groups)
-
-with(data, group(slope(v, z), groups))
-```
-
-
-
-
-```
-group(slope(x=v, y=z), data, groups)
-group(slope, data, groups)                               # no remap
-group_exec(slope, data, groups)                          # no remap
-group_exec(slope(.remap=c(x="v", y="w")), data, groups)
-group_exec(remap(slope, c(x="v", y="w")), data, groups)
-
-group_exec(slope, data, groups)       ## no remap
-group_exec(slope, data, groups, x=v)  ## remap
-
-
-run(slope(x=v, y=z))
-slide(slope(x=v, y=z), window=window)
-
-slope(x=v, y=z) |> group(data, groups)
-```
-
-What would this do?  Run normally?
-
-```
-slope(x=v, y=z)
-slope$group(data, groups)(x=v, y=z)
-```
-
-Then? Do we need:
-
-```
-group(slope, data, groups)(x=v, y=z)
-group(slope(x=v, y=z), data, groups)     # Possible with NSE, but not ideal.
-group(slope, data, groups)               # would this run without remapping?
-group(slope, data, groups)()             # Or should it be this?
-
-slope |> group(data, groups)(x, y)
-
-slope$group(data, groups)(x, y)
-
-group(slope, data, groups, map=.(x=v, y=z))
-```
-
-Is this confusing?  Yes, the duality of `slope` being a function but also not is
-just weird.
-
-What's the benefit of defining as a function?  Makes it easier to re-map the
-variables in use, but then the remapping is weird.
-
-```
-slope$group(remap(data, x=v, y=z), groups)
-remap(slope, x=v, y=z)
-```
-
-
-Old stuff:
-
-```
-fapply(X, INDEX, FUN)
-
-group_exe(data, groups, obj)
-window_exe(data, size, just, obj)
-for_exe(data, obj)
-```
