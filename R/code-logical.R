@@ -25,9 +25,9 @@ static void %s(%s) {
     *data[di[2]] = %3$s(*data[di[0]], *data[di[1]]);
   } else if(lens[di[0]] <= 1 && lens[di[1]] <= 1) {
     // Zero length
-    if(lens[di[0]] == 1) *data[di[2]] = %3$s(*data[di[0]], NAN);
-    else if(lens[di[1]] == 1) *data[di[2]] = %3$s(NAN, *data[di[1]]);
-    else *data[di[2]] = NAN;
+    if(lens[di[0]] == 1) *data[di[2]] = %3$s(*data[di[0]], NA_REAL);
+    else if(lens[di[1]] == 1) *data[di[2]] = %3$s(NA_REAL, *data[di[1]]);
+    else *data[di[2]] = NA_REAL;
   } else {
     // Error (allow warning, report iteration this happened in)
     intmax_t bad_len = lens[di[0]];
@@ -73,7 +73,7 @@ static void %s(%s) {
 
   if(cond_len == yes_len && cond_len == no_len) {
     for(R_xlen_t i = 0; i < cond_len; ++i) {
-      if(!isnan(cond[i])) res[i] = cond[i] ? yes[i] : no[i];
+      if(!ISNAN(cond[i])) res[i] = cond[i] ? yes[i] : no[i];
       else res[i] = NA_REAL;
     }
   } else {
@@ -82,7 +82,7 @@ static void %s(%s) {
     for(R_xlen_t i = 0; i < cond_len; ++i, ++j, ++k) {
       if(j > yes_len) j = 0;
       if(k > no_len) k = 0;
-      if(!isnan(cond[i])) res[i] = cond[i] ? yes[j] : no[k];
+      if(!ISNAN(cond[i])) res[i] = cond[i] ? yes[j] : no[k];
       else res[i] = NA_REAL;
   } }
   lens[dires] = cond_len;

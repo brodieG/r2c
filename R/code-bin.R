@@ -27,19 +27,21 @@ OP.OP <- c(
   ">"="GT", ">="="GTE", "<"="LT", "<="="LTE", "=="="EQ", "!="="NEQ",
   "&"="AND", "|"="OR"
 )
-# Some question as to whether these would re-evalute the memory fetch, but
-# presumably compiler is smart enough to re-use the registers.  Also, presumably
-# we're just dealing with quiet NaNs, so don't need to deal with the math.h
-# macros here?
+## Some question as to whether these would re-evalute the memory fetch, but
+## presumably compiler is smart enough to re-use the registers.  Also,
+## presumably Only relational operators trigger exceptions, not equality (C99
+## 7.12.14).  Assuming the negation for isunordered is worth allowing the most
+## likely branch first, but have not tested.  Not clear that returning NA_REAL
+## here is correct as one of the inputs could be regular NaN.
 OP.DEFN <- c(
-  ">"="#define GT(x, y) (isnan(x) || isnan(y) ? NAN : (x) > (y))",
-  ">="="#define GTE(x, y) (isnan(x) || isnan(y) ? NAN : (x) >= (y))",
-  "<"="#define LT(x, y) (isnan(x) || isnan(y) ? NAN : (x) < (y))",
-  "<="="#define LTE(x, y) (isnan(x) || isnan(y) ? NAN : (x) <= (y))",
-  "=="="#define EQ(x, y) (isnan(x) || isnan(y) ? NAN : (x) == (y))",
-  "!="="#define NEQ(x, y) (isnan(x) || isnan(y) ? NAN : (x) != (y))",
-  "&"="#define AND(x, y) ((x) == 0 || (y) == 0 ? 0 : isnan(x) || isnan(y) ? NAN : 1)",
-  "|"="#define OR(x, y) (!isnan(x) && (x) || !isnan(y) && (y) ? 1 : (x) == 0 && (y) == 0 ? 0 : NAN)"
+  ">"="#define GT(x, y) (!isunordered(x, y) ? (x) > (y) : NA_REAL)",
+  ">="="#define GTE(x, y) (!isunordered(x, y) ? (x) >= (y) : NA_REAL)",
+  "<"="#define LT(x, y) (!isunordered(x, y) ? (x) < (y) : NA_REAL)",
+  "<="="#define LTE(x, y) (!isunordered(x, y) ? (x) <= (y) : NA_REAL)",
+  "=="="#define EQ(x, y) (!isunordered(x, y) ? (x) == (y) : NA_REAL)",
+  "!="="#define NEQ(x, y) (!isunordered(x, y) ? (x) != (y) : NA_REAL)",
+  "&"="#define AND(x, y) ((x) == 0 || (y) == 0 ? 0 : isunordered(x, y) ? NA_REAL : 1)",
+  "|"="#define OR(x, y) (!ISNAN(x) && (x) || !ISNAN(y) && (y) ? 1 : (x) == 0 && (y) == 0 ? 0 : NA_REAL)"
 )
 ## Binary Operators or Functions with Vector Recycling
 ##
