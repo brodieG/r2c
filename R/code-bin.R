@@ -14,6 +14,7 @@
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
 #' @include constants.R
+#' @include code-unary.R
 
 NULL
 
@@ -100,7 +101,7 @@ static void %1$s(%2$s) {
 code_gen_bin <- function(fun, args.reg, args.ctrl, args.flags) {
   vetr(
     CHR.1 && . %in% names(OP.NAMES),
-    args.reg=list(),
+    args.reg=list(NULL, NULL),
     args.ctrl=list() && length(.) == 0L,
     args.flags=list() && length(.) == 0L
   )
@@ -130,5 +131,3 @@ code_gen_bin2 <- function(fun, args.reg, args.ctrl, args.flags) {
     defn=defn, name=name, headers=character(), defines=OP.DEFN[fun]
   )
 }
-
-

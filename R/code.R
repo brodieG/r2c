@@ -18,6 +18,7 @@
 #' @include code-bin.R
 #' @include code-pow.R
 #' @include code-logical.R
+#' @include code-unary.R
 
 NULL
 
@@ -179,7 +180,8 @@ cgen <- function(
 cgen_bin <- function(name, res.type="preserve.int") {
   cgen(
     name, defn=NULL,
-    type=list("vecrec", 1:2), code.gen=code_gen_bin, res.type=res.type
+    type=list("vecrec", 1:2), code.gen=code_gen_bin, res.type=res.type,
+    transform=unary_transform
   )
 }
 ## Specialized for binops that require the macros
@@ -204,8 +206,7 @@ VALID_FUNS <- c(
     ),
     cgen(
       "mean", defn=base::mean.default,
-      flag.params="na.rm",
-      ctrl.params="trim",
+      flag.params="na.rm", ctrl.params="trim",
       type=list("constant", 1L),
       code.gen=code_gen_summary,
       ctrl.validate=ctrl_val_summary
@@ -232,7 +233,8 @@ VALID_FUNS <- c(
 
   lapply(c("+", "-", "*", "/"), cgen_bin),
   list(
-    cgen( # this needs the transform
+    cgen(
+       # needs transform, could be folded into cgen_bin like e.g. uminus
        "^", type=list("vecrec", 1:2), code.gen=code_gen_pow,
        transform=pow_transform
   ) ),
@@ -246,6 +248,25 @@ VALID_FUNS <- c(
   ##   type=list("vecrec", c("e1", "e2")), code.gen=code_gen_arith,
   ##   res.type='preserve.int'
   ## ),
+  # - Unary Ops ----------------------------------------------------------------
+
+  ## + and - are remapped to uplus and uminus via a transform by cgen_bin as
+  ## we don't allow the same function name to have different sizing methods
+  list(
+    cgen(
+      "uplus", fun=uplus, type=list("arglen", "x"), code.gen=code_gen_unary,
+      res.type="preserve.int"
+    ),
+    cgen(
+      "uminus", fun=uminus, type=list("arglen", "x"), code.gen=code_gen_unary,
+      res.type="preserve.int"
+    ),
+    cgen(
+      "!", type=list("arglen", 1L), code.gen=code_gen_unary,
+      res.type="logical"
+    )
+  ),
+
   # - Other Logical ------------------------------------------------------------
 
   list(
