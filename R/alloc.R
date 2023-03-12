@@ -187,10 +187,11 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
 
       # If data inputs are know to be integer, and function returns integer for
       # those, make it known the result should be integer.
-      res.typeof <- if(
-        VALID_FUNS[[c(name, "preserve.int")]] &&
-        all(alloc[['typeof']][stack['id', ]] == "integer")
-      ) "integer" else "double"
+      res.typeof <- if(VALID_FUNS[[c(name, "res.type")]] == 'preserve.int') {
+        if(all(alloc[['typeof']][stack['id', ]] %in% c("logical", "integer")))
+          "integer"
+        else "double"
+      } else VALID_FUNS[[c(name, "res.type")]]
 
       # Compute result size
       if(ftype[[1L]] == "constant") {
@@ -399,7 +400,7 @@ append_dat <- function(dat, vdat, name=NULL, depth) {
   if(is.na(size) && !type %in% c("grp", "tmp"))
     stop("Internal Eror: NA sizes only for temporary allocs or group.")
 
-  new.num <- if(is.integer(new)) as.numeric(new) else new
+  new.num <- if(is.integer(new) || is.logical(new)) as.numeric(new) else new
   dat[['dat']] <- c(dat[['dat']], list(new.num))
 
   dat[['i']] <- length(dat[['dat']])
@@ -480,15 +481,18 @@ vec_dat <- function(
   vec.dat
 }
 is.vec_dat <- function(x)
-  is.list(x) && all(c('new', 'type', 'group', 'size') %in% names(x)) &&
+  is.list(x) &&
+  all(c('new', 'type', 'group', 'size', 'typeof') %in% names(x)) &&
   is.character(x[['type']]) &&
-  isTRUE(x[['type']] %in% c("res", "grp", "ext", "tmp", "sts")) &&
-  (is.numeric(x[['new']]) || is.integer(x[['new']]) || is.null(x[['new']])) &&
+  isTRUE(x[['type']] %in% c("res", "grp", "ext", "tmp", "sts")) && (
+    is.numeric(x[['new']]) || is.integer(x[['new']]) ||
+    is.logical(x[['new']]) || is.null(x[['new']])
+  ) &&
   is.numeric(x[['group']]) && length(x[['group']]) == 1L &&
   !is.na(x[['group']]) &&
   is.numeric(x[['size']]) && length(x[['size']]) == 1L &&
   is.character(x[['typeof']]) && length(x[['typeof']]) == 1L &&
-  isTRUE(x[['typeof']] %in% c("double", "integer"))
+  isTRUE(x[['typeof']] %in% c("double", "integer", "logical"))
 
 ## Stack used to track parameters ahead of reduction when processing call.
 init_stack <- function() {

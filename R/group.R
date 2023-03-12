@@ -120,7 +120,10 @@ group_exec_int <- function(
   } else {
     numeric()
   }
-  if(alloc[['alloc']][['typeof']][res.i] == "integer") res <- as.integer(res)
+  if(alloc[['alloc']][['typeof']][res.i] == "integer")
+    res <- as.integer(res)
+  else if(alloc[['alloc']][['typeof']][res.i] == "logical")
+    res <- as.logical(res)
 
   # Generate and attach group labels, small optimization for predictable groups
   if(mode != "ungrouped") {

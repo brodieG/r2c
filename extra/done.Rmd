@@ -1,5 +1,34 @@
+## Won't Do
+
+* Should we add `rm` statements (optionally) for `reuse_calls` use in R (not in
+  `r2c` as there we track lifetime, and none of the allocations can be released
+  until the end) to reduce peak memory usage?  Doesn't seem worth it.
+
+* Cleanup `code_gen_x`.  A lot of things should be parametrized so that we're
+  consistent across `code_gen` functions.  This is going to be complicated to do
+  flexibly enough.  Definitely can be done but will be annoying.
+
 ## Done
 
+### v0.3.0
+
+* Test that unary plus:
+  * Executes vcopy correctly when needed
+  * Coerces logical to integer
+* Any / All accept dots as arguments.
+* Check NA behavior on logical and relational operators, and switch to use e.g.
+  `islessequal`, etc. (and how do we test equality/non-equality efficiently)?
+
+### v0.0.0-0.2.0
+
+* Support for functions with defaults that need to be evaluated?  No.  This
+  substantially increases complexity because we have to do so in the function
+  evaluation environment and need access to all the other arguments.  We could
+  potentially support things like `quantile(..., seq(0, 1, .25))`.
+* Side effects from evaluation of control parameters?  Where should assigned
+  variables reside?  Update: we won't support non-literal (or limited anyway)
+  control parameters.
+* Make `fun` vs `r2c.fun` consistent across runners and compilation funs?
 * Look into the big unitizers. "big.R" likely needs to be a regular test file,
   not a unitizer one.  Also some of the other files are a bit big.  Some of the
   other files got big without even any of tests changing (e.g. summary.R was not

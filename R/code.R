@@ -15,8 +15,10 @@
 
 #' @include code-assign-control.R
 #' @include code-summary.R
-#' @include code-arith.R
+#' @include code-bin.R
 #' @include code-pow.R
+#' @include code-logical.R
+#' @include code-unary.R
 
 NULL
 
@@ -121,14 +123,18 @@ is.valid_constant <- function(type)
 #'
 #' @param ctrl.validate a function to validate both control and flag parameters,
 #'   should `stop`, or return the flag parameters encoded into an integer.
+#' @param res.type one of "double", "integer", "logical", or "preserve.int", the
+#'   latter equivalent to integer if all stack inputs are "integer" or
+#'   "logical", double otherwise.
 #'
 #' @return a list containing the above information after validating it.
 
-fap_fun <- function(
-  name, fun, defn=if(typeof(fun) == 'closure') fun,
+cgen <- function(
+  name, fun=get(name, baseenv(), mode="function"),
+  defn=if(typeof(fun) == 'closure') fun,
   ctrl.params=character(), flag.params=character(),
   type, code.gen, ctrl.validate=function(...) 0L, transform=identity,
-  preserve.int=FALSE
+  res.type="double"
 ) {
   vetr(
     name=CHR.1,
@@ -146,7 +152,7 @@ fap_fun <- function(
     code.gen=is.function(.),
     ctrl.validate=is.function(.),
     transform=is.function(.),
-    preserve.int=LGL.1
+    res.type=CHR.1 && . %in% c('logical', 'double', 'numeric', 'preserve.int')
   )
   if(length(intersect(ctrl.params, flag.params)))
     stop("Control and Flag parameters may not overlap.")
@@ -167,116 +173,170 @@ fap_fun <- function(
   list(
     name=name, fun=fun, defn=defn, ctrl=ctrl.params, flag=flag.params,
     type=type, code.gen=code.gen, ctrl.validate=ctrl.validate,
-    transform=transform, preserve.int=preserve.int
+    transform=transform, res.type=res.type
   )
 }
+## Specialized for binops
+cgen_bin <- function(name, res.type="preserve.int") {
+  cgen(
+    name, defn=NULL,
+    type=list("vecrec", 1:2), code.gen=code_gen_bin, res.type=res.type,
+    transform=unary_transform
+  )
+}
+## Specialized for binops that require the macros
+cgen_bin2 <- function(name, res.type="preserve.int") {
+  cgen(
+    name, defn=NULL,
+    type=list("vecrec", 1:2), code.gen=code_gen_bin2, res.type=res.type
+  )
+}
+
 # Make sure "(" is not added to this list as it's pre-processed away.
-VALID_FUNS <- list(
-  # - Base Funs ----------------------------------------------------------------
-  fap_fun(
-    "sum", base::sum, function(..., na.rm=FALSE) NULL,
-    flag.params="na.rm",
-    type=list("constant", 1L),
-    code.gen=code_gen_summary,
-    ctrl.validate=ctrl_val_summary,
-    preserve.int=TRUE
+VALID_FUNS <- c(
+  # - Base Stats ---------------------------------------------------------------
+  list(
+    cgen(
+      "sum", defn=function(..., na.rm=FALSE) NULL,
+      flag.params="na.rm",
+      type=list("constant", 1L),
+      code.gen=code_gen_summary,
+      ctrl.validate=ctrl_val_summary,
+      res.type='preserve.int'
+    ),
+    cgen(
+      "mean", defn=base::mean.default,
+      flag.params="na.rm", ctrl.params="trim",
+      type=list("constant", 1L),
+      code.gen=code_gen_summary,
+      ctrl.validate=ctrl_val_summary
+    ),
+    cgen("length", type=list("constant", 1L), code.gen=code_gen_length),
+    cgen(
+      "all", defn=function(..., na.rm=FALSE) NULL,
+      flag.params="na.rm",
+      type=list("constant", 1L),
+      code.gen=code_gen_summary,
+      ctrl.validate=ctrl_val_summary,
+      res.type='logical'
+    ),
+    cgen(
+      "any", defn=function(..., na.rm=FALSE) NULL,
+      flag.params="na.rm",
+      type=list("constant", 1L),
+      code.gen=code_gen_summary,
+      ctrl.validate=ctrl_val_summary,
+      res.type='logical'
+    )
   ),
-  fap_fun(
-    "mean", fun=base::mean, defn=base::mean.default,
-    flag.params="na.rm",
-    ctrl.params="trim",
-    type=list("constant", 1L),
-    code.gen=code_gen_summary,
-    ctrl.validate=ctrl_val_summary
-  ),
-  fap_fun(
-    "length", base::length, defn=NULL,
-    type=list("constant", 1L), code.gen=code_gen_length
-  ),
-  fap_fun(
-    "+", base::`+`, defn=NULL,
-    type=list("vecrec", 1:2), code.gen=code_gen_arith,
-    preserve.int=TRUE
-  ),
-  fap_fun(
-    "-", base::`-`, defn=NULL,
-    type=list("vecrec", 1:2), code.gen=code_gen_arith,
-    preserve.int=TRUE
-  ),
-  fap_fun(
-    "*", base::`*`, defn=NULL,
-    type=list("vecrec", 1:2), code.gen=code_gen_arith,
-    preserve.int=TRUE
-  ),
-  fap_fun(
-    "/", base::`/`, defn=NULL,
-    type=list("vecrec", 1:2), code.gen=code_gen_arith
-  ),
+  # - Vec Binops ---------------------------------------------------------------
+
+  lapply(c("+", "-", "*", "/"), cgen_bin),
+  list(
+    cgen(
+       # needs transform, could be folded into cgen_bin like e.g. uminus
+       "^", type=list("vecrec", 1:2), code.gen=code_gen_pow,
+       transform=pow_transform
+  ) ),
+  lapply(c(">", ">=", "<", "<=", "==", "!="), cgen_bin2, res.type="logical"),
+  lapply(c("|", "&"), cgen_bin2, res.type='logical'),
   ## # Not implemented for now given not just a simple counterpart, but
-  ## # could add a function like square to deal with it..
-  ## fap_fun(
+  ## # could add a function like square to deal with it..  See myfmod in
+  ## src/arithmetic.c in R sources
+  ## cgen(
   ##   "%%", base::`%%`, defn=function(e1, e2) NULL,
   ##   type=list("vecrec", c("e1", "e2")), code.gen=code_gen_arith,
-  ##   preserve.int=TRUE
+  ##   res.type='preserve.int'
   ## ),
-  fap_fun(
-    "^", base::`^`, defn=NULL,
-    type=list("vecrec", 1:2), code.gen=code_gen_pow,
-    transform=pow_transform
+  # - Unary Ops ----------------------------------------------------------------
+
+  ## + and - are remapped to uplus and uminus via a transform by cgen_bin as
+  ## we don't allow the same function name to have different sizing methods
+  list(
+    cgen(
+      "uplus", fun=uplus, type=list("arglen", "x"), code.gen=code_gen_unary,
+      res.type="preserve.int"
+    ),
+    cgen(
+      "uminus", fun=uminus, type=list("arglen", "x"), code.gen=code_gen_unary,
+      res.type="preserve.int"
+    ),
+    cgen(
+      "!", type=list("arglen", 1L), code.gen=code_gen_unary,
+      res.type="logical"
+    )
+  ),
+
+  # - Other Logical ------------------------------------------------------------
+
+  list(
+    cgen(
+      "&&", type=list("constant", 1L), code.gen=code_gen_lgl2,
+      res.type="logical"
+    ),
+    cgen(
+      "||", type=list("constant", 1L), code.gen=code_gen_lgl2,
+      res.type="logical"
+    ),
+    cgen(
+      "ifelse", type=list("arglen", "test"), code.gen=code_gen_ifelse,
+      res.type="preserve.int" # not faithful to what R does
+    )
   ),
   # - Assign / Control----------------------------------------------------------
 
-  fap_fun(
-    "<-", fun=base::`<-`, defn=NULL,
-    type=list("arglen", 2L),
-    code.gen=code_gen_assign
+  list(
+    cgen("<-", type=list("arglen", 2L), code.gen=code_gen_assign),
+    cgen("=", type=list("arglen", 2L), code.gen=code_gen_assign),
+    cgen(
+      "{", defn=function(...) NULL,
+      # arglen of last argument matching dots
+      type=list("arglen", "...", function(x) x[length(x)]),
+      code.gen=code_gen_braces
+    )
   ),
-  fap_fun(
-    "=", fun=base::`=`, defn=NULL,
-    type=list("arglen", 2L),
-    code.gen=code_gen_assign
-  ),
-  fap_fun(
-    "{", fun=base::"{", defn=function(...) NULL,
-    # arglen of last argument matching dots
-    type=list("arglen", "...", function(x) x[length(x)]),
-    code.gen=code_gen_braces
-  ),
-
   # - r2c funs -----------------------------------------------------------------
-  fap_fun(
-    "mean1", fun=mean1, defn=mean1,
-    flag.params="na.rm",
-    type=list("constant", 1L),
-    code.gen=code_gen_summary,
-    ctrl.validate=ctrl_val_summary
-  ),
-  fap_fun(
-    "square", fun=square, defn=square,
-    type=list("arglen", "x"),
-    code.gen=code_gen_square
-  ),
-  fap_fun(
-    "vcopy", fun=vcopy, defn=NULL,
-    type=list("arglen", 1L),
-    code.gen=code_gen_copy
+  list(
+    cgen(
+      "mean1", fun=mean1,
+      flag.params="na.rm",
+      type=list("constant", 1L),
+      code.gen=code_gen_summary,
+      ctrl.validate=ctrl_val_summary
+    ),
+    cgen(
+      "square", fun=square, defn=square,
+      type=list("arglen", "x"),
+      code.gen=code_gen_square
+    ),
+    cgen(
+      "vcopy", fun=vcopy, defn=NULL,
+      type=list("arglen", 1L),
+      code.gen=code_gen_copy,
+      res.type="preserve.int"   # for uplus
+    )
   )
 )
 names(VALID_FUNS) <- vapply(VALID_FUNS, "[[", "", "name")
 # even though we allow ::, we don't allow duplicate function names for
 # simplicity.
-stopifnot(!anyDuplicated(names(VALID_FUNS)))
+stopifnot(
+  !anyDuplicated(names(VALID_FUNS)),
+  identical(sort(names(VALID_FUNS)), sort(names(FUN.NAMES)))
+)
 
 code_blank <- function()
   list(
     defn="", name="", call="", narg=FALSE, flag=FALSE, ctrl=FALSE,
-    headers=character()
+    headers=character(), defines=character(), noop=FALSE
   )
 code_valid <- function(code, call) {
   isTRUE(check <- vet(CHR.1, code[['defn']])) &&
     isTRUE(check <- vet(CHR.1, code[['name']])) &&
     isTRUE(check <- vet(CHR.1, code[['call']])) &&
-    isTRUE(check <- vet(CHR, code[['headers']]))
+    isTRUE(check <- vet(CHR || NULL, code[['headers']])) &&
+    isTRUE(check <- vet(CHR || NULL, code[['defines']])) &&
+    isTRUE(check <- vet(LGL.1, code[['noop']]))
   if(!isTRUE(check))
     stop("Generated code format invalid for `", deparse1(call), "`:\n", check)
 
@@ -316,11 +376,16 @@ call_valid <- function(call) {
 #' @param flag TRUE if function has flag parameters
 #' @param ctrl TRUE if function has control parameters
 #' @param noop TRUE if function is a noop, in which case will be commented out
+#' @param headers character vector with header names that need to be #included
+#' @param defines character with #define directives
 
 code_res <- function(
   defn, name, narg=FALSE, flag=FALSE, ctrl=FALSE,
-  headers=character(), noop=FALSE
+  headers=character(), defines=character(), noop=FALSE
 ) {
+  if(is.na(name)) stop("Internal Error: mismapped function name.")
+  if(noop && !name %in% FUN.NAMES[PASSIVE.SYM])
+    stop("Internal Error: noop declared for ", name, ", but not in PASSIVE.SYM")
   call <- sprintf(
     "%s%s(%s%s%s%s);",
     if(noop) "// NO-OP: " else "",
@@ -331,7 +396,9 @@ code_res <- function(
     if(ctrl) paste0(", ", CALL.CTRL) else ""
   )
   list(
-    defn=defn, name=name, call=call, headers=headers,
+    defn=defn, name=name, call=call,
+    headers=if(is.null(headers)) character() else headers,
+    defines=if(is.null(defines)) character() else defines,
     narg=narg, flag=flag, ctrl=ctrl, noop=noop
   )
 }

@@ -120,8 +120,10 @@ function (e.g. \code{r2cq(a + b)}).
 Currently the following functions are supported in \code{x} (or in the body of \code{x}
 for \code{r2cf}):
 \itemize{
-\item Binary operators: \code{+}, \code{-}, \code{*}, \code{/}, and \code{^}.
-\item Statistics: \code{mean}, \code{sum}, \code{length}.
+\item Arithmetic functions: \code{+}, \code{-}, \code{*}, \code{/}, and \code{^}.
+\item Relational functions: \code{<}, \code{<=}, \code{>}, \code{>=}, \code{==}, \code{!=}.
+\item Logical functions: \code{&}, \code{&&}, \code{|}, \code{||}, \code{!}, \code{ifelse}.
+\item Statistics: \code{mean}, \code{sum}, \code{length}, \code{all}, \code{any}.
 \item Assignment and braces: \verb{<-}, \code{=}, and \verb{\{}.
 }
 
@@ -133,9 +135,10 @@ without attaching the \code{{r2c}} package.  Empty braces are disallowed, and
 assignments may only be done at the top level or at a brace level (see
 examples).  References to external variables (i.e. not in \code{data} or
 \code{MoreArgs}) that cause side effects (e.g. \link[=bindenv]{active bindings},
-promises the evaluation of which cause side effects)
-may cause unexpected results.  All external references are evaluated once
-before any other computations are carried out.
+promises the evaluation of which cause side effects) may cause unexpected
+results.  All external references are evaluated once before any other
+computations are carried out. \code{ifelse} will return in a common type that can
+support both \code{yes} and \code{no} values.
 
 For \code{r2cl} and \code{r2cq}, symbols used as parameters to \code{call} and its
 constituent sub-calls (e.g. the \code{x} and \code{y} in \code{sum(x) + y}) will become

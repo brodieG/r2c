@@ -66,7 +66,8 @@ is.r2c_fun <- function(x)
 
 is.num_naked <- function(x)
   vapply(x, is.vector, TRUE, "numeric") |
-  vapply(x, is.vector, TRUE, "integer")
+  vapply(x, is.vector, TRUE, "integer") |
+  vapply(x, is.vector, TRUE, "logical")
 
 not_num_naked_err <- function(name, val) {
   has.class <- length(class(val)) && !identical(class(val), typeof(val))

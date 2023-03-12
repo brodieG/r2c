@@ -64,12 +64,17 @@ preprocess <- function(call, formals, optimize=FALSE) {
 
   # Deduplicate the code and generate the final C file (need headers).
   headers <- unique(unlist(lapply(x[['code']], "[[", "headers")))
+  defines <- unique(unlist(lapply(x[['code']], "[[", "defines")))
   codes <- vapply(x[['code']], "[[", "", "defn")
   names <- vapply(x[['code']], "[[", "", "name")
   codes.m <- match(codes, unique(codes))
   names.m <- match(names, unique(names))
   if(!identical(codes.m, names.m))
     stop("Internal error: functions redefined with changing definitions.")
+
+  # noops don't need their C code generated
+  noop <- vapply(x[['code']], "[[", TRUE, "noop")
+  codes <- codes[!noop]
   codes.u <- paste0(
     gsub("^(\\s|\\n)+|(\\s|\\n)+$", "", unique(codes[nzchar(codes)])),
     "\n"
@@ -117,6 +122,7 @@ preprocess <- function(call, formals, optimize=FALSE) {
   code.txt <- c(
     # Headers, system headers first (are these going to go in right order?)
     paste("#include", c(headers, "<R.h>", "<Rinternals.h>")),
+    if(length(defines)) c("", defines),
     "",
     # Function Definitions
     codes.u,
@@ -459,6 +465,8 @@ copy_last <- function(x) {
       if(length(x) != 3L)
         stop("Internal Error: bad assign call structure.")
       x[[3L]] <- copy_last(x[[3L]])
+    } else if (call.sym == "uplus") {
+      x[[2L]] <- copy_last(x[[2L]])
     } else if(call.sym %in% PASSIVE.SYM)
       stop("Internal Error: unhandled passive calls")
   }

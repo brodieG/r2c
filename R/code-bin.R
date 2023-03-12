@@ -14,18 +14,41 @@
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
 #' @include constants.R
+#' @include code-unary.R
 
 NULL
 
-
-OP.NAMES <- c(
-  "+"="add", "-"="subtract", "*"="multiply", "/"="divide", "%%"="modulo"
+OP.OP <- c(
+  "+"="+", "-"="-", "*"="*", "/"="/",
+  # "%%"="%",
+  ">"="GT", ">="="GTE", "<"="LT", "<="="LTE", "=="="EQ", "!="="NEQ",
+  "&"="AND", "|"="OR"
 )
-OP.OP <- c("+"="+", "-"="-", "*"="*", "/"="/", "%%"="%")
+## Some question as to whether these would re-evalute the memory fetch, but
+## presumably compiler is smart enough to re-use the registers.  Also,
+## presumably Only relational operators trigger exceptions, not equality (C99
+## 7.12.14).  Assuming the negation for isunordered is worth allowing the most
+## likely branch first, but have not tested.  Not clear that returning NA_REAL
+## here is correct as one of the inputs could be regular NaN.
+OP.DEFN <- c(
+  ">"="#define GT(x, y) (!isunordered(x, y) ? (x) > (y) : NA_REAL)",
+  ">="="#define GTE(x, y) (!isunordered(x, y) ? (x) >= (y) : NA_REAL)",
+  "<"="#define LT(x, y) (!isunordered(x, y) ? (x) < (y) : NA_REAL)",
+  "<="="#define LTE(x, y) (!isunordered(x, y) ? (x) <= (y) : NA_REAL)",
+  "=="="#define EQ(x, y) (!isunordered(x, y) ? (x) == (y) : NA_REAL)",
+  "!="="#define NEQ(x, y) (!isunordered(x, y) ? (x) != (y) : NA_REAL)",
+  "&"="#define AND(x, y) ((x) == 0 || (y) == 0 ? 0 : isunordered(x, y) ? NA_REAL : 1)",
+  "|"="#define OR(x, y) (!ISNAN(x) && (x) || !ISNAN(y) && (y) ? 1 : (x) == 0 && (y) == 0 ? 0 : NA_REAL)"
+)
+stopifnot(
+  all(names(OP.OP) %in% names(FUN.NAMES)),
+  all(names(OP.DEFN) %in% names(OP.OP))
+)
 
-## Binary Opertors or Functions with Vecto Recycling
+## Binary Operators or Functions with Vector Recycling
 ##
-## Use %3$s for functions, %4$s for operators.
+## Use %3$s for functions like pow, %4$s for operators (which should be a comma
+## when using functions).
 ##
 ## This supports unequal sizes.  We looked at having specialized functions for
 ## each of the possible length pairings, but that didn't seem to improve things
@@ -46,7 +69,7 @@ static void %1$s(%2$s) {
     lens[dires] = 0;
     return;
   }
-  // Not all "arith" operators are commutative
+  // Not all "bin" operators are commutative
   // so we cannot play tricks with switching parameter order
 
   // Mod iterate by region?
@@ -76,14 +99,14 @@ static void %1$s(%2$s) {
     lens[dires] = len2;
   }
 }')
-code_gen_arith <- function(fun, args.reg, args.ctrl, args.flags) {
+code_gen_bin <- function(fun, args.reg, args.ctrl, args.flags) {
   vetr(
-    CHR.1 && . %in% names(OP.NAMES),
-    args.reg=list(),
+    CHR.1 && . %in% setdiff(names(OP.OP), names(OP.DEFN)),
+    args.reg=list(NULL, NULL),
     args.ctrl=list() && length(.) == 0L,
     args.flags=list() && length(.) == 0L
   )
-  name <- OP.NAMES[fun]
+  name <- FUN.NAMES[fun]
   op <- OP.OP[fun]      # needed for modulo
   defn <- sprintf(
     bin_op_vec_rec, name, toString(F.ARGS.BASE), "", op,
@@ -91,5 +114,21 @@ code_gen_arith <- function(fun, args.reg, args.ctrl, args.flags) {
   )
   code_res(defn=defn, name=name, headers=character())
 }
-
-
+# For the ones that need the defined macro
+code_gen_bin2 <- function(fun, args.reg, args.ctrl, args.flags) {
+  vetr(
+    CHR.1 && . %in% names(OP.DEFN),
+    args.reg=list(),
+    args.ctrl=list() && length(.) == 0L,
+    args.flags=list() && length(.) == 0L
+  )
+  name <- FUN.NAMES[fun]
+  op <- OP.OP[fun]      # needed for modulo
+  defn <- sprintf(
+    bin_op_vec_rec, name, toString(F.ARGS.BASE), op, ",",
+    IX[['I.STAT']], IX[['STAT.RECYCLE']]
+  )
+  code_res(
+    defn=defn, name=name, headers=character(), defines=OP.DEFN[fun]
+  )
+}
