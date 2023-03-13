@@ -1,3 +1,40 @@
+# Interrupt
+
+Ideally we would track how many iterations we have at some inner loop level, but
+be able to keep that number alive across function iterations.  So we want a
+looping construct that has access to how many iterations have occurred to this
+point, and how many iterations we want per break.
+
+Most annoying scenario, e.g.:
+
+* We've already done 1 iteration.
+* We want to break every 100.
+* Our current length is 201.
+
+So we need one loop to finish out the current iteration?  No, we can just have a
+loop that starts.
+
+    i = i_prev = 0;
+    i_interrupt;    // interrupt counter
+    interrupt_at;   // when to interrupt
+
+    do {
+      i_stop = i + interrupt_at;
+      if(i_stop > i_max) i_stop = i_max;
+
+      for(; i < i_stop; ++i) ...
+
+      i_interrupt += i_stop - i_prev;
+      if(i_interrupt >= interrupt_at) {
+        CheckInterrupt();
+        i_interrupt = 0;
+      }
+      if(i == i_max) break;
+      i_prev = i;
+    } while(1)
+
+
+
 # Code Generation
 
 Function needs to:

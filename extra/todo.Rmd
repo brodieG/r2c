@@ -23,6 +23,12 @@
 
 ## Current
 
+* For interrupts:
+  * The parts of headers from r2c that we want in "headers"?
+  * Timing impact?
+  * Look again at mod-iterate.
+  * 
+
 * Cleanup `code_gen_x`.  A lot of things should be parametrized so that we're
   consistent across `code_gen` functions.
 
