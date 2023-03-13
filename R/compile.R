@@ -35,7 +35,8 @@ make_shlib <- function(x, dir, quiet) {
   writeLines(x, file.src)
   comp.out <- system2(
     R.home("bin/R"), c("CMD", "SHLIB", file.src),
-    stdout=TRUE, stderr=TRUE
+    stdout=TRUE, stderr=TRUE,
+    env=paste0("PKG_CFLAGS=-I", system.file(package='r2c', 'headers'))
   )
   status <- attr(comp.out, 'status')
   if(!is.null(status) && status != 0) {

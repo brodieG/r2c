@@ -62,7 +62,7 @@ static void %1$s(%2$s) {
   double * res = data[dires];
   R_xlen_t len = lens[di0];
 
-  for(R_xlen_t i = 0; i < len; ++i) res[i] = %3$s(%4$s e1[i]);
+  LOOP_W_INTERRUPT(len, {res[i] = %3$s(%4$s e1[i]);});
 
   lens[dires] = len;
 }')
