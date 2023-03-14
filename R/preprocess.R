@@ -124,7 +124,7 @@ preprocess <- function(call, formals, optimize=FALSE) {
     paste(
       "#include",
       c(
-        headers, "<R.h>", "<Rinternals.h>", "<R_ext/Utils.h>", '"r2c.h"',
+        headers, '"r2c-const.h"', "<R.h>", "<Rinternals.h>", "<R_ext/Utils.h>",
         '"loop-interrupt.h"'
       )
     ),

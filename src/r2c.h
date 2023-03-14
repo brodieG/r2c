@@ -15,7 +15,6 @@
  * Go to <https://www.r-project.org/Licenses> for a copies of the licenses.
  */
 
-
 #ifndef R2C_H
 #define R2C_H
 #define R_NO_REMAP
@@ -26,15 +25,21 @@
 #include <Rversion.h>
 #include <stdint.h>
 
+// vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+// KEEP SYNC'ED WITH inst/headers/r2c-const.h
 // Important indices in the alloc data (0-base)
+
 #define I_STAT      0   // status flags
 #define I_RES       1   // final call result
 #define I_GRP       2   // index start of group varying data
-
 // Indices in the I_STAT element of the alloc_data
 #define STAT_N       2  // STATUS entry count (not an index)
 #define STAT_RECYCLE 0  // bad recycling
 #define STAT_LOOP    1  // loop counter for interrupts
+
+// KEEP SYNC'ED WITH inst/headers/r2c-const.h
+// ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
 
 struct const_dat {const char * name; const int value;};
 

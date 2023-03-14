@@ -36,11 +36,13 @@ static void %%s(%%s) {
 }'
 loop.base <- '
 long double tmp = 0;
+R_xlen_t i;
 if(!narm)
-  for(R_xlen_t i = 0; i < len_n; ++i) tmp += dat[i];
+  LOOP_W_INTERRUPT(len_n, {tmp += dat[i];});
 else
-  for(R_xlen_t i = 0; i < len_n; ++i)
+  LOOP_W_INTERRUPT(len_n, {
     if(!ISNAN(dat[i])) tmp += dat[i];%s
+  });
 '
 repad <- function(x, pad=2) {
   split <- unlist(strsplit(x, '\n', fixed=TRUE))
@@ -83,14 +85,14 @@ int has_nan = 0;
 double tmp = %2$d;
 R_xlen_t i;
 if(!narm)
-  for(i = 0; i < len_n; ++i) {
+  LOOP_W_INTERRUPT(len_n, {
     if(ISNAN(dat[i])) has_nan = 1;
     else if(dat[i] %1$s 0) break;
-  }
+  });
 else
-  for(i = 0; i < len_n; ++i) {
+  LOOP_W_INTERRUPT(len_n, {
     if(!ISNAN(dat[i]) && dat[i] %1$s 0) break;
-  }
+  });
 
 if(i < len_n) tmp = dat[i] != 0;
 else if(has_nan) tmp = NA_REAL;

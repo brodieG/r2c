@@ -38,13 +38,14 @@
 ## Changes from R implementation:
 ## * Adds na removal, R's implementation does that in R
 ## * Replaces LDOUBLE by long double
-## * Removes ITERATE_BY_REGION
+## * Replaces ITERATE_BY_REGION with LOOP_W_INTERRUPT
 
 loop.mean.base <- '
+R_xlen_t i;
 if(!narm)
-  for (R_xlen_t k = 0; k < n; k++) %%1$s;
+  LOOP_W_INTERRUPT(n, %%1$s;);
 else
-  for (R_xlen_t k = 0; k < n; k++) if(!isnan(dx[k])) %s'
+  LOOP_W_INTERRUPT(n, if(!isnan(dx[i])) %s;);'
 
 lp.mn <- sprintf(loop.mean.base, "%1$s;")
 # this one is to set the count of non-na elements
@@ -60,10 +61,10 @@ make_loop_mean <- function(base, term, pad=2) {
     term
   )
 }
-loop_mean1 <- make_loop_mean(lp.mn.0, 's += dx[k]')
-loop_mean2 <- make_loop_mean(lp.mn, 's += dx[k]/m', 4)
-loop_mean3 <- make_loop_mean(lp.mn, 't += (dx[k] - s)', 4)
-loop_mean4 <- make_loop_mean(lp.mn, 't += (dx[k] - s)/m', 4)
+loop_mean1 <- make_loop_mean(lp.mn.0, 's += dx[i]')
+loop_mean2 <- make_loop_mean(lp.mn, 's += dx[i]/m', 4)
+loop_mean3 <- make_loop_mean(lp.mn, 't += (dx[i] - s)', 4)
+loop_mean4 <- make_loop_mean(lp.mn, 't += (dx[i] - s)/m', 4)
 
 f_mean <- sprintf('
 static void %%s(%%s) {
