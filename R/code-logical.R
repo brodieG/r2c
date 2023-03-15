@@ -69,21 +69,32 @@ static void %s(%s) {
   R_xlen_t yes_len = lens[di1];
   R_xlen_t no_len = lens[di1];
   double * res = data[dires];
+  R_xlen_t i;
 
   if(cond_len == yes_len && cond_len == no_len) {
-    for(R_xlen_t i = 0; i < cond_len; ++i) {
+    LOOP_W_INTERRUPT1(cond_len, {
       if(!ISNAN(cond[i])) res[i] = cond[i] ? yes[i] : no[i];
       else res[i] = NA_REAL;
-    }
-  } else {
-    R_xlen_t j = 0;
-    R_xlen_t k = 0;
-    for(R_xlen_t i = 0; i < cond_len; ++i, ++j, ++k) {
-      if(j > yes_len) j = 0;
-      if(k > no_len) k = 0;
+    });
+  } else if (yes_len > 0 && no_len > 0) {
+    R_xlen_t j, k;
+    LOOP_W_INTERRUPT3(cond_len, yes_len, no_len, {
       if(!ISNAN(cond[i])) res[i] = cond[i] ? yes[j] : no[k];
       else res[i] = NA_REAL;
-  } }
+    });
+  } else if (yes_len > 0) {
+    R_xlen_t j;
+    LOOP_W_INTERRUPT2(cond_len, yes_len, {
+      if(!ISNAN(cond[i])) res[i] = cond[i] ? yes[j] : NA_REAL;
+      else res[i] = NA_REAL;
+    });
+  } else if (no_len > 0) {
+    R_xlen_t j;
+    LOOP_W_INTERRUPT2(cond_len, no_len, {
+      if(!ISNAN(cond[i])) res[i] = cond[i] ? NA_REAL : no[j];
+      else res[i] = NA_REAL;
+    });
+  } else LOOP_W_INTERRUPT1(cond_len, res[i] = NA_REAL;););
   lens[dires] = cond_len;
 }'
 code_gen_ifelse <- function(fun, args.reg, args.ctrl, args.flags) {

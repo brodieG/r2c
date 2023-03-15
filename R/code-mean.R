@@ -42,10 +42,8 @@
 
 loop.mean.base <- '
 R_xlen_t i;
-if(!narm)
-  LOOP_W_INTERRUPT(n, %%1$s;);
-else
-  LOOP_W_INTERRUPT(n, if(!isnan(dx[i])) %s;);'
+if(!narm) LOOP_W_INTERRUPT1(n, {%%1$s;});
+else LOOP_W_INTERRUPT1(n, {if(!isnan(dx[i])) %s;});'
 
 lp.mn <- sprintf(loop.mean.base, "%1$s;")
 # this one is to set the count of non-na elements

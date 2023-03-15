@@ -22,7 +22,7 @@
 extern struct const_dat consts[];
 extern int CONST_N;
 
-SEXP R2C_assumptions() {
+SEXP R2C_assumptions(void) {
 #ifndef INFINITY
   Rf_error("C implementation does not define INFINITY.");
 #endif

@@ -63,7 +63,7 @@ static void %1$s(%2$s) {
   R_xlen_t len = lens[di0];
   R_xlen_t i;
 
-  LOOP_W_INTERRUPT(len, {res[i] = %3$s(%4$s e1[i]);});
+  LOOP_W_INTERRUPT1(len, {res[i] = %3$s(%4$s e1[i]);});
 
   lens[dires] = len;
 }')

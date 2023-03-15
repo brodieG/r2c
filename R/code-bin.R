@@ -71,30 +71,22 @@ static void %1$s(%2$s) {
   }
   // Not all "bin" operators are commutative
   // so we cannot play tricks with switching parameter order
-
-  // Mod iterate by region?
   R_xlen_t i, j;
   if(len1 == len2) {
-    for(i = 0; i < len1; ++i) res[i] = %3$s(e1[i] %4$s e2[i]);
+    LOOP_W_INTERRUPT1(len1, {res[i] = %3$s(e1[i] %4$s e2[i]);});
     lens[dires] = len1;
   } else if (len2 == 1) {
-    for(i = 0; i < len1; ++i) res[i] = %3$s(e1[i] %4$s *e2);
+    LOOP_W_INTERRUPT1(len1, {res[i] = %3$s(e1[i] %4$s *e2);});
     lens[dires] = len1;
   } else if (len1 == 1) {
-    for(i = 0; i < len2; ++i) res[i] = %3$s(*e1 %4$s e2[i]);
+    LOOP_W_INTERRUPT1(len2, {res[i] = %3$s(*e1 %4$s e2[i]);});
     lens[dires] = len2;
   } else if (len1 > len2) {
-    for(i = 0, j = 0; i < len1; ++i, ++j) {
-      if(j >= len2) j = 0;
-      res[i] = %3$s(e1[i] %4$s e2[j]);
-    }
+    LOOP_W_INTERRUPT2(len1, len2, res[i] = %3$s(e1[i] %4$s e2[j]););
     if(j != len2) data[%5$s][%6$s] = 1.;   // bad recycle
     lens[dires] = len1;
   } else if (len2 > len1) {
-    for(i = 0, j = 0; i < len2; ++i, ++j) {
-      if(j >= len1) j = 0;
-      res[i] = %3$s(e1[j] %4$s e2[i]);
-    }
+    LOOP_W_INTERRUPT2(len2, len1, res[i] = %3$s(e1[j] %4$s e2[i]););
     if(j != len1) data[%5$s][%6$s] = 1.;   // bad recycle
     lens[dires] = len2;
   }
@@ -110,7 +102,7 @@ code_gen_bin <- function(fun, args.reg, args.ctrl, args.flags) {
   op <- OP.OP[fun]      # needed for modulo
   defn <- sprintf(
     bin_op_vec_rec, name, toString(F.ARGS.BASE), "", op,
-    IX[['I.STAT']], IX[['STAT.RECYCLE']]
+    IX[['I.STAT']], IX[['STAT.RECYCLE']] # these are now available as defines
   )
   code_res(defn=defn, name=name, headers=character())
 }

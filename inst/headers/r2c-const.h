@@ -20,7 +20,7 @@
 #define R_NO_REMAP
 
 // vvvvvvvvvvvvvvvvvvvvvvvvvvv
-// KEEP SYNC'ED WITH src/r2c.h
+// KEEP SYNC'ED WITH src/r2c.h (and rebuild all .o on update)
 
 #define I_STAT      0   // status flags
 #define I_RES       1   // final call result

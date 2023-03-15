@@ -27,6 +27,7 @@
 
 // vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
 // KEEP SYNC'ED WITH inst/headers/r2c-const.h
+// AND UPDATE R2C_constants
 // Important indices in the alloc data (0-base)
 
 #define I_STAT      0   // status flags

@@ -28,7 +28,7 @@ const struct const_dat consts[] = {
 const int CONST_N = sizeof(consts) / sizeof(struct const_dat);
 
 //; Return shared constants from C to R
-SEXP R2C_constants() {
+SEXP R2C_constants(void) {
   SEXP res = PROTECT(Rf_allocVector(VECSXP, CONST_N));
   SEXP res_names = PROTECT(Rf_allocVector(STRSXP, CONST_N));
   for(int i = 0; i < CONST_N; ++i) {
