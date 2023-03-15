@@ -67,7 +67,7 @@ static void %s(%s) {
 
   R_xlen_t cond_len = lens[di0];
   R_xlen_t yes_len = lens[di1];
-  R_xlen_t no_len = lens[di1];
+  R_xlen_t no_len = lens[di2];
   double * res = data[dires];
   R_xlen_t i;
 
@@ -94,7 +94,7 @@ static void %s(%s) {
       if(!ISNAN(cond[i])) res[i] = cond[i] ? NA_REAL : no[j];
       else res[i] = NA_REAL;
     });
-  } else LOOP_W_INTERRUPT1(cond_len, res[i] = NA_REAL;););
+  } else LOOP_W_INTERRUPT1(cond_len, res[i] = NA_REAL;);
   lens[dires] = cond_len;
 }'
 code_gen_ifelse <- function(fun, args.reg, args.ctrl, args.flags) {

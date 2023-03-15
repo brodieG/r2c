@@ -45,7 +45,7 @@ y.split <- split(y, g)
 system.time(g.sum <- vapply(x.split, sum, 0))
 ##   user  system elapsed 
 ##  0.701   0.008   0.713 
-system.time(g.sum.r2c <- group_exec(r2c_sum, g.r2c, x))
+system.time(g.sum.r2c <- group_exec(r2c_sum, x, g.r2c))
 ##   user  system elapsed 
 ##  0.054   0.001   0.056 
 identical(g.sum, g.sum.r2c)

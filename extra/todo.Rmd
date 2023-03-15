@@ -29,6 +29,8 @@
   * Look again at mod-iterate.
   * 
 
+* Change default for `show_c_code` to be `all`.
+
 * Cleanup `code_gen_x`.  A lot of things should be parametrized so that we're
   consistent across `code_gen` functions.
 

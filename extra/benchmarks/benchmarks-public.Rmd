@@ -74,7 +74,7 @@ system.time(g.r2c <- process_groups(g, sorted=TRUE))  # pre-grouping
 r2c_slope1 <- r2cq(
   sum((x - mean1(x)) * (y - mean1(y))) / sum((x - mean1(x))^2)
 )
-system.time(slope.r2c <- group_exec(r2c_slope1, g.r2c, list(x, y)))
+system.time(slope.r2c <- group_exec(r2c_slope1, list(x, y), g.r2c))
 ```
 
 ### Base R and FastR
