@@ -1,0 +1,246 @@
+
+    library(r2c)
+    system.time <- sys.time <- function(exp, reps=11) {
+      res <- matrix(0, reps, 5)
+      time.call <- quote(base::system.time({NULL}))
+      time.call[[2]][[2]] <- substitute(exp)
+      gc()
+      for(i in seq_len(reps)) {
+        res[i,] <- eval(time.call, parent.frame())
+      }
+      structure(res, class='proc_time2')
+    }
+    print.proc_time2 <- function(x, ...) {
+      print(
+        structure(
+          # x[order(x[,3]),][ceiling(nrow(x)/2),],
+          round(colMeans(x), 3),
+          names=c("user.self", "sys.self", "elapsed", "user.child", "sys.child"),
+          class='proc_time'
+    ) ) }
+    set.seed(1)
+    n <- 1e7
+    gn <- 10
+    ng <- n/gn
+    x <- runif(n) * runif(n)  # full 64 bit precision randomness
+    y <- runif(n) * runif(n)  # for later
+    # pre-sorted groups
+    g <- cumsum(sample(c(TRUE, rep(FALSE, gn - 1)), n, replace=TRUE))
+    system.time(g.r2c <- process_groups(g, sorted=TRUE))  # pre-grouping
+    r2c_slope1 <- r2cq(
+      sum((x - mean1(x)) * (y - mean1(y))) / sum((x - mean1(x))^2)
+    )
+    system.time(slope.r2c <- group_exec(r2c_slope1, list(x, y), g.r2c))
+
+## New timings on M2
+
+###  Interrupt 1e7
+
+    > system.time(g.r2c <- process_groups(g, sorted=TRUE))  # pre-grouping
+       user  system elapsed 
+      0.011   0.001   0.013 
+    > r2c_slope1 <- r2cq(
+    +   sum((x - mean1(x)) * (y - mean1(y))) / sum((x - mean1(x))^2)
+    + )
+    > system.time(slope.r2c <- group_exec(r2c_slope1, list(x, y), g.r2c))
+       user  system elapsed 
+      0.090   0.001   0.092 
+    > system.time(slope.r2c <- group_exec(r2c_slope1, list(x, y), g.r2c))
+       user  system elapsed 
+      0.090   0.001   0.091 
+    > system.time(slope.r2c <- group_exec(r2c_slope1, list(x, y), g.r2c))
+       user  system elapsed 
+      0.090   0.001   0.091 
+    > system.time(slope.r2c <- group_exec(r2c_slope1, list(x, y), g.r2c))
+       user  system elapsed 
+      0.090   0.001   0.091 
+
+    r2c_add <- r2cq(a + b)
+    system.time(group_exec(r2c_add, list(x, y), g.r2c))
+    ##   user  system elapsed 
+    ##  0.046   0.006   0.051 
+
+Maybe something is wrong with square?
+
+    r2c_sum <- r2cq(sum(x))
+    r2c_mean <- r2cq(mean(x))
+    r2c_sqr <- r2cq(x^2)
+    r2c_times <- r2cq(a * b)
+    system.time(group_exec(r2c_sum, x, g.r2c))
+    ##   user  system elapsed 
+    ##  0.020   0.001   0.021 
+    system.time(group_exec(r2c_mean, x, g.r2c))
+    ##   user  system elapsed 
+    ##  0.028   0.001   0.029 
+    system.time(group_exec(r2c_sqr, x, g.r2c))
+    ##   user  system elapsed 
+    ##  0.041   0.005   0.046 
+    system.time(group_exec(r2c_times, list(x, y), g.r2c))
+
+###  Interrupt 1e6
+
+Let's mess with interrupt frequency.  Doesn't do much?
+
+    >     system.time(group_exec(r2c_sum, x, g.r2c))
+       user  system elapsed 
+      0.021   0.001   0.021 
+    >     system.time(group_exec(r2c_mean, x, g.r2c))
+       user  system elapsed 
+      0.029   0.001   0.030 
+    >     system.time(group_exec(r2c_sqr, x, g.r2c))
+       user  system elapsed 
+      0.042   0.005   0.048 
+    >     system.time(group_exec(r2c_times, list(x, y), g.r2c))
+       user  system elapsed 
+      0.044   0.005   0.050 
+
+Basically unaffected?
+
+    ## system.time(slope.r2c <- group_exec(r2c_slope1, list(x, y), g.r2c))
+       user  system elapsed 
+      0.091   0.001   0.092 
+
+Not sure what's going on.  Also weird that mult is as slow as div.
+
+    r2c_div <- r2cq(a / b)
+    system.time(group_exec(r2c_div, list(x, y), g.r2c))
+    ##   user  system elapsed 
+    ##  0.045   0.006   0.050 
+
+    r2c_cmean <- r2cq((x - mean1(x)))
+    system.time(group_exec(r2c_cmean, x, g.r2c))
+    ##  user  system elapsed 
+    ## 0.051   0.006   0.057 
+
+    r2c_cmean_mult <- r2cq((x - mean1(x)) * x)
+    system.time(group_exec(r2c_cmean_mult, x, g.r2c))
+    ##   user  system elapsed 
+    ##  0.060   0.006   0.066 
+
+### Interrupt 1e8
+
+Interrupts themselves don't seem to be it.
+
+    system.time(slope.r2c <- group_exec(r2c_slope1, list(x, y), g.r2c))
+    ##   user  system elapsed 
+    ##  0.091   0.001   0.092 
+
+              0           1           2           3           4           5 
+    -0.32159036 -0.18216256 -0.25994317         NaN  0.04540806 -0.02895942 
+
+Just to compare from the old version:
+
+              0           1           2           3           4           5 
+    -0.32159036 -0.18216256 -0.25994317         NaN  0.04540806 -0.02895942 
+
+## Old timings on M2
+
+    r2c_slope1 <- r2cq(
+      sum((x - mean1(x)) * (y - mean1(y))) / sum((x - mean1(x))^2)
+    )
+    > system.time(slope.r2c <- group_exec(r2c_slope1, list(x, y), g.r2c))
+       user  system elapsed 
+      0.051   0.001   0.052 
+    > system.time(slope.r2c <- group_exec(r2c_slope1, list(x, y), g.r2c))
+       user  system elapsed 
+      0.050   0.001   0.051 
+    > system.time(slope.r2c <- group_exec(r2c_slope1, list(x, y), g.r2c))
+       user  system elapsed 
+      0.051   0.001   0.052 
+    > system.time(slope.r2c <- group_exec(r2c_slope1, list(x, y), g.r2c))
+       user  system elapsed 
+      0.051   0.001   0.052 
+
+Oddly just `r2c_add` is fine:
+
+    r2c_add <- r2cq(a + b)
+    system.time(group_exec(r2c_add, list(x, y), g.r2c))
+
+    ## r2c_add <- r2cq(a + b)
+    ## system.time(group_exec(r2c_add, list(x, y), g.r2c))
+       user  system elapsed 
+      0.043   0.006   0.048 
+
+This level of overhead is absolutely not okay.  There is something weird going
+on, all the sub-components time the same, but the slope calculation falls apart
+(and in this case is faster than the component pieces (but there is group
+overhead which is why the pieces are slower than the overall).
+
+    system.time(group_exec(r2c_sum, x, g.r2c))
+    ##   user  system elapsed 
+    ##  0.020   0.001   0.021 
+    system.time(group_exec(r2c_mean, x, g.r2c))
+    ##   user  system elapsed 
+    ##  0.026   0.001   0.026 
+    system.time(group_exec(r2c_sqr, x, g.r2c))
+    ##   user  system elapsed 
+    ##  0.040   0.005   0.045 
+
+One thing is that in all of these the interrupt doesn't happen, whereas in slope
+it will happen several times?
+
+    r2c_times <- r2cq(a * b)
+    system.time(group_exec(r2c_times, list(x, y), g.r2c))
+    ##   user  system elapsed 
+    ##  0.042   0.005   0.047 
+
+Bizarre that the below is the same speed as the overall slope.
+
+    r2c_cmean_mult <- r2cq((x - mean1(x)) * x)
+    system.time(group_exec(r2c_cmean_mult, x, g.r2c))
+    ##   user  system elapsed 
+    ##  0.052   0.006   0.058 
+
+Slightly odd outcomes, but not crazy since the output of a is smaller than b.
+
+    r2c_a <- r2cq(sum((x - mean1(x)) * (y - mean1(y))))
+    r2c_b <- r2cq(x - mean1(x) * (y - mean1(y)))
+    system.time(group_exec(r2c_a, list(x, y), g.r2c))
+    ##   user  system elapsed 
+    ##  0.043   0.001   0.044 
+    system.time(group_exec(r2c_b, list(x, y), g.r2c))
+    ##   user  system elapsed 
+    ##  0.063   0.006   0.069 
+
+    r2c_c <- r2cq(sum(x * y) / sum(x^2))
+    system.time(group_exec(r2c_c, list(x, y), g.r2c))
+    ##   user  system elapsed 
+    ##  0.032   0.001   0.033 
+
+    r2c_d <- r2cq(sum(x * y))
+    system.time(group_exec(r2c_d, list(x, y), g.r2c))
+    ##   user  system elapsed 
+    ##  0.026   0.001   0.026 
+    r2c_e <- r2cq(sum(x * y)/sum(x))
+    system.time(group_exec(r2c_e, list(x, y), g.r2c))
+    ##   user  system elapsed 
+    ##  0.030   0.000   0.031 
+
+## New Timings on M2
+
+Just to keep these close.
+
+    r2c_a <- r2cq(sum((x - mean1(x)) * (y - mean1(y))))
+    r2c_b <- r2cq(x - mean1(x) * (y - mean1(y)))
+    system.time(group_exec(r2c_a, list(x, y), g.r2c))
+    ##   user  system elapsed 
+    ##  0.066   0.001   0.067 
+    system.time(group_exec(r2c_b, list(x, y), g.r2c))
+    ##   user  system elapsed 
+    ##  0.080   0.006   0.086 
+
+    r2c_c <- r2cq(sum(x * y) / sum(x^2))
+    system.time(group_exec(r2c_c, list(x, y), g.r2c))
+    ##   user  system elapsed 
+    ##  0.059   0.001   0.060 
+
+    r2c_d <- r2cq(sum(x * y))
+    system.time(group_exec(r2c_d, list(x, y), g.r2c))
+    ##   user  system elapsed 
+    ##  0.034   0.001   0.035 
+    r2c_e <- r2cq(sum(x * y)/sum(x))
+    system.time(group_exec(r2c_e, list(x, y), g.r2c))
+    ##   user  system elapsed 
+    ##  0.052   0.001   0.053 
+
+
