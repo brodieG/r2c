@@ -1,4 +1,5 @@
 
+
     library(r2c)
     system.time <- sys.time <- function(exp, reps=11) {
       res <- matrix(0, reps, 5)
@@ -31,6 +32,13 @@
       sum((x - mean1(x)) * (y - mean1(y))) / sum((x - mean1(x))^2)
     )
     system.time(slope.r2c <- group_exec(r2c_slope1, list(x, y), g.r2c))
+
+## General Notes
+
+Most likely culprit is compiler is able to combine loops when macros are not
+involved?  Seems unlikely as there is no way for the compiler to know that the
+loop lengths are the same as that's determined by the values in the `lens`
+array.
 
 ## New timings on M2
 
@@ -242,5 +250,53 @@ Just to keep these close.
     system.time(group_exec(r2c_e, list(x, y), g.r2c))
     ##   user  system elapsed 
     ##  0.052   0.001   0.053 
+
+## New Timings on x86
+
+    system.time(slope.r2c <- group_exec(r2c_slope1, list(x, y), g.r2c))
+     user  system elapsed 
+    0.129   0.000   0.130 
+    r2c_d <- r2cq(sum(x * y))
+    system.time(group_exec(r2c_d, list(x, y), g.r2c))
+    ##   user  system elapsed 
+    ##  0.052   0.000   0.052 
+    r2c_e <- r2cq(sum(x * y)/sum(x))
+    system.time(group_exec(r2c_e, list(x, y), g.r2c))
+    ##    user  system elapsed 
+    ##   0.068   0.000   0.069 
+    r2c_f <- r2cq(sum(a + b))
+    system.time(group_exec(r2c_f, list(x, y), g.r2c))
+    ##    user  system elapsed 
+    ##   0.052   0.001   0.053 
+
+    r2c_g <- r2cq(sum(a + b - a))
+    system.time(group_exec(r2c_g, list(x, y), g.r2c))
+    ##   user  system elapsed 
+    ##  0.067   0.001   0.068 
+
+## Old Timings on x86
+
+    system.time(slope.r2c <- group_exec(r2c_slope1, list(x, y), g.r2c))
+       user  system elapsed 
+      0.090   0.001   0.091 
+    r2c_d <- r2cq(sum(x * y))
+    system.time(group_exec(r2c_d, list(x, y), g.r2c))
+       user  system elapsed 
+      0.045   0.000   0.046 
+    r2c_e <- r2cq(sum(x * y)/sum(x))
+    system.time(group_exec(r2c_e, list(x, y), g.r2c))
+       user  system elapsed 
+      0.054   0.000   0.055 
+
+    r2c_f <- r2cq(sum(a + b), dir='tmp')
+    system.time(group_exec(r2c_f, list(x, y), g.r2c))
+    ##   user  system elapsed 
+    ##  0.045   0.000   0.046 
+
+    r2c_g <- r2cq(sum(a + b - a))
+    system.time(group_exec(r2c_g, list(x, y), g.r2c))
+    ##   user  system elapsed 
+    ##  0.054   0.001   0.056 
+
 
 
