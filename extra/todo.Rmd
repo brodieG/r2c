@@ -7,10 +7,6 @@
   name is not `.`.
 * Do we need to document that the `&&` and `||` tokens are lazy?
 
-## Unitizer
-
-* See package env issue.
-
 ## Things to test
 
 * `function(a) if(a) x else y`

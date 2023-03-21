@@ -31,6 +31,8 @@
     r2c_slope1 <- r2cq(
       sum((x - mean1(x)) * (y - mean1(y))) / sum((x - mean1(x))^2)
     )
+    system.time(r2c_slope1(x, y))
+
     system.time(slope.r2c <- group_exec(r2c_slope1, list(x, y), g.r2c))
 
 ## General Notes
@@ -299,4 +301,9 @@ Just to keep these close.
     ##  0.054   0.001   0.056 
 
 
+# One Group tests
+
+Try to isolate where the slowness is coming from
+
+    
 

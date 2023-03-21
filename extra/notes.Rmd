@@ -1,5 +1,7 @@
 # Interrupt
 
+See bench-interrupt for timings and related issues.
+
 Ideally we would track how many iterations we have at some inner loop level, but
 be able to keep that number alive across function iterations.  So we want a
 looping construct that has access to how many iterations have occurred to this
@@ -34,7 +36,6 @@ loop that starts.
     } while(1)
 
 
-
 # Code Generation
 
 Function needs to:
@@ -67,7 +68,7 @@ of the lexical environment, which we did not use to do.
 So something about recording the lexical environment.  And it gets recorded in
 all sorts of places, not just in the embedded objects.  For example:
 
-    try <- tryCatch(.DAT0 <- as.list(environment(), all.names = TRUE), 
+    try <- tryCatch(.DAT0 <- as.list(environment(), all.names = TRUE),
         error = function(e) e)
 
 Captures the environment as a function to the anonymous error function.
@@ -148,6 +149,22 @@ itself:
     ##  [7] "package:utils"     "package:datasets"  "package:methods"
     ## [10] "0x14bab6d10"       "base"              "R_EmptyEnv"
 
+But oddly after the first step in store the parent env gets reset?  This is what
+we see before and after we change the parent to zero.env:
+
+    Browse[2]> unitizer:::env_ancestry(unitizer@items.ref[[1]]@trace[[4]][[2]][['envir']], emptyenv())
+     [1] "0x11fc6b430"       "0x11a4bbfd0"       "0x11fee1c80"
+     [4] "0x11fee1cb8"       "0x11a517da0"       "0x1281913c0"
+     [7] "0x11fda32e0"       "package:r2c"       "package:unitizer"
+    [10] "package:stats"     "package:graphics"  "package:grDevices"
+    [13] "package:utils"     "package:datasets"  "package:methods"
+    [16] "0x1292b4870"       "base"              "R_EmptyEnv"
+    debug: parent.env(unitizer@zero.env) <- baseenv()
+    Browse[2]> n
+    Browse[2]> unitizer:::env_ancestry(unitizer@items.ref[[1]]@trace[[4]][[2]][['envir']], emptyenv())
+    [1] "0x11fc6b430" "0x11a4bbfd0" "0x11fee1c80" "0x11fee1cb8" "base"
+    [6] "R_EmptyEnv"
+
 The problem sees to be that when that environment gets captured, the child env
 of the package env is not separated from the chain.  Unfortunately if we do
 things like this, we're going to retain the "pre" data for every single
@@ -164,6 +181,23 @@ zero env.  The challenge is that `par.env` depends on state, and might not be
 the special unitizer environment.  So probably check whether the global
 environment is in the ancestry (but need to be careful about having the correct
 termination conditions) and if not, change it.
+
+`par.env` comes from `global$par.env`.
+
+    unitizer:::env_ancestry(unitizer@items.ref[[1]]@trace[[4]][[2]][['envir']], emptyenv())
+
+The problem is actually that `trace[[4]][[2]][['envir']]` contains an `r2c_fun`,
+and that itself captures a reference to the parent env.  So `store_unitizer`
+needs to be given `par.env` to temporarily reset.  Again, should be fine so long
+as `par.env` is really the special environment that latches on to the package
+chain.  How do we check this?
+
+But it must also be somewhere else?  We do reset the `@zero.env`, but the
+problem is that the `par.env` is actually the grandparent (or great-grandparent)
+of `zero.env`.
+
+We fixed this just by resetting the `@global$par.env` (and fixing an
+initialization of it that was creating duplicate ones).
 
 # Alloc cleanup
 
