@@ -119,4 +119,6 @@ SEXP R2C_size_window_bw(
   SEXP rlen_sxp, SEXP left_sxp, SEXP right_sxp, SEXP x_sxp, SEXP bounds_sxp
 );
 
+SEXP R2C_sum_add(SEXP x, SEXP y);
+
 #endif  /* R2C_H */
