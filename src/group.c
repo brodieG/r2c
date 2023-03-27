@@ -18,6 +18,7 @@
 // System headers if any go above ^^
 #include "r2c.h"
 #include <R_ext/Rdynload.h>
+#include "loop-interrupt.h"
 
 /*
  * Compute Group Data
@@ -111,6 +112,7 @@ SEXP R2C_run_group(
   R_xlen_t g_count = XLENGTH(grp_lens);
   // these will be stored 1-index, so double (see assumptions.c)
   double recycle_warn = 0;
+  R_xlen_t interrupt_i = 0;
 
   if(g_count >= R_XLEN_T_MAX)
     Rf_error("Maximum allowed group count of %jd exceeded.", R_XLEN_T_MAX - 1);
@@ -124,6 +126,16 @@ SEXP R2C_run_group(
     // each C function invoaked within (*fun), in the end leaving the final
     // result size in `lens[I_RES]`.
     for(int j = dp.dat_start; j <= dp.dat_end; ++j) dp.lens[j] = g_len;
+
+    // Check for interrupts
+    if(
+      interrupt_i <= INTERRUPT_AT - g_len && interrupt_i <= R_XLEN_T_MAX - g_len
+    ) {
+      interrupt_i += g_len;
+    } else  {
+      interrupt_i = 0;
+      R_CheckUserInterrupt();
+    }
 
     // Showtime.  This runs the compiled version of `get_c_code` output:
     (*(dp.fun))(dp.data, dp.lens, dp.datai, dp.narg, dp.flags, dp.ctrl);

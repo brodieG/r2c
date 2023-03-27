@@ -15,27 +15,34 @@
 // * double ** data
 // * R_xlen_t k and j for INTERRUPT1.
 
-#define LOOP_W_INTERRUPT0(I_MAX, LOOP) do {                          \
-  R_xlen_t i_stop, next_interrupt;                                   \
-  i = 0;                                                             \
-  /* First iteration will always get an interrupt, b/c otherwise */  \
-  /* we must maintain INTERRUPT_AT in src/run.c as well */           \
-  next_interrupt = (R_xlen_t)data[I_STAT][STAT_LOOP];                \
-  while(1) {                                                         \
-    i_stop = next_interrupt > (I_MAX) ? I_MAX : next_interrupt;      \
-                                                                     \
-    LOOP                                                             \
-                                                                     \
-    /* < i_stop for `break` in EXPR (e.g. all/any) */                \
-    if(i == (I_MAX) || i < i_stop) break;                            \
-    else if(i == next_interrupt) {                                   \
-      R_CheckUserInterrupt();                                        \
-      if(i <= R_XLEN_T_MAX - INTERRUPT_AT)                           \
-        next_interrupt = i + INTERRUPT_AT;                           \
-      else next_interrupt = (I_MAX);                                 \
-    }                                                                \
-  }                                                                  \
-  data[I_STAT][STAT_LOOP] = (double) next_interrupt - i;             \
+// #define LOOP_W_INTERRUPT0(I_MAX, LOOP) do {                          \
+//   R_xlen_t i_stop, next_interrupt;                                   \
+//   i = 0;                                                             \
+//   /* First iteration will always get an interrupt, b/c otherwise */  \
+//   /* we must maintain INTERRUPT_AT in src/run.c as well */           \
+//   next_interrupt = (R_xlen_t)data[I_STAT][STAT_LOOP];                \
+//   while(1) {                                                         \
+//     i_stop = next_interrupt > (I_MAX) ? I_MAX : next_interrupt;      \
+//                                                                      \
+//     LOOP                                                             \
+//                                                                      \
+//     /* < i_stop for `break` in EXPR (e.g. all/any) */                \
+//     if(i == (I_MAX) || i < i_stop) break;                            \
+//     else if(i == next_interrupt) {                                   \
+//       R_CheckUserInterrupt();                                        \
+//       if(i <= R_XLEN_T_MAX - INTERRUPT_AT)                           \
+//         next_interrupt = i + INTERRUPT_AT;                           \
+//       else next_interrupt = (I_MAX);                                 \
+//     }                                                                \
+//   }                                                                  \
+//   data[I_STAT][STAT_LOOP] = (double) next_interrupt - i;             \
+// } while(0)
+
+// Turn off interrupt
+#define LOOP_W_INTERRUPT0(I_MAX, LOOP) do { \
+  R_xlen_t i = 0;                           \
+  R_xlen_t i_stop = I_MAX;                  \
+  LOOP                                      \
 } while(0)
 
 #define LOOP_W_INTERRUPT1(I_MAX, EXPR) do {                          \
