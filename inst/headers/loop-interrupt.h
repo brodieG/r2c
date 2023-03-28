@@ -15,6 +15,11 @@
 // * double ** data
 // * R_xlen_t k and j for INTERRUPT1.
 
+// For whatever reason using this interrupt method causes slowdowns for small
+// groups.  See extra/bench-interrupt.Rmd for details.  For now we're turning
+// this off and relying on per-group/window checks instead of a more
+// sophisticated version that check per-op as LOOP_W_INTERRUPT0 does here.
+
 // #define LOOP_W_INTERRUPT0(I_MAX, LOOP) do {                          \
 //   R_xlen_t i_stop, next_interrupt;                                   \
 //   i = 0;                                                             \
@@ -38,11 +43,11 @@
 //   data[I_STAT][STAT_LOOP] = (double) next_interrupt - i;             \
 // } while(0)
 
-// Turn off interrupt
-#define LOOP_W_INTERRUPT0(I_MAX, LOOP) do { \
-  R_xlen_t i = 0;                           \
-  R_xlen_t i_stop = I_MAX;                  \
-  LOOP                                      \
+// A dummy version that doesn't do the interrupt
+#define LOOP_W_INTERRUPT0(I_MAX, LOOP) do {              \
+  i = 0; /* some calling code might need to consult i */ \
+  R_xlen_t i_stop = I_MAX;                               \
+  LOOP                                                   \
 } while(0)
 
 #define LOOP_W_INTERRUPT1(I_MAX, EXPR) do {                          \
@@ -51,7 +56,7 @@
 
 // J_MAX in excess of I_MAX not interated over
 #define LOOP_W_INTERRUPT2(I_MAX, J_MAX, EXPR) do {                   \
-  j = 0;                                                             \
+  j = 0;  /* some calling code might need to consult j */            \
   LOOP_W_INTERRUPT0((I_MAX),                                         \
     for(; i < i_stop; ++i, ++j) {                                    \
       if(j == J_MAX) j = 0;                                          \
@@ -61,7 +66,7 @@
 
 // J_MAX/K_MAX in excess of I_MAX not interated over
 #define LOOP_W_INTERRUPT3(I_MAX, J_MAX, K_MAX, EXPR) do {            \
-  j = k = 0;                                                         \
+  j = k = 0; /* some calling code might need to consult j, k */      \
   LOOP_W_INTERRUPT0((I_MAX),                                         \
     for(; i < i_stop; ++i, ++j, ++k) {                               \
       if(j == J_MAX) j = 0;                                          \

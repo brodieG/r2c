@@ -35,6 +35,10 @@ loop that starts.
       i_prev = i;
     } while(1)
 
+Gah, it's really annoying to have to do the loop interrupt at the iteration
+level because the window code is a fair bit more complicated.  We need to
+compute for each window how many elements there are in the window, which is
+`iright - ileft + 1` or some such (empty windows)?
 
 # Code Generation
 

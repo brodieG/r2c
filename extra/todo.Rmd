@@ -25,8 +25,10 @@
   * Look again at mod-iterate.
 
 * Interrupts:
-  * Need to implement for per iteration check for windows, both for rolli and
-    for the other rolls.
+  * Need to implement for per iteration check for:
+    * process groups
+    * check performance degradation
+    * test interrupts every 1MM instead of every 10MM?
   * Document / provide capability to of re-enabling the LOOP_W_INTERRUPT
     business?
   * See if we can get instruments to work on x86 to better understand what the

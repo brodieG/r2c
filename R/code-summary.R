@@ -80,6 +80,7 @@ logical.sum.base <- '
 int has_nan = 0;
 double tmp = %2$d;
 R_xlen_t i;
+
 if(!narm)
   LOOP_W_INTERRUPT1(len_n, {
     if(ISNAN(dat[i])) has_nan = 1;
