@@ -1,5 +1,6 @@
 // Assumed this is smaller than R_XLEN_T_MAX
-#define INTERRUPT_AT 10000000
+#define INTERRUPT_AT 10000000 /* keep synced with group.c */
+
 // Repeat EXPR in for loop I_MAX times checking for interrupts every
 // INTERRUPT_AT iterations.  Loosely inspired by the R macros in
 // R_ext/itermacros.h (as of 4.2).  We could use size_t like they do and save
@@ -43,7 +44,7 @@
 //   data[I_STAT][STAT_LOOP] = (double) next_interrupt - i;             \
 // } while(0)
 
-// A dummy version that doesn't do the interrupt
+// A dummy version that doesn't do the interrupt (this is how we turn it off).
 #define LOOP_W_INTERRUPT0(I_MAX, LOOP) do {              \
   i = 0; /* some calling code might need to consult i */ \
   R_xlen_t i_stop = I_MAX;                               \

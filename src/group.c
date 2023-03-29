@@ -18,7 +18,8 @@
 // System headers if any go above ^^
 #include "r2c.h"
 #include <R_ext/Rdynload.h>
-#include "loop-interrupt.h"
+
+#define INTERRUPT_AT 10000000 /* keep sync'ed with loop-interrupt.h */
 
 /*
  * Compute Group Data
@@ -58,16 +59,29 @@ SEXP R2C_group_sizes(SEXP g) {
     double gsize_i = 0;
     int g_int_val = *g_int;
     *(glabs++) = g_int_val;
-    for(R_xlen_t gi = 1; gi < glen; ++gi) {
-      int g_int_prev_val = g_int_val;
-      g_int_val = *(++g_int);
-      ++gsize_i;
-      // Group changed, record prior group size (recall we start one lagged)
-      if(g_int_val != g_int_prev_val) {
-        *(gsize++) = gsize_i;
-        if(gsize_i > gmax) gmax = gsize_i;
-        *(glabs++) = g_int_val;
-        gsize_i = 0;
+
+    R_xlen_t gi = 1;
+    R_xlen_t next_interrupt = INTERRUPT_AT;
+    // Iterate with interrupts, see inst/headers/loop-interrupt.h
+    while(1) {
+      R_xlen_t gi_stop = next_interrupt > glen ? glen : next_interrupt;
+      for(; gi < gi_stop; ++gi) {
+        int g_int_prev_val = g_int_val;
+        g_int_val = *(++g_int);
+        ++gsize_i;
+        // Group changed, record prior group size (recall we start one lagged)
+        if(g_int_val != g_int_prev_val) {
+          *(gsize++) = gsize_i;
+          if(gsize_i > gmax) gmax = gsize_i;
+          *(glabs++) = g_int_val;
+          gsize_i = 0;
+      } }
+      if(gi == glen) break;
+      else if(gi == next_interrupt) {
+        R_CheckUserInterrupt();
+        if(gi <= R_XLEN_T_MAX - INTERRUPT_AT)
+          next_interrupt = gi + INTERRUPT_AT;
+        else next_interrupt = glen;
       }
     }
     // One extra item in the trailing group we will not have counted
