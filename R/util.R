@@ -259,8 +259,5 @@ get_lang_name <- function(call) {
   else ""
 }
 
-sum_add <- function(x, y) {
-  .Call(R2C_sum_add, x, y)
-}
 
 
