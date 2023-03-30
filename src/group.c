@@ -19,8 +19,6 @@
 #include "r2c.h"
 #include <R_ext/Rdynload.h>
 
-#define INTERRUPT_AT 10000000 /* keep sync'ed with loop-interrupt.h */
-
 /*
  * Compute Group Data
  *

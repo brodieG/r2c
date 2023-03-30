@@ -18,6 +18,7 @@
 #ifndef R2C_H
 #define R2C_H
 #define R_NO_REMAP
+#define INTERRUPT_AT 10000000 /* keep sync'ed with loop-interrupt.h */
 
 // System headers go above
 #include <R.h>

@@ -18,7 +18,6 @@
 // System headers if any go above ^^
 #include "r2c.h"
 #include <R_ext/Rdynload.h>
-#include "loop-interrupt.h"
 
 /*-----------------------------------------------------------------------------\
 |                                                                              |
