@@ -18,6 +18,19 @@
 * Any / All accept dots as arguments.
 * Check NA behavior on logical and relational operators, and switch to use e.g.
   `islessequal`, etc. (and how do we test equality/non-equality efficiently)?
+* Interrupts:
+  * Need to implement for per iteration check for:
+    * process groups (done)
+    * check performance degradation (done, none)
+    * test interrupts every 1MM instead of every 10MM? (didn't bother)
+  * Document / provide capability to of re-enabling the LOOP_W_INTERRUPT
+    business? (kind of of done in ?r2cq)
+  * See if we can get instruments to work on x86 to better understand what the
+    problem actually is (it did work on sum_add, but not on the dynamically
+    loaded versions that just gave a call references to rbp -x40 or some such,
+    wasn't obvious what was slow)?
+* Handle cases where package environment is captured by unitizer (see notes,
+  "Package Env") (fixed in unitizer 1.4.19).
 
 ### v0.0.0-0.2.0
 

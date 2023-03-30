@@ -19,21 +19,6 @@
 
 ## Current
 
-* For interrupts:
-  * The parts of headers from r2c that we want in "headers"?
-  * Timing impact?
-  * Look again at mod-iterate.
-
-* Interrupts:
-  * Need to implement for per iteration check for:
-    * process groups
-    * check performance degradation
-    * test interrupts every 1MM instead of every 10MM?
-  * Document / provide capability to of re-enabling the LOOP_W_INTERRUPT
-    business?
-  * See if we can get instruments to work on x86 to better understand what the
-    problem actually is?
-
 * Change default for `show_c_code` to be `all`.
 
 * Cleanup `code_gen_x`.  A lot of things should be parametrized so that we're
@@ -84,11 +69,8 @@
   possibly the flexibility to warn based on value of
   `_R_CHECK_LENGTH_1_LOGIC2_`.
 
-
 * Make sure we don't directly capture "r2c_fun" functions from `_pre/data.R` in
   tests as they will capture `_pre/data.R` values.
-* Handle cases where package environment is captured by unitizer (see notes,
-  "Package Env").
 * Think through the implications of using the lexical env for "r2c_fun"
   functions with respect to the future `r2c` function library (see notes "Eval
   Env") .
@@ -118,7 +100,6 @@
 * Handle assignment to function symbols, etc?  There shouldn't be confusion with
   invocation, but if we ever implement `lapply`, etc?
 
-* Unary arithmetic funs.
 * Add post-processing of function result (e.g. to attach names, etc, as in
   `quantile`).
 
