@@ -59,7 +59,9 @@
     }                                                                          \
     /* Check for interrupts */                                                 \
     if(                                                                        \
-      interrupt_i <= INTERRUPT_AT - len && interrupt_i <= R_XLEN_T_MAX - len   \
+      len <= INTERRUPT_AT &&  /* we don't know what R_XLEN_T_MIN is */         \
+      interrupt_i <= INTERRUPT_AT - len &&                                     \
+      interrupt_i <= R_XLEN_T_MAX - len                                        \
     ) {                                                                        \
       interrupt_i += len;                                                      \
     } else  {                                                                  \
@@ -352,6 +354,7 @@ static double ** copy_dat(struct R2C_dat dp) {
     R_xlen_t len = iright - ileft + 1;                                       \
     /* Check for interrupts */                                               \
     if(                                                                      \
+      len <= INTERRUPT_AT &&  /* we don't know what R_XLEN_T_MIN is */       \
       interrupt_i <= INTERRUPT_AT - len && interrupt_i <= R_XLEN_T_MAX - len \
     ) {                                                                      \
       interrupt_i += len;                                                    \

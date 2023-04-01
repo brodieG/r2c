@@ -141,6 +141,7 @@ SEXP R2C_run_group(
 
     // Check for interrupts
     if(
+      g_len <= INTERRUPT_AT &&  /* we don't know what R_XLEN_T_MIN is */
       interrupt_i <= INTERRUPT_AT - g_len && interrupt_i <= R_XLEN_T_MAX - g_len
     ) {
       interrupt_i += g_len;
@@ -148,7 +149,6 @@ SEXP R2C_run_group(
       interrupt_i = 0;
       R_CheckUserInterrupt();
     }
-
     // Showtime.  This runs the compiled version of `get_c_code` output:
     (*(dp.fun))(dp.data, dp.lens, dp.datai, dp.narg, dp.flags, dp.ctrl);
     // Record recycling error if any, g_count < R_XLEN_T_MAX, so could use
