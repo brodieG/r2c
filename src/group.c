@@ -57,16 +57,29 @@ SEXP R2C_group_sizes(SEXP g) {
     double gsize_i = 0;
     int g_int_val = *g_int;
     *(glabs++) = g_int_val;
-    for(R_xlen_t gi = 1; gi < glen; ++gi) {
-      int g_int_prev_val = g_int_val;
-      g_int_val = *(++g_int);
-      ++gsize_i;
-      // Group changed, record prior group size (recall we start one lagged)
-      if(g_int_val != g_int_prev_val) {
-        *(gsize++) = gsize_i;
-        if(gsize_i > gmax) gmax = gsize_i;
-        *(glabs++) = g_int_val;
-        gsize_i = 0;
+
+    R_xlen_t gi = 1;
+    R_xlen_t next_interrupt = INTERRUPT_AT;
+    // Iterate with interrupts, see inst/headers/loop-interrupt.h
+    while(1) {
+      R_xlen_t gi_stop = next_interrupt > glen ? glen : next_interrupt;
+      for(; gi < gi_stop; ++gi) {
+        int g_int_prev_val = g_int_val;
+        g_int_val = *(++g_int);
+        ++gsize_i;
+        // Group changed, record prior group size (recall we start one lagged)
+        if(g_int_val != g_int_prev_val) {
+          *(gsize++) = gsize_i;
+          if(gsize_i > gmax) gmax = gsize_i;
+          *(glabs++) = g_int_val;
+          gsize_i = 0;
+      } }
+      if(gi == glen) break;
+      else if(gi == next_interrupt) {
+        R_CheckUserInterrupt();
+        if(gi <= R_XLEN_T_MAX - INTERRUPT_AT)
+          next_interrupt = gi + INTERRUPT_AT;
+        else next_interrupt = glen;
       }
     }
     // One extra item in the trailing group we will not have counted
@@ -111,6 +124,7 @@ SEXP R2C_run_group(
   R_xlen_t g_count = XLENGTH(grp_lens);
   // these will be stored 1-index, so double (see assumptions.c)
   double recycle_warn = 0;
+  R_xlen_t interrupt_i = 0;
 
   if(g_count >= R_XLEN_T_MAX)
     Rf_error("Maximum allowed group count of %jd exceeded.", R_XLEN_T_MAX - 1);
@@ -125,6 +139,16 @@ SEXP R2C_run_group(
     // result size in `lens[I_RES]`.
     for(int j = dp.dat_start; j <= dp.dat_end; ++j) dp.lens[j] = g_len;
 
+    // Check for interrupts
+    if(
+      g_len <= INTERRUPT_AT &&  /* we don't know what R_XLEN_T_MIN is */
+      interrupt_i <= INTERRUPT_AT - g_len && interrupt_i <= R_XLEN_T_MAX - g_len
+    ) {
+      interrupt_i += g_len;
+    } else  {
+      interrupt_i = 0;
+      R_CheckUserInterrupt();
+    }
     // Showtime.  This runs the compiled version of `get_c_code` output:
     (*(dp.fun))(dp.data, dp.lens, dp.datai, dp.narg, dp.flags, dp.ctrl);
     // Record recycling error if any, g_count < R_XLEN_T_MAX, so could use

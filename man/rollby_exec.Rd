@@ -179,42 +179,45 @@ and open on the right by default.
 
 As an illustration for \code{rollby_exec} and \code{rollat_exec}, consider the case of
 \code{width = 3} windows at the fourth iteration, with various \code{offset} values.
-The offset is the distance from the left end of the window to the anchor:
+The offset is the distance from the left end of the window to the anchor.  We
+use the letters a through g to reference the first seven elements of a
+numeric vector.
 
 \if{html}{\out{<div class="sourceCode">}}\preformatted{## rollby_exec(..., by=1, width=3)
                    +------------- 4th iteration, anchor is 4.0
                    V
 1.0   2.0   3.0   4.0   5.0   6.0   7.0 | < Real Line
- 1     2     3     4     5     6     7  | < Element Position
+ a     b     c     d     e     f     g  | < Elements
                    |
                    |                      Offset     In-window Elements
-                   [-----------------)  |     0      \{4, 5, 6\}
-          [-----------------)           |  -w/2      \{3, 4, 5\}
- [-----------------)                    |    -w      \{1, 2, 3\}
+                   [-----------------)  |     0      \{d, e, f\}
+          [-----------------)           |  -w/2      \{c, d, e\}
+ [-----------------)                    |    -w      \{a, b, c\}
 }\if{html}{\out{</div>}}
 
 In each case we get three elements in the window, although this is only
-because the positions of the elements are on the integers.  Because the
-windows are open on the right, elements that align exactly on the right end
-of the window are excluded.  With irregularly spaced elements, e.g. with
-\code{position = c(1, 1.25, 2.5, 5.3, 7, ...)}, we might see (positions approximate):
+because the positions of the elements are on the integers by default.
+Since the windows are open on the right, elements that align exactly on the
+right end of the window are excluded.  With irregularly spaced elements, e.g.
+with \code{position = c(1, 1.25, 2.5, 5.3, 7, ...)}, we might see (positions
+approximate):
 
 \if{html}{\out{<div class="sourceCode">}}\preformatted{## rollby_exec(..., by=1, width=3, position=c(1, 1.25, 2.5, 5.3, 7))
                    +------------- 4th iteration, base index is 4.0
                    V
 1.0   2.0   3.0   4.0   5.0   6.0   7.0 | < Real Line
- 1 2      3        |       4         5  | < Element ~Position Elements
+ a b      c        |       d         e  | < Elements
                    |
                    |                      Offset     In-window
-                   [-----------------)  |     0      \{4\}
-          [-----------------)           |  -w/2      \{3, 4\}
- [-----------------)                    |    -w      \{1, 2, 3\}
+                   [-----------------)  |     0      \{d\}
+          [-----------------)           |  -w/2      \{c, d\}
+ [-----------------)                    |    -w      \{a, b, c\}
 }\if{html}{\out{</div>}}
 
 Unlike with \code{\link{rolli_exec}} there is no \code{partial} parameter as there is no
 expectation of a fixed number of elements in any given window.
 
-A restriction is that both ends of a window must be monotonically increasing
+A restriction is that both ends of a window must increase monotonically
 relative to their counterparts in the prior window.  This restriction might
 be relaxed for \code{rollbw_exec} in the future, likely at the cost of
 performance.
@@ -231,7 +234,7 @@ Each of the functions can replicate the semantics of any of the less general
 functions, but with increased generality come efficiency decreases (see
 "Performance").  One exception is that \code{\link{rolli_exec}} supports fully variable
 width windows.  \code{rollbw_exec} supports variable width windows, with the
-constraint that window ends must be increase monotonically for each
+constraint that window bounds must monotonically increase with each
 iteration.
 
 \code{rolli_exec} has semantics similar to the simple use case for

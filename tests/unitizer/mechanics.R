@@ -26,7 +26,7 @@ unitizer_sect("Bad Args", {
   with(iris, group_exec(r2c_sum, Species, Species))
 })
 unitizer_sect("Square Transform", {
-  grep("square(", get_c_code(r2c_slope), fixed=TRUE, value=TRUE)
+  get_r_code(r2c_slope)
 })
 unitizer_sect("Dots in Def", {
   fsum_add0 <- r2cq(sum(..., x, na.rm=na.rm) - y, check=TRUE)

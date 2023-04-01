@@ -147,6 +147,10 @@ unitizer_sect("ifelse", {
   f_ifelse(c(TRUE, FALSE, NA), 1:2, 1:2 * 10L)
   f_ifelse(c(TRUE, FALSE, NA), 1:3, 1:3 * 10)
   f_ifelse(logical(), 1:3, 1:3 * 10)
+  f_ifelse(c(TRUE, FALSE), numeric(), numeric())
+  f_ifelse(TRUE, numeric(), 1)
+  f_ifelse(c(TRUE, FALSE), 1, 3)
+  f_ifelse(c(TRUE, FALSE), 1, numeric())
 
   # r2c ifelse doesn't match the types exactly
   f_ifelse(TRUE, TRUE, 1)

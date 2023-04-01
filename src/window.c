@@ -18,6 +18,7 @@
 // System headers if any go above ^^
 #include "r2c.h"
 #include <R_ext/Rdynload.h>
+
 /*-----------------------------------------------------------------------------\
 |                                                                              |
 |                              DISCRETE ROLL FUN                               |
@@ -40,6 +41,7 @@
 #define ROLL_WINDOW_I(NEXP) do {                                               \
   double * recycle_flag = dp.data[I_STAT] + STAT_RECYCLE;                      \
   double recycle_warn = 0;      /* stored 1-index */                           \
+  R_xlen_t interrupt_i = 0;                                                    \
                                                                                \
   for(i = 0; i < imax; i += by) {                                              \
     int incomplete = 0;                                                        \
@@ -55,6 +57,18 @@
       len = d_size - start;                                                    \
       incomplete = 1;                                                          \
     }                                                                          \
+    /* Check for interrupts */                                                 \
+    if(                                                                        \
+      len <= INTERRUPT_AT &&  /* we don't know what R_XLEN_T_MIN is */         \
+      interrupt_i <= INTERRUPT_AT - len &&                                     \
+      interrupt_i <= R_XLEN_T_MAX - len                                        \
+    ) {                                                                        \
+      interrupt_i += len;                                                      \
+    } else  {                                                                  \
+      interrupt_i = 0;                                                         \
+      R_CheckUserInterrupt();                                                  \
+    }                                                                          \
+    /* If window complete, run the code */                                     \
     if(part_int || !incomplete) {                                              \
       for(int j = dp.dat_start; j <= dp.dat_end; ++j) {                        \
         dp.data[j] = dat_base[j] + start;                                      \
@@ -273,7 +287,7 @@ static double ** copy_dat(struct R2C_dat dp) {
   if(wa.x[ileft] IBL_OP right && wa.x[iright] IBR_OP left) {                \
     R_xlen_t len = iright - ileft + 1;                                      \
     for(int j = dp.dat_start; j <= dp.dat_end; ++j) {                       \
-      dp.data[j] = dbase[j] + ileft;                                     \
+      dp.data[j] = dbase[j] + ileft;                                        \
       dp.lens[j] = len;                                                     \
     }                                                                       \
   } else {      /* empty window */                                          \
@@ -314,29 +328,43 @@ static double ** copy_dat(struct R2C_dat dp) {
  * F_EXP the function evaluation expression, or we can sub-in the width
  *   calculation expression for the max window size estimation.
  */
-#define ROLL_BOUND(L_EXP, R_EXP, L_OP, R_OP, F_EXP) do {                    \
-  R_xlen_t ileft, iright, iright_prev;  /* indices of ends of window */     \
-  ileft = iright = iright_prev = 0;                                         \
-  /* left/right set by L_EXP and R_EXP respectively */                      \
-  double left, right;                                                       \
-  R_xlen_t i = 0; /* need initial vals for L_EXP and R_EXP */               \
-  for(; i < wa.rlen; ++i) {                                                 \
+#define ROLL_BOUND(L_EXP, R_EXP, L_OP, R_OP, F_EXP) do {                     \
+  R_xlen_t ileft, iright, iright_prev;  /* indices of ends of window */      \
+  ileft = iright = iright_prev = 0;                                          \
+  /* left/right set by L_EXP and R_EXP respectively */                       \
+  double left, right;                                                        \
+  R_xlen_t i = 0; /* need initial vals for L_EXP and R_EXP */                \
+  R_xlen_t interrupt_i = 0;                                                  \
+  for(; i < wa.rlen; ++i) {                                                  \
     L_EXP; R_EXP;\
-    /* Find first in-range element */                                       \
-    while(ileft < wa.xlen && wa.x[ileft] L_OP left) ++ileft;                \
-    if(ileft < wa.xlen) {                                                   \
-      /* Small optim: reset to iright_prev if window >> by */               \
-      if(ileft > iright_prev) iright = ileft + 1;                           \
-      else iright = iright_prev + 1;                                        \
-      /* Find first oob element  to right */                                \
-      while(iright < wa.xlen && wa.x[iright] R_OP right) ++iright;          \
-      --iright;   /* step back to last in-range element */                  \
-      iright_prev = iright;                                                 \
-    } else {      /* ran out of vector */                                   \
-      ileft = iright = wa.xlen - 1;                                         \
-    }                                                                       \
-    F_EXP;                                                                  \
-  }                                                                         \
+    /* Find first in-range element */                                        \
+    while(ileft < wa.xlen && wa.x[ileft] L_OP left) ++ileft;                 \
+    if(ileft < wa.xlen) {                                                    \
+      /* Small optim: reset to iright_prev if window >> by */                \
+      if(ileft > iright_prev) iright = ileft + 1;                            \
+      else iright = iright_prev + 1;                                         \
+      /* Find first oob element  to right */                                 \
+      while(iright < wa.xlen && wa.x[iright] R_OP right) ++iright;           \
+      --iright;   /* step back to last in-range element */                   \
+      iright_prev = iright;                                                  \
+    } else {      /* ran out of vector */                                    \
+      ileft = iright = wa.xlen - 1;                                          \
+    }                                                                        \
+    /* ileft max is R_XLEN_T_MAX - 1, so + 1 cannot overflow */              \
+    R_xlen_t len = iright - ileft + 1;                                       \
+    /* Check for interrupts */                                               \
+    if(                                                                      \
+      len <= INTERRUPT_AT &&  /* we don't know what R_XLEN_T_MIN is */       \
+      interrupt_i <= INTERRUPT_AT - len && interrupt_i <= R_XLEN_T_MAX - len \
+    ) {                                                                      \
+      interrupt_i += len;                                                    \
+    } else  {                                                                \
+      interrupt_i = 0;                                                       \
+      R_CheckUserInterrupt();                                                \
+    }                                                                        \
+    /* Run expression */                                                     \
+    F_EXP;                                                                   \
+  }                                                                          \
 } while (0)
 
 /* Generate the window iteration loop depending on the permutations of the
@@ -388,15 +416,14 @@ static double ** copy_dat(struct R2C_dat dp) {
  * See ROLL_WINDOW for L_END, R_END
  */
 #define WIN_SIZE do{                                           \
-  R_xlen_t len_tmp = iright - ileft;                           \
-  if(len_tmp >= len) len = len_tmp + 1;                        \
+  if(len >= len_max) len_max = len;                            \
 } while(0)
 
 #define SIZE_WINDOW(L_END, R_END) do {                         \
   int lclosed, rclosed;                                        \
   lclosed = wa.bounds & 1;                                     \
   rclosed = wa.bounds & 2;                                     \
-  R_xlen_t len = 0;                                            \
+  R_xlen_t len_max = 0;                                        \
                                                                \
   if(lclosed && !rclosed) {                                    \
     ROLL_BOUND(left = L_END, right = R_END, <, <, WIN_SIZE);   \
@@ -407,10 +434,10 @@ static double ** copy_dat(struct R2C_dat dp) {
   } else if (!lclosed && !rclosed) {                           \
     ROLL_BOUND(left = L_END, right = R_END, <, <, WIN_SIZE);   \
   }                                                            \
-  return Rf_ScalarReal((double) len);                          \
+  return Rf_ScalarReal((double) len_max);                      \
 } while(0)
 
- // ROLL_TYPE: one of ROLL_BY, ROLL_AT, ROLL_BW
+// ROLL_XX: one of ROLL_BY, ROLL_AT, ROLL_BW
 
 #define ROLL(ROLL_XX) do{                                                \
   struct R2C_dat dp = prep_data(dat, dat_cols, ids, flag, ctrl, so);     \

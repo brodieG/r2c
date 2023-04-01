@@ -11,6 +11,7 @@
   * `ifelse`, with the caveat the return value type is based on the combination of
       `yes` and `no` irrespective of whether one or both of them are used.
 * Unary opertors (`-`, `+`, and `!`).
+* Iteration level interrupts (e.g. between groups, windows).
 
 ## 0.2.0
 

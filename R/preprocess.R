@@ -121,7 +121,13 @@ preprocess <- function(call, formals, optimize=FALSE) {
   )
   code.txt <- c(
     # Headers, system headers first (are these going to go in right order?)
-    paste("#include", c(headers, "<R.h>", "<Rinternals.h>")),
+    paste(
+      "#include",
+      c(
+        headers, '"r2c-const.h"', "<R.h>", "<Rinternals.h>", "<R_ext/Utils.h>",
+        '"loop-interrupt.h"'
+      )
+    ),
     if(length(defines)) c("", defines),
     "",
     # Function Definitions

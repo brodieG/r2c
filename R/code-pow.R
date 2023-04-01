@@ -42,9 +42,8 @@ static void %1$s(%2$s) {
     lens[dires] = 0;
     return;
   }
-  // Mod iterate by region?
   R_xlen_t i;
-  for(i = 0; i < len; ++i) res[i] = e1[i] * e1[i];
+  LOOP_W_INTERRUPT1(len, res[i] = e1[i] * e1[i];);
   lens[dires] = len;
 }'
 code_gen_square <- function(fun, args.reg, args.ctrl, args.flags) {

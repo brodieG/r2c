@@ -148,44 +148,47 @@ bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 #'
 #' As an illustration for `rollby_exec` and `rollat_exec`, consider the case of
 #' `width = 3` windows at the fourth iteration, with various `offset` values.
-#' The offset is the distance from the left end of the window to the anchor:
+#' The offset is the distance from the left end of the window to the anchor.  We
+#' use the letters a through g to reference the first seven elements of a
+#' numeric vector.
 #'
 #' ```
 #' ## rollby_exec(..., by=1, width=3)
 #'                    +------------- 4th iteration, anchor is 4.0
 #'                    V
 #' 1.0   2.0   3.0   4.0   5.0   6.0   7.0 | < Real Line
-#'  1     2     3     4     5     6     7  | < Element Position
+#'  a     b     c     d     e     f     g  | < Elements
 #'                    |
 #'                    |                      Offset     In-window Elements
-#'                    [-----------------)  |     0      {4, 5, 6}
-#'           [-----------------)           |  -w/2      {3, 4, 5}
-#'  [-----------------)                    |    -w      {1, 2, 3}
+#'                    [-----------------)  |     0      {d, e, f}
+#'           [-----------------)           |  -w/2      {c, d, e}
+#'  [-----------------)                    |    -w      {a, b, c}
 #' ```
 #'
 #' In each case we get three elements in the window, although this is only
-#' because the positions of the elements are on the integers.  Because the
-#' windows are open on the right, elements that align exactly on the right end
-#' of the window are excluded.  With irregularly spaced elements, e.g. with
-#' `position = c(1, 1.25, 2.5, 5.3, 7, ...)`, we might see (positions approximate):
+#' because the positions of the elements are on the integers by default.
+#' Since the windows are open on the right, elements that align exactly on the
+#' right end of the window are excluded.  With irregularly spaced elements, e.g.
+#' with `position = c(1, 1.25, 2.5, 5.3, 7, ...)`, we might see (positions
+#' approximate):
 #'
 #' ```
 #' ## rollby_exec(..., by=1, width=3, position=c(1, 1.25, 2.5, 5.3, 7))
 #'                    +------------- 4th iteration, base index is 4.0
 #'                    V
 #' 1.0   2.0   3.0   4.0   5.0   6.0   7.0 | < Real Line
-#'  1 2      3        |       4         5  | < Element ~Position Elements
+#'  a b      c        |       d         e  | < Elements
 #'                    |
 #'                    |                      Offset     In-window
-#'                    [-----------------)  |     0      {4}
-#'           [-----------------)           |  -w/2      {3, 4}
-#'  [-----------------)                    |    -w      {1, 2, 3}
+#'                    [-----------------)  |     0      {d}
+#'           [-----------------)           |  -w/2      {c, d}
+#'  [-----------------)                    |    -w      {a, b, c}
 #' ```
 #'
 #' Unlike with [`rolli_exec`] there is no `partial` parameter as there is no
 #' expectation of a fixed number of elements in any given window.
 #'
-#' A restriction is that both ends of a window must be monotonically increasing
+#' A restriction is that both ends of a window must increase monotonically
 #' relative to their counterparts in the prior window.  This restriction might
 #' be relaxed for `rollbw_exec` in the future, likely at the cost of
 #' performance.
@@ -200,7 +203,7 @@ bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 #' functions, but with increased generality come efficiency decreases (see
 #' "Performance").  One exception is that [`rolli_exec`] supports fully variable
 #' width windows.  `rollbw_exec` supports variable width windows, with the
-#' constraint that window ends must be increase monotonically for each
+#' constraint that window bounds must monotonically increase with each
 #' iteration.
 #'
 #' `rolli_exec` has semantics similar to the simple use case for
