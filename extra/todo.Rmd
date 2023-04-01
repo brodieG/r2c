@@ -12,6 +12,9 @@
 * `function(a) if(a) x else y`
 * That it is impossible to try to use an allocation before it would be created
   in the code.  Tricky with loops.
+* Loops with no iterations.
+* `if` without `else`:
+  * Also cases where all `if` written symbols pre-exist, and where some don't.
 
 * Unary plus:
   * Executes vcopy correctly when needed

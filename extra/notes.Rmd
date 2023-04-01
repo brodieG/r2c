@@ -411,7 +411,7 @@ void run(
 
     // Then reset index, flags, more args
     di = dibase;
-    flag = flag;
+    flag = flagbase;
 
     // - Normal Code -----------------------------------------------------------
     // mean(x)
@@ -422,8 +422,161 @@ void run(
     subtract(data, lens, *di++);
     ++flag;
   }
+  // If there are no iterations at all, we need to skip ahead to what *di and
+  // *flag would have been.
 }
 ```
+
+What about `if`? e.g.:
+
+```
+test <- mean(x)
+if(test > .5) {
+  y <- mean(x)
+} else if (test < .25) {
+  y <- sum(x)
+} else {
+  y <- sum(z)
+}
+```
+
+```
+void run(
+  double ** data, R_xlen_t * lens, int ** di, int * narg, int * flag, SEXP ctrl
+) {
+  (void) narg; // unused
+  (void) ctrl; // unused
+
+  // mean(x)
+  mean(data, lens, *di++, *flag);
+  ++flag;
+
+  // test <- mean(x) NO-OP
+  // NO-OP: assign(data, lens, *di++);
+  ++flag; ++di;
+
+  // test > 0.5
+  gt(data, lens, *di++);
+  ++flag;
+
+  r2c_if();
+  r2c_elseif();
+  r2c_else();
+
+  if(r2c_if(data, lens, *di, *flag)) {
+    ++flag; ++di;
+    // mean(x)
+    mean(data, lens, *di++, *flag);
+    ++flag;
+    // y <- mean(x) NO-OP
+    // NO-OP: assign(data, lens, *di++);
+    ++flag; ++di;
+  } else {
+    flag+=3; di+=3;
+    if(r2c_if(data, lens, *di, *flag)) {
+      ++flag; ++di;
+      // sum(x)
+      mean(data, lens, *di++, *flag);
+      ++flag;
+      // y <- sum(x) NO-OP
+      // NO-OP: assign(data, lens, *di++);
+      ++flag; ++di;
+    } else {
+      flag+=3; di+=3;
+      if(r2c_if(data, lens, *di, *flag)) {
+        ++flag; ++di;
+        // sum(z)
+        mean(data, lens, *di++, *flag);
+        ++flag;
+        // y <- sum(z) NO-OP
+        // NO-OP: assign(data, lens, *di++);
+        ++flag; ++di;
+    }
+  }
+}
+```
+
+Every `if` must always emit an `else`, even if it is only to advance the
+pointers for the next thing.
+
+A bit tricky to think about where the result of the `if/else` should be stored.
+
+How will code generation work?  Linearization would naturally:
+
+```
+// Input
+if(X, A, if(Y, B, C)
+
+// Becomes
+X
+A
+
+Y
+B
+C
+
+if(Y, B, C)
+
+if(X, A, if(Y, B, C))
+```
+
+This is good, except that everything but the last statement might not run.  So
+the code processor needs to add some special things?
+
+```
+
+__COND__
+X
+__YES__:1
+A
+__NO__:3
+  __COND__
+  Y
+  __YES__:1
+  B
+  __NO__:1
+  C
+
+if(X, A, if(Y, B, C))
+```
+
+So maybe what we really need is the code linearization to produce:
+
+```
+X
+list(
+  A,
+  list(
+    Y,
+    list(
+      B,
+      C
+) ) )
+```
+
+Should `Y` be on a different level?  Probably.  This would signal the allocator
+to fork itself at each level, and on exit of each fork evaluate the different
+branches to ensure they have self consistent sets of live symbols.  For this to
+work properly on exit need to reconcile all the allocations and make sure that
+the same symbols point to the same allocations, and that they are the same size.
+If they point to different allocations, how do we reconcile them?  We can't
+necessarily just swap them as each allocation creates a potential chain of
+re-uses (although we know that surviving symbols will still be using their
+allocation).  We could require that assignments use a fresh allocation?  This is
+hard to know ahead of time as the assignment first just evaluates it's
+expression, and only after locks up the memory.  The problem is that in one
+branch, an assignment might end up using an over-large allocation, and in
+another a just right one.
+
+A naive view is that we look at all the new allocations created by the two
+branches, and generate a new set of allocations that will fit both.  Then we
+remap all the allocations to the new set, ensuring that persistent symbols get
+assigned the same allocation.  This should work?  Need to think through the
+possibility that the order in which the allocations are used creates a problem,
+but it seems that so long as every allocation has a corresponding new allocation
+bigger than or equal to itself, it should work itself out?
+
+How does code generation fit in?  That happens before the allocation.
 
 ## Interesting Example
 
@@ -474,7 +627,15 @@ if(a) {
     x <- u
   }
 }
+sum(x)
 ```
+
+In order for this to work, `x` must always refer to the same allocation, and
+have the same size.  More generally, any symbol written to in the `if` call with
+a lifetime outside the `if` call must obey that constraint.  This will not
+happen naturally if things are created in different order in different branches,
+so seems like we 
+
 
 `if` stack contains a count of how many `else` at any given `if` depth.  For
 each depth, for each variable, what symbol-nodes it has been bound to (a symbol
