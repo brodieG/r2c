@@ -40,8 +40,8 @@ r2cq(
 )
 }
 \arguments{
-\item{x}{an object to compile into an "r2c_fun", for \code{r2cf} an R function, for
-\code{r2cq} an expression that will be captured unevaluated, for \code{r2cl} an R
+\item{x}{an object to compile into an "r2c_fun", for \code{r2cf} an R function,
+for \code{r2cq} an expression that will be captured unevaluated, for \code{r2cl} an R
 expression escaped with \code{\link{quote}}.  See details.}
 
 \item{dir}{NULL (default), or character(1L) name of a file system directory
@@ -196,9 +196,10 @@ implementations that fail this requirement, and if it does they are probably
 rare.
 
 Interrupts are supported at the \link{runner} level, e.g. \emph{between} groups or
-windows.  There is infrastructure to support within iteration-interrupts, but
-it adds overhead when dealing with many iterations with small data size, so
-it is disabled in the code at the moment.
+windows, each time a preset number of elements has been processed since the
+last interrupt check.  There is infrastructure to support within
+iteration-interrupts, but it adds overhead when dealing with many iterations
+with few elements each and thus is disabled at the moment.
 
 The structure of "r2c_fun" functions is subject to change without notice in
 future \code{r2c} releases.  The only supported uses of them are standard

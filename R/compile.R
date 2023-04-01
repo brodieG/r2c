@@ -149,17 +149,18 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' rare.
 #'
 #' Interrupts are supported at the [runner] level, e.g. _between_ groups or
-#' windows.  There is infrastructure to support within iteration-interrupts, but
-#' it adds overhead when dealing with many iterations with small data size, so
-#' it is disabled in the code at the moment.
+#' windows, each time a preset number of elements has been processed since the
+#' last interrupt check.  There is infrastructure to support within
+#' iteration-interrupts, but it adds overhead when dealing with many iterations
+#' with few elements each and thus is disabled at the moment.
 #'
 #' The structure of "r2c_fun" functions is subject to change without notice in
 #' future `r2c` releases.  The only supported uses of them are standard
 #' invocation with the `(` operator and use with the [runners].
 #'
 #' @export
-#' @param x an object to compile into an "r2c_fun", for `r2cf` an R function, for
-#'   `r2cq` an expression that will be captured unevaluated, for `r2cl` an R
+#' @param x an object to compile into an "r2c_fun", for `r2cf` an R function,
+#'   for `r2cq` an expression that will be captured unevaluated, for `r2cl` an R
 #'   expression escaped with [`quote`].  See details.
 #' @param formals character vector of the names of the parameters for the
 #'   resulting "r2c_fun", a list of formals as generated with e.g. [`alist`], or
