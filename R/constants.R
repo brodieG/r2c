@@ -81,7 +81,7 @@ LOOP.SYM <- c("for", "while", "repeat")
 PASSIVE.SYM <- unique(c(ASSIGN.SYM, LOOP.SYM, "if", "{", "uplus"))
 
 # For `record_call_dat`.
-CALL.DAT.VEC <- c('argn', 'depth', 'type', 'assign')
+CALL.DAT.VEC <- c('argn', 'depth', 'type', 'assign', 'indent')
 
 # To avoid typos
 CTRL.FLAG <- c("control", "flag")
