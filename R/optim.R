@@ -74,7 +74,7 @@ flatten_call_rec <- function(x, calls, indices) {
 #' been known to be valid with more sophisticated static analysis (e.g.
 #' `if(TRUE) ... else ...` will be treated as a branch even though it is not
 #' really).  Substitutions involving loop modified variables are also limited
-#' due to the possibility of their value changing during e.g.  the first and
+#' due to the possibility of their value changing during e.g. the first and
 #' nth loop iteration, or the possibility of the loop not running at all.
 #'
 #' `reuse_calls` relies on functions being bound to their original symbols, so
