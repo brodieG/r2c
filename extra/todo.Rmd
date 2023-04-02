@@ -22,6 +22,19 @@
 
 ## Current
 
+* Does `record_call_dat` really need to record terminals?  Main thing that is
+  done is dealing with `..1` etc, but where do we use that?  Update: of course
+  we do, as we still have to evaluate them / match them to an allocation in the
+  allocation step.
+
+* Remember why we don't increment `*flag` inside the function call?  Is it just
+  because it's not always used and easier to do it outside?
+
+* Are `A && B` and `A || B` actually lazy?  Probably not given the linearization
+  that evaluates each argument before the result?  We could consider translating
+  the above into `if(A) B else FALSE` and `if(A) TRUE else B` once `if` is
+  implemented (need to think about preserve logical for these cases).
+
 * Check that the interrupts work when there are more than 1e7 elements in a
   group / window.
 

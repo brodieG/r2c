@@ -1,0 +1,434 @@
+# Constraint Overview
+
+The over riding constraint is that every symbol must resolve to an unambiguous
+size.  `if` and `for` control structures can create ambiguity in sizes (e.g.
+different sizes in branches of if, different sizes within the loop / loop can
+act like a branch if not taken).
+
+Disallow cases where a variable might not be created that is later used:
+
+* for:
+  * Zero iterations (maybe).
+  * `break` / `continue`
+* if:
+  * Brand new symbol.
+  * Not all branches contain it.
+  * What if the symbol exists from elsewhere?
+
+Additionally:
+
+* for:
+  * variables read and written from must be consistent size before and
+    after loop
+  * variables must remain constant size in the loop (e.g. cannot grow)
+  * variables written to in loop must be either unchanged in size, or the loop
+    must be guaranteed to have at least one iteration.
+* if:
+  * variables written to must be the same size across all branches; branches
+    that don't write ok so long as prior var same size.
+
+Need to think about what compatible allocations are.  Certainly different
+branches must produce the same size result.  Does the result need to end up in
+the same allocation id?
+
+# C Implementation / Allocation
+
+Probably the way a loop would work is:
+
+```
+for(i in 1:10) {
+  mean(x + i)
+}
+```
+
+```
+void run(
+  double ** data, R_xlen_t * lens, int ** di, int * narg, int * flag, SEXP ctrl
+) {
+  (void) narg; // unused
+  (void) ctrl; // unused
+
+  dibase = *di;
+  flagbase= *flag;
+  for(i = 0; i < n; ++i) {
+    // - Loop Overhead ---------------------------------------------------------
+
+    // Reset baseline position for everythign that gets tracked.
+    di = dibase;
+    flag = flagbase;
+
+    // Do something to update the value of `i` in the data
+    update_loop_var(data, lens, *di++, *flag);
+    ++flag; // Why is flag here?
+
+    // - Normal Code -----------------------------------------------------------
+    // mean(x)
+    mean(data, lens, *di++, *flag);
+    ++flag;
+  }
+  // If there are no iterations at all, we need to skip ahead to what *di and
+  // *flag would have been.
+}
+```
+
+What about `if`? e.g.:
+
+```
+test <- mean(x)
+if(test > .5) {
+  y <- mean(x)
+} else if (test < .25) {
+  y <- sum(x)
+} else {
+  y <- sum(z)
+}
+```
+
+```
+void run(
+  double ** data, R_xlen_t * lens, int ** di, int * narg, int * flag, SEXP ctrl
+) {
+  (void) narg; // unused
+  (void) ctrl; // unused
+
+  // mean(x)
+  mean(data, lens, *di++, *flag);
+  ++flag;
+
+  // test <- mean(x) NO-OP
+  // NO-OP: assign(data, lens, *di++);
+  ++flag; ++di;
+
+  // test > 0.5
+  gt(data, lens, *di++);
+  ++flag;
+
+  if(r2c_if(data, lens, *di, *flag))
+  {
+    ++flag; ++di;
+    // mean(x)
+    mean(data, lens, *di++, *flag);
+    ++flag;
+    // y <- mean(x) NO-OP
+    // NO-OP: assign(data, lens, *di++);
+    ++flag; ++di;
+  }
+  else
+  {
+    flag+=3; di+=3;
+    if(r2c_if(data, lens, *di, *flag))
+    {
+      ++flag; ++di;
+      // sum(x)
+      mean(data, lens, *di++, *flag);
+      ++flag;
+      // y <- sum(x) NO-OP
+      // NO-OP: assign(data, lens, *di++);
+      ++flag; ++di;
+    }
+    else
+    {
+      flag+=3; di+=3;
+      if(r2c_if(data, lens, *di, *flag))
+      {
+        ++flag; ++di;
+        // sum(z)
+        mean(data, lens, *di++, *flag);
+        ++flag;
+        // y <- sum(z) NO-OP
+        // NO-OP: assign(data, lens, *di++);
+        ++flag; ++di;
+      }
+    }
+  }
+}
+```
+
+But we probably need to do something as follows to ensure the offsets are all
+correct.
+
+```
+di_save = di;
+flag_save = flag;
+if(r2c_if(data, lens, *di, *flag))
+{
+  ++flag; ++di;
+  // mean(x)
+  mean(data, lens, *di++, *flag);
+  ++flag;
+  // y <- mean(x) NO-OP
+  // NO-OP: assign(data, lens, *di++);
+  ++flag; ++di;
+}
+else
+{
+  flag = flag_save + 3; di = di_save + 3;
+  // sum(x)
+  sum(data, lens, *di++, *flag);
+  ++flag;
+  // y <- sum(x) NO-OP
+  // NO-OP: assign(data, lens, *di++);
+  ++flag; ++di;
+}
+di = di_save + 5;
+flag = flag_save + 5;
+```
+
+Must every `if` always emit an `else`?  There is the implicit `else`, so
+probably better to do so since then naturally we have the reconciliation (for
+allocations) of the "yes" branch vs an empty branch.
+
+A bit tricky to think about where the result of the `if/else` should be stored.
+
+```
+// Input
+if(X, A, if(Y, B, C)
+
+// Becomes
+X
+A
+
+Y
+B
+C
+
+if(Y, B, C)
+
+if(X, A, if(Y, B, C))
+```
+
+This is good, except that everything but the last statement might not run.  So
+the code processor needs to add some special things?
+
+```
+
+__COND__
+X
+__YES__:1
+A
+__NO__:3
+  __COND__
+  Y
+  __YES__:1
+  B
+  __NO__:1
+  C
+
+if(X, A, if(Y, B, C))
+```
+
+So maybe what we really need is the code linearization to produce:
+
+```
+X
+list(
+  A,
+  list(
+    Y,
+    list(
+      B,
+      C
+) ) )
+```
+
+Should `Y` be on a different level?  Probably.  This would signal the allocator
+to fork itself at each level, and on exit of each fork evaluate the different
+branches to ensure they have self consistent sets of live symbols.  For this to
+work properly on exit need to reconcile all the allocations and make sure that
+the same symbols point to the same allocations, and that they are the same size.
+If they point to different allocations, how do we reconcile them?  We can't
+necessarily just swap them as each allocation creates a potential chain of
+re-uses (although we know that surviving symbols will still be using their
+allocation).  We could require that assignments use a fresh allocation?  This is
+hard to know ahead of time as the assignment first just evaluates it's
+expression, and only after locks up the memory.  The problem is that in one
+branch, an assignment might end up using an over-large allocation, and in
+another a just right one.
+
+A naive view is that we look at all the new allocations created by the two
+branches, and generate a new set of allocations that will fit both.  Then we
+remap all the allocations to the new set, ensuring that persistent symbols get
+assigned the same allocation.  This should work?  Need to think through the
+possibility that the order in which the allocations are used creates a problem,
+but it seems that so long as every allocation has a corresponding new allocation
+bigger than or equal to itself, it should work itself out?
+
+# If code Generation
+
+How does code generation fit in?  That happens before the allocation.  Probably
+code generation needs to recognize functions that wrap their parameters.  We
+need to track:
+
+* Indentation level.
+* Prelude before each argument (for if/else)
+* Epilogue (just closing brace)
+
+So prelude would be:
+
+    flag_save = flag;
+    di_save = di;
+    if(r2c_if(data, lens, *di, *flag))
+    {
+      ++flag; ++di; // can't ++di in call?  I guess we could
+
+And epilogue:
+
+    }
+
+With then another prelude:
+
+    else
+    {
+      flag = flag_save + ?;
+      di = di + ?;
+
+And final epilogue:
+
+    }
+    flag = flag_save + ?;
+    di = di + ?;
+
+It does mean we subvert the entire logic of code generation as we have to do it
+between arguments, not after all the arguments are processed as is normally the
+case.  Currently we have a 1-1 correspondence with a call and a
+`record_call_dat`.  Is it okay to break it?
+
+Currently for each `record_call_dat` call, there is an element added to the
+`x[['call']]` list, with allocation implications.  Also there is a pairwise
+correspondence from those to what gets generated at the C level.  There is no
+concept of enclosure at the code gen phase, so we could possibly add the
+prelude, and maybe the epilogue, but it's non trivial?
+
+So we need a different function specialized for `if` (and maybe loops) that
+slots into to the `pp_internal` stack.  It will:
+
+* Process parameter 1 (the test) as normal.
+* Insert the `r2c_if` call with the code generation of the prelude.
+* Process parameter 2 (the yes condition) as normal, with a new indent level
+  specified.
+  * We need to recover how many total calls were processed so we can generate
+    the correct offsets for the no condition prologue.
+* Insert the epilogue.
+* Insert the `r2c_else` call with the code generation of the prelude.
+* Process parameter 2 (the no condition) as normal, with a new indent level
+  specified.
+  * We need to recover how many total calls were processed so we can generate
+    the correct offsets for the ...
+* Insert the epilogue.
+
+When we do this, in `x[['call']]` we store a list?  Not ideal for code
+generation, though it would be useful for the allocation.
+
+So we need a mechanism for dealing with the epilogue that doesn't naturally have
+a corresponding call.  Maybe we also have `r2c_endif` and `r2c_endelse` as
+no-ops?  Or some other class of call that doesn't even get a comment?  One key
+thing with no-ops is that they still generate entries in the offset arrays.
+Perhaps we change no-ops not to do that?  Or just leave it as is.  Let's start
+with as is with special `if` and `loop` preprocessing.
+
+Need to handle the possibility of returning a NULL, should it just be a zero
+length value?  It's okay for `if` to return different length results so long as
+they are not written to a variable (but code that does this is likely a little
+weird).
+
+# If Allocation
+
+Each `if` and `else` is a special call with one argument, as opposed to one
+`if/else` with three arguments (condition/yes/no).  The allocation forks at the
+`if` and at the `else`, and once the `else` is complete the allocation is
+reconciled, including the return value of the `if`.
+
+Probably should check that there is always an `r2c_else` after an `if`.
+
+Do we need an empty call for the epilogues?  Maybe.
+
+# Loop in relation to if
+
+Same concept of prelude/epilogue.  Same concept of an empty else branch to
+handle the allocation.  Main difference is going to be that the prelude needs to
+update the `i` variable somehow, and reset all the offsets.
+
+Also, unlike in `if` where we evaluate the condition as a stand-alone statement,
+we probably don't want to do that with a `for` loop (what about a while loop?).
+The "probably don't want" to is in consideration of the possibility of a smarter
+way of generating the sequence (or maybe we start looking into altrep?).
+
+Separately, does it matter if there are break/continues in the loop?  I guess we
+disallowed them for expression re-use?
+
+# Interesting Example
+
+Pretty challenging dealing with loops.
+
+```
+x <- integer()
+for(i in 1:10) {
+  x <- c(x, i)
+}
+```
+
+Each loop iteration is going to have a different size for x. The best we can
+hope for is consistent size every iteration including the first.  This should
+handle the case where the loop doesn't even run.
+
+What about variables created in loops that are not taken?
+
+# Loop implementation
+
+Loop variables can be created in a child frame to the data.
+
+Each loop body will generate a `run` statement, e.g.:
+
+```
+run(...) {
+
+}
+run_loop_1(...) {
+  for(intmax_t i = 0; i < len; ++i) {
+    run(...);
+  }
+}
+run_loop_0(...) {
+  for(intmax_t i = 0; i < len; ++i) {
+    statement_0(...);
+    statement_1(...);
+    run_loop_1(...);
+  }
+}
+```
+
+Probably want two types of loops, loops where we know the start and end as
+constants or other derivable data (`seq_along`), and others where we have an
+unknown vector?  Might not be able to allow the second type, because at that
+point we can't know how large a vector that is assigned to with e.g. `x[i] <- y`
+will get.
+
+```
+for(i in seq_along(x))
+  y[i] <- x[i] + 1
+```
+
+Is the latter:
+
+```
+for(i in x)
+  y[i] <- z[i] + 1
+```
+
+At the allocation stage we need to determine the size of `y`.  It's fine if
+we're just referring to an external symbol (or even a group symbol) as we can
+check the content sizes.  But things like:
+
+```
+for(i in rev(x))
+```
+
+Get messier.  Likely we just allow symbols, or `seq_along`, or constant
+expressions like `a:b` where `a` and `b` are known at allocation time (changing
+them inside loop is fine since):
+
+> The seq in a for loop is evaluated at the start of the loop; changing it
+> subsequently does not affect the loop.
+
+But they can't be computed within the `r2c` code.
+
