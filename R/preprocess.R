@@ -148,9 +148,12 @@ preprocess <- function(call, formals, optimize=FALSE) {
 # @param call.parent if `call` is being evaluated as an argument to a parent
 #   call, `call.parent` is that call.  Used so we can tell if we're e.g. called
 #   from braces.
+# @param indent additional indentation to add to code, used to support controls with
+##   indented contents.  This is a delta to previous indentation, not total
+##   indentation.
 
 pp_internal <- function(
-  call, depth, x, argn="", assign=FALSE, call.parent=NULL
+  call, depth, x, argn="", assign=FALSE, call.parent=NULL, indent=0L
 ) {
   if(depth == .Machine$integer.max)
     stop("Expression max depth exceeded.") # exceedingly unlikely
@@ -325,9 +328,7 @@ init_call_dat <- function(formals)
 ## still needs to know about them to find them in the data array or to evaluate
 ## them (for external symbols).
 ##
-## @param additional indentation to add to code, used to support controls with
-##   indented contents.  This is a delta to previous indentation, not total
-##   indentation.
+## @param indent see pp_internal
 
 record_call_dat <- function(
   x, call, depth, argn, type, code, assign, sym.free=sym_free(x, call),
