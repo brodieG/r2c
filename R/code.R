@@ -367,6 +367,26 @@ call_valid <- function(call) {
     stop("`", deparse1(call[[1L]]), "` is not a supported function.")
   func
 }
+#' Default C Call Generation
+#'
+#' Calls outside of controls follow a clear pattern that this function
+#' implements.  See `code_res` for parameter description.
+#'
+#' @noRd
+
+c_call_gen <- function(name, narg, flag, ctrl, noop) {
+  sprintf(
+    "%s%s(%s%s%s%s);",
+    if(noop) "// NO-OP: " else "",
+    name,
+    toString(CALL.BASE),
+    if(narg) paste0(", ", CALL.VAR) else "",
+    if(flag) paste0(", ", CALL.FLAG) else "",
+    if(ctrl) paste0(", ", CALL.CTRL) else ""
+  )
+}
+
+
 #' Organize Code Generation Output
 #'
 #' Additionally, generates the call to the function.
@@ -378,25 +398,20 @@ call_valid <- function(call) {
 #' @param noop TRUE if function is a noop, in which case will be commented out
 #' @param headers character vector with header names that need to be #included
 #' @param defines character with #define directives
+#' @param c.call.gen function to generate the C call.  Primarily used to allow
+#'   generation of control flow code that follows different patterns than all
+#'   the others.
 
 code_res <- function(
   defn, name, narg=FALSE, flag=FALSE, ctrl=FALSE,
-  headers=character(), defines=character(), noop=FALSE
+  headers=character(), defines=character(), noop=FALSE, c.call.gen=c_call_gen
 ) {
   if(is.na(name)) stop("Internal Error: mismapped function name.")
   if(noop && !name %in% FUN.NAMES[PASSIVE.SYM])
     stop("Internal Error: noop declared for ", name, ", but not in PASSIVE.SYM")
-  call <- sprintf(
-    "%s%s(%s%s%s%s);",
-    if(noop) "// NO-OP: " else "",
-    name,
-    toString(CALL.BASE),
-    if(narg) paste0(", ", CALL.VAR) else "",
-    if(flag) paste0(", ", CALL.FLAG) else "",
-    if(ctrl) paste0(", ", CALL.CTRL) else ""
-  )
   list(
-    defn=defn, name=name, call=call,
+    defn=defn, name=name,
+    call=c_call_gen(name, narg=narg, flag=flag, ctrl=ctrl, noop=noop),
     headers=if(is.null(headers)) character() else headers,
     defines=if(is.null(defines)) character() else defines,
     narg=narg, flag=flag, ctrl=ctrl, noop=noop

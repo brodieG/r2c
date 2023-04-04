@@ -90,13 +90,10 @@ preprocess <- function(call, formals, optimize=FALSE) {
   r.calls.dep.m <- grepl("\n", r.calls.dep.keep, fixed=TRUE)
   c.calls.fmt <- format(c.calls.keep)
 
-  # Do we need extra params incremented explicitly across iterations?
+  # Some variables not always used
   c.narg <- vapply(x[['code']][calls.keep], "[[", TRUE, "narg")
   c.flag <- vapply(x[['code']][calls.keep], "[[", TRUE, "flag")
   c.ctrl <- vapply(x[['code']][calls.keep], "[[", TRUE, "ctrl")
-  c.noop <- vapply(x[['code']][calls.keep], "[[", TRUE, "noop")
-
-  any.inc <- c.narg | c.flag | c.ctrl
 
   calls.fin <- lapply(
     seq_along(which(calls.keep)),
@@ -104,19 +101,8 @@ preprocess <- function(call, formals, optimize=FALSE) {
       c(
         if(i > 1) "",
         paste("//", unlist(strsplit(r.calls.dep.keep[i], "\n"))),
-        c.calls.keep[i],
-        if(any(any.inc))
-          sprintf(
-            "%s;",
-            paste(
-              c(
-                if(any(c.narg)) INC.VAR,
-                if(any(c.flag)) INC.FLAG,
-                if(any(c.ctrl)) INC.CTRL,
-                if(c.noop[i]) INC.DAT # only for the specific `i`
-              ),
-              collapse="; "
-      )   ) )
+        sprintf(c.calls.keep[i], i) # add the i to e.g. di[i]
+      )
   )
   code.txt <- c(
     # Headers, system headers first (are these going to go in right order?)
@@ -136,7 +122,6 @@ preprocess <- function(call, formals, optimize=FALSE) {
     paste0(
       "  ",
       c(
-        if(any(c.ctrl)) "int v=0;",
         if(!any(c.narg)) "(void) narg; // unused",
         if(!any(c.flag)) "(void) flag; // unused",
         if(!any(c.ctrl)) "(void) ctrl; // unused",
