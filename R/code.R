@@ -293,6 +293,18 @@ VALID_FUNS <- c(
       # arglen of last argument matching dots
       type=list("arglen", "...", function(x) x[length(x)]),
       code.gen=code_gen_braces
+    ),
+    cgen(
+      "r2c_if", type=list("constant", 1L), code.gen=code_gen_if,
+      res.type="logical"
+    ),
+    cgen(
+      "r2c_else", type=list("constant", 1L), code.gen=code_gen_else,
+      res.type="logical"
+    ),
+    cgen(
+      "r2c_endif", type=list("constant", 1L), code.gen=code_gen_endif,
+      res.type="logical"
     )
   ),
   # - r2c funs -----------------------------------------------------------------

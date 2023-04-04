@@ -88,3 +88,48 @@ code_gen_copy <- function(fun, args.reg, args.ctrl, args.flags) {
 #' @export
 
 vcopy <- function(x) x + 0
+
+f_iftest <- '
+// Check a test condition, mostly enforces length
+static int %s(%s) {
+  if(lens[di[0]] != 1) {
+    if(lens[di[0]] > 1) Rf_error("the condition has length > 1");
+    else if(lens[di[0]] < 1) Rf_error("the condition is of length zero");
+    lens[di[1]] = 1;
+    return (int) data[di[0]][0];
+  }
+};'
+code_gen_if<- function(fun, args.reg, args.ctrl, args.flags) {
+  vetr(
+    identical(., "r2c_if"),
+    args.reg=list(NULL),
+    args.ctrl=list() && length(.) == 0L,
+    args.flags=list() && length(.) == 0L
+  )
+  name <- FUN.NAMES[fun]
+  defn <- sprintf(f_iftest, name, toString(F.ARGS.BASE))
+  code_res(
+    defn=defn, name=name,
+    c_call_gen=function(...) paste0("if(", c_call_gen(...), ") {")
+  )
+}
+code_gen_else <- function(fun, args.reg, args.ctrl, args.flags) {
+  vetr(
+    identical(., "r2c_else"),
+    args.reg=list() && length(.) == 0L,
+    args.ctrl=list() && length(.) == 0L,
+    args.flags=list() && length(.) == 0L
+  )
+  name <- FUN.NAMES[fun]
+  code_res(defn="", name=name, c_call_gen=function(...) "} else {")
+}
+code_gen_endif <- function(fun, args.reg, args.ctrl, args.flags) {
+  vetr(
+    identical(., "r2c_endif"),
+    args.reg=list() && length(.) == 0L,
+    args.ctrl=list() && length(.) == 0L,
+    args.flags=list() && length(.) == 0L
+  )
+  name <- FUN.NAMES[fun]
+  code_res(defn="", name=name, c_call_gen=function(...) "}")
+}

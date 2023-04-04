@@ -105,9 +105,11 @@ FUN.NAMES <- c(
 
   mean1="mean1", square="square",
 
-  vcopy="vcopy"
+  vcopy="vcopy",
 
   # "for"="for", "while"="while", "repeat"="repeat", "if"="if"
+
+  r2c_if="r2c_if", r2c_else="r2c_else", r2c_endif="r2c_endif"
 )
 
 # - Internal Symbols -----------------------------------------------------------

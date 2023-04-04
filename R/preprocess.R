@@ -54,6 +54,9 @@ preprocess <- function(call, formals, optimize=FALSE) {
   # Ensure last value is copied into result
   call <- copy_last(call)
 
+  # Restructure if/else and loops
+  warning("Add if/else loop restructure code")
+
   # - Code Gen -----------------------------------------------------------------
 
   # All the data generated goes into x
