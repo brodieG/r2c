@@ -39,15 +39,15 @@ F.ARGS.CTRL <- R.ARGS.CTRL <- 'SEXP ctrl'
 F.ARGS.ALL <- c(F.ARGS.BASE, F.ARGS.VAR, F.ARGS.FLAG, F.ARGS.CTRL)
 R.ARGS.ALL <- c(R.ARGS.BASE, R.ARGS.VAR, R.ARGS.FLAG, R.ARGS.CTRL)
 
-CALL.BASE <- c(ARGS.NM.BASE[1L:2L], paste0(ARGS.NM.BASE[3L], "[%%1$d]"))
-CALL.VAR <- paste0(ARGS.NM.VAR, "[%%1$d]")
+CALL.BASE <- c(ARGS.NM.BASE[1L:2L], paste0(ARGS.NM.BASE[3L], "[%1$d]"))
+CALL.VAR <- paste0(ARGS.NM.VAR, "[%1$d]")
 # this should be length 1 (see checks)
-CALL.CTRL <- paste0("VECTOR_ELT(", ARGS.NM.CTRL, ", %%1$d)")
-CALL.FLAG <- paste0(ARGS.NM.CTRL, "[%%1$d]");
+CALL.CTRL <- paste0("VECTOR_ELT(", ARGS.NM.CTRL, ", %1$d)")
+CALL.FLAG <- paste0(ARGS.NM.FLAG, "[%1$d]");
 CALL.ALL <- c(CALL.BASE, CALL.VAR, CALL.FLAG, CALL.CTRL)
 
 ## Sanity checks
-pat <- "\\bSEXP\\b|\\bdouble\\b|\\bint\\b|\\bR_xlen_t\\b|[ +*]"
+pat <- "\\[%1\\$d\\]|\\bSEXP\\b|\\bdouble\\b|\\bint\\b|\\bR_xlen_t\\b|[ +*]"
 stopifnot(
   identical(gsub(pat, "", F.ARGS.ALL), ARGS.NM.ALL),
   identical(gsub(pat, "", R.ARGS.ALL), ARGS.NM.ALL),
@@ -69,11 +69,14 @@ MISSING <- list(formals(base::identical)[[1L]])
 # `for` assigns to the counter variable.  `->` becomes `<-` on parsing.
 ASSIGN.SYM <- c("<-", "=", "for")
 LOOP.SYM <- c("for", "while", "repeat")
+IF.SUB.SYM <- c("if_true", "if_false")
 
 # Calls that don't actually do any computing themselves, rather rely on
 # computations that happen in their arguments `for` is a bit tricky as it does
 # "compute" the counter value.
-PASSIVE.SYM <- unique(c(ASSIGN.SYM, LOOP.SYM, "if", "{", "uplus"))
+PASSIVE.SYM <- unique(
+  c(ASSIGN.SYM, LOOP.SYM, "if", "{", "uplus", "r2c_if", IF.SUB.SYM)
+)
 
 # For `record_call_dat`.
 CALL.DAT.VEC <- c('argn', 'depth', 'type', 'assign', 'indent')
@@ -109,7 +112,8 @@ FUN.NAMES <- c(
 
   # "for"="for", "while"="while", "repeat"="repeat", "if"="if"
 
-  r2c_if="r2c_if", r2c_else="r2c_else", r2c_endif="r2c_endif"
+  if_test="if_test", if_true="if_true", if_false="if_false", r2c_if="r2c_if",
+  "if"="if"
 )
 
 # - Internal Symbols -----------------------------------------------------------

@@ -95,13 +95,17 @@ static int %s(%s) {
   if(lens[di[0]] != 1) {
     if(lens[di[0]] > 1) Rf_error("the condition has length > 1");
     else if(lens[di[0]] < 1) Rf_error("the condition is of length zero");
-    lens[di[1]] = 1;
-    return (int) data[di[0]][0];
   }
+  lens[di[1]] = 1;
+  return (int) data[di[0]][0];
 };'
-code_gen_if<- function(fun, args.reg, args.ctrl, args.flags) {
+f_ifother <- '
+// if/else handled with noops
+// static void %s(%s) { /* NOOP */ }'
+
+code_gen_if_test <- function(fun, args.reg, args.ctrl, args.flags) {
   vetr(
-    identical(., "r2c_if"),
+    identical(., "if_test"),
     args.reg=list(NULL),
     args.ctrl=list() && length(.) == 0L,
     args.flags=list() && length(.) == 0L
@@ -110,26 +114,89 @@ code_gen_if<- function(fun, args.reg, args.ctrl, args.flags) {
   defn <- sprintf(f_iftest, name, toString(F.ARGS.BASE))
   code_res(
     defn=defn, name=name,
-    c_call_gen=function(...) paste0("if(", c_call_gen(...), ") {")
+    c.call.gen=function(...) 
+      paste0("if(", sub(";$", "", c_call_gen(...)), ") {")
   )
 }
-code_gen_else <- function(fun, args.reg, args.ctrl, args.flags) {
+code_gen_if_true <- function(fun, args.reg, args.ctrl, args.flags) {
   vetr(
-    identical(., "r2c_else"),
-    args.reg=list() && length(.) == 0L,
+    identical(., "if_true"),
+    args.reg=list(NULL),
     args.ctrl=list() && length(.) == 0L,
     args.flags=list() && length(.) == 0L
   )
   name <- FUN.NAMES[fun]
-  code_res(defn="", name=name, c_call_gen=function(...) "} else {")
+  defn <- sprintf(f_ifother, name, toString(F.ARGS.BASE))
+  code_res(defn=defn, name=name, c.call.gen=function(...) "} else {")
 }
-code_gen_endif <- function(fun, args.reg, args.ctrl, args.flags) {
+code_gen_if_false <- function(fun, args.reg, args.ctrl, args.flags) {
   vetr(
-    identical(., "r2c_endif"),
-    args.reg=list() && length(.) == 0L,
+    identical(., "if_false"),
+    args.reg=list(NULL),
     args.ctrl=list() && length(.) == 0L,
     args.flags=list() && length(.) == 0L
   )
   name <- FUN.NAMES[fun]
-  code_res(defn="", name=name, c_call_gen=function(...) "}")
+  defn <- sprintf(f_ifother, name, toString(F.ARGS.BASE))
+  code_res(defn=defn, name=name, c.call.gen=function(...) "}")
 }
+code_gen_r2c_if <-function(fun, args.reg, args.ctrl, args.flags) {
+  vetr(
+    identical(., "r2c_if"),
+    args.reg=list(NULL, NULL),
+    args.ctrl=list() && length(.) == 0L,
+    args.flags=list() && length(.) == 0L
+  )
+  name <- FUN.NAMES[fun]
+  defn <- sprintf(f_ifother, name, toString(F.ARGS.BASE))
+  code_res(defn=defn, name=name, noop=TRUE)
+}
+code_gen_if <- function(...) {
+  stop(
+    "Internal Error: attempting to generate code for raw `if/else` ",
+    "instead of decomponsed one."
+  )
+}
+
+
+#' Decompose If / Else
+#'
+#' Internal functions that integrate the `if / else` construct between the R and
+#' C level.  These are purely an implementation detail and not intended to be
+#' used directly, but are documented so users can understand what they are if
+#' they encounter them when inspect "r2c_fun" objects.
+#'
+#' Most R level calls are converted 1-1 into a C level call.  Control structures
+#' are more complicated because we need to generate the call structure itself
+#' without a direct correspondence of R call to structural element.  This
+#' decomposition creates that correspondence without changing the overall
+#' semantics (although the intermediate semantics are not the same due to the
+#' use of implicit state to decide what branch to evaluate).  Unlike most other
+#' `r2c` functions, you cannot run these from the R level at all.
+#'
+#' Put less kindly: this is a hack to get control flow to fit into an
+#' implementation that originally did not intend to allow them.
+#'
+#' @param true expression to evaluate if previous `if_test` is TRUE.
+#' @param false expression to evaluate if previous `if_test` is FALSE
+#' @param expr an expression to evaluate
+#' @return for `if_true` and `if_false`, the result of evaluating `expr`, for
+#'   `if_test` the result of evaluating `test` if that is length 1 (otherwise an
+#'   error) 
+#' @examples
+#' get_r_code(r2cq(if(a) b else c), raw=TRUE)
+
+r2c_if <- function(true, false)
+  stop("This is an internal `r2c` function unavailable for direct use.")
+
+#' @rdname r2c_if
+if_true <- function(expr)
+  stop("This is an internal `r2c` function unavailable for direct use.")
+
+#' @rdname r2c_if
+if_false <- function(expr)
+  stop("This is an internal `r2c` function unavailable for direct use.")
+
+#' @rdname r2c_if
+if_test <- function(cond)
+  stop("This is an internal `r2c` function unavailable for direct use.")

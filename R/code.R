@@ -148,7 +148,7 @@ cgen <- function(
       is.null(defn) ||
       all(. %in% names(formals(defn))) && !"..." %in% . && length(.) < 32L
     ),
-    type=list() && length(.) %in% 2:3,
+    type=list() && length(.) %in% 1:3,
     code.gen=is.function(.),
     ctrl.validate=is.function(.),
     transform=is.function(.),
@@ -159,16 +159,23 @@ cgen <- function(
   # Limitation in vetr prevents this being done directly above
   stopifnot(
     is.character(type[[1L]]) && length(type[[1L]]) == 1L && !is.na(type[[1L]]),
-    type[[1L]] %in% c("constant", "arglen", "vecrec"),
+    type[[1L]] %in% c("constant", "arglen", "vecrec", "eqlen"),
     (
       (type[[1L]] == "constant" && is.valid_constant(type)) ||
       (type[[1L]] == "arglen" && is.valid_arglen(type)) ||
-      (type[[1L]] == "vecrec" && is.valid_vecrec(type))
+      (type[[1L]] == "vecrec" && is.valid_vecrec(type)) ||
+      # possibly in the future "eqlen" could be a applied to only some elements?
+      # This is primarly to support if/else.
+      (type[[1L]] == "eqlen" && length(type) == 1L)
     ),
     # positional matching or match.call?
-    type[[1L]] == "constant" ||
-      (is.null(defn) && is.integer(type[[2L]])) ||
-      (!is.null(defn) && is.character(type[[2L]]))
+    type[[1L]] %in% c("constant", "eqlen") ||
+    (
+      type[[1L]] %in% c('arglen', 'vecrec') && (
+        (is.null(defn) && is.integer(type[[2L]])) ||
+        (!is.null(defn) && is.character(type[[2L]]))
+      )
+    )
   )
   list(
     name=name, fun=fun, defn=defn, ctrl=ctrl.params, flag=flag.params,
@@ -294,17 +301,28 @@ VALID_FUNS <- c(
       type=list("arglen", "...", function(x) x[length(x)]),
       code.gen=code_gen_braces
     ),
+    # result of this one is not used outside of the C code
     cgen(
-      "r2c_if", type=list("constant", 1L), code.gen=code_gen_if,
-      res.type="logical"
+      "if_test", type=list("constant", 1L), code.gen=code_gen_if_test,
+      res.type="logical", fun=if_test
     ),
     cgen(
-      "r2c_else", type=list("constant", 1L), code.gen=code_gen_else,
-      res.type="logical"
+      "r2c_if", type=list("eqlen"), code.gen=code_gen_r2c_if, fun=r2c_if
     ),
     cgen(
-      "r2c_endif", type=list("constant", 1L), code.gen=code_gen_endif,
-      res.type="logical"
+      "if_true", type=list("arglen", "expr"), code.gen=code_gen_if_true,
+      fun=if_true
+    ),
+    cgen(
+      "if_false", type=list("arglen", "expr"), code.gen=code_gen_if_false,
+      fun=if_false
+    ),
+    # This one can't actually generate code and needs to be first decomposed
+    # into the above, but we need it here so the early parsing passes recognize
+    # it as an allowed function.
+    cgen(
+      "if", type=list("eqlen"), code.gen=code_gen_if,
+      defn=function(...) NULL
     )
   ),
   # - r2c funs -----------------------------------------------------------------
@@ -386,10 +404,9 @@ call_valid <- function(call) {
 #'
 #' @noRd
 
-c_call_gen <- function(name, narg, flag, ctrl, noop) {
+c_call_gen <- function(name, narg, flag, ctrl, indent) {
   sprintf(
-    "%s%s(%s%s%s%s);",
-    if(noop) "// NO-OP: " else "",
+    "%s(%s%s%s%s);",
     name,
     toString(CALL.BASE),
     if(narg) paste0(", ", CALL.VAR) else "",
@@ -397,8 +414,6 @@ c_call_gen <- function(name, narg, flag, ctrl, noop) {
     if(ctrl) paste0(", ", CALL.CTRL) else ""
   )
 }
-
-
 #' Organize Code Generation Output
 #'
 #' Additionally, generates the call to the function.
@@ -407,23 +422,35 @@ c_call_gen <- function(name, narg, flag, ctrl, noop) {
 #' @param narg TRUE if function has variable number of arguments
 #' @param flag TRUE if function has flag parameters
 #' @param ctrl TRUE if function has control parameters
-#' @param noop TRUE if function is a noop, in which case will be commented out
+#' @param noop TRUE if function is a noop, in which case the call C-level code
+#'   is commented out.  noops remain on the stack, they just don't execute any C
+#'   code.
 #' @param headers character vector with header names that need to be #included
 #' @param defines character with #define directives
 #' @param c.call.gen function to generate the C call.  Primarily used to allow
 #'   generation of control flow code that follows different patterns than all
-#'   the others.
+#'   the others, including cases where there is no function call at all, only
+#'   e.g. braces or an else statement.  These still take up a spot in the call
+#'   stack for allocation and effectively act like `noop` calls.  This is a
+#'   light hijacking of the original functionality to allow simple control flow
+#'   implementation (e.g. we emit an `} else {` instead of a `fun(...)`).
 
 code_res <- function(
   defn, name, narg=FALSE, flag=FALSE, ctrl=FALSE,
-  headers=character(), defines=character(), noop=FALSE, c.call.gen=c_call_gen
+  headers=character(), defines=character(), noop=FALSE, c.call.gen=c_call_gen,
+  indent=0L
 ) {
   if(is.na(name)) stop("Internal Error: mismapped function name.")
   if(noop && !name %in% FUN.NAMES[PASSIVE.SYM])
     stop("Internal Error: noop declared for ", name, ", but not in PASSIVE.SYM")
+
+  c_call <- paste0(
+    c.call.gen(name, narg=narg, flag=flag, ctrl=ctrl, indent=indent),
+    collapse="\n"
+  )
   list(
     defn=defn, name=name,
-    call=c_call_gen(name, narg=narg, flag=flag, ctrl=ctrl, noop=noop),
+    call=paste0(if(noop) "// NO-OP: ", c_call),
     headers=if(is.null(headers)) character() else headers,
     defines=if(is.null(defines)) character() else defines,
     narg=narg, flag=flag, ctrl=ctrl, noop=noop

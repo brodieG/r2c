@@ -208,6 +208,9 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
         asize  <- vec_rec_max_size(sizes.tmp, gmax)
         size <- vec_rec_known_size(sizes.tmp[1L,])  # knowable sizes could be NA
         group <- max(sizes.tmp[2L,])                # any group size in the lot?
+      } else if(ftype[[1L]] == "eqlen") {
+        # All arguments must be equal length.
+        stop("'eqlen' not implemented")
       } else stop("Internal Error: unknown function type.")
 
       # Cleanup expired symbols, and bind new ones

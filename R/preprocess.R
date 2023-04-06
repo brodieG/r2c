@@ -39,8 +39,12 @@ NULL
 preprocess <- function(call, formals, optimize=FALSE) {
   # - Call Manipulations -------------------------------------------------------
 
-  # WARNING: all subsequent call modifications after this step must have names
-  # attached (and be in matched order) for closures.
+  # WARNINGS:
+  # * all call modifications must be made as if `match.called` (names attached
+  #   for closures, in order) (and be in matched order) for closures.
+  # * The order these are applied in really matters.
+
+  # Match calls
   call <- match_call_rec(call)
 
   # Transform call. Should be an "optimization"?  Some transforms might not be.
@@ -51,11 +55,14 @@ preprocess <- function(call, formals, optimize=FALSE) {
     callr <- reuse_calls_int(call)
     call <- callr[['x']]  # also contains renames
   }
+  # Restructure if/else and loops.  Not done as a transformation as
+  # `reuse_calls_int` needs to be able to recognize the original constrol flow
+  call <- transform_ifelse(call)
+
   # Ensure last value is copied into result
   call <- copy_last(call)
 
-  # Restructure if/else and loops
-  warning("Add if/else loop restructure code")
+  # WARNING: Read section warning above before changing section.
 
   # - Code Gen -----------------------------------------------------------------
 
@@ -90,8 +97,9 @@ preprocess <- function(call, formals, optimize=FALSE) {
   calls.keep <- nzchar(c.calls)
   c.calls.keep <- c.calls[calls.keep]
   r.calls.dep.keep <- r.calls.dep[calls.keep]
-  r.calls.dep.m <- grepl("\n", r.calls.dep.keep, fixed=TRUE)
-  c.calls.fmt <- format(c.calls.keep)
+  indent <- strrep(" ", x[['indent']])[calls.keep]
+
+  c.calls.fmt <- format(paste0(indent, c.calls.keep))
 
   # Some variables not always used
   c.narg <- vapply(x[['code']][calls.keep], "[[", TRUE, "narg")
@@ -100,13 +108,16 @@ preprocess <- function(call, formals, optimize=FALSE) {
 
   calls.fin <- lapply(
     seq_along(which(calls.keep)),
-    function(i)
+    function(i) {
       c(
         if(i > 1) "",
-        paste("//", unlist(strsplit(r.calls.dep.keep[i], "\n"))),
-        sprintf(c.calls.keep[i], i) # add the i to e.g. di[i]
-      )
-  )
+        paste0(
+          indent[i], "// ", unlist(strsplit(r.calls.dep.keep[i], "\n"))
+        ),
+        if(grepl("%1\\$d", c.calls.fmt[i]))
+          sprintf(c.calls.fmt[i], i) # add the i to e.g. di[i]
+        else c.calls.fmt[i]
+  ) } )
   code.txt <- c(
     # Headers, system headers first (are these going to go in right order?)
     paste(
@@ -149,8 +160,7 @@ preprocess <- function(call, formals, optimize=FALSE) {
 #   call, `call.parent` is that call.  Used so we can tell if we're e.g. called
 #   from braces.
 # @param indent additional indentation to add to code, used to support controls with
-##   indented contents.  This is a delta to previous indentation, not total
-##   indentation.
+##   indented contents.  This is the total required indentation.
 
 pp_internal <- function(
   call, depth, x, argn="", assign=FALSE, call.parent=NULL, indent=0L
@@ -159,71 +169,65 @@ pp_internal <- function(
     stop("Expression max depth exceeded.") # exceedingly unlikely
 
   if(is.call(call)) {
-    call.name <- get_lang_name(call)
-    if(identical(call.name, 'if')) {
-      pp_if(
-        call=call, depth=depth, x=x, argn=n, assign=assign,
-        call.parent=call.parent
+    # - Recursion on Params ----------------------------------------------------
+    # Classify Params
+    args <- as.list(call[-1L])
+    if(is.null(names(args))) names(args) <- character(length(args))
+    func <- call_valid(call)
+    args.types <- rep("other", length(args))
+    args.types[names(args) %in% VALID_FUNS[[c(func, "ctrl")]]] <- "control"
+    args.types[names(args) %in% VALID_FUNS[[c(func, "flag")]]] <- "flag"
+
+    # Check if we're in assignment call
+    name <- get_lang_name(call[[1L]]) # should this just be `func`?
+    next.assign <- name %in% ASSIGN.SYM
+    # Assignments only allowed at brace level or top level because we cannot
+    # assure the order of evaluation so safer to just disallow.  We _could_
+    # allow it but it just seems dangerous.
+    if(
+      next.assign &&
+      !is.brace_or_assign_call(call.parent) && !is.null(call.parent)
+    ) {
+      call.dep <- deparse(call)
+      msg <- sprintf(
+        "r2c disallows assignments inside arguments. Found: %s",
+        if(length(call.dep) == 1) call.dep
+        else paste0(c("", call.dep), collapse="\n")
       )
-    } else {
-
-      # - Recursion on Params --------------------------------------------------
-      # Classify Params
-      args <- as.list(call[-1L])
-      if(is.null(names(args))) names(args) <- character(length(args))
-      func <- call_valid(call)
-      args.types <- rep("other", length(args))
-      args.types[names(args) %in% VALID_FUNS[[c(func, "ctrl")]]] <- "control"
-      args.types[names(args) %in% VALID_FUNS[[c(func, "flag")]]] <- "flag"
-
-      # Check if we're in assignment call
-      name <- get_lang_name(call[[1L]])
-      next.assign <- name %in% ASSIGN.SYM
-      # Assignments only allowed at brace level or top level because we cannot
-      # assure the order of evaluation so safer to just disallow.  We _could_
-      # allow it but it just seems dangerous.
-      if(
-        next.assign &&
-        !is.brace_or_assign_call(call.parent) && !is.null(call.parent)
-      ) {
-        call.dep <- deparse(call)
-        msg <- sprintf(
-          "r2c disallows assignments inside arguments. Found: %s",
-          if(length(call.dep) == 1) call.dep
-          else paste0(c("", call.dep), collapse="\n")
+      stop(simpleError(msg, call.parent))
+    }
+    for(i in seq_along(args)) {
+      if(args.types[i] %in% c('control', 'flag')) { # shouldn't be assign symbol
+        if(next.assign) stop("Internal error: controls/flag on assignment.")
+        x <- record_call_dat(
+          x, call=args[[i]], depth=depth + 1L, argn=names(args)[i],
+          type=args.types[i], code=code_blank(),
+          sym.free=sym_free(x, args[[i]]), assign=FALSE, indent=indent
         )
-        stop(simpleError(msg, call.parent))
-      }
-      for(i in seq_along(args)) {
-        if(args.types[i] %in% c('control', 'flag')) { # shouldn't be assign symbol
-          if(next.assign) stop("Internal error: controls/flag on assignment.")
-          x <- record_call_dat(
-            x, call=args[[i]], depth=depth + 1L, argn=names(args)[i],
-            type=args.types[i], code=code_blank(),
-            sym.free=sym_free(x, args[[i]]), assign=FALSE
-          )
-        } else {
-          x <- pp_internal(
-            call=args[[i]], depth=depth + 1L, x=x, argn=names(args)[i],
-            assign=i == 1L && next.assign, call.parent=call
-      ) } }
-      # Bind assignments (we do it after processing of the rest of the call)
-      if(next.assign) {
-        sym.bound <- get_target_symbol(call, name)
-        x[['sym.bound']] <- union(sym.bound, x[['sym.bound']])
-      }
-      type <- "call"
-      # Generate Code
-      code <- VALID_FUNS[[c(func, "code.gen")]](
-        func,
-        args[args.types == "other"],
-        args[args.types == "control"],
-        args[args.types == "flag"]
-      )
-      code_valid(code, call)
-      record_call_dat(
-        x, call=call, depth=depth, argn=argn, type=type, code=code, assign
-    ) }
+      } else {
+        x <- pp_internal(
+          call=args[[i]], depth=depth + 1L, x=x, argn=names(args)[i],
+          assign=i == 1L && next.assign, call.parent=call,
+          indent=indent + (func %in% IF.SUB.SYM) * 2L
+    ) } }
+    # Bind assignments (we do it after processing of the rest of the call)
+    if(next.assign) {
+      sym.bound <- get_target_symbol(call, name)
+      x[['sym.bound']] <- union(sym.bound, x[['sym.bound']])
+    }
+    type <- "call"
+    # Generate Code
+    code <- VALID_FUNS[[c(func, "code.gen")]](
+      func,
+      args[args.types == "other"],
+      args[args.types == "control"],
+      args[args.types == "flag"]
+    )
+    code_valid(code, call)
+    record_call_dat(
+      x, call=call, depth=depth, argn=argn, type=type, code=code, assign=assign,
+      indent=indent
+    )
   } else {
     # - Symbol or Constant -----------------------------------------------------
     type <- "leaf"
@@ -246,32 +250,10 @@ pp_internal <- function(
       }
     }
     record_call_dat(
-      x, call=call, depth=depth, argn=argn, type=type, code=code, assign
+      x, call=call, depth=depth, argn=argn, type=type, code=code, assign=assign,
+      indent=indent
     )
 } }
-pp_if <- function(
-  call, depth, x, argn="", assign=FALSE, call.parent=NULL
-) {
-  ## * Process parameter 1 (the test) as normal.
-
-  ## * Insert the `r2c_if` call with the code generation of the prelude.
-
-  ## * Process parameter 2 (the yes condition) as normal, with a new indent level
-  ##   specified.
-  ##   * We need to recover how many total calls were processed so we can generate
-  ##     the correct offsets for the no condition prologue.
-
-  ## * Insert the epilogue.
-
-  ## * Insert the `r2c_else` call with the code generation of the prelude.
-
-  ## * Process parameter 2 (the no condition) as normal, with a new indent level
-  ##   specified.
-  ##   * We need to recover how many total calls were processed so we can generate
-  ##     the correct offsets for the ...
-
-  ## * Insert the epilogue.
-}
 
 #' See preprocess for some discussion of what the elements are
 #'
@@ -317,7 +299,7 @@ init_call_dat <- function(formals)
     dot.arg.i=1L,
     last.read=integer(),
     assign=logical(),
-    indent=0L
+    indent=integer()
   )
 
 ## Record Expression Data
@@ -327,12 +309,9 @@ init_call_dat <- function(formals)
 ## `code_blank` for terminals.  We need the terminals because the allocator
 ## still needs to know about them to find them in the data array or to evaluate
 ## them (for external symbols).
-##
-## @param indent see pp_internal
 
 record_call_dat <- function(
-  x, call, depth, argn, type, code, assign, sym.free=sym_free(x, call),
-  indent=0L
+  x, call, depth, argn, type, code, assign, sym.free=sym_free(x, call), indent
 ) {
   # list data
   x[['call']] <- c(
@@ -510,9 +489,58 @@ copy_last <- function(x) {
       x[[3L]] <- copy_last(x[[3L]])
     } else if (call.sym == "uplus") {
       x[[2L]] <- copy_last(x[[2L]])
+    } else if (call.sym == "if") {
+      # These should probably never run since code will have been processed by
+      # `transform_ifelse` or similar.
+      x[[3L]] <- copy_last(x[[3L]])
+      if(length(x) == 4L) x[[4L]] <- copy_last(x[[3L]])
+    } else if (call.sym == 'r2c_if') {
+      x[[2L]] <- copy_last(x[[2L]])
+      x[[3L]] <- copy_last(x[[3L]])
+    } else if (call.sym %in% IF.SUB.SYM) {
+      x[[2L]] <- copy_last(x[[2L]])
     } else if(call.sym %in% PASSIVE.SYM)
       stop("Internal Error: unhandled passive calls")
   }
+  x
+}
+# Expand if/else Into Expected Format
+#
+# An if/else lik:
+#
+# ```
+# if(a) b else c
+# ```
+#
+# Becomes:
+#
+# ```
+# r2c::if_test(a)
+# r2c::r2c_if(if_true(b), if_false(c))
+# ```
+#
+# This allows us to generate the control structures in C and line them up with
+# calls for required allocations.
+
+transform_ifelse <- function(x) {
+  if(is.call(x)) {
+    x[-1L] <- lapply(x[-1L], transform_ifelse)
+    call.sym <- get_lang_name(x)
+    if(call.sym == "if") {
+      if(!length(x) %in% 3:4)
+        stop("Invalid if/else call:\n", paste0(deparse(x), collapse="\n"))
+      # Can't use `quote(numeric(0L))` because we don't (and can't? Err we
+      # could since it's constant alloc) implement `numeric`.
+      if(length(x) == 3L) x[[4L]] <- numeric(0L)
+      x <- bquote(
+        {
+          r2c::if_test(cond=.(x[[2L]]))
+          r2c::r2c_if(
+            true=r2c::if_true(expr=.(x[[3L]])),
+            false=r2c::if_false(expr=.(x[[4L]]))
+          )
+        }
+  ) } }
   x
 }
 

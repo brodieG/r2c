@@ -12,6 +12,14 @@
 
 ### v0.3.0
 
+* Does `record_call_dat` really need to record terminals?  Main thing that is
+  done is dealing with `..1` etc, but where do we use that?  Update: of course
+  we do, as we still have to evaluate them / match them to an allocation in the
+  allocation step.
+* Remember why we don't increment `*flag` inside the function call?  Is it just
+  because it's not always used and easier to do it outside?
+* Check that the interrupts work when there are more than 1e7 elements in a
+  group / window.
 * Test that unary plus:
   * Executes vcopy correctly when needed
   * Coerces logical to integer

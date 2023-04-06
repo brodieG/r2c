@@ -304,6 +304,113 @@ slots into to the `pp_internal` stack.  It will:
 
 * Process parameter 1 (the test) as normal.
 * Insert the `r2c_if` call with the code generation of the prelude.
+
+So maybe:
+
+```
+if(a) {
+  b
+  c
+} else {
+  d
+  e
+}
+```
+
+Becomes:
+
+```
+// if_test can't quite be a no-op as those automatically get commented out
+r2c_if_test(a)       // generate if(...), NO-OP-ish as it just accesses the value
+r2c_if_true()        // generate prelude, NO-OP
+{
+  b
+  c
+}
+r2c_if_true_end()    // generate epilogue, NO-OP
+r2c_if_false()       // generate prelude, NO-OP
+{
+  d
+  e
+}
+r2c_if_false_end()   // generate epilogue, NO-OP
+```
+
+Maybe better once we don't need to increment indices b/c we specify them
+directly:
+
+
+```
+r2c_if_test(a)
+{
+  b
+  c
+}
+r2c_else()    // NO-OP
+{
+  d
+  e
+}
+r2c_endif()   // NO-OP
+```
+
+For the last two the problem is the code generation needs to override the
+default and produce:
+
+   }
+   else
+   {
+
+And:
+
+   }
+
+An alternative might be:
+
+```
+if(a) b else c
+```
+
+Becomes:
+
+```
+r2c_if_test(a)
+r2c_if(r2c_if_true(b), r2c_if_false(c))
+```
+
+Which expands to:
+
+```
+a
+r2c_if_test(a)  // -> if(r2c_test(a)) {
+b
+r2c_if_true(b)  // -> } else {             NO-OP
+c
+r2c_if_false(c) // -> }                    NO-OP
+r2c_if(r2c_if_true(b), r2c_if_false(c))
+```
+
+The main advantage of this is that it allows the `r2c_if` call to get all the
+data related to it's arguments, including argument lengths, within the existing
+structure.
+
+Make sure to register all of these in `PASSIVE.SYM` (or should we change it to
+be `ACTIVE.SYM` that requires registration?).
+
+All of this needs to be done before we get into `pp_internal` like the other
+pre-preprocessing steps.  But we don't really want to expose this stuff to the
+user, right?  One possibility would be to add to `r2c:::clean_call` the ability
+to re-collapse the above back into the original if/else call the way we handle
+`...` names and other things.
+
+If we do it this way, the dedicated logic that we need to add is something that
+can track the positions of the offsets.
+
+**Maybe instead of doing stuff like di++ we do `mean(.., di[n])`**
+
+That would massively simplify all the loops and everything else too.  We just
+need to be sure to count all the calls carefully.
+
 * Process parameter 2 (the yes condition) as normal, with a new indent level
   specified.
   * We need to recover how many total calls were processed so we can generate
