@@ -83,7 +83,7 @@ code_gen_unary <- function(fun, args.reg, args.ctrl, args.flags) {
   )
   code_res(
     defn=defn, name=name, defines=if(is.neg) UOP.DEFN[fun],
-    noop=fun == "uplus"
+    out.ctrl=if(fun == "uplus") CGEN.OUT.NOOP else CGEN.OUT.DFLT
   )
 }
 

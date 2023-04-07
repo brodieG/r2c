@@ -13,37 +13,12 @@
 ##
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
-f_braces <- '
-// Braces are a no-op; allocation handles them.
-// static void %s(%s) { /* NOOP */ }'
+# - Copy Prior Result for No-ops -----------------------------------------------
 
-code_gen_braces <- function(fun, args.reg, args.ctrl, args.flags) {
-  vetr(
-    identical(., "{"),
-    args.reg=list(),
-    args.ctrl=list() && length(.) == 0L,
-    args.flags=list() && length(.) == 0L
-  )
-  if(length(args.reg) < 1L) stop("Empty braces expresssions disallowed.")
-  name <- FUN.NAMES[fun]
-  defn <- sprintf(f_braces, name, toString(c(F.ARGS.BASE, F.ARGS.VAR)))
-  code_res(defn=defn, narg=TRUE, name=name, noop=TRUE)
-}
-
-f_assign <- '
-// Read-only assignments are a no-op; allocation handles them.
-// static void %s(%s) { /* NOOP */ }'
-code_gen_assign <- function(fun, args.reg, args.ctrl, args.flags) {
-  vetr(
-    isTRUE(. %in% c("=", "<-")),
-    args.reg=list(NULL, NULL),
-    args.ctrl=list() && length(.) == 0L,
-    args.flags=list() && length(.) == 0L
-  )
-  name <- FUN.NAMES[fun]
-  defn <- sprintf(f_assign, name, toString(F.ARGS.BASE))
-  code_res(defn=defn, name=name, noop=TRUE)
-}
+# No-op functions like assignment and braces don't compute, thus don't write to
+# memory.  To ensure that their "output" is written to the result vector, we
+# need to make sure it is explicitly copied (e.g. when we assign an external
+# symbol, we actually want that copied into the result).
 
 f_copy <- '
 // Copy a vector, intended to be copied to result
@@ -56,9 +31,6 @@ static void %s(%s) {
   memcpy(res, input, sizeof(*res) * len0);
   lens[1] = len0;
 }'
-# This function will get run, but the results discarded.  We started off using
-# it, but decided later easier to skip braces altogether, and it was easier to
-# leave this vestigial code here.
 
 code_gen_copy <- function(fun, args.reg, args.ctrl, args.flags) {
   vetr(
@@ -89,6 +61,40 @@ code_gen_copy <- function(fun, args.reg, args.ctrl, args.flags) {
 
 vcopy <- function(x) x + 0
 
+# - Braces and Assign ----------------------------------------------------------
+
+f_braces <- '
+// Braces are a no-op; allocation handles them.
+// static void %s(%s) { /* NOOP */ }'
+code_gen_braces <- function(fun, args.reg, args.ctrl, args.flags) {
+  vetr(
+    identical(., "{"),
+    args.reg=list(),
+    args.ctrl=list() && length(.) == 0L,
+    args.flags=list() && length(.) == 0L
+  )
+  if(length(args.reg) < 1L) stop("Empty braces expresssions disallowed.")
+  name <- FUN.NAMES[fun]
+  defn <- sprintf(f_braces, name, toString(c(F.ARGS.BASE, F.ARGS.VAR)))
+  code_res(defn=defn, narg=TRUE, name=name, out.ctrl=CGEN.OUT.NONE)
+}
+
+f_assign <- '
+// Read-only assignments are a no-op; allocation handles them.
+// static void %s(%s) { /* NOOP */ }'
+code_gen_assign <- function(fun, args.reg, args.ctrl, args.flags) {
+  vetr(
+    isTRUE(. %in% c("=", "<-")),
+    args.reg=list(NULL, NULL),
+    args.ctrl=list() && length(.) == 0L,
+    args.flags=list() && length(.) == 0L
+  )
+  name <- FUN.NAMES[fun]
+  defn <- sprintf(f_assign, name, toString(F.ARGS.BASE))
+  code_res(defn=defn, name=name, out.ctrl=CGEN.OUT.NOOP)
+}
+# - If / Else ------------------------------------------------------------------
+
 f_iftest <- '
 // Check a test condition, mostly enforces length
 static int %s(%s) {
@@ -98,9 +104,10 @@ static int %s(%s) {
   }
   lens[di[1]] = 1;
   return (int) data[di[0]][0];
-};'
+}'
+
 f_ifother <- '
-// if/else handled with noops
+// if/else does not generate a definition
 // static void %s(%s) { /* NOOP */ }'
 
 code_gen_if_test <- function(fun, args.reg, args.ctrl, args.flags) {
@@ -114,7 +121,7 @@ code_gen_if_test <- function(fun, args.reg, args.ctrl, args.flags) {
   defn <- sprintf(f_iftest, name, toString(F.ARGS.BASE))
   code_res(
     defn=defn, name=name,
-    c.call.gen=function(...) 
+    c.call.gen=function(...)
       paste0("if(", sub(";$", "", c_call_gen(...)), ") {")
   )
 }
@@ -127,7 +134,10 @@ code_gen_if_true <- function(fun, args.reg, args.ctrl, args.flags) {
   )
   name <- FUN.NAMES[fun]
   defn <- sprintf(f_ifother, name, toString(F.ARGS.BASE))
-  code_res(defn=defn, name=name, c.call.gen=function(...) "} else {")
+  code_res(
+    defn=defn, name=name, c.call.gen=function(...) "} else {",
+    out.ctrl=CGEN.OUT.CALL
+  )
 }
 code_gen_if_false <- function(fun, args.reg, args.ctrl, args.flags) {
   vetr(
@@ -138,7 +148,9 @@ code_gen_if_false <- function(fun, args.reg, args.ctrl, args.flags) {
   )
   name <- FUN.NAMES[fun]
   defn <- sprintf(f_ifother, name, toString(F.ARGS.BASE))
-  code_res(defn=defn, name=name, c.call.gen=function(...) "}")
+  code_res(
+    defn=defn, name=name, c.call.gen=function(...) "}", out.ctrl=CGEN.OUT.CALL
+  )
 }
 code_gen_r2c_if <-function(fun, args.reg, args.ctrl, args.flags) {
   vetr(
@@ -149,7 +161,7 @@ code_gen_r2c_if <-function(fun, args.reg, args.ctrl, args.flags) {
   )
   name <- FUN.NAMES[fun]
   defn <- sprintf(f_ifother, name, toString(F.ARGS.BASE))
-  code_res(defn=defn, name=name, noop=TRUE)
+  code_res(defn=defn, name=name, out.ctrl=CGEN.OUT.NONE)
 }
 code_gen_if <- function(...) {
   stop(
@@ -157,8 +169,6 @@ code_gen_if <- function(...) {
     "instead of decomponsed one."
   )
 }
-
-
 #' Decompose If / Else
 #'
 #' Internal functions that integrate the `if / else` construct between the R and
@@ -172,7 +182,10 @@ code_gen_if <- function(...) {
 #' decomposition creates that correspondence without changing the overall
 #' semantics (although the intermediate semantics are not the same due to the
 #' use of implicit state to decide what branch to evaluate).  Unlike most other
-#' `r2c` functions, you cannot run these from the R level at all.
+#' `r2c` functions, you cannot run these from the R level at all.  There is only
+#' a loose correspondence between the R function names and the C code they cause
+#' to be generated as we exploit how `r2c` linearizes the AST to cause the
+#' pieces of the control structure to be emitted at the right spots.
 #'
 #' Put less kindly: this is a hack to get control flow to fit into an
 #' implementation that originally did not intend to allow them.

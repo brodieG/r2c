@@ -358,7 +358,7 @@ stopifnot(
 code_blank <- function()
   list(
     defn="", name="", call="", narg=FALSE, flag=FALSE, ctrl=FALSE,
-    headers=character(), defines=character(), noop=FALSE
+    headers=character(), defines=character(), out.ctrl=CGEN.OUT.NONE
   )
 code_valid <- function(code, call) {
   isTRUE(check <- vet(CHR.1, code[['defn']])) &&
@@ -366,7 +366,9 @@ code_valid <- function(code, call) {
     isTRUE(check <- vet(CHR.1, code[['call']])) &&
     isTRUE(check <- vet(CHR || NULL, code[['headers']])) &&
     isTRUE(check <- vet(CHR || NULL, code[['defines']])) &&
-    isTRUE(check <- vet(LGL.1, code[['noop']]))
+    isTRUE(
+      check <- vet(INT.1 && all_bw(., 0, CGEN.OUT.DFLT), code[['out.ctrl']])
+    )
   if(!isTRUE(check))
     stop("Generated code format invalid for `", deparse1(call), "`:\n", check)
 
@@ -404,7 +406,7 @@ call_valid <- function(call) {
 #'
 #' @noRd
 
-c_call_gen <- function(name, narg, flag, ctrl, indent) {
+c_call_gen <- function(name, narg, flag, ctrl) {
   sprintf(
     "%s(%s%s%s%s);",
     name,
@@ -414,45 +416,68 @@ c_call_gen <- function(name, narg, flag, ctrl, indent) {
     if(ctrl) paste0(", ", CALL.CTRL) else ""
   )
 }
-#' Organize Code Generation Output
+#' Organize C Code Generation Output
 #'
-#' Additionally, generates the call to the function.
+#' There are three types of C output:
+#'
+#' * Call to the C function
+#' * Definition of C function
+#' * Deparsing of R function as comment for context
+#'
+#' Different R level calls require outputting different mixes of the above,
+#' where the default standard call like `mean(x)` will output all three.
+#' Exceptions include so called NO-OP calls that don't actually require a C
+#' function call such as assignments or braces.  These don't compute anything
+#' directly.  Additionally, control functions don't map R calls directly to C
+#' calls, but still use proxy R calls as stand-ins for e.g. the braces, the
+#' `else`, etc.  So those have an associated output that is "executed" at
+#' run-time, but e.g. don't have corresponding definitions or deparsed R
+#' commentary.
+#'
+#' Every R call, including proxy R calls, maintains a spot in the data
+#' indexing, flag, and control arrays, even if they are not run at the C level.
+#' This simplifies the logic of the allocation code.  Additionally, every R call
+#' must generate a C function definition and a call, irrespective of whether the
+#' definition and/or call are emitted to the final C output file.  This
+#' requirement is due to some sanity checks that preceded the possibility of
+#' calls/definitions that might not get emitted.
 #'
 #' @noRd
+#' @seealso `cgen` for the actual C code generation, `preprocess` for the
+#'   assembly into the final C file.
 #' @param narg TRUE if function has variable number of arguments
 #' @param flag TRUE if function has flag parameters
 #' @param ctrl TRUE if function has control parameters
-#' @param noop TRUE if function is a noop, in which case the call C-level code
-#'   is commented out.  noops remain on the stack, they just don't execute any C
-#'   code.
 #' @param headers character vector with header names that need to be #included
 #' @param defines character with #define directives
+#' @param out.ctrl scalar integer sum of various `CGEN.OUT.*` constants (see
+#'   constants.R) that control which parts of the C output are generated and
+#'   how.  The actual final C file is produced by `preprocess` (consulting these
+#'   values).
 #' @param c.call.gen function to generate the C call.  Primarily used to allow
 #'   generation of control flow code that follows different patterns than all
 #'   the others, including cases where there is no function call at all, only
-#'   e.g. braces or an else statement.  These still take up a spot in the call
-#'   stack for allocation and effectively act like `noop` calls.  This is a
-#'   light hijacking of the original functionality to allow simple control flow
-#'   implementation (e.g. we emit an `} else {` instead of a `fun(...)`).
+#'   e.g. braces or an else statement.
 
 code_res <- function(
   defn, name, narg=FALSE, flag=FALSE, ctrl=FALSE,
-  headers=character(), defines=character(), noop=FALSE, c.call.gen=c_call_gen,
-  indent=0L
+  headers=character(), defines=character(), out.ctrl=CGEN.OUT.DFLT,
+  c.call.gen=c_call_gen
 ) {
   if(is.na(name)) stop("Internal Error: mismapped function name.")
-  if(noop && !name %in% FUN.NAMES[PASSIVE.SYM])
-    stop("Internal Error: noop declared for ", name, ", but not in PASSIVE.SYM")
+  if(
+    bitwAnd(out.ctrl, CGEN.OUT.MUTE) && !name %in% FUN.NAMES[PASSIVE.SYM]
+  )
+    stop("Internal Error: cannot mute ", name, ", as not in PASSIVE.SYM")
 
   c_call <- paste0(
-    c.call.gen(name, narg=narg, flag=flag, ctrl=ctrl, indent=indent),
-    collapse="\n"
+    c.call.gen(name, narg=narg, flag=flag, ctrl=ctrl), collapse="\n"
   )
   list(
     defn=defn, name=name,
-    call=paste0(if(noop) "// NO-OP: ", c_call),
+    call=c_call,
     headers=if(is.null(headers)) character() else headers,
     defines=if(is.null(defines)) character() else defines,
-    narg=narg, flag=flag, ctrl=ctrl, noop=noop
+    narg=narg, flag=flag, ctrl=ctrl, out.ctrl=out.ctrl
   )
 }

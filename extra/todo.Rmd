@@ -21,6 +21,10 @@
 
 ## Current
 
+* Switch `noop` to be flags the control whether the call is issued, whether the
+  deparsed R call is issued, and whether the definition is issued.  And document
+  it all. Probably should be done through code_res.
+
 * `code_gen_*` functions should be in a list instead of floating around as
   objects.  This would ensure we don't accidentally use the wrong code gen as we
   can select it by name.

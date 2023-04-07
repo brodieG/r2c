@@ -449,6 +449,15 @@ Probably should check that there is always an `r2c_else` after an `if`.
 
 Do we need an empty call for the epilogues?  Maybe.
 
+If we hit `if_true`, then it gets complicated, because we won't hit it until
+we've hit all the contents...
+
+Basically, we need to split the linearized call list back into its branches,
+which will be really annoying.  So we need to make two versions?  But the `i`
+indices are baked in from the preproc when we generate the code.  We are still
+free to do whatever with the allocation array, but it's not trivial to do things
+self consistently.
+
 # Loop in relation to if
 
 Same concept of prelude/epilogue.  Same concept of an empty else branch to

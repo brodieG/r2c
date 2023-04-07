@@ -83,8 +83,8 @@ preprocess <- function(call, formals, optimize=FALSE) {
     stop("Internal error: functions redefined with changing definitions.")
 
   # noops don't need their C code generated
-  noop <- vapply(x[['code']], "[[", TRUE, "noop")
-  codes <- codes[!noop]
+  out.ctrl <- vapply(x[['code']], "[[", 0L, "out.ctrl")
+  codes <- codes[bitwAnd(out.ctrl, CGEN.OUT.DEFN) != 0L]
   codes.u <- paste0(
     gsub("^(\\s|\\n)+|(\\s|\\n)+$", "", unique(codes[nzchar(codes)])),
     "\n"
@@ -97,27 +97,36 @@ preprocess <- function(call, formals, optimize=FALSE) {
   calls.keep <- nzchar(c.calls)
   c.calls.keep <- c.calls[calls.keep]
   r.calls.dep.keep <- r.calls.dep[calls.keep]
+  out.ctrl.keep <- out.ctrl[calls.keep]
+
   indent <- strrep(" ", x[['indent']])[calls.keep]
-
-  c.calls.fmt <- format(paste0(indent, c.calls.keep))
-
-  # Some variables not always used
-  c.narg <- vapply(x[['code']][calls.keep], "[[", TRUE, "narg")
-  c.flag <- vapply(x[['code']][calls.keep], "[[", TRUE, "flag")
-  c.ctrl <- vapply(x[['code']][calls.keep], "[[", TRUE, "ctrl")
+  needs.padding <- c(FALSE, indent[-1L] != indent[-length(indent)])
 
   calls.fin <- lapply(
     seq_along(which(calls.keep)),
     function(i) {
       c(
-        if(i > 1) "",
-        paste0(
-          indent[i], "// ", unlist(strsplit(r.calls.dep.keep[i], "\n"))
-        ),
-        if(grepl("%1\\$d", c.calls.fmt[i]))
-          sprintf(c.calls.fmt[i], i) # add the i to e.g. di[i]
-        else c.calls.fmt[i]
+        if(needs.padding[i]) "",
+        if(bitwAnd(out.ctrl.keep[i], CGEN.OUT.RDEP))
+          paste0(
+            indent[i], "// ", unlist(strsplit(r.calls.dep.keep[i], "\n"))
+          ),
+        if(bitwAnd(out.ctrl.keep[i], CGEN.OUT.CALL)) {
+          paste0(
+            indent[i],
+            if(bitwAnd(out.ctrl.keep[i], CGEN.OUT.MUTE)) "// NOOP: ",
+            # add the i to e.g. di[i]
+            if(grepl("%1\\$d", c.calls.keep[i])) sprintf(c.calls.keep[i], i)
+            else c.calls.keep[i]
+          )
+        }
   ) } )
+  extra.vars <- c('narg', 'flag', 'ctrl')
+  extra.vars.tpl <- logical(length(extra.vars))
+  names(extra.vars.tpl) <- extra.vars
+  args.used <- vapply(
+    x[['code']][calls.keep], function(x) unlist(x[extra.vars]), extra.vars.tpl
+  )
   code.txt <- c(
     # Headers, system headers first (are these going to go in right order?)
     paste(
@@ -131,15 +140,19 @@ preprocess <- function(call, formals, optimize=FALSE) {
     "",
     # Function Definitions
     codes.u,
-    # Calls
+
+    # C function to be invoked by runners
     sprintf("void run(\n  %s\n) {", toString(R.ARGS.ALL)),
+
     paste0(
       "  ",
       c(
-        if(!any(c.narg)) "(void) narg; // unused",
-        if(!any(c.flag)) "(void) flag; // unused",
-        if(!any(c.ctrl)) "(void) ctrl; // unused",
+        # Some variables not always used so add dummy uses to suppress warnings
+        if(!any(args.used['narg',])) "(void) narg; // unused",
+        if(!any(args.used['flag',])) "(void) flag; // unused",
+        if(!any(args.used['ctrl',])) "(void) ctrl; // unused",
         "",
+        # C calls.
         unlist(calls.fin)
       )
     ),
@@ -159,8 +172,8 @@ preprocess <- function(call, formals, optimize=FALSE) {
 # @param call.parent if `call` is being evaluated as an argument to a parent
 #   call, `call.parent` is that call.  Used so we can tell if we're e.g. called
 #   from braces.
-# @param indent additional indentation to add to code, used to support controls with
-##   indented contents.  This is the total required indentation.
+# @param indent additional indentation to add to code, used to support controls
+#   with indented contents.  This is the total required indentation.
 
 pp_internal <- function(
   call, depth, x, argn="", assign=FALSE, call.parent=NULL, indent=0L
@@ -540,7 +553,13 @@ transform_ifelse <- function(x) {
             false=r2c::if_false(expr=.(x[[4L]]))
           )
         }
-  ) } }
+      )
+    } else if (call.sym == "{" && length(x) == 2L) {
+      # remove redundant nested braces as could be introduced above.  This could
+      # remove other redundant nested braces.
+      x <- x[[2L]]
+    }
+  }
   x
 }
 

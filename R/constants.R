@@ -115,6 +115,14 @@ FUN.NAMES <- c(
   if_test="if_test", if_true="if_true", if_false="if_false", r2c_if="r2c_if",
   "if"="if"
 )
+# C Generator Output Types
+CGEN.OUT.CALL <- 1L   # output call to C fun e.g. `mean(data, lens, di[5])`
+CGEN.OUT.MUTE <- 2L   # prepend '// NOOP: ' to call, thus disabling it
+CGEN.OUT.RDEP <- 4L   # add the corresponding deparsed R call above C call
+CGEN.OUT.DEFN <- 8L   # output the c function definition
+CGEN.OUT.DFLT <- CGEN.OUT.CALL + CGEN.OUT.RDEP + CGEN.OUT.DEFN
+CGEN.OUT.NOOP <- CGEN.OUT.CALL + CGEN.OUT.MUTE + CGEN.OUT.RDEP
+CGEN.OUT.NONE <- 0L
 
 # - Internal Symbols -----------------------------------------------------------
 
@@ -135,4 +143,5 @@ RENAME.ARG.TPL <- sprintf("%s%%s_%%d", RENAME.ARG.BASE)
 REUSE.ARG.BASE <- sprintf("%s_SUB_", R2C.PRIV.BASE)
 REUSE.ARG.RX <- sprintf("^\\%s\\d+$", RENAME.ARG.BASE)
 REUSE.ARG.TPL <- sprintf("%s%%d", REUSE.ARG.BASE)
+
 
