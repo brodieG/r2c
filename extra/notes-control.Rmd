@@ -458,6 +458,44 @@ indices are baked in from the preproc when we generate the code.  We are still
 free to do whatever with the allocation array, but it's not trivial to do things
 self consistently.
 
+Instead maybe we can just save a snapshot of the allocation data once we hit the
+`if_true`.  It would go in a stack, and each time we hit an `if_false` call, it
+would unwind the stack and compare the two allocation structures to make sure
+they are compatible with each other:
+
+* Compatibility is just that the symbols with lifetimes exceeding the if/else
+  are equal size.
+* Make sure they point to the same memory.  This may require shuffling things
+  around.
+* More specifically, we're looking to make sure that:
+    * Every unexpired symbol in the names array points to the same memory
+      location and has the same allocated size.
+    * If locations are not the same (but both exist), we need to reconcile
+      locations.
+    * Any mismatch in existence is an error.
+    * Any mismatch in size is an error.
+
+I think we just need to keep the names array.
+
+Can we encourage the allocator to re-use the same memory for the same symbol if
+it fits?  Won't help with a symbol getting written to multiple times at
+different sizes (this is not disallowed, just we cannot guarantee the same
+memory will be used).  Additionally, this is non-trivial because when memory if
+first assigned, it is at the computation step, which is nested inside the
+assignment and can't easily know it's result will have a symbol bound to it.
+
+Problem is we cannot just move things to a free slot because the slot might not
+have been free at the time the symbol was written to.  So do we just allocate a
+new vector for every symbol written to in either loop?  Likely we do this for
+any symbols that end up at different addresses.
+
+Once we "move" the symbols, we need to go back and fix any references to the
+symbols in question in the "ids" field of the `call.dat` elements?  But imagine
+some symbol got written to free slot 5, how do we know that in any given
+`call.dat` element the 5 referenced our symbol, vs something else that
+temporarily occupied the slot?  For each name, we need to know what step it was
+assigned on, so we can work back and update all the references up to that point.
+
 # Loop in relation to if
 
 Same concept of prelude/epilogue.  Same concept of an empty else branch to
