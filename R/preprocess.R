@@ -625,7 +625,7 @@ copy_encsym_revpass <- function(
       if(call.sym %in% ASSIGN.SYM) {
         # In reverse traversal a symbol assigned to is dead until the next time
         # it is used (where next is earlier in the tree)
-        live.sym <- live.sym[live.sym != get_target_symbol(x)]
+        live.sym <- live.sym[live.sym != get_target_symbol(x, call.sym)]
     } }
   } else if (is.symbol(x) && (assign || last)) {
     # vcopy if part of an assignment chain or return value, later we will undo
@@ -643,7 +643,12 @@ copy_encsym_revpass <- function(
 # defined in the compiled expression that would point to memory shared with no
 # other symbols.  We can't know that in the backward pass ahead of time, so that
 # one takes a conservative view and `vcopy`s everything, and this one undoes the
-# ones we can tell are unnecessary in the forward pass.
+# ones we can tell are unnecessary in the forward pass.  The undoing might miss
+# some `vcopy`s that could be removed, e.g. it might not be necessary to `vcopy`
+# here:
+#
+#     x <- y <- mean(z)
+#     if(a) x else y
 #
 # See `copy_encsym`
 #
@@ -662,16 +667,13 @@ copy_encsym_cleanpass <- function(x, bindings=list(), assign.to=character()) {
         x <- x[[2L]]
       }
     } else {
-      rec.skip <- -1L
-      if(call.sym %in% ASSIGN.SYM) {
-        assign.to <- c(assign.to, get_target_symbol(call))
-        rec.skip <- -(1:2)
-      }
-      for(i in seq_along(x)[rec.skip]) {
-        # passive calls return memory bound to last arg result for assignment
-        at.tmp <-
-          if(call.sym %in% PASSIVE.SYM && i == length(x)) assign.to
-          else character()
+      if(call.sym %in% ASSIGN.SYM)
+        assign.to <- c(assign.to, get_target_symbol(x, call.sym))
+      for(i in seq_along(x)[-1L]) {
+        # passive calls forward previously bound memory; in this case we're
+        # could "rebind" repeatedly to same symbol for eg `x <- {mean(b); c}`,
+        # but the last one is the one that matters and we process in order.
+        at.tmp <- if(call.sym %in% PASSIVE.SYM) assign.to else character()
         tmp <-
           copy_encsym_cleanpass(x[[i]], bindings=bindings, assign.to=at.tmp)
         x[[i]] <- tmp[['x']]
