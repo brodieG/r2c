@@ -138,7 +138,7 @@ is.chr_or_sym <- function(x) is.symbol(x) || is.character(x) && length(x) == 1L
 is.call_w_args <- function(x) is.call(x) && length(x) > 1L
 
 is.assign_call <- function(x)
-  is.call(x) && isTRUE(get_lang_name(x) %in% ASSIGN.SYM)
+  is.call(x) && isTRUE(get_lang_name(x) %in% ASSIGN.SYM) && length(x) == 3L
 is.brace_call <- function(x)
   is.call(x) && get_lang_name(x) == "{"
 
@@ -259,5 +259,8 @@ get_lang_name <- function(call) {
   else ""
 }
 
+# Wrap a Symbol in Vcopy
 
+VCOPY.FUN.NAME <- call("::", as.name("r2c"), as.name("vcopy"))
+en_vcopy <- function(x) as.call(list(VCOPY.FUN.NAME, x=x))
 
