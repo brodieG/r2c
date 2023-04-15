@@ -597,8 +597,9 @@ copy_encsym_revpass <- function(
     call.sym <- get_lang_name(x)
     call.passive <- call.sym %in% PASSIVE.SYM
     if(call.sym == 'r2c_if') {
+      # either true or false can potentially be last expression
       x.true <-
-        copy_encsym_revpass(x[[c(2L,2L)]], live.sym=live.sym, last=FALSE)
+        copy_encsym_revpass(x[[c(2L,2L)]], live.sym=live.sym, last=last)
       x.false <-
         copy_encsym_revpass(x[[c(3L,2L)]], live.sym=live.sym, last=last)
       live.sym.merge <- union(x.true[['live.sym']], x.false[['live.sym']])
