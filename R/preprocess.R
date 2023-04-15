@@ -691,8 +691,8 @@ copy_encsym_cleanpass <- function(x, bindings=list(), assign.to=character()) {
 # branches.  The symbols are added before the existing expressions in the call.
 
 add_missing_symbols <- function(x, missing) {
+  call <- x[['x']]
   if(length(missing)) {
-    call <- x[['x']]
     call.sym <- get_lang_name(x)
     if(!is.call(call) || call.sym != "{") call <- call("{", call)
 
@@ -704,7 +704,7 @@ add_missing_symbols <- function(x, missing) {
       function(x) call("<-", sym.miss, en_vcopy(sym.miss))
     )
     as.call(list(quote("{"), add.missing, if(call.sym == "{") x[-1L] else x))
-  } else x
+  } else call
 }
 
 # Expand if/else Into Expected Format
