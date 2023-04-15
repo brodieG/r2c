@@ -58,4 +58,13 @@ r2cq({
 x <- y
 r2cq(if(mean(y) > .5) x <- mean(y) / 2)
 
-# if / else if
+# Check that vcopy happens correctly
+f <- r2cq({if(a) {x <- y} else {x <- z}; x})
+get_r_code(f)
+
+# Bound symbol discrepancy
+
+r2cq({if(a) x <- y}; x)  # not-ok
+r2cq({if(a) x <- y}; y)  # ok
+
+

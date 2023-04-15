@@ -1,3 +1,13 @@
+# Nested Functions
+
+Simplest implementation would be inlining with some kind of scope tracking for
+symbols, but that disallows recursion.
+
+Otherwise, it should be pretty straightforward to just generate multiple `run_x`
+functions than the outer `run` calls.
+
+Should probably try to implement tail recursion?
+
 # Interrupt
 
 See bench-interrupt for timings and related issues.

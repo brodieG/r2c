@@ -21,9 +21,30 @@
 
 ## Current
 
-* Switch `noop` to be flags the control whether the call is issued, whether the
-  deparsed R call is issued, and whether the definition is issued.  And document
-  it all. Probably should be done through code_res.
+* Test error handling around missing symbols that are `vcopy`ed.  In particular
+  whether error messages around them when they are part of the iteration data vs
+  external makes sense.
+
+* At what point in preprocess can we start assuming valid calls (assignments
+  with 3-4 parameters, only known funs, etc.).  Matters for the OOS stuff.
+
+* Check and drop unused allocations (maybe there should be some check here as to
+  where the unused allocations are coming from? e.g. okay if caused by branch
+  handling, but maybe not always ok).
+
+* Make sure branches work well with multiple symbol assigned to same slot (`x <-
+  y <- z`).
+
+* Dead code optimization.  Increasingly this will simplify a lot of things.  For
+  example, we don't have to worry about shared symbols with a symbol that is not
+  used (`{x <- y <- z; x}` is interesting - how do we resolve it).
+
+* Double check that the re-use optimization doesn't attempt to re-use an
+  expression computed only in one branch.  Or maybe if there are two if/else's,
+  each with the expression in one branch, how does it treat that?
+
+* Are we appropriately checking that we don't assign to a symbol that is then
+  used as the function name in a call?
 
 * `code_gen_*` functions should be in a list instead of floating around as
   objects.  This would ensure we don't accidentally use the wrong code gen as we

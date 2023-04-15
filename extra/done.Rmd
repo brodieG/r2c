@@ -12,6 +12,9 @@
 
 ### v0.3.0
 
+* Switch `noop` to be flags the control whether the call is issued, whether the
+  deparsed R call is issued, and whether the definition is issued.  And document
+  it all. Probably should be done through code_res.
 * Does `record_call_dat` really need to record terminals?  Main thing that is
   done is dealing with `..1` etc, but where do we use that?  Update: of course
   we do, as we still have to evaluate them / match them to an allocation in the
