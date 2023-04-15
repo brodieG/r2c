@@ -555,6 +555,9 @@ clean_call <- function(x) {
     # indices into the original call available, but didn't follow through.
     if(length(x) == 2L) names(x) <- NULL
 
+    # Undo the if decomposition
+    x <- recompose_ifelse(x)
+
     # Recurse
     for(i in seq(2L, length(x))) x[[i]] <- clean_call(x[[i]])
   }

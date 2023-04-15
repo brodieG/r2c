@@ -753,6 +753,50 @@ transform_ifelse <- function(x) {
   }
   x
 }
+# Undo `transform_ifelse`
+#
+# This is not a perferct reversal because we don't track if an `else numeric(0)`
+# was there originally or added by `transform_if_else`.  Additionally, we always
+# remove braces when they only contain one sub-call.
+#
+# This is NOT recursive as `clean_call` does the recursion.
+
+recompose_ifelse <- function(x) {
+  if(is.call_w_args(x)) {
+    call.sym <- get_lang_name(x)
+    if(call.sym == "{") {
+      x.call <- vapply(x[-1L], is.call, TRUE)
+      x.call.name <- vapply(x[-1L][x.call], get_lang_name, "")
+      if.test <- which(x.call.name == "if_test")
+      if.branch <- which(x.call.name == "r2c_if")
+      if(length(if.test) != length(if.branch) || !all(if.test == if.branch - 1))
+        stop("Internal Error, bad decomposed if call:\n", deparseLines(x))
+
+      # reconstruct call from end so indices don't change, +1L because `if.test`
+      # is not counting the function slot
+      for(i in rev(if.test) + 1L) {
+        x <- as.call(
+          c(
+            as.list(x[seq_len(i - 1L)]),
+            list(
+              call(
+                "if",
+                x[[i]][[2L]],                 # test
+                x[[i + 1L]][[c(2L, 2L)]],     # true
+                x[[i + 1L]][[c(3L, 2L)]]      # false
+            ) ),
+            as.list(x[seq(i + 2L, by=1L, length.out=length(x) - i - 1L)])
+        ) )
+        # Undo empty else (this might undo a legit numeric(0L))
+        if(identical(x[[i]][[3L]], numeric(0L))) x[[i]][[3L]] <- NULL
+      }
+    }
+    # Remove potentially uncessary braces
+    if(call.sym == "{" && length(x) == 2L) x <- x[[2L]]
+  }
+  x
+}
+
 
 sym_free <- function(x, sym) {
   if(is.symbol(sym)) {
