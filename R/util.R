@@ -264,3 +264,8 @@ get_lang_name <- function(call) {
 VCOPY.FUN.NAME <- call("::", as.name("r2c"), as.name("vcopy"))
 en_vcopy <- function(x) as.call(list(VCOPY.FUN.NAME, x=x))
 
+
+# deparse but concatenate multi-element results with newlines
+
+deparseLines <- function(x, ...) paste0(deparse(x, ...), collapse="\n")
+
