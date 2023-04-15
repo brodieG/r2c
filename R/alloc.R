@@ -195,6 +195,7 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
           "integer"
         else "double"
       } else VALID_FUNS[[c(name, "res.type")]]
+
       # Handle name reconciliation for control flow calls
       if(name == "if_true") {
         # Needs to be stack to handle , e.g. in `if(a) b else {if(c) d}`
@@ -468,6 +469,7 @@ init_dat <- function(call, meta, scope) {
 
     # Equal length vector data
     alloc=numeric(),
+    size=numeric(),
     depth=integer(),
     ids0=integer(),
     type=character(),
@@ -591,6 +593,88 @@ alloc_result <- function(alloc, vdat){
   alloc[['group']][slot] <- vdat[['group']]
   alloc[['size']][slot] <- vdat[['size']]
   alloc
+}
+# Compare bound names at end of if_true branch to those in if_false, and ensure
+# all names surviving past `if` are the same size and point to the same
+# allocation so they can safely be used irrespective of what branch is taken.
+#
+# It should be the case that all the names point to internal allocations as
+# opposed to external symbols, which should allow us to re-assign them to new
+# allocations.
+
+reconcile_control_flow <- function(
+  alloc, call.dat, binding.stack, i.call, call, depth, gmax
+) {
+  if(!length(binding.stack))
+    stop(
+      "Internal Error: nothing to pop from `binding.stack`, mismatched if/else?"
+    )
+  names.f <- alloc[['names']]
+  names.t <- binding.stack[[length(binding.stack)]]
+  binding.stack <- binding.stack[-length(binding.stack)]
+
+  # names surviving past current if/else
+  names.check <- names(which(alloc[['meta']]['i.sym.max'] > i.call))
+
+  n.a <- names.t[, colnames(names.t) %in% names.check, drop=FALSE]
+  n.b <- names.f[, colnames(names.f) %in% names.check, drop=FALSE]
+  nn.a <- colnames(n.a)
+  nn.b <- colnames(n.b)
+
+  # same names must survive
+  if(!identical(sort(nn.a), sort(colnames(nn.b)))) {
+    # Should this error happen in pre-process?  Seems like it could.
+    stop(
+      "Bound symbol discrepancy for ",
+      toString(sprintf("`%s`", union(setdiff(nn.a, nn.b), setdiff(nn.b, nn.a)))),
+      " in:\n", paste0(deparse(call), collapse="\n")
+    )
+  }
+  # Match order now we know colnames are the same
+  n.b <- n.b[, nn.a, drop=FALSE]
+
+  # Find sizes (they should be the same)
+  size.a <- alloc[['size']][n.a['ids',]]
+  size.b <- alloc[['size']][n.b['ids',]]
+  size.eq <- (size.a == size.b) | (is.na(size.a) & is.na(size.b))
+  if(!all(size.eq)) {
+    stop(
+      "Potential variable size discrepancy for ",
+      toString(sprintf("`%s`", nn.a[!size.eq])),
+      " in:\n", paste0(deparse(call), collapse="\n")
+    )
+  }
+  # Reconcile allocations so they point to the same id.  We must use entirely
+  # new allocations because we are not tracking how and where the currently
+  # available allocations have been used in the different branches.  Step 1 is
+  # to create the allocations, Step 2 is to re-point the call data to them.
+  mismatched <- which(n.a['ids',] != n.b['ids',])
+  if(any(alloc[['type']][n.a['ids',][mismatched]] != 'tmp'))
+    stop(
+      "Internal Error: cannot reconcile non-temporary allocs for ",
+      toString(sprintf("`%s`", names(n.a['ids',][mismatched])))
+    )
+  for(i in mismatched) {
+    # Size and generate allocation
+    size <- size.a[i]
+    asize <- if(is.na(size)) gmax else size
+    new <- numeric(asize)
+    vec.dat <-
+      vec_dat(new, "tmp", typeof="double", group=is.na(size), size=size)
+    alloc <- append_dat(alloc, vec.dat, depth=depth)
+    # adjust the call data for the id remapping.  This should be done for all
+    # calls that exceed the earlier of the creation time of the symbol across
+    # the two branches.
+    #
+    # Question: can we just go back and change every single reference to the new
+    # value?  It's more complicated because multiple symbols can point to the
+    # same id, and we only want to affect the one symbol at play.
+    old.i <- c(n.a['ids', i], n.b['ids', i])
+
+    new.i <- alloc[['i']]
+  }
+
+
 }
 
 # - Other Helper Functions -----------------------------------------------------
