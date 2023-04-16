@@ -578,7 +578,7 @@ copy_ooss <- function(
 #   passive calls.
 
 copy_encsym <- function(x) {
-  x <- copy_encsym_revpass(x, assign=FALSE)[['x']]
+  x <- copy_encsym_revpass(x)[['x']]
   copy_encsym_cleanpass(x)[['x']]
 }
 # Processing call tree in reverse allows us to know if a symbol is used after
@@ -586,7 +586,11 @@ copy_encsym <- function(x) {
 #
 # Need to know all surviving symbols written in each branch.  Opposite branch
 # will gain `x <- vcopy(x)` at beginning for missing symbols, but if `x` doesn't
-# exist there will be an error.
+# exist there will be an error.  We don't worry about a symbol possibly
+# pre-existing a branch; even in that case if the symbol is missing from that
+# branch we `vcopy` it as otherwise we can't sure that the branch that has the
+# symbol isn't rebinding it and re-using the thus freed memory for something
+# else.
 #
 # We assume that arguments are evaluated in order, which might not be true in
 # reality, but shouldn't matter because we don't allow assignments in arguments
@@ -596,53 +600,65 @@ copy_encsym <- function(x) {
 #
 # @param live.sym character vector symbols that will be used later in the full
 #   original call than the current sub-call being processed.
+# @param assigned set of symbols bound in a call
+# @param assign whether the current call being processed is an assignment call
+#   or an assignment call followed by a sequence of passive calls (as passive
+#   calls will forward their referenes to the assignment).
 
 copy_encsym_revpass <- function(
-  x, live.sym=character(), assign=FALSE, last=TRUE
+  x, live.sym=character(), assign=FALSE, assigned=character(), last=TRUE
 ) {
   if(is.call(x)) {
     call.sym <- get_lang_name(x)
+    call.assign <- call.sym %in% ASSIGN.SYM
     call.passive <- call.sym %in% PASSIVE.SYM
     if(call.sym == 'r2c_if') {
-      # either true or false can potentially be last expression
-      x.true <-
-        copy_encsym_revpass(x[[c(2L,2L)]], live.sym=live.sym, last=last)
-      x.false <-
-        copy_encsym_revpass(x[[c(3L,2L)]], live.sym=live.sym, last=last)
-      live.sym.merge <- union(x.true[['live.sym']], x.false[['live.sym']])
-      x[[c(2L,2L)]] <- add_missing_symbols(x.true, live.sym.merge)
-      x[[c(3L,2L)]] <- add_missing_symbols(x.false, live.sym.merge)
+      # either true or false can potentially be last expression, hence `last`
+      # forwarded.
+      x.true <- copy_encsym_revpass(
+        x[[c(2L,2L)]], live.sym=live.sym, assigned=assigned, last=last
+      )
+      x.false <- copy_encsym_revpass(
+        x[[c(3L,2L)]], live.sym=live.sym, assigned=assigned, last=last
+      )
+      # Of all the symbols that are live after the if/else, whichever symbols
+      # are written in either branch need to exist in both.
+      assigned.merge <- intersect(
+        union(x.true[['assigned']], x.false[['assigned']]), live.sym
+      )
+      x[[c(2L,2L)]] <- add_missing_symbols(x.true, assigned.merge)
+      x[[c(3L,2L)]] <- add_missing_symbols(x.false, assigned.merge)
     } else if (call.sym %in% IF.SUB.SYM) {
       stop("Internal Error: if/else branch in unexpected location.")
     } else {
-      # Passive calls forward source to assignment
-      assign <-
-        call.sym %in% ASSIGN.SYM ||
-        assign && call.sym %in% PASSIVE.SYM
-
-      rec.skip <- if(call.sym %in% ASSIGN.SYM) -(1:2) else -1L
+      rec.skip <- if(call.assign) -(1:2) else -1L
+      assign <- call.assign || call.passive && assign
       for(i in rev(seq_along(x)[rec.skip])) {
         tmp <- copy_encsym_revpass(
-          x[[i]], live.sym=live.sym, assign=assign,
+          x[[i]], live.sym=live.sym, assign=assign, assigned=assigned,
           last=last && call.passive && i == length(x)
         )
         x[[i]] <- tmp[['x']]
         live.sym <- tmp[['live.sym']]
+        assigned <- tmp[['assigned']]
       }
       if(call.sym %in% ASSIGN.SYM) {
         # In reverse traversal a symbol assigned to is dead until the next time
-        # it is used (where next is earlier in the tree)
-        live.sym <- live.sym[live.sym != get_target_symbol(x, call.sym)]
+        # it is used outside of target of assignment (where next is earlier in
+        # the tree)
+        tar.sym <- get_target_symbol(x, call.sym)
+        live.sym <- live.sym[live.sym != tar.sym]
+        assigned <- union(assigned, tar.sym)
     } }
-  } else if (is.symbol(x) && (assign || last)) {
-    # Update the live symbol
-    if(assign) live.sym <- union(live.sym, as.character(x))
+  } else if (is.symbol(x)) {
+    # Update the live symbol to know it's in use
+    live.sym <- union(live.sym, as.character(x))
 
     # vcopy if part of an assignment chain or return value, later we will undo
     # the vcopy that turn out not to be necessary.
-    x <- en_vcopy(x)
+    if(assign || last) x <- en_vcopy(x)
   }
-  list(x=x, live.sym=live.sym)
+  list(x=x, live.sym=live.sym, assigned=assigned)
 }
 # Remove Redundant `vcopy` Calls
 #
@@ -707,7 +723,7 @@ copy_encsym_cleanpass <- function(x, bindings=list(), assign.to=character()) {
 add_missing_symbols <- function(x, missing) {
   call <- x[['x']]
   if(length(missing)) {
-    miss.names <- setdiff(missing, x[['live.sym']])
+    miss.names <- setdiff(missing, x[['assigned']])
     if(length(miss.names)) {
       call.sym <- get_lang_name(call)
       if(!is.call(call) || call.sym != "{") call <- call("{", call)
@@ -715,12 +731,8 @@ add_missing_symbols <- function(x, missing) {
       # generate e.g. `x <- vcopy(x)`
       sym.miss <- lapply(miss.names, as.symbol)
       add.missing <- lapply(sym.miss, function(x) call("<-", x, en_vcopy(x)))
-      call <- as.call(
-        c(
-          list(as.name("{")),
-          add.missing,
-          as.list(if(call.sym == "{") call[-1L] else call)
-  ) ) } }
+      call <- as.call(c(as.list(call), add.missing))
+  } }
   call
 }
 

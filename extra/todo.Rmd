@@ -21,6 +21,14 @@
 
 ## Current
 
+* Move the disallowed assignment error to somewhere that does not use the
+  renamed expression as that is then incomprehensible.
+
+* How many preprocessing things can we test without actually compiling the code?
+  Seems like much of the logic we could just produce the manipulated R
+  expressions and evaluate those (will have to change `rc2:::if_true` and
+  similar to be evaluable).
+
 * Test error handling around missing symbols that are `vcopy`ed.  In particular
   whether error messages around them when they are part of the iteration data vs
   external makes sense.
