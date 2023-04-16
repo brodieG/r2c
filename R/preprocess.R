@@ -701,18 +701,21 @@ copy_encsym_cleanpass <- function(x, bindings=list(), assign.to=character()) {
 add_missing_symbols <- function(x, missing) {
   call <- x[['x']]
   if(length(missing)) {
-    call.sym <- get_lang_name(x)
-    if(!is.call(call) || call.sym != "{") call <- call("{", call)
+    miss.names <- setdiff(missing, x[['live.sym']])
+    if(length(miss.names)) {
+      call.sym <- get_lang_name(call)
+      if(!is.call(call) || call.sym != "{") call <- call("{", call)
 
-    # generate e.g. `x <- vcopy(x)`
-    sym.miss <- lapply(setdiff(missing, x[['live.sym']]), as.symbol)
-    sym.miss.vcopy <- lapply(sym.miss, en_vcopy)
-    add.missing <- lapply(
-      sym.miss,
-      function(x) call("<-", sym.miss, en_vcopy(sym.miss))
-    )
-    as.call(list(quote("{"), add.missing, if(call.sym == "{") x[-1L] else x))
-  } else call
+      # generate e.g. `x <- vcopy(x)`
+      sym.miss <- lapply(miss.names, as.symbol)
+      add.missing <- lapply(sym.miss, function(x) call("<-", x, en_vcopy(x)))
+      call <- as.call(
+        c(
+          list(as.name("{")),
+          add.missing,
+          as.list(if(call.sym == "{") call[-1L] else call)
+  ) ) } }
+  call
 }
 
 # Expand if/else Into Expected Format
