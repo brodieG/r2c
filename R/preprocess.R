@@ -174,11 +174,14 @@ preprocess <- function(call, formals=character(), optimize=FALSE) {
 # @param call.parent if `call` is being evaluated as an argument to a parent
 #   call, `call.parent` is that call.  Used so we can tell if we're e.g. called
 #   from braces.
+# @param call.parent.name scalar character name of function in `call.parent` to
+#   avoid recomputing it.
 # @param indent additional indentation to add to code, used to support controls
 #   with indented contents.  This is the total required indentation.
 
 pp_internal <- function(
-  call, depth, x, argn="", assign=FALSE, call.parent=NULL, indent=0L
+  call, depth, x, argn="", assign=FALSE, call.parent=NULL,
+  call.parent.name="", indent=0L
 ) {
   if(depth == .Machine$integer.max)
     stop("Expression max depth exceeded.") # exceedingly unlikely
@@ -201,7 +204,8 @@ pp_internal <- function(
     # allow it but it just seems dangerous.
     if(
       next.assign &&
-      !is.brace_or_assign_call(call.parent) && !is.null(call.parent)
+      !call.parent.name %in% c(ASSIGN.SYM, "{", IF.SUB.SYM, LOOP.SYM) &&
+      !is.null(call.parent)
     ) {
       call.dep <- deparse(call)
       msg <- sprintf(
@@ -222,7 +226,8 @@ pp_internal <- function(
       } else {
         x <- pp_internal(
           call=args[[i]], depth=depth + 1L, x=x, argn=names(args)[i],
-          assign=i == 1L && next.assign, call.parent=call,
+          assign=i == 1L && next.assign,
+          call.parent=call, call.parent.name=func,
           indent=indent + (func %in% IF.SUB.SYM) * 2L
     ) } }
     # Bind assignments (we do it after processing of the rest of the call)
