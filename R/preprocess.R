@@ -555,9 +555,10 @@ copy_ooss <- function(
 #    result is just a symbol the value of which was not produced via
 #    computation, we need to explicitly copy that.
 # 2. Branches: to implement branches we require that every symbol written to in
-#    one branch is bound to the same memory as what that same symbol is in the
-#    other branch.  This allows subsequent references to that symbol to work
-#    irrespective of branch taken at run time.
+#    one branch is bound to the same memory in both branches.  This allows
+#    subsequent references to that symbol to work irrespective of branch taken
+#    at run time.  This is accomplished by, at allocation time, remapping the
+#    different initial allocations to a single one.
 #
 # For both of these cases we need to reference a *copy* of the original data,
 # otherwise the manipulations that produce the desired outcomes. We do this by
@@ -622,7 +623,8 @@ copy_encsym_revpass <- function(
       rec.skip <- if(call.sym %in% ASSIGN.SYM) -(1:2) else -1L
       for(i in rev(seq_along(x)[rec.skip])) {
         tmp <- copy_encsym_revpass(
-          x[[i]], live.sym=live.sym, assign=assign, last=last && i == length(x)
+          x[[i]], live.sym=live.sym, assign=assign,
+          last=last && call.passive && i == length(x)
         )
         x[[i]] <- tmp[['x']]
         live.sym <- tmp[['live.sym']]
@@ -633,12 +635,12 @@ copy_encsym_revpass <- function(
         live.sym <- live.sym[live.sym != get_target_symbol(x, call.sym)]
     } }
   } else if (is.symbol(x) && (assign || last)) {
+    # Update the live symbol
+    if(assign) live.sym <- union(live.sym, as.character(x))
+
     # vcopy if part of an assignment chain or return value, later we will undo
     # the vcopy that turn out not to be necessary.
     x <- en_vcopy(x)
-
-    # Update the live symbol
-    if(assign) live.sym <- union(live.sym, as.character(x))
   }
   list(x=x, live.sym=live.sym)
 }
@@ -655,6 +657,9 @@ copy_encsym_revpass <- function(
 #     x <- y <- mean(z)
 #     if(a) x else y
 #
+# Also, in the forward pass we don't know when a symbol stops being used so at
+# what point a shared reference is no longer shared.
+#
 # See `copy_encsym`
 #
 # @param bindings a named list where each named element shares its name with a
@@ -666,7 +671,8 @@ copy_encsym_cleanpass <- function(x, bindings=list(), assign.to=character()) {
   if(is.call(x)) {
     call.sym <- get_lang_name(x)
     if(call.sym == "vcopy") {
-      # remove vcopy that reference a symbol not sharing referees
+      # remove vcopy that reference a symbol not sharing references, or one that
+      # does share references but is the very last thing used?
       vc.sym <- as.character(x[[2L]])
       if(vc.sym %in% names(bindings) && length(bindings[[vc.sym]]) == 1L) {
         x <- x[[2L]]
@@ -787,7 +793,7 @@ recompose_ifelse <- function(x) {
       for(i in rev(if.test) + 1L) {
         x <- as.call(
           c(
-            as.list(x[seq_len(i - 1L)]),
+            if(i - 1L) as.list(x[seq_len(i - 1L)]),
             list(
               call(
                 "if",
@@ -795,7 +801,8 @@ recompose_ifelse <- function(x) {
                 x[[i + 1L]][[c(2L, 2L)]],     # true
                 x[[i + 1L]][[c(3L, 2L)]]      # false
             ) ),
-            as.list(x[seq(i + 2L, by=1L, length.out=length(x) - i - 1L)])
+            if(length(x) > i + 1L)
+              as.list(x[seq(i + 2L, by=1L, length.out=length(x) - i - 1L)])
         ) )
         # Undo empty else (this might undo a legit numeric(0L))
         if(identical(x[[i]][[3L]], numeric(0L))) x[[i]][[3L]] <- NULL
