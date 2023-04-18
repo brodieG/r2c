@@ -127,7 +127,7 @@ if(a) {
   z <- mean(y)
   y <- x
 }
-x + y
+y + z
 })
 pp7 <- r2c:::preprocess(call7, optimize=TRUE)
 pp7[['call.processed']]

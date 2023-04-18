@@ -644,23 +644,18 @@ copy_symdat_revpass <- function(
       assigned.survive <- intersect(assigned, live.sym)
       x[[c(2L,2L)]] <- add_missing_symbols(x.true, assigned.survive)
       x[[c(3L,2L)]] <- add_missing_symbols(x.false, assigned.survive)
+      live.sym <- union(x.true[['live.sym']], x.false[['live.sym']])
     } else if (call.sym %in% IF.SUB.SYM) {
       stop("Internal Error: if/else branch in unexpected location.")
     } else {
       rec.skip <- if(call.assign) -(1:2) else -1L
       assign <- call.assign || (call.passive && assign)
-      live.sym.local <- live.sym
       for(i in rev(seq_along(x)[rec.skip])) {
         tmp <- copy_symdat_revpass(
-          x[[i]], live.sym=live.sym.local, assign=assign, assigned=assigned,
+          x[[i]], live.sym=live.sym, assign=assign, assigned=assigned,
           in.branch=in.branch
         )
-        # Within a call, we don't care about new live symbols because those are
-        # local for this call (they are not for calls earlier in the tree we
-        # have not traversed yet).  However, we do want later live symbols
-        # invalidated by any assignments (hence the intersect)
         live.sym <- tmp[['live.sym']]
-        live.sym.local <- intersect(live.sym.local, live.sym)
         x[[i]] <- tmp[['x']]
         assigned <- tmp[['assigned']]
       }
@@ -677,7 +672,7 @@ copy_symdat_revpass <- function(
     live.sym <- union(live.sym, as.character(x))
 
     # vcopy if part of an assignment chain in a branch and non-local
-    if(assign && in.if) x <- en_vcopy(x)
+    if(assign && in.branch && as.character(x) %in% live.sym) x <- en_vcopy(x)
   }
   list(x=x, live.sym=live.sym, assigned=assigned)
 }
