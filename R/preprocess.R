@@ -479,64 +479,6 @@ transform_call_rec <- function(call) {
   }
   call
 }
-# Copy Out-of-Scope Symbols
-#
-# Most r2c functions will write data to allocations because the data is new,
-# produced by computations.  Some don't actually generate data (e.g. `a <- b`),
-# we call these functions passive.  There are two situations where this ends up
-# mattering:
-#
-# 1. Final return value references external memory.  Normally we just redirect
-#    the write to the final allocation to be in the result vector, but we can
-#    only do that if the data in question would have been written by the r2c
-#    function.  This saves a copy in most cases, but does mean we need to check
-#    for the need for a copy for external references.
-# 2. We require that multiple calls write to the same memory location, as we do
-#    e.g. with assignments to the same symbol in different branches of an
-#    if/else control structure.
-#
-# For both of these cases we need to reference a copy of the original data,
-# otherwise the manipulations don't work.  We do this by inserting a call to
-# `vcopy` so e.g. `a <- b` becomes `a <- vcopy(b)` which generates an actual
-# C-level `memcpy`.
-#
-# This could end up generating wastefull copies if the symbols end up being
-# unused, but that's just means there is some dead code we should detect and
-# remove as part of other optimizations.
-#
-# Note: this will need to stop at function call boundaries.
-#
-# @param x call to process
-# @param in.scope vector of symbol names that reference data computed by `r2c`
-#   (i.e. not external).
-# @param parent.passive TRUE or FALSE, whether the parent.call is one of the
-#   passive calls.
-
-copy_ooss <- function(
-  x, in.scope=character(), parent.passive=TRUE
-) {
-  if(
-    is.symbol(x) && parent.passive &&
-    (!length(in.scope) || !as.character(x) %in% in.scope)
-  ) {
-    x <- en_vcopy(x)
-  } else if (is.call(x)) {
-    call.sym <- get_lang_name(x)
-    if(is.assign_call(x)) in.scope <- c(in.scope, get_target_symbol(x, call.sym))
-    else if (call.sym %in% IF.SUB.SYM) in.scope <- character()
-
-    # Assume arguments are evaluated in order; this should only matters wrt to
-    # `in.scope` when the arguments include assignments, which we only allow at
-    # the top level of braces, so in-order eval is a fair assumption.
-    passive <- call.sym %in% PASSIVE.SYM
-    for(i in seq_along(x)[-1L]) {
-      tmp <- copy_ooss(x[[i]], in.scope=in.scope, parent.passive=passive)
-      x[[i]] <- tmp[['call']]
-      in.scope <- union(in.scope, tmp[['in.scope']])
-    }
-  }
-  list(call=x, in.scope=in.scope)
-}
 # Copy Symbol Data
 #
 # r2c allows assignments by binding a symbol to the memory associated with the
@@ -551,17 +493,17 @@ copy_ooss <- function(
 #    to be explicitly copied to the result vector as there is no possibility of
 #    redirection of a prior computation result (since there is no computation).
 # 2. Branches: to implement branches we require that every symbol written to in
-#    one branch that is used subsequent to the branch be bound to the same
+#    one branch that is used subsequent to the branch set be bound to the same
 #    memory in both branches.  This allows subsequent references to that symbol
 #    to work irrespective of branch taken at run time.  This is accomplished by,
 #    at allocation time, remapping the different allocations in each branch to a
 #    a new shared allocation.  The allocation must be the same size across
-#    branches.
+#    branches.  Subsequent accesses will then read from the shared location.
 #
 # For 1 we need to make sure that a returned value is either a computation, or
 # is explicitly copied by injection of `vcopy`, i.e `x <- y` becomes
 # `x <- vcopy(y)`.  The second requires that every symbol bound in a branch
-# (either `if/else`, or body of a loop as a loop body may be taken or not)
+# (either `if/else`, or body of a loop (NB: a loop body may be taken or not))
 # point to memory newly allocated in that branch, which may require `vcopy`ing
 # symbols rebound in that branch.  It is unsafe to try to remap memory that was
 # in use prior to the branches because that memory could be used in different
@@ -579,25 +521,10 @@ copy_ooss <- function(
 
 copy_symdat <- function(x) {
   # add vcopy for branches
-  rev.res <- copy_symdat_revpass(x)
-  # add vcopy for return value
-  copy_symdat_last(rev.res[['x']], rev.res[['assigned']])
+  y <- copy_symdat_revpass(x)[['x']]
+  copy_symdat_cleanpass(y)[['x']]
 }
-# If last element is a, and that symbol is not assigned in the expression, we
-# need to vcopy it too.  Recall that any symbol assigned in one branch is
-# guaranteed assigned in both.
 
-copy_symdat_last <- function(x, assigned) {
-  if(is.symbol(x)) {
-    if(!as.character(x) %in% assigned) x <- en_vcopy(x)
-  } else if(get_lang_name(x[[length(x)]]) == 'r2c_if') {
-    x[[2L]][[2L]] <- copy_symdat_last(x[[2L]][[2L]], assigned)
-    x[[3L]][[2L]] <- copy_symdat_last(x[[3L]][[2L]], assigned)
-  } else if(is.call(x)) {
-    x[[length(x)]] <- copy_symdat_last(x[[length(x)]], assigned)
-  }
-  x
-}
 # Only symbols bound in branches that are used after the branch need to
 # reference memory allocated in the branch.  Other branch-bound symbols are
 # branch-local and thus don't matter.  To check for this we traverse the tree in
@@ -609,6 +536,15 @@ copy_symdat_last <- function(x, assigned) {
 # counterpart will gain an e.g.  `x <- vcopy(x)` (which becomes an error at
 # runtime if `x` doesn't exist).
 #
+# Finally, if a symbol is returned from the expression, then that symbol needs
+# to be residing in allocated memory.  A symbol can be returned through a chain
+# of passive calls, e.g.:
+#
+#    {
+#      x <- mean(y)
+#      x
+#    }
+#
 # We assume that arguments are evaluated in order, which might not be true in
 # reality, but shouldn't matter because we don't allow assignments in arguments
 # with indeterminate evaluation order.
@@ -617,118 +553,129 @@ copy_symdat_last <- function(x, assigned) {
 #
 # @param live.sym character vector symbols that will be used later in the full
 #   original call than the current sub-call being processed.
-# @param assigned set of symbols bound in a call
-# @param assign whether the current call being processed is an assignment call
-#   or an assignment call followed by a sequence of passive calls (as passive
-#   calls will forward their referenes to the assignment).
+# @param last whether a call/symbol could be the last thing evaluated, so we can
+#   tell if the return value is a symbol.
+# @param last.sym if the return value is a symbol, what that symbol is (so we
+#   can track what if anything assigns to it).
+# @param assign.to symbols that will be assigned to based on the current
+#   assignment chain (mix of passive and assignment call).  Needed to detect
+#   whether the return symbol (if any) is assigned to.  Strictly this could be a
+#   boolean but a previous implementation required tracking all the symbols
+#   assigned to.
 
 copy_symdat_revpass <- function(
-  x, live.sym=character(), in.branch=FALSE, assign=FALSE, assigned=character()
+  x, live.sym=character(), in.branch=FALSE,
+  assigned=character(), assign.to=character(),
+  last=TRUE, last.sym=""
 ) {
   if(is.call(x)) {
     call.sym <- get_lang_name(x)
     call.assign <- call.sym %in% ASSIGN.SYM
     call.passive <- call.sym %in% PASSIVE.SYM
     if(call.sym == 'r2c_if') {
-      # either true or false can potentially be last expression, hence `last`
-      # forwarded.
-      x.true <- copy_symdat_revpass(
-        x[[c(2L,2L)]], live.sym=live.sym, assigned=assigned, in.branch=TRUE
+      # Recurse through each branch independently since they are "simultaneous"
+      # with respect to call order.  This also means either branch can
+      # potentially be last expression, hence `last` forwarded.
+      x.T <- copy_symdat_revpass(
+        x[[c(2L,2L)]], live.sym=live.sym, assigned=assigned, in.branch=TRUE,
+        last=last, last.sym=last.sym
       )
-      x.false <- copy_symdat_revpass(
-        x[[c(3L,2L)]], live.sym=live.sym, assigned=assigned, in.branch=TRUE
+      x.F <- copy_symdat_revpass(
+        x[[c(3L,2L)]], live.sym=live.sym, assigned=assigned, in.branch=TRUE,
+        last=last, last.sym=last.sym
       )
       # Of all the symbols that are live after the if/else, whichever symbols
-      # are written in either branch need to exist in both.
-      assigned <- union(x.true[['assigned']], x.false[['assigned']])
+      # are written in either branch that are used after the branches need to
+      # exist in both (survived = used after branch).
+      assigned <- union(x.T[['assigned']], x.F[['assigned']])
       assigned.survive <- intersect(assigned, live.sym)
-      x[[c(2L,2L)]] <- add_missing_symbols(x.true, assigned.survive)
-      x[[c(3L,2L)]] <- add_missing_symbols(x.false, assigned.survive)
-      live.sym <- union(x.true[['live.sym']], x.false[['live.sym']])
+      x[[c(2L,2L)]] <- add_missing_symbols(x.T, assigned.survive)
+      x[[c(3L,2L)]] <- add_missing_symbols(x.F, assigned.survive)
+      live.sym <- union(x.T[['live.sym']], x.F[['live.sym']])
     } else if (call.sym %in% IF.SUB.SYM) {
       stop("Internal Error: if/else branch in unexpected location.")
     } else {
+      tar.sym <- if(call.assign) get_target_symbol(x, call.sym) else ""
       rec.skip <- if(call.assign) -(1:2) else -1L
-      assign <- call.assign || (call.passive && assign)
+      assign.to <-
+        if(call.assign) union(assign.to, tar.sym) # chained assign
+        else if(call.passive) assign.to
+        else character()    # not symbol forwarding, so we don't care
+
       for(i in rev(seq_along(x)[rec.skip])) {
         tmp <- copy_symdat_revpass(
-          x[[i]], live.sym=live.sym, assign=assign, assigned=assigned,
-          in.branch=in.branch
+          x[[i]], live.sym=live.sym,
+          assign.to=assign.to, assigned=assigned,
+          last=last && i == length(x) && call.passive,
+          last.sym=last.sym, in.branch=in.branch
         )
-        live.sym <- tmp[['live.sym']]
         x[[i]] <- tmp[['x']]
+        live.sym <- tmp[['live.sym']]
         assigned <- tmp[['assigned']]
+        last.sym <- tmp[['last.sym']]
       }
-      if(call.sym %in% ASSIGN.SYM) {
-        # In reverse traversal a symbol assigned to is dead until the next time
-        # it is used outside of target of assignment (where next is earlier in
-        # the tree)
-        tar.sym <- get_target_symbol(x, call.sym)
+      if(call.assign) {
+        # In reverse traversal an assignment "kills" a symbol since all
+        # subsequent accesses are for this new version, not some version defined
+        # earlier in the call tree.
         live.sym <- live.sym[live.sym != tar.sym]
         assigned <- union(assigned, tar.sym)
     } }
   } else if (is.symbol(x)) {
-    # Update the live symbol to know it's in use
-    live.sym <- union(live.sym, as.character(x))
-
-    # vcopy if part of an assignment chain in a branch and non-local
-    if(assign && in.branch && as.character(x) %in% live.sym) x <- en_vcopy(x)
+    sym.name <- as.character(x)
+    # Keep track of the last symbol, and also vcopy it
+    if (last) {
+      last.sym <- sym.name
+      x <- en_vcopy(x)
+    } else if(length(assign.to)) {
+      # vcopy if part of an assignment chain in a branch and non-local, or if
+      # the symbol is eventually bound to the return value (returned as symbol)
+      if(in.branch && any(assign.to %in% live.sym)) x <- en_vcopy(x)
+      else if(last.sym %in% assign.to) {
+        x <- en_vcopy(x)
+        last.sym <- ""
+    } }
+    # Update the live symbol to know it's in use going forward
+    live.sym <- union(live.sym, sym.name)
   }
-  list(x=x, live.sym=live.sym, assigned=assigned)
+  list(x=x, live.sym=live.sym, last.sym=last.sym, assigned=assigned)
 }
 # Remove Redundant `vcopy` Calls
 #
-# Redundant vcopy are dumped.  These are the ones that were added to symbols
-# defined in the compiled expression that would point to memory shared with no
-# other symbols.  We can't know that in the backward pass ahead of time, so that
-# one takes a conservative view and `vcopy`s everything, and this one undoes the
-# ones we can tell are unnecessary in the forward pass.  The undoing might miss
-# some `vcopy`s that could be removed, e.g. it might not be necessary to `vcopy`
-# here:
+# We do not need to `vcopy` symbols that are obviously originating from
+# allocated memory from the correct context (i.e. for an if/else, allocated in
+# each respective branch), but the reverse pass cannot tell where a symbol
+# originated from.  E.g. in:
 #
-#     x <- y <- mean(z)
-#     if(a) x else y
+#     if(a) {
+#       x <- mean(z)
+#       y <- vcopy(x)
+#     }
 #
-# Also, in the forward pass we don't know when a symbol stops being used so at
-# what point a shared reference is no longer shared.
-#
-# See `copy_encsym`
-#
-# @param bindings a named list where each named element shares its name with a
-#   symbol that would be bound in the evaluation of x, and the element itself is
-#   a character vector of symbols that would be bound to the same memory,
-#   including itself (so elements are never length 0).
+# The vcopy is not necessary.
 
-copy_encsym_cleanpass <- function(x, bindings=list(), assign.to=character()) {
+copy_symdat_cleanpass <- function(x, bindings=character()) {
   if(is.call(x)) {
     call.sym <- get_lang_name(x)
     if(call.sym == "vcopy") {
-      # remove vcopy that reference a symbol not sharing references, or one that
-      # does share references but is the very last thing used?
+      # remove vcopy that references a symbol bound in the current "context"
       vc.sym <- as.character(x[[2L]])
-      if(vc.sym %in% names(bindings) && length(bindings[[vc.sym]]) == 1L) {
-        x <- x[[2L]]
-      }
+      if(vc.sym %in% bindings) x <- x[[2L]]
+    } else if (call.sym == 'r2c_if') {
+      # entering an if/else context "resets" bindings b/c we need to copy them
+      x.T <- copy_symdat_cleanpass(x[[c(2L,2L)]], bindings=character())
+      x.F <- copy_symdat_cleanpass(x[[c(3L,2L)]], bindings=character())
+      # Merge the bindings across the two branches.
+      bindings <- unique(c(bindings, x.T[['bindings']], x.F[['bindings']]))
     } else {
-      if(call.sym %in% ASSIGN.SYM)
-        assign.to <- c(assign.to, get_target_symbol(x, call.sym))
       for(i in seq_along(x)[-1L]) {
-        # passive calls forward previously bound memory; in this case we're
-        # could "rebind" repeatedly to same symbol for eg `x <- {mean(b); c}`,
-        # but the last one is the one that matters and we process in order.
-        at.tmp <- if(call.sym %in% PASSIVE.SYM) assign.to else character()
-        tmp <-
-          copy_encsym_cleanpass(x[[i]], bindings=bindings, assign.to=at.tmp)
+        tmp <- copy_symdat_cleanpass(x[[i]], bindings=bindings)
         x[[i]] <- tmp[['x']]
         bindings <- tmp[['bindings']]
       }
-    }
-  } else if (is.symbol(x) && length(assign.to)) {
-    # Update shared bindings
-    sym.name <- as.character(x)
-    bindings[assign.to] <-
-      lapply(bindings[assign.to], union, c(assign.to, sym.name))
-  }
+      if(call.sym %in% ASSIGN.SYM)
+        bindings <- union(bindings, get_target_symbol(x, call.sym))
+  } }
   list(x=x, bindings=bindings)
 }
 # Inject Missing Symbols as `x <- vcopy(x)`
@@ -747,7 +694,10 @@ add_missing_symbols <- function(x, missing) {
       # generate e.g. `x <- vcopy(x)`
       sym.miss <- lapply(miss.names, as.symbol)
       add.missing <- lapply(sym.miss, function(x) call("<-", x, en_vcopy(x)))
-      call <- as.call(c(as.list(call), add.missing))
+      # prepend so that return value of expression is unchanged.  These symbols
+      # are missing from the expression so they will not be overwritten.
+      call.list <- as.list(call)
+      call <- as.call(c(call.list[1L], add.missing, call.list[-1L]))
   } }
   call
 }

@@ -117,6 +117,85 @@ pp6c <- r2c:::preprocess(call6c, optimize=TRUE)
 pp6c[['call.processed']]
 r2c:::clean_call(pp6c[['call.processed']])
 
+# make sure we get return symbol logic right
+call6d <- quote({
+  x <- x
+})
+pp6d <- r2c:::preprocess(call6d, optimize=TRUE)
+r2c:::clean_call(pp6d[['call.processed']])
+
+# make sure we get return symbol logic right
+call6d <- quote({
+  x <- x
+})
+pp6d <- r2c:::preprocess(call6d, optimize=TRUE)
+r2c:::clean_call(pp6d[['call.processed']])
+
+call6e <- quote({
+  x <- y <- mean(x)
+  x <- y
+})
+pp6e <- r2c:::preprocess(call6e, optimize=TRUE)
+r2c:::clean_call(pp6e[['call.processed']])
+
+# Passive/Assign chains work correctly
+call6f <- quote({
+  x <- {
+    y <- mean(x)
+    z
+  }
+  y <- x
+})
+pp6f <- r2c:::preprocess(call6f, optimize=TRUE)
+r2c:::clean_call(pp6f[['call.processed']])
+
+# redundant vcopy call should get cleaned up
+call6g <- quote({
+  x <- {
+    y <- mean(x)
+    y
+  }
+  y <- x
+})
+pp6g <- r2c:::preprocess(call6g, optimize=TRUE)
+r2c:::clean_call(pp6g[['call.processed']])
+
+# This will error at runtime unless x is zero length
+call7 <- quote(if(a) y <- x)
+pp7 <- r2c:::preprocess(call7, optimize=TRUE)
+r2c:::clean_call(pp7[['call.processed']])
+
+# Also runtime error, if/else vcopy not needed because target not used outside
+# of branch, but needed for return symbol.
+call7a <- quote({if(a) y <- x; x })
+pp7a <- r2c:::preprocess(call7a, optimize=TRUE)
+r2c:::clean_call(pp7a[['call.processed']])
+
+call7b <- quote({
+  if(a) y <- x
+  y
+})
+pp7b <- r2c:::preprocess(call7b, optimize=TRUE)
+r2c:::clean_call(pp7b[['call.processed']])
+
+call7c <- quote({
+  x <- mean(x)
+  if(a) y <- x
+  y
+})
+pp7c <- r2c:::preprocess(call7c, optimize=TRUE)
+r2c:::clean_call(pp7c[['call.processed']])
+
+call7d <- quote({
+  if(a) {
+    x <- mean(x)
+    y <- x
+  }
+  y
+})
+pp7d <- r2c:::preprocess(call7d, optimize=TRUE)
+r2c:::clean_call(pp7d[['call.processed']])
+
 
 call7 <- quote({
 x <- mean(y)
@@ -130,7 +209,6 @@ if(a) {
 y + z
 })
 pp7 <- r2c:::preprocess(call7, optimize=TRUE)
-pp7[['call.processed']]
 r2c:::clean_call(pp7[['call.processed']])
 
 # No else, length mismatch

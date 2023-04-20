@@ -21,6 +21,8 @@
 
 ## Current
 
+* Implement `r2c::ccopy` to copy constants into vectors.
+
 * Move the disallowed assignment error to somewhere that does not use the
   renamed expression as that is then incomprehensible.
 
