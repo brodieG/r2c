@@ -653,30 +653,58 @@ copy_symdat_revpass <- function(
 #     }
 #
 # The vcopy is not necessary.
+#
+# @param bind.loc character symbol names that are bound to in the local context,
+#   where each `if/else` call sets a new context.
+# @param bind.all character symbol names of all symbols bound in expression.
 
-copy_symdat_cleanpass <- function(x, bindings=character()) {
+copy_symdat_cleanpass <- function(
+  x, bind.loc=character(), bind.all=character(), assign=FALSE
+) {
   if(is.call(x)) {
     call.sym <- get_lang_name(x)
     if(call.sym == "vcopy") {
-      # remove vcopy that references a symbol bound in the current "context"
       vc.sym <- as.character(x[[2L]])
-      if(vc.sym %in% bindings) x <- x[[2L]]
-    } else if (call.sym == 'r2c_if') {
-      # entering an if/else context "resets" bindings b/c we need to copy them
-      x.T <- copy_symdat_cleanpass(x[[c(2L,2L)]], bindings=character())
-      x.F <- copy_symdat_cleanpass(x[[c(3L,2L)]], bindings=character())
-      # Merge the bindings across the two branches.
-      bindings <- unique(c(bindings, x.T[['bindings']], x.F[['bindings']]))
-    } else {
-      for(i in seq_along(x)[-1L]) {
-        tmp <- copy_symdat_cleanpass(x[[i]], bindings=bindings)
-        x[[i]] <- tmp[['x']]
-        bindings <- tmp[['bindings']]
+      # remove redundant vcopy if warranted
+      if(
+        (vc.sym %in% bind.loc) ||         # symbol bound in current "context"
+        (!assign && vc.sym %in% bind.all) # neither assign or external symbol
+      ) {
+        x <- x[[2L]]
       }
-      if(call.sym %in% ASSIGN.SYM)
-        bindings <- union(bindings, get_target_symbol(x, call.sym))
+    } else if (call.sym == 'r2c_if') {
+      # Each if/else sets a "context" so reset bind.loc + break assign chains
+      bind.loc.child <- character()
+      # Branches recursed independently as they are "parallel"
+      tmp.T <- copy_symdat_cleanpass(
+        x[[c(2L,2L)]], bind.loc=bind.loc.child, bind.all=bind.all, assign=FALSE
+      )
+      tmp.F <- copy_symdat_cleanpass(
+        x[[c(3L,2L)]], bind.loc=bind.loc.child, bind.all=bind.all, assign=FALSE
+      )
+      x[[2L]] <- tmp.T[['x']]
+      x[[3L]] <- tmp.F[['x']]
+      # Merge the branch data
+      bind.loc <- unique(c(bind.loc, tmp.T[['bind.loc']], tmp.F[['bind.loc']]))
+      bind.all <- unique(c(bind.all, tmp.T[['bind.all']], tmp.F[['bind.all']]))
+    } else {
+      assign.call <- call.sym %in% ASSIGN.SYM
+      assign <- assign.call || assign && call.sym %in% PASSIVE.SYM
+      for(i in seq_along(x)[-1L]) {
+        tmp <- copy_symdat_cleanpass(
+          x[[i]], bind.loc=bind.loc, bind.all=bind.all, assign=assign
+        )
+        x[[i]] <- tmp[['x']]
+        bind.loc <- tmp[['bind.loc']]
+        bind.all <- tmp[['bind.all']]
+      }
+      if(assign.call) {
+        tar.sym <- get_target_symbol(x, call.sym)
+        bind.loc <- union(bind.loc, tar.sym)
+        bind.all <- union(bind.all, tar.sym)
+      }
   } }
-  list(x=x, bindings=bindings)
+  list(x=x, bind.loc=bind.loc, bind.all=bind.all)
 }
 # Inject Missing Symbols as `x <- vcopy(x)`
 #
