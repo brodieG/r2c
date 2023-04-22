@@ -117,7 +117,7 @@ unitizer_sect("Basic if/else", {
   pp3b1 <- r2c:::preprocess(call3b1, optimize=TRUE)
   r2c:::clean_call(pp3b1[['call.processed']])
 
-  # But a rebinding necessitates a copy if it is used later or last
+  # Rebinding should not require copy unless binding used again
   call3c <- quote({
     x <- y <- mean(x)
     if(a) y <- x else y
@@ -125,6 +125,7 @@ unitizer_sect("Basic if/else", {
   pp3c <- r2c:::preprocess(call3c, optimize=TRUE)
   r2c:::clean_call(pp3c[['call.processed']])
 
+  # But potentially returned external always
   call3c1 <- quote({
     x <- y <- mean(x)
     if(a) {y <- x; z} else y
@@ -132,6 +133,9 @@ unitizer_sect("Basic if/else", {
   pp3c1 <- r2c:::preprocess(call3c1, optimize=TRUE)
   r2c:::clean_call(pp3c1[['call.processed']])
 
+  # In theory no copies because assigned to symbol unused after branch,
+  # but the forward pass can't tell because it's not last, but the revpass adds
+  # the copy because the symbol is last.
   call3c2 <- quote({
     x <- y <- mean(x)
     if(a) {y <- x; y} else y
@@ -139,6 +143,24 @@ unitizer_sect("Basic if/else", {
   pp3c2 <- r2c:::preprocess(call3c2, optimize=TRUE)
   r2c:::clean_call(pp3c2[['call.processed']])
 
+  # One copy for external symbol, none for `y` b/c unused after branch
+  call3c2a <- quote({
+    y <- mean(x)
+    if(a) {y <- x; y} else y
+  })
+  pp3c2a <- r2c:::preprocess(call3c2a, optimize=TRUE)
+  r2c:::clean_call(pp3c2a[['call.processed']])
+
+  # Copies because assigned symbol used after branch
+  call3c2b <- quote({
+    x <- y <- mean(x)
+    if(a) {y <- x; y} else y
+    y
+  })
+  pp3c2b <- r2c:::preprocess(call3c2b, optimize=TRUE)
+  r2c:::clean_call(pp3c2b[['call.processed']])
+
+  # Copies (included added to else) because rebound symbol is used
   call3c3 <- quote({
     x <- y <- mean(x)
     if(a) {y <- x; z} else z
