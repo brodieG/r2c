@@ -544,11 +544,160 @@ transform_call_rec <- function(call) {
 #   passive calls.
 
 copy_symdat <- function(x) {
-  # Initial aggressive reverse pass
-  y <- copy_symdat_revpass(x)[['x']]
-  # Secondary cleanup
-  copy_symdat_cleanpass(y)[['x']]
+  # Find where all variables are set and used
+  poi<- symdat_indices(x)
+  # Convert poi data to matrices to make them easier to use for lookups.  We
+  # don't use hashtables because we need to do partial lookups.
+
+  max.idx <- max(vapply(poi, lengths, 0L))
+  poi.mx <- lapply(
+    poi, function(x, nrow) {
+      res <- do.call(cbind, lapply(x, `length<-`, nrow))
+      colnames(res) <- names(x)
+      res
+    }
+  )
+  # Copy any binding that are used out of context
+  copy_symdat_ooctxt(x, poi)[['x']]
 }
+
+symdat_indices <- function(
+  x, index=1L, poi=list(
+    bind.used=integer(), bind.set=integer(), if.ctxt=integer()
+  )
+) {
+  if(is.call(x)) {
+    call.sym <- get_lang_name(x)
+    assign.call <- call.sym %in% ASSIGN.SYM
+    skip <- if(assign.call) 1:2 else 1L
+
+    if(call.sym == 'r2c_if')
+      poi[['if.ctxt']] <- c(poi[['if.ctxt']], list(index))
+
+    for(i in seq_along(x)[-skip]) {
+      poi <- symdat_indices(x[[i]], index=c(index, i) poi=poi)
+    }
+    if(assign.call) {
+      tar.sym <- get_target_symbol(x, call.sym)
+      poi[['bind.set']][['tar.sym']] <-
+        c(poi[['bind.set']][['tar.sym']], list(index))
+    }
+  } else if(is.symbol(x)) {
+    poi[['bind.used']][['tar.sym']] <-
+      c(poi[['bind.used']][['tar.sym']], list(index))
+  }
+  poi
+}
+copy_symdat_ooctxt <- function(
+  x, index=1L, poi, assign.to=character()
+) {
+  if(is.call(x)) {
+    call.sym <- get_lang_name(x)
+    call.assign <- call.sym %in% ASSIGN.SYM
+    call.passive <- call.sym %in% PASSIVE.SYM
+    if(call.sym == 'r2c_if') {
+      # Recurse through each branch independently since they are "simultaneous"
+      # with respect to call order.  This also means either branch can
+      # potentially be last expression, hence `last` forwarded.
+      x.T <- copy_symdat_ooctxt(
+        x[[c(2L,2L)]], index=c(index, c(2L,2L)), poi=poi, assign.to=assign.to
+      )
+      x.F <- copy_symdat_ooctxt(
+        x[[c(3L,2L)]], index=c(index, c(3L,2L)), poi=poi, assign.to=assign.to
+      )
+      # Of all the symbols that are set in this if/else and used after, both
+      # branches must set them.
+
+      branch.set <- poi[['bind.set']][
+
+
+      # Of all the symbols that are live after the if/else, whichever symbols
+      # are written in either branch that are used after the branches need to
+      # exist in both (survived = used after branch).
+      assigned <- union(x.T[['assigned']], x.F[['assigned']])
+      live.sym.min <- vapply(live.sym, min, 0L)
+      assigned.survive <- intersect(
+        assigned, names(live.sym.min[live.sym.min < if.ctxt])
+      )
+      x[[c(2L,2L)]] <- add_missing_symbols(x.T, assigned.survive)
+      x[[c(3L,2L)]] <- add_missing_symbols(x.F, assigned.survive)
+
+      # Merge the updated live symbols across branches
+      live.sym <- merge_live_sym(live.sym, x.T[['live.sym']], x.F[['live.sym']])
+    } else if (call.sym %in% IF.SUB.SYM) {
+      stop("Internal Error: if/else branch in unexpected location.")
+    } else {
+      tar.sym <- if(call.assign) get_target_symbol(x, call.sym) else ""
+      rec.skip <- if(call.assign) -(1:2) else -1L
+      assign.to <-
+        if(call.assign) union(assign.to, tar.sym) # chained assign
+        else if(call.passive) assign.to
+        else character()    # not symbol forwarding, so we don't care
+
+      for(i in rev(seq_along(x)[rec.skip])) {
+        tmp <- copy_symdat_ooctxt(
+          x[[i]], index=c(index, i),
+          assign.to=assign.to, assigned=assigned,
+          br.ctxt=br.ctxt, new.br.ctxt=FALSE
+        )
+        x[[i]] <- tmp[['x']]
+        live.sym <- tmp[['live.sym']]
+        assigned <- tmp[['assigned']]
+        last.sym <- tmp[['last.sym']]
+      }
+      if(call.assign) {
+        # In reverse traversal an assignment "kills" a symbol since all
+        # subsequent accesses are for this new version, not some version defined
+        # earlier in the call tree.
+        live.sym <- live.sym[names(live.sym) != tar.sym]
+        assigned <- union(assigned, tar.sym)
+      }
+    }
+  } else if (is.symbol(x)) {
+    if(last) {
+      # need to vcopy if this symbol is not defined in any context
+      bindingsjj
+
+    } else if(assign) {
+      # Assignment chain, need to vcopy if this symbol is not defined in the
+      # current context and is used in a lower context
+    } else if (last) {
+
+    }
+
+
+    # If it is not defined: there is no entry in bindings[['set']] that is
+    # earlier than the current index.
+    #
+    # Will be used in an assignment: track the assign flag separately because
+    # otherwise we can't be sure that an assignment will only flow through
+    # passive calls.
+    #
+    # Any of the assigned to symbols is used outside of current context
+    # (returned or used outside of if/else):
+    # * track the assigned-to-symbols
+    # * for each assigned-to-symbol:
+    #   * find all uses between the current assignment and the next assignment.
+    #   * check if any of them are in a different or lower if/else, or if they
+    #     are (or could be) the return value.
+    #
+    # To check for return value, we need all the possible branches that could
+    # return.
+
+    # Update the live symbol to know it's in use going forward
+    live.sym[as.character(x)] <- if.ctxt
+  }
+  # Any symbols that are still live at the beginning of a context and are
+  # used in that context need to be killed with assignment via `vcopy`.
+  if(new.br.ctxt) {
+    live.sym.used <- vapply(live.sym, function(x, y) any(x == y), TRUE if.ctxt)
+    x <- add_missing_symbols(x, names(which(live.sym.used)))
+    live.sym <- live.sym[!names(live.sym) %in% names(which(live.sym.used))]
+  }
+  list(x=x, live.sym=live.sym, last.sym=last.sym, assigned=assigned)
+
+}
+
 
 # Only symbols bound in branches that are used after the branch need to
 # reference memory allocated in the branch.  Other branch-bound symbols are
@@ -593,9 +742,8 @@ copy_symdat <- function(x) {
 #   same context.
 
 copy_symdat_revpass <- function(
-  x, live.sym=integer(),
-  assigned=character(), assign.to=character(),
-  last=TRUE, last.sym="", if.ctxt=0L
+  x, live.sym=list(), assigned=character(), assign.to=character(),
+  new.br.ctxt=TRUE
 ) {
   if(!length(live.sym)) names(live.sym) <- character()
   if(is.call(x)) {
@@ -609,18 +757,19 @@ copy_symdat_revpass <- function(
       # potentially be last expression, hence `last` forwarded.
       x.T <- copy_symdat_revpass(
         x[[c(2L,2L)]], live.sym=live.sym, assigned=assigned,
-        last=last, last.sym=last.sym, if.ctxt=if.ctxt
+        br.ctxt=br.ctxt + 1L, new.br.ctxt=TRUE
       )
       x.F <- copy_symdat_revpass(
         x[[c(3L,2L)]], live.sym=live.sym, assigned=assigned,
-        last=last, last.sym=last.sym, if.ctxt=if.ctxt
+        br.ctxt=br.ctxt, new.br.ctxt=TRUE
       )
       # Of all the symbols that are live after the if/else, whichever symbols
       # are written in either branch that are used after the branches need to
       # exist in both (survived = used after branch).
       assigned <- union(x.T[['assigned']], x.F[['assigned']])
+      live.sym.min <- vapply(live.sym, min, 0L)
       assigned.survive <- intersect(
-        assigned, names(live.sym[live.sym < if.ctxt])
+        assigned, names(live.sym.min[live.sym.min < if.ctxt])
       )
       x[[c(2L,2L)]] <- add_missing_symbols(x.T, assigned.survive)
       x[[c(3L,2L)]] <- add_missing_symbols(x.F, assigned.survive)
@@ -641,8 +790,7 @@ copy_symdat_revpass <- function(
         tmp <- copy_symdat_revpass(
           x[[i]], live.sym=live.sym,
           assign.to=assign.to, assigned=assigned,
-          last=last && i == length(x) && call.passive,
-          last.sym=last.sym, if.ctxt=if.ctxt
+          br.ctxt=br.ctxt, new.br.ctxt=FALSE
         )
         x[[i]] <- tmp[['x']]
         live.sym <- tmp[['live.sym']]
@@ -655,24 +803,18 @@ copy_symdat_revpass <- function(
         # earlier in the call tree.
         live.sym <- live.sym[names(live.sym) != tar.sym]
         assigned <- union(assigned, tar.sym)
-    } }
+      }
+    }
   } else if (is.symbol(x)) {
-    sym.name <- as.character(x)
-    # Keep track of the last symbol, and also vcopy it
-    if (last) {
-      last.sym <- sym.name
-      x <- en_vcopy(x)
-    } else if(length(assign.to)) {
-      # vcopy if part of an assignment chain in a branch and non-local, or if
-      # the symbol is eventually bound to the return value (returned as symbol)
-      live.sym.ext <- names(live.sym[live.sym < if.ctxt])
-      if(if.ctxt && any(assign.to %in% live.sym.ext)) x <- en_vcopy(x)
-      else if(last.sym %in% assign.to) {
-        x <- en_vcopy(x)
-        last.sym <- ""
-    } }
     # Update the live symbol to know it's in use going forward
-    live.sym[sym.name] <- if.ctxt
+    live.sym[as.character(x)] <- if.ctxt
+  }
+  # Any symbols that are still live at the beginning of a context and are
+  # used in that context need to be killed with assignment via `vcopy`.
+  if(new.br.ctxt) {
+    live.sym.used <- vapply(live.sym, function(x, y) any(x == y), TRUE if.ctxt)
+    x <- add_missing_symbols(x, names(which(live.sym.used)))
+    live.sym <- live.sym[!names(live.sym) %in% names(which(live.sym.used))]
   }
   list(x=x, live.sym=live.sym, last.sym=last.sym, assigned=assigned)
 }
