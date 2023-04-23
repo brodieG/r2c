@@ -545,49 +545,100 @@ transform_call_rec <- function(call) {
 
 copy_symdat <- function(x) {
   # Find where all variables are set and used
-  poi<- symdat_indices(x)
-  # Convert poi data to matrices to make them easier to use for lookups.  We
-  # don't use hashtables because we need to do partial lookups.
-
-  max.idx <- max(vapply(poi, lengths, 0L))
-  poi.mx <- lapply(
-    poi, function(x, nrow) {
-      res <- do.call(cbind, lapply(x, `length<-`, nrow))
-      colnames(res) <- names(x)
-      res
-    }
-  )
+  sym.set <- sym_set(x)
+  sym.use <- sym_use(x)
   # Copy any binding that are used out of context
-  copy_symdat_ooctxt(x, poi)[['x']]
+  copy_symdat_ooctxt(x, sym.set, sym.use)[['x']]
 }
+# Need to track as we go along whether an assigned  symbol is of the non-local
+# variety.  We record it's index if that's the case (we only care about the last
+# assignment as chained assignments should resolve themselves?), and the current
+# if/else context.
+#
+# At next use, if it is in a further out ifelse context, promote to must `vcopy`
+# list (removes it from candidate list)
+#
+# At next write, remove from candidate list.
+#
+# If a symbol is used and not defined at all, add entry to the must `vcopy` list
+# at the very beginning.
+#
+# For each `ifelse` context, also need to collect all the vcopy's and make sure
+# the branches are balanced.  For this we need all branch assignments, not just
+# branch non-local?
 
-symdat_indices <- function(
-  x, index=1L, poi=list(
-    bind.used=integer(), bind.set=integer(), if.ctxt=integer()
-  )
+sym_use <- function(
+  x, index=1L, res=list()
 ) {
   if(is.call(x)) {
     call.sym <- get_lang_name(x)
     assign.call <- call.sym %in% ASSIGN.SYM
     skip <- if(assign.call) 1:2 else 1L
-
-    if(call.sym == 'r2c_if')
-      poi[['if.ctxt']] <- c(poi[['if.ctxt']], list(index))
+    res[[index]] <- vector("list", length(x))
+    for(i in seq_along(x)[-skip])
+      res <- sym_use(x[[i]], index=c(index, i), res=res)
+  } else {
+    # Leaves represented as character strings
+    res[[index]] <- if(is.symbol(x)) as.character(x) else ""
+  }
+  res
+}
+sym_set <- function(
+  x, index=1L, res=list()
+) {
+  if(is.call(x)) {
+    call.sym <- get_lang_name(x)
+    assign.call <- call.sym %in% ASSIGN.SYM
+    skip <- if(assign.call) 1:2 else 1L
+    res[[index]] <- vector("list", length(x))
 
     for(i in seq_along(x)[-skip]) {
-      poi <- symdat_indices(x[[i]], index=c(index, i) poi=poi)
+      res <- sym_set(x[[i]], index=c(index, i), res=res)
     }
-    if(assign.call) {
-      tar.sym <- get_target_symbol(x, call.sym)
-      poi[['bind.set']][['tar.sym']] <-
-        c(poi[['bind.set']][['tar.sym']], list(index))
-    }
-  } else if(is.symbol(x)) {
-    poi[['bind.used']][['tar.sym']] <-
-      c(poi[['bind.used']][['tar.sym']], list(index))
+    if(assign.call) res[[c(index, 2L)]] <- get_target_symbol(x, call.sym)
   }
-  poi
+  res
 }
+#  Try a depth first traversal, where as we processess the depeest branches, we
+#  disassemble the sym.use/set trees so the nested symbols are not visible
+#  anymore.
+
+copy_symdat <- function(x, index=1L, sym.set, sym.use) {
+  if(is.call(x)) {
+    call.sym <- get_lang_name(x)
+    call.assign <- call.sym %in% ASSIGN.SYM
+    call.passive <- call.sym %in% PASSIVE.SYM
+    if(call.sym == 'r2c_if') {
+      # Recurse through each branch independently since they are "simultaneous"
+      # with respect to call order.
+      x.T <- copy_symdat_ooctxt(
+        x[[c(2L,2L)]], index=c(index, c(2L,2L)),
+        sym.set=sym.set, sym.use=sym.use
+      )
+      x.F <- copy_symdat_ooctxt(
+        x[[c(3L,2L)]], index=c(index, c(3L,2L)),
+        sym.set=sym.set, sym.use=sym.use
+      )
+      # Symbols written to in if/else and used latter must be written to in both
+      # branches.
+      w.T <- unlist(sym.set[[c(index, c(2L,2L))]])
+      w.F <- unlist(sym.set[[c(index, c(3L,2L))]])
+      # But also we want to reset "used latter designation" if written to again.
+
+      for(i in rev(seq_along(index)[-1])) {
+
+      }
+      par.idx <- index[-length(index)]
+
+
+
+      r.later <- c(sym.use[[index
+
+    }
+  } else {
+  }
+}
+
 copy_symdat_ooctxt <- function(
   x, index=1L, poi, assign.to=character()
 ) {
@@ -608,7 +659,29 @@ copy_symdat_ooctxt <- function(
       # Of all the symbols that are set in this if/else and used after, both
       # branches must set them.
 
-      branch.set <- poi[['bind.set']][
+      branch.sym.set <- x
+
+      # This is not super efficient b/c we search
+      # most of the matrix each time.  Find target symbols by matching the first
+      # length(index) elements of their indices.
+
+      # Doesn't matter how many times set in branch, but we don't want to
+      # collect settings in child branches because those will do their own.
+      #
+      # Need first use after branch.
+      # Need first set after branch.
+
+
+      branch.set <- which(
+        colSums(
+          poi[['bind.set']][seq_along(index),,drop=FALSE] == index
+        ) == length(index)
+      )
+      for(sym in names(branch.set)) {
+        sym.used <- poi[['bind.used']][,
+          which(colnames(poi[['bind.used']]) == sym), drop=FALSE
+        ]
+      }
 
 
       # Of all the symbols that are live after the if/else, whichever symbols
@@ -690,7 +763,7 @@ copy_symdat_ooctxt <- function(
   # Any symbols that are still live at the beginning of a context and are
   # used in that context need to be killed with assignment via `vcopy`.
   if(new.br.ctxt) {
-    live.sym.used <- vapply(live.sym, function(x, y) any(x == y), TRUE if.ctxt)
+    live.sym.used <- vapply(live.sym, function(x, y) any(x == y), TRUE, if.ctxt)
     x <- add_missing_symbols(x, names(which(live.sym.used)))
     live.sym <- live.sym[!names(live.sym) %in% names(which(live.sym.used))]
   }
@@ -812,7 +885,7 @@ copy_symdat_revpass <- function(
   # Any symbols that are still live at the beginning of a context and are
   # used in that context need to be killed with assignment via `vcopy`.
   if(new.br.ctxt) {
-    live.sym.used <- vapply(live.sym, function(x, y) any(x == y), TRUE if.ctxt)
+    live.sym.used <- vapply(live.sym, function(x, y) any(x == y), TRUE, if.ctxt)
     x <- add_missing_symbols(x, names(which(live.sym.used)))
     live.sym <- live.sym[!names(live.sym) %in% names(which(live.sym.used))]
   }
