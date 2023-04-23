@@ -21,6 +21,14 @@
 
 ## Current
 
+* Rethink the reverse pass to add vcopy at the very beginning for any used
+  symbols that are still live at the beginning: these are the external symbols.
+  If we do this we should be able to clean up the logic by getting rid of all
+  the last business.  If we do this it the 0 context should then be the same as
+  the other ones.
+
+* Check that user doesn't introduce their own `vcopy`'s.
+
 * Implement `r2c::ccopy` to copy constants into vectors.
 
 * Move the disallowed assignment error to somewhere that does not use the

@@ -884,6 +884,32 @@ if(assignment && source.is.symbol) {
 
 # Track Symbol Usage
 
+## Correct Way To Track Symbol Usage
+
+If symbol:
+  If binding context or return context:
+    If symbol exists in current branch context:
+      All set.
+    Else:
+      *VCOPY* and add to beginning of current context, this will need to be done
+      when we get to context-establishing call.  All future uses (even in
+      different branches of same context) will benefit from this.  So each
+      processed call returns a vector of symbols they need added.  It's okay for
+      multiple calls to have overlapping symbols.  If a later call redefines a
+      symbol, that's okay too.  We just need to track the defined symbols we had
+      at the beginning.  When we exit the context we still return our set of
+      defined symbols.  We do need to make sure that the set of newly defined
+      symbols exists in both branches.
+    Additionally, after assignment add symbol to current context.
+    Else If "r2c_if" context:
+      Recurse on both branches.
+      Compare return symbol list and add missing symbols to each branch.
+  Else If call context:
+
+
+In forward pass, for each symbol, track what context level it is bound in.  For
+each symbol use, check if it is a rebinding or return.
+
 ## General
 
 We want to modify a call based on how a symbol was used / not used.  We could
