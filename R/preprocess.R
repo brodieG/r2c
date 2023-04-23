@@ -599,175 +599,107 @@ sym_set <- function(
   }
   res
 }
+#  For each symbol assigned to or returned:
+#  * If it is assigned to from / is non-local:
+#    * Mark as candidate (overwritting prior candidacy)
 #  Try a depth first traversal, where as we processess the depeest branches, we
 #  disassemble the sym.use/set trees so the nested symbols are not visible
 #  anymore.
 
-copy_symdat <- function(x, index=1L, sym.set, sym.use) {
+copy_symdat <- function(
+  x, index=1L, context=1L, assign.to=character(),
+  data=list(
+    bind=list(loc=character(), all=character()),
+    copy=list(cand=list(), actual=list()),
+    missing=list()
+  )
+) {
+  CAND <- c('copy', 'cand')
+  ACT <- c('copy', 'act')
+
   if(is.call(x)) {
-    call.sym <- get_lang_name(x)
-    call.assign <- call.sym %in% ASSIGN.SYM
-    call.passive <- call.sym %in% PASSIVE.SYM
     if(call.sym == 'r2c_if') {
+      # New if/else context resets all local bindings
+      data[[c('bind', 'loc')]] <- character()
       # Recurse through each branch independently since they are "simultaneous"
       # with respect to call order.
-      x.T <- copy_symdat_ooctxt(
-        x[[c(2L,2L)]], index=c(index, c(2L,2L)),
-        sym.set=sym.set, sym.use=sym.use
+      data.T <- copy_symdat(
+        x[[c(2L,2L)]], index=c(index, c(2L,2L)), data=data, context=index
       )
-      x.F <- copy_symdat_ooctxt(
-        x[[c(3L,2L)]], index=c(index, c(3L,2L)),
-        sym.set=sym.set, sym.use=sym.use
+      data.F <- copy_symdat(
+        x[[c(3L,2L)]], index=c(index, c(3L,2L)), data=data, context=index
       )
-      # Symbols written to in if/else and used latter must be written to in both
-      # branches.
-      w.T <- unlist(sym.set[[c(index, c(2L,2L))]])
-      w.F <- unlist(sym.set[[c(index, c(3L,2L))]])
-      # But also we want to reset "used latter designation" if written to again.
-
-      for(i in rev(seq_along(index)[-1])) {
-
-      }
-      par.idx <- index[-length(index)]
-
-
-
-      r.later <- c(sym.use[[index
-
-    }
-  } else {
-  }
-}
-
-copy_symdat_ooctxt <- function(
-  x, index=1L, poi, assign.to=character()
-) {
-  if(is.call(x)) {
-    call.sym <- get_lang_name(x)
-    call.assign <- call.sym %in% ASSIGN.SYM
-    call.passive <- call.sym %in% PASSIVE.SYM
-    if(call.sym == 'r2c_if') {
-      # Recurse through each branch independently since they are "simultaneous"
-      # with respect to call order.  This also means either branch can
-      # potentially be last expression, hence `last` forwarded.
-      x.T <- copy_symdat_ooctxt(
-        x[[c(2L,2L)]], index=c(index, c(2L,2L)), poi=poi, assign.to=assign.to
-      )
-      x.F <- copy_symdat_ooctxt(
-        x[[c(3L,2L)]], index=c(index, c(3L,2L)), poi=poi, assign.to=assign.to
-      )
-      # Of all the symbols that are set in this if/else and used after, both
-      # branches must set them.
-
-      branch.sym.set <- x
-
-      # This is not super efficient b/c we search
-      # most of the matrix each time.  Find target symbols by matching the first
-      # length(index) elements of their indices.
-
-      # Doesn't matter how many times set in branch, but we don't want to
-      # collect settings in child branches because those will do their own.
-      #
-      # Need first use after branch.
-      # Need first set after branch.
-
-
-      branch.set <- which(
-        colSums(
-          poi[['bind.set']][seq_along(index),,drop=FALSE] == index
-        ) == length(index)
-      )
-      for(sym in names(branch.set)) {
-        sym.used <- poi[['bind.used']][,
-          which(colnames(poi[['bind.used']]) == sym), drop=FALSE
-        ]
-      }
-
-
-      # Of all the symbols that are live after the if/else, whichever symbols
-      # are written in either branch that are used after the branches need to
-      # exist in both (survived = used after branch).
-      assigned <- union(x.T[['assigned']], x.F[['assigned']])
-      live.sym.min <- vapply(live.sym, min, 0L)
-      assigned.survive <- intersect(
-        assigned, names(live.sym.min[live.sym.min < if.ctxt])
-      )
-      x[[c(2L,2L)]] <- add_missing_symbols(x.T, assigned.survive)
-      x[[c(3L,2L)]] <- add_missing_symbols(x.F, assigned.survive)
-
-      # Merge the updated live symbols across branches
-      live.sym <- merge_live_sym(live.sym, x.T[['live.sym']], x.F[['live.sym']])
-    } else if (call.sym %in% IF.SUB.SYM) {
-      stop("Internal Error: if/else branch in unexpected location.")
+      # Reconcile copies required in each of the branches.  Any candidates
+      # (there cannot be new actuals) present in one branch but not the other
+      # need to be added to the other.
+      data <- merge_candidates(data.T, data.F, context)
     } else {
-      tar.sym <- if(call.assign) get_target_symbol(x, call.sym) else ""
-      rec.skip <- if(call.assign) -(1:2) else -1L
-      assign.to <-
-        if(call.assign) union(assign.to, tar.sym) # chained assign
-        else if(call.passive) assign.to
-        else character()    # not symbol forwarding, so we don't care
+      call.sym <- get_lang_name(x)
+      call.assign <- call.sym %in% ASSIGN.SYM
+      call.passive <- call.sym %in% PASSIVE.SYM
 
-      for(i in rev(seq_along(x)[rec.skip])) {
-        tmp <- copy_symdat_ooctxt(
-          x[[i]], index=c(index, i),
-          assign.to=assign.to, assigned=assigned,
-          br.ctxt=br.ctxt, new.br.ctxt=FALSE
+      rec.skip <- 1L
+      if(call.assign) {
+        tar.sym <- get_target_symbol(x, call.sym)
+        assign.to <- union(assign.to, tar.sym)
+        rec.skip <- 1:2
+      } else if(!call.passive) {
+        assign.to <- character()
+      }
+      for(i in seq_along(x)[rec.skip]) {
+        data <- copy_symdat(
+          x[[i]], index=c(index, i), context=context
+          assign.to=assign.to, data=data
         )
-        x[[i]] <- tmp[['x']]
-        live.sym <- tmp[['live.sym']]
-        assigned <- tmp[['assigned']]
-        last.sym <- tmp[['last.sym']]
       }
       if(call.assign) {
-        # In reverse traversal an assignment "kills" a symbol since all
-        # subsequent accesses are for this new version, not some version defined
-        # earlier in the call tree.
-        live.sym <- live.sym[names(live.sym) != tar.sym]
-        assigned <- union(assigned, tar.sym)
+        # Clear any candidates bound to this symbol
+        cand.nm <- names(data[[CAND]])
+        data[[CAND]] <- data[[CAND]][cand.nm != tar.sym]
+
+        # Record local and global bindings
+        data[[c('bind', 'loc')]] <- union(data[[c('bind', 'loc')]], tar.sym)
+        data[[c('bind', 'all')]] <- union(data[[c('bind', 'all')]], tar.sym)
       }
     }
   } else if (is.symbol(x)) {
-    if(last) {
-      # need to vcopy if this symbol is not defined in any context
-      bindingsjj
+    sym.name <- as.character(x)
+    # If any existing candidates match this symbol, promote them
+    cand <- data[[CAND]]
+    cand.promote <- which(names(cand) == sym.name)
+    data[[ACT]] <- c(data[[ACT]], cand[cand.promote])
+    data[[CAND]][cand.promote] <- NULL
 
-    } else if(assign) {
-      # Assignment chain, need to vcopy if this symbol is not defined in the
-      # current context and is used in a lower context
-    } else if (last) {
-
+    # Generate new candidates if warraned
+    if(length(assign.to) && !sym.name %in% data[['bind.loc']]) {
+      # non-local symbols being bound to other symbols are candidates
+      new.cand <- replicate(length(assign.to), index, simplify=FALSE)
+      names(new.cand) <- assign.to  # NOT sym.name
+      data[[CAND]] <- c(data[[CAND]], new.cand)
+    } else if (last && !sym.name %in% data[['bind.all']]) {
+      # last symbol in the r2c expression referencing external symbol
+      new.cand <- list(index)
+      names(new.cand) <- sym.name   # this time sym.name
+      data[[CAND]] <- c(data[[CAND]], new.cand)
     }
-
-
-    # If it is not defined: there is no entry in bindings[['set']] that is
-    # earlier than the current index.
-    #
-    # Will be used in an assignment: track the assign flag separately because
-    # otherwise we can't be sure that an assignment will only flow through
-    # passive calls.
-    #
-    # Any of the assigned to symbols is used outside of current context
-    # (returned or used outside of if/else):
-    # * track the assigned-to-symbols
-    # * for each assigned-to-symbol:
-    #   * find all uses between the current assignment and the next assignment.
-    #   * check if any of them are in a different or lower if/else, or if they
-    #     are (or could be) the return value.
-    #
-    # To check for return value, we need all the possible branches that could
-    # return.
-
-    # Update the live symbol to know it's in use going forward
-    live.sym[as.character(x)] <- if.ctxt
   }
-  # Any symbols that are still live at the beginning of a context and are
-  # used in that context need to be killed with assignment via `vcopy`.
-  if(new.br.ctxt) {
-    live.sym.used <- vapply(live.sym, function(x, y) any(x == y), TRUE, if.ctxt)
-    x <- add_missing_symbols(x, names(which(live.sym.used)))
-    live.sym <- live.sym[!names(live.sym) %in% names(which(live.sym.used))]
-  }
-  list(x=x, live.sym=live.sym, last.sym=last.sym, assigned=assigned)
+  data
+}
+# Merge Candidates between Branches
+#
+#
+
+merge_candidates <- function(a, b, index) {
+
+  # Need to record missing symbols in one branch to be added to the other, and
+  # vice versa.  Record the index of the branch, and use a different mechanism
+  # to integrate them.
+
+}
+implement_copy <- function(x, data) {
+  # For each surviving symbol, add `vcopy`
+
+  # For the missing symbols, insert them ahead of the corresponding index.
 
 }
 
