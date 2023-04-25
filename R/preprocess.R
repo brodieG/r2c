@@ -60,11 +60,10 @@ preprocess <- function(call, formals=character(), optimize=FALSE) {
   # `reuse_calls_int` needs to be able to recognize the original constrol flow
   call <- transform_ifelse(call)
 
-  # Copy "external" data into internal alloctions (see fun docs).  This must be
-  # the very last step
+  # Copy "external" data to r2c alloc mem (see fun docs); must be the last step.
   call <- copy_symdat(call)
 
-  # WARNING: Read section warning above before changing section.
+  # WARNING: Read warning at top of section before making changes.
 
   # - Code Gen -----------------------------------------------------------------
 
@@ -543,62 +542,6 @@ transform_call_rec <- function(call) {
 # @param parent.passive TRUE or FALSE, whether the parent.call is one of the
 #   passive calls.
 
-copy_symdat <- function(x) {
-  # Find where all variables are set and used
-  sym.set <- sym_set(x)
-  sym.use <- sym_use(x)
-  # Copy any binding that are used out of context
-  copy_symdat_ooctxt(x, sym.set, sym.use)[['x']]
-}
-# Need to track as we go along whether an assigned  symbol is of the non-local
-# variety.  We record it's index if that's the case (we only care about the last
-# assignment as chained assignments should resolve themselves?), and the current
-# if/else context.
-#
-# At next use, if it is in a further out ifelse context, promote to must `vcopy`
-# list (removes it from candidate list)
-#
-# At next write, remove from candidate list.
-#
-# If a symbol is used and not defined at all, add entry to the must `vcopy` list
-# at the very beginning.
-#
-# For each `ifelse` context, also need to collect all the vcopy's and make sure
-# the branches are balanced.  For this we need all branch assignments, not just
-# branch non-local?
-
-sym_use <- function(
-  x, index=1L, res=list()
-) {
-  if(is.call(x)) {
-    call.sym <- get_lang_name(x)
-    assign.call <- call.sym %in% ASSIGN.SYM
-    skip <- if(assign.call) 1:2 else 1L
-    res[[index]] <- vector("list", length(x))
-    for(i in seq_along(x)[-skip])
-      res <- sym_use(x[[i]], index=c(index, i), res=res)
-  } else {
-    # Leaves represented as character strings
-    res[[index]] <- if(is.symbol(x)) as.character(x) else ""
-  }
-  res
-}
-sym_set <- function(
-  x, index=1L, res=list()
-) {
-  if(is.call(x)) {
-    call.sym <- get_lang_name(x)
-    assign.call <- call.sym %in% ASSIGN.SYM
-    skip <- if(assign.call) 1:2 else 1L
-    res[[index]] <- vector("list", length(x))
-
-    for(i in seq_along(x)[-skip]) {
-      res <- sym_set(x[[i]], index=c(index, i), res=res)
-    }
-    if(assign.call) res[[c(index, 2L)]] <- get_target_symbol(x, call.sym)
-  }
-  res
-}
 #  For each symbol assigned to or returned:
 #  * If it is assigned to from / is non-local:
 #    * Mark as candidate (overwritting prior candidacy)
@@ -606,35 +549,68 @@ sym_set <- function(
 #  disassemble the sym.use/set trees so the nested symbols are not visible
 #  anymore.
 
-copy_symdat <- function(
-  x, index=1L, context=1L, assign.to=character(),
+CAND <- c('copy', 'cand')
+ACT <- c('copy', 'act')
+
+copy_symdat <- function(x) {
+  # Compute locations requring vcopy
+  promoted <- unique(copy_symdat_rec(x)[[ACT]])
+
+  # We want to apply the changes in reverse order so that indices are not made
+  # invalid by tree modifications ahead of them.
+  if(length(promoted)) {
+    indices <- lapply(promoted, "[[", 2L)
+    indices.eq <- lapply(indices, `length<-`, max(indices))
+    indices.mx <- do.call(cbind, indices.eq)
+    indices.order <- do.call(order, split(indices.mx, row(indices.mx)))
+
+    # Inject the vcopies
+    for(i in indices[rev(indices.order)]) {
+      if(i[[2L]][length(i)]) {
+        # Wrap a symbol in vcopy
+        if(!is.symbol(x[[i[[2L]]]]))
+          stop("Internal Error: attempting to vcopy non symbol.")
+        x[[i[[2L]]]] <- en_vcopy(i[[1L]])
+      } else {
+        # Insert an e.g. `x <- vcopy(x)` when trailing index is zero
+        par.idx <- i[[2L]][-length(i[[2L]])]
+        call <- x[[c(par.idx, 2L)]]  # par.idx should point to if_true/false
+        call.sym <- get_lang_name(call)
+        if(!is.call(call) || call.sym != "{") call <- call("{", call)
+
+        # generate e.g. `x <- vcopy(x)`
+        sym.miss <- as.symbol(i[[1L]])
+        sym.vcopy <- call("<-", sym.miss, en_vcopy(sym.miss))
+        call.list <- as.list(call)
+        call <- as.call(c(call.list[1L], list(sym.vcopy), call.list[-1L]))
+        x[[c(par.idx, 2L)]] <- call
+  } } }
+  x
+}
+copy_symdat_rec <- function(
+  x, index=1L, assign.to=character(), last=TRUE,
   data=list(
     bind=list(loc=character(), all=character()),
     copy=list(cand=list(), actual=list()),
     missing=list()
   )
 ) {
-  CAND <- c('copy', 'cand')
-  ACT <- c('copy', 'act')
-
   if(is.call(x)) {
+    call.sym <- get_lang_name(x)
     if(call.sym == 'r2c_if') {
       # New if/else context resets all local bindings
       data[[c('bind', 'loc')]] <- character()
       # Recurse through each branch independently since they are "simultaneous"
-      # with respect to call order.
-      data.T <- copy_symdat(
-        x[[c(2L,2L)]], index=c(index, c(2L,2L)), data=data, context=index
+      # with respect to call order (either could be last too).
+      data.T <- copy_symdat_rec(
+        x[[c(2L,2L)]], index=c(index, c(2L,2L)), data=data, last=last
       )
-      data.F <- copy_symdat(
-        x[[c(3L,2L)]], index=c(index, c(3L,2L)), data=data, context=index
+      data.F <- copy_symdat_rec(
+        x[[c(3L,2L)]], index=c(index, c(3L,2L)), data=data, last=last
       )
-      # Reconcile copies required in each of the branches.  Any candidates
-      # (there cannot be new actuals) present in one branch but not the other
-      # need to be added to the other.
-      data <- merge_candidates(data.T, data.F, context)
+      # Combine the copy data.
+      data <- merge_copy_dat(data.T, data.F, index)
     } else {
-      call.sym <- get_lang_name(x)
       call.assign <- call.sym %in% ASSIGN.SYM
       call.passive <- call.sym %in% PASSIVE.SYM
 
@@ -647,15 +623,14 @@ copy_symdat <- function(
         assign.to <- character()
       }
       for(i in seq_along(x)[rec.skip]) {
-        data <- copy_symdat(
-          x[[i]], index=c(index, i), context=context
-          assign.to=assign.to, data=data
+        data <- copy_symdat_rec(
+          x[[i]], index=c(index, i), assign.to=assign.to, data=data,
+          last=last && i == length(x)
         )
       }
       if(call.assign) {
         # Clear any candidates bound to this symbol
-        cand.nm <- names(data[[CAND]])
-        data[[CAND]] <- data[[CAND]][cand.nm != tar.sym]
+        data[[CAND]] <- data[[CAND]][names(data[[CAND]]) != tar.sym]
 
         # Record local and global bindings
         data[[c('bind', 'loc')]] <- union(data[[c('bind', 'loc')]], tar.sym)
@@ -670,15 +645,16 @@ copy_symdat <- function(
     data[[ACT]] <- c(data[[ACT]], cand[cand.promote])
     data[[CAND]][cand.promote] <- NULL
 
-    # Generate new candidates if warraned
+    # Generate new candidates if warranted.  Name is included so that `union`
+    # etc. on lists can distinguish b/w same name but different index
     if(length(assign.to) && !sym.name %in% data[['bind.loc']]) {
       # non-local symbols being bound to other symbols are candidates
-      new.cand <- replicate(length(assign.to), index, simplify=FALSE)
-      names(new.cand) <- assign.to  # NOT sym.name
+      new.cand <-
+        sapply(length(assign.to), function(x) list(x, index), simplify=FALSE)
       data[[CAND]] <- c(data[[CAND]], new.cand)
     } else if (last && !sym.name %in% data[['bind.all']]) {
       # last symbol in the r2c expression referencing external symbol
-      new.cand <- list(index)
+      new.cand <- list(list(sym.name, index))
       names(new.cand) <- sym.name   # this time sym.name
       data[[CAND]] <- c(data[[CAND]], new.cand)
     }
@@ -687,20 +663,50 @@ copy_symdat <- function(
 }
 # Merge Candidates between Branches
 #
+# We lean towards having duplicated candidates since there is no harm in the
+# same candidate being promoted multiple times.  The only way we lose candidates
+# is if they are voided or promoted in both branches.
 #
+# Both `a` and `b` contain lists at index CAND and ACT.  These are named lists
+# with the names being those of symbols in the expression, and the elements a
+# list of that same name as a scalar character, and the index to the symbol to
+# vcopy, e.g:
+#
+#     list(a=list("a", c(1L, 4L, 2L)), b=list("b", c(1L, 4L, 4L)))
+#
+# The thing being `vcopy`ed and the name are not necessarily the same as often
+# we see `x <- y` where the name is "x" but `y` is getting vcopied).  We
+# include the symbol name in the data even though it's present in the names so
+# `unique` and similar recognize that indices with different names are different
+# as e.g. multiple symbols may reference the same symbol.
+#
+# @param a list should be `data` (see details)
+# @param index integer vector the index into the call returning the expression
+#   setting the current if/else context.
 
-merge_candidates <- function(a, b, index) {
+merge_copy_dat <- function(a, b, index) {
+  # We need to find new candidates missing in the current to inject e.g.
+  # `x <- vcopy(x)` at the beginning of a block (hence 0L)
+  a.missing <- setdiff(b[[CAND]], a[[CAND]])
+  b.missing <- setdiff(a[[CAND]], b[[CAND]])
+  a.miss.list <- lapply(a.missing, function(x) list(x[[1L]], c(index, 2L, 0L)))
+  b.miss.list <- lapply(b.missing, function(x) list(x[[1L]], c(index, 3L, 0L)))
 
-  # Need to record missing symbols in one branch to be added to the other, and
-  # vice versa.  Record the index of the branch, and use a different mechanism
-  # to integrate them.
+  # We include every index, even though this produces a bunch of duplicates.
+  copy.cand <- unique(c(a[[CAND]], b[[CAND]], a.miss.list, b.miss.list))
+  copy.act <- union(a[[ACT]], b[[ACT]])
 
-}
-implement_copy <- function(x, data) {
-  # For each surviving symbol, add `vcopy`
+  # regen names lost in unique/union
+  names(copy.cand) <- vapply(copy.cand, "[[", 1L, "")
+  names(copy.act) <- vapply(copy.act, "[[", 1L, "")
 
-  # For the missing symbols, insert them ahead of the corresponding index.
-
+  # new bindings only count if they are created in both branches
+  list(
+    copy=list(cand=copy.cand, act=copy.cand),
+    bind=list(
+      loc=intersect(a[[c('bind', 'loc')]], b[[c('bind', 'loc')]]),
+      all=intersect(a[[c('bind', 'all')]], b[[c('bind', 'all')]])
+  ) )
 }
 
 
