@@ -43,6 +43,9 @@ unitizer_sect("Basic Symbol Copy", {
   pp1d <- r2c:::preprocess(call1d, optimize=TRUE)
   r2c:::clean_call(pp1d[['call.processed']])
 
+  # Make sure logic that cleares previous candidates is correct
+  warning('exercise clearing prior bindings')
+
   # Nested passive
   call1e <- quote({z <- {y <- x}; x})
   pp1e <- r2c:::preprocess(call1e, optimize=TRUE)

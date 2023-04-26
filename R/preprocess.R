@@ -560,17 +560,23 @@ copy_symdat <- function(x) {
   # invalid by tree modifications ahead of them.
   if(length(promoted)) {
     indices <- lapply(promoted, "[[", 2L)
-    indices.eq <- lapply(indices, `length<-`, max(indices))
+    indices.eq <- lapply(indices, `length<-`, max(lengths(indices)))
     indices.mx <- do.call(cbind, indices.eq)
     indices.order <- do.call(order, split(indices.mx, row(indices.mx)))
 
     # Inject the vcopies
-    for(i in indices[rev(indices.order)]) {
-      if(i[[2L]][length(i)]) {
+    for(i in promoted[rev(indices.order)]) {
+      if(i[[2L]][length(i[[2L]])]) {
         # Wrap a symbol in vcopy
-        if(!is.symbol(x[[i[[2L]]]]))
-          stop("Internal Error: attempting to vcopy non symbol.")
-        x[[i[[2L]]]] <- en_vcopy(i[[1L]])
+        if(is.symbol(x) && identical(i[[2L]], 1L)) {
+          # standalone symbol
+          x <- en_vcopy(x)
+        } else if (is.call(x)) {
+          # symbol in top level (passive) call e.g. `{x}`
+          if(!is.symbol(x[[i[[2L]]]]))
+            stop("Internal Error: attempting to vcopy non symbol.")
+          x[[i[[2L]]]] <- en_vcopy(x[[i[[2L]]]])
+        } else stop("Internal Error: bad context for symbol vcopy.")
       } else {
         # Insert an e.g. `x <- vcopy(x)` when trailing index is zero
         par.idx <- i[[2L]][-length(i[[2L]])]
@@ -588,7 +594,7 @@ copy_symdat <- function(x) {
   x
 }
 copy_symdat_rec <- function(
-  x, index=1L, assign.to=character(), last=TRUE,
+  x, index=integer(), assign.to=character(), last=TRUE,
   data=list(
     bind=list(loc=character(), all=character()),
     copy=list(cand=list(), actual=list()),
@@ -596,6 +602,7 @@ copy_symdat_rec <- function(
   )
 ) {
   if(is.call(x)) {
+    index <- c(index, 1L)
     call.sym <- get_lang_name(x)
     if(call.sym == 'r2c_if') {
       # New if/else context resets all local bindings
@@ -622,15 +629,24 @@ copy_symdat_rec <- function(
       } else if(!call.passive) {
         assign.to <- character()
       }
-      for(i in seq_along(x)[rec.skip]) {
+      for(i in seq_along(x)[-rec.skip]) {
         data <- copy_symdat_rec(
-          x[[i]], index=c(index, i), assign.to=assign.to, data=data,
-          last=last && i == length(x)
+          x[[i]], index=c(index[-length(index)], i), assign.to=assign.to,
+          data=data, last=last && i == length(x)
         )
       }
       if(call.assign) {
-        # Clear any candidates bound to this symbol
-        data[[CAND]] <- data[[CAND]][names(data[[CAND]]) != tar.sym]
+        # Need to clear candidates bound to this symbol, except that:
+        # * We don't want to clear the candidate we just created.
+        # * We need to allow candidates that will be cleared to be used (so we
+        #   can't do this before recursion).
+        # Start by finding the first candidate earlier than this assignment
+
+        indices <- lapply(data[[CAND]], "[[", 2L)
+        indices.gt <- vapply(indices, index_greater, TRUE, index)
+        # Clear those candidates
+        data[[CAND]] <-
+          data[[CAND]][names(data[[CAND]]) != tar.sym | indices.gt]
 
         # Record local and global bindings
         data[[c('bind', 'loc')]] <- union(data[[c('bind', 'loc')]], tar.sym)
@@ -647,20 +663,31 @@ copy_symdat_rec <- function(
 
     # Generate new candidates if warranted.  Name is included so that `union`
     # etc. on lists can distinguish b/w same name but different index
-    if(length(assign.to) && !sym.name %in% data[['bind.loc']]) {
+    if(length(assign.to) && !sym.name %in% data[[c('bind', 'loc')]]) {
       # non-local symbols being bound to other symbols are candidates
-      new.cand <-
-        sapply(length(assign.to), function(x) list(x, index), simplify=FALSE)
+      new.cand <- sapply(assign.to, function(x) list(x, index), simplify=FALSE)
       data[[CAND]] <- c(data[[CAND]], new.cand)
-    } else if (last && !sym.name %in% data[['bind.all']]) {
+    } else if (last && !sym.name %in% data[[c('bind', 'all')]]) {
       # last symbol in the r2c expression referencing external symbol
-      new.cand <- list(list(sym.name, index))
-      names(new.cand) <- sym.name   # this time sym.name
-      data[[CAND]] <- c(data[[CAND]], new.cand)
+      # automatically promoted
+      new.act <- list(list(sym.name, index))
+      names(new.act) <- sym.name   # this time sym.name
+      data[[ACT]] <- c(data[[ACT]], new.act)
     }
   }
   data
 }
+# TRUE if the index a points to `a` position later in the tree than `b` in a
+# depth-first traversal order.
+index_greater <- function(a, b) {
+  if(length(a) > length(b)) length(b) <- length(a)
+  else length(a) <- length(b)
+  a[is.na(a)] <- 0L
+  b[is.na(b)] <- 0L
+  all(a >= b) & any(a > b)
+}
+
+
 # Merge Candidates between Branches
 #
 # We lean towards having duplicated candidates since there is no harm in the
