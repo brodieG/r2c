@@ -553,45 +553,52 @@ CAND <- c('copy', 'cand')
 ACT <- c('copy', 'act')
 
 copy_symdat <- function(x) {
-  # Compute locations requring vcopy
-  promoted <- unique(copy_symdat_rec(x)[[ACT]])
+  if(is.symbol(x)) {
+    # Special case: a single symbol.  For logic to work cleanly every symbol
+    # needs to be part of a call
+    x <- en_vcopy(x)
+  } else {
+    # Compute locations requring vcopy
+    promoted <- unique(copy_symdat_rec(x)[[ACT]])
 
-  # We want to apply the changes in reverse order so that indices are not made
-  # invalid by tree modifications ahead of them.
-  if(length(promoted)) {
-    indices <- lapply(promoted, "[[", 2L)
-    indices.eq <- lapply(indices, `length<-`, max(lengths(indices)))
-    indices.mx <- do.call(cbind, indices.eq)
-    indices.order <- do.call(order, split(indices.mx, row(indices.mx)))
+    # We want to apply the changes in reverse order so that indices are not made
+    # invalid by tree modifications ahead of them.
+    if(length(promoted)) {
+      indices <- lapply(promoted, "[[", 2L)
+      indices.eq <- lapply(indices, `length<-`, max(lengths(indices)))
+      indices.mx <- do.call(cbind, indices.eq)
+      indices.order <- do.call(order, split(indices.mx, row(indices.mx)))
 
-    # Inject the vcopies
-    for(i in promoted[rev(indices.order)]) {
-      if(i[[2L]][length(i[[2L]])]) {
-        # Wrap a symbol in vcopy
-        if(is.symbol(x) && identical(i[[2L]], 1L)) {
-          # standalone symbol
-          x <- en_vcopy(x)
-        } else if (is.call(x)) {
-          # symbol in top level (passive) call e.g. `{x}`
-          if(!is.symbol(x[[i[[2L]]]]))
-            stop("Internal Error: attempting to vcopy non symbol.")
-          x[[i[[2L]]]] <- en_vcopy(x[[i[[2L]]]])
-        } else stop("Internal Error: bad context for symbol vcopy.")
-      } else {
-        # Insert an e.g. `x <- vcopy(x)` when trailing index is zero
-        par.idx <- i[[2L]][-length(i[[2L]])]
-        call <- x[[c(par.idx, 2L)]]  # par.idx should point to if_true/false
-        call.sym <- get_lang_name(call)
-        if(!is.call(call) || call.sym != "{") call <- call("{", call)
+      # Inject the vcopies
+      for(i in promoted[rev(indices.order)]) {
+        if(i[[2L]][length(i[[2L]])]) {
+          # Wrap a symbol in vcopy
+          if(is.symbol(x[[i[[2L]]]]) && identical(i[[2L]], 0L)) {
+            # standalone symbol
+            x <- en_vcopy(x)
+          } else if (is.call(x)) {
+            # symbol in top level (passive) call e.g. `{x}`
+            if(!is.symbol(x[[i[[2L]]]]))
+              stop("Internal Error: attempting to vcopy non symbol.")
+            x[[i[[2L]]]] <- en_vcopy(x[[i[[2L]]]])
+          } else stop("Internal Error: bad context for symbol vcopy.")
+        } else {
+          # Insert an e.g. `x <- vcopy(x)` when trailing index is zero
+          par.idx <- i[[2L]][-length(i[[2L]])]
+          call <- x[[c(par.idx, 2L)]]  # par.idx should point to if_true/false
+          call.sym <- get_lang_name(call)
+          if(!is.call(call) || call.sym != "{") call <- call("{", call)
 
-        # generate e.g. `x <- vcopy(x)`
-        sym.miss <- as.symbol(i[[1L]])
-        sym.vcopy <- call("<-", sym.miss, en_vcopy(sym.miss))
-        call.list <- as.list(call)
-        call <- as.call(c(call.list[1L], list(sym.vcopy), call.list[-1L]))
-        x[[c(par.idx, 2L)]] <- call
-  } } }
-  x
+          # generate e.g. `x <- vcopy(x)`
+          sym.miss <- as.symbol(i[[1L]])
+          sym.vcopy <- call("<-", sym.miss, en_vcopy(sym.miss))
+          call.list <- as.list(call)
+          call <- as.call(c(call.list[1L], list(sym.vcopy), call.list[-1L]))
+          x[[c(par.idx, 2L)]] <- call
+    } } }
+    x
+  }
+
 }
 copy_symdat_rec <- function(
   x, index=integer(), assign.to=character(), last=TRUE,
@@ -724,8 +731,8 @@ merge_copy_dat <- function(a, b, index) {
   copy.act <- union(a[[ACT]], b[[ACT]])
 
   # regen names lost in unique/union
-  names(copy.cand) <- vapply(copy.cand, "[[", 1L, "")
-  names(copy.act) <- vapply(copy.act, "[[", 1L, "")
+  names(copy.cand) <- vapply(copy.cand, "[[", "", 1L)
+  names(copy.act) <- vapply(copy.act, "[[", "", 1L)
 
   # new bindings only count if they are created in both branches
   list(
