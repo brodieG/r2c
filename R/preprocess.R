@@ -668,12 +668,17 @@ copy_symdat_rec <- function(
     sym.name <- as.character(x)
     sym.local <- sym.name %in% data[[c('bind', 'loc')]]
     sym.global <- sym.name %in% data[[c('bind', 'all')]]
-    # If any existing candidates match this symbol, promote them
+    # If any existing candidates match this symbol, promote them unless they
+    # are local, or it is the last expression and it points to a global var.
     cand <- data[[CAND]]
+    cand.global <- vapply(cand, "[[", TRUE, "global")
     cand.prom.i <-
-      which(names(cand) == sym.name & (!sym.local | last))
+      which(names(cand) == sym.name & (!sym.local | (last & !cand.global)))
     cand.prom <- cand[cand.prom.i]
-    # Promotion because last changes "candidate" flag
+
+    # If last, turn off the "candidate" flag (later used in merging).
+    # This is because last candidates are effectively the same as last
+    # auto-promotes.
     if(last) cand.prom <- lapply(cand.prom, "[[<-", "candidate", FALSE)
 
     data[[ACT]] <- c(data[[ACT]], cand.prom)
@@ -686,10 +691,12 @@ copy_symdat_rec <- function(
       # trailing FALSE denotes this was not an explicit promotion
       new.act <- list(cpyptr(sym.name, index, FALSE))
       data[[ACT]] <- c(data[[ACT]], new.act)
-    } else if(!last && length(assign.to) && !sym.local) {
-      # non-local symbols being bound to other symbols are candidates, but only
-      # if not last b/c if last we know the binding can't be used non-locally
-      new.cand <- sapply(assign.to, cpyptr, index, TRUE, simplify=FALSE)
+    } else if(length(assign.to) && !sym.local) {
+      # non-local symbols being bound to other symbols are candidates
+      new.cand <- sapply(
+        assign.to, cpyptr, index, candidate=TRUE, global=sym.global,
+        simplify=FALSE
+      )
       data[[CAND]] <- c(data[[CAND]], new.cand)
     }
   }
@@ -709,12 +716,17 @@ copy_symdat_rec <- function(
 # @param candidate TRUE if element is a candidate that requires explicit
 #   promotion via a later reference to its name, as opposed to this
 #   automatically became an actual vcopy because e.g. it was last.
+# @param global whether the symbol had a potential valid global binding, for the
+#   special case where we generate a candidate due to assignment in if/else, but
+#   then just return the symbol as the last expression.
 
 cpyptr <- function(name, index, candidate=TRUE, global=FALSE) {
   list(
-    name=name, index=index, candidate=candidate
+    name=name, index=index, candidate=candidate, global=global
   )
 }
+
+
 
 # TRUE if the index a points to `a` position later in the tree than `b` in a
 # depth-first traversal order.
@@ -755,19 +767,18 @@ merge_copy_dat <- function(a, b, index) {
   # `x <- vcopy(x)` at the beginning of a block (hence 0L)
   a.missing <- setdiff(b[[CAND]], a[[CAND]])
   b.missing <- setdiff(a[[CAND]], b[[CAND]])
-  a.miss.list <- lapply(a.missing, function(x) cpyptr(x[[1L]], c(index, 2L, 0L)))
-  b.miss.list <- lapply(b.missing, function(x) cpyptr(x[[1L]], c(index, 3L, 0L)))
+  a.miss.list <- lapply(a.missing, "[[<-", "index", c(index, 2L, 0L))
+  b.miss.list <- lapply(b.missing, "[[<-", "index", c(index, 3L, 0L))
   copy.cand <- unique(c(a[[CAND]], b[[CAND]], a.miss.list, b.miss.list))
 
-  # Same with actual inserts, but only include explicit promotions
+  # Same with actual inserts, but only include explicit promotions, as opposed
+  # to those that happen because an expression is last
   a.prom <- a[[ACT]][vapply(a[[ACT]], "[[", TRUE, 'candidate')]
   b.prom <- b[[ACT]][vapply(b[[ACT]], "[[", TRUE, 'candidate')]
   a.missing <- setdiff(b.prom, a.prom)
   b.missing <- setdiff(a.prom, b.prom)
-  a.miss.list <-
-    lapply(a.missing, function(x) cpyptr(x[[1L]], c(index, 2L, 0L), FALSE))
-  b.miss.list <-
-    lapply(b.missing, function(x) cpyptr(x[[1L]], c(index, 3L, 0L), FALSE))
+  a.miss.list <- lapply(a.missing, "[[<-", "index", c(index, 2L, 0L))
+  b.miss.list <- lapply(b.missing, "[[<-", "index", c(index, 3L, 0L))
   copy.act <- unique(c(a[[ACT]], b[[ACT]], a.miss.list, b.miss.list))
 
   # regen names lost in unique/union
