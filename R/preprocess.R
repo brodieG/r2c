@@ -604,12 +604,11 @@ copy_symdat_rec <- function(
   x, index=integer(), assign.to=character(), last=TRUE,
   data=list(
     bind=list(loc=character(), all=character()),
-    copy=list(cand=list(), actual=list()),
+    copy=list(cand=list(), act=list()),
     missing=list()
   )
 ) {
   if(is.call(x)) {
-    index <- c(index, 1L)
     call.sym <- get_lang_name(x)
     if(call.sym == 'r2c_if') {
       # New if/else context resets all local bindings
@@ -633,57 +632,90 @@ copy_symdat_rec <- function(
         tar.sym <- get_target_symbol(x, call.sym)
         assign.to <- union(assign.to, tar.sym)
         rec.skip <- 1:2
-      } else if(!call.passive) {
-        assign.to <- character()
       }
       for(i in seq_along(x)[-rec.skip]) {
+        # assign.to is forwarded by the last expression in passive calls
+        assign.to.next <-
+          if(!call.passive || i < length(x)) character() else assign.to
         data <- copy_symdat_rec(
-          x[[i]], index=c(index[-length(index)], i), assign.to=assign.to,
+          x[[i]], index=c(index, i), assign.to=assign.to.next,
           data=data, last=last && i == length(x)
         )
       }
       if(call.assign) {
         # Need to clear candidates bound to this symbol, except that:
         # * We don't want to clear the candidate we just created.
-        # * We need to allow candidates that will be cleared to be used (so we
-        #   can't do this before recursion).
-        # Start by finding the first candidate earlier than this assignment
+        # * We need to allow candidates that will be cleared to be used during
+        #   the assignment before they are cleared (so we can't do this before
+        #   recursion).
+        # * We should not clear any candidates on the last call (odd case where
+        #   the return value assigns itself `x <- x`).
 
-        indices <- lapply(data[[CAND]], "[[", 2L)
-        indices.gt <- vapply(indices, index_greater, TRUE, index)
-        # Clear those candidates
-        data[[CAND]] <-
-          data[[CAND]][names(data[[CAND]]) != tar.sym | indices.gt]
-
-        # Record local and global bindings
+        if(!last) {
+          #  Start by finding the first candidate earlier than this assignment
+          indices <- lapply(data[[CAND]], "[[", 2L)
+          indices.gt <- vapply(indices, index_greater, TRUE, index)
+          # Clear those candidates
+          data[[CAND]] <-
+            data[[CAND]][names(data[[CAND]]) != tar.sym | indices.gt]
+        }
+        # Record local and global bindings.
         data[[c('bind', 'loc')]] <- union(data[[c('bind', 'loc')]], tar.sym)
         data[[c('bind', 'all')]] <- union(data[[c('bind', 'all')]], tar.sym)
       }
     }
   } else if (is.symbol(x)) {
     sym.name <- as.character(x)
+    sym.local <- sym.name %in% data[[c('bind', 'loc')]]
+    sym.global <- sym.name %in% data[[c('bind', 'all')]]
     # If any existing candidates match this symbol, promote them
     cand <- data[[CAND]]
-    cand.promote <- which(names(cand) == sym.name)
-    data[[ACT]] <- c(data[[ACT]], cand[cand.promote])
-    data[[CAND]][cand.promote] <- NULL
+    cand.prom.i <-
+      which(names(cand) == sym.name & (!sym.local | last))
+    cand.prom <- cand[cand.prom.i]
+    # Promotion because last changes "candidate" flag
+    if(last) cand.prom <- lapply(cand.prom, "[[<-", "candidate", FALSE)
 
-    # Generate new candidates if warranted.  Name is included so that `union`
-    # etc. on lists can distinguish b/w same name but different index
-    if(length(assign.to) && !sym.name %in% data[[c('bind', 'loc')]]) {
-      # non-local symbols being bound to other symbols are candidates
-      new.cand <- sapply(assign.to, function(x) list(x, index), simplify=FALSE)
-      data[[CAND]] <- c(data[[CAND]], new.cand)
-    } else if (last && !sym.name %in% data[[c('bind', 'all')]]) {
-      # last symbol in the r2c expression referencing external symbol
-      # automatically promoted
-      new.act <- list(list(sym.name, index))
-      names(new.act) <- sym.name   # this time sym.name
+    data[[ACT]] <- c(data[[ACT]], cand.prom)
+    data[[CAND]][cand.prom.i] <- NULL
+
+    # Generate new candidates/promotes if warranted.  Name is included so that
+    # `union` etc. on lists can distinguish b/w same name but different index
+    if (last && !sym.name %in% data[[c('bind', 'all')]]) {
+      # last symbol in r2c exp referencing ext symbol automatically promoted
+      # trailing FALSE denotes this was not an explicit promotion
+      new.act <- list(cpyptr(sym.name, index, FALSE))
       data[[ACT]] <- c(data[[ACT]], new.act)
+    } else if(!last && length(assign.to) && !sym.local) {
+      # non-local symbols being bound to other symbols are candidates, but only
+      # if not last b/c if last we know the binding can't be used non-locally
+      new.cand <- sapply(assign.to, cpyptr, index, TRUE, simplify=FALSE)
+      data[[CAND]] <- c(data[[CAND]], new.cand)
     }
   }
   data
 }
+# A "Pointer" To Symbol To `vcopy`
+#
+# Allows us to track potential candidates for `vcopy` promotion.
+#
+# @param name scalar character the symbol that triggers promotion of a
+#   candidate, which is typically not the name of the symbol being promoted
+#   (e.g. in `x <- y; x` the trigger is `x`, but the symbol that will be
+#   `vcopy`ed is `y`.
+# @param index the location of the symbol to vcopy; if the index ends in 0L then
+#   a `x <- vcopy(x)` is added as this represents an external symbol missing
+#   from one branch but used in the other.
+# @param candidate TRUE if element is a candidate that requires explicit
+#   promotion via a later reference to its name, as opposed to this
+#   automatically became an actual vcopy because e.g. it was last.
+
+cpyptr <- function(name, index, candidate=TRUE, global=FALSE) {
+  list(
+    name=name, index=index, candidate=candidate
+  )
+}
+
 # TRUE if the index a points to `a` position later in the tree than `b` in a
 # depth-first traversal order.
 index_greater <- function(a, b) {
@@ -723,20 +755,28 @@ merge_copy_dat <- function(a, b, index) {
   # `x <- vcopy(x)` at the beginning of a block (hence 0L)
   a.missing <- setdiff(b[[CAND]], a[[CAND]])
   b.missing <- setdiff(a[[CAND]], b[[CAND]])
-  a.miss.list <- lapply(a.missing, function(x) list(x[[1L]], c(index, 2L, 0L)))
-  b.miss.list <- lapply(b.missing, function(x) list(x[[1L]], c(index, 3L, 0L)))
-
-  # We include every index, even though this produces a bunch of duplicates.
+  a.miss.list <- lapply(a.missing, function(x) cpyptr(x[[1L]], c(index, 2L, 0L)))
+  b.miss.list <- lapply(b.missing, function(x) cpyptr(x[[1L]], c(index, 3L, 0L)))
   copy.cand <- unique(c(a[[CAND]], b[[CAND]], a.miss.list, b.miss.list))
-  copy.act <- union(a[[ACT]], b[[ACT]])
+
+  # Same with actual inserts, but only include explicit promotions
+  a.prom <- a[[ACT]][vapply(a[[ACT]], "[[", TRUE, 'candidate')]
+  b.prom <- b[[ACT]][vapply(b[[ACT]], "[[", TRUE, 'candidate')]
+  a.missing <- setdiff(b.prom, a.prom)
+  b.missing <- setdiff(a.prom, b.prom)
+  a.miss.list <-
+    lapply(a.missing, function(x) cpyptr(x[[1L]], c(index, 2L, 0L), FALSE))
+  b.miss.list <-
+    lapply(b.missing, function(x) cpyptr(x[[1L]], c(index, 3L, 0L), FALSE))
+  copy.act <- unique(c(a[[ACT]], b[[ACT]], a.miss.list, b.miss.list))
 
   # regen names lost in unique/union
   names(copy.cand) <- vapply(copy.cand, "[[", "", 1L)
   names(copy.act) <- vapply(copy.act, "[[", "", 1L)
 
-  # new bindings only count if they are created in both branches
   list(
-    copy=list(cand=copy.cand, act=copy.cand),
+    copy=list(cand=copy.cand, act=copy.act),
+    # new bindings only count if they are created in both branches
     bind=list(
       loc=intersect(a[[c('bind', 'loc')]], b[[c('bind', 'loc')]]),
       all=intersect(a[[c('bind', 'all')]], b[[c('bind', 'all')]])
