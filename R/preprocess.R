@@ -785,7 +785,7 @@ index_greater <- function(a, b) {
 # recognize that indices with different names are different as e.g. multiple
 # symbols may reference the same symbol.
 #
-# @param a list should be `data` (see details)
+# @param a list should be `data` from `copy_symdat_rec` (see details).
 # @param index integer vector the index into the call returning the expression
 #   setting the current if/else context.
 
@@ -800,14 +800,23 @@ merge_copy_dat <- function(old, a, b, index) {
 
   # Find candidates added in one branch missing in the other to inject e.g.
   # `x <- vcopy(x)` at start (hence 0L; so branch return value unchanged).
-  a.missing <- setdiff(b.cand, a.cand)
-  b.missing <- setdiff(a.cand, b.cand)
-  a.miss.list <- lapply(a.missing, "[[<-", "index", c(index, 2L, 0L))
-  b.miss.list <- lapply(b.missing, "[[<-", "index", c(index, 3L, 0L))
+  a.miss <- setdiff(b.cand, a.cand)
+  b.miss <- setdiff(a.cand, b.cand)
+  a.miss.list <- lapply(a.miss, "[[<-", "index", c(index, 2L, 0L))
+  b.miss.list <- lapply(b.miss, "[[<-", "index", c(index, 3L, 0L))
+
+  # Non-candidate local bindings also need to be balanced in the opposing branch
+  a.nc.miss <- setdiff(setdiff(b[[B.LOC]], a[[B.LOC]]), names(a.miss))
+  b.nc.miss <- setdiff(setdiff(a[[B.LOC]], b[[B.LOC]]), names(b.miss))
+  a.nc.miss.list <- lapply(a.nc.miss, cpyptr, index=c(index, 2L, 0L))
+  b.nc.miss.list <- lapply(b.nc.miss, cpyptr, index=c(index, 3L, 0L))
 
   # Recombine all the pieces into the new set of candidates
-  copy.cand <- unique(c(old.cand, a.cand, b.cand, a.miss.list, b.miss.list))
-
+  copy.cand <- unique(
+    c(
+      old.cand, a.cand, b.cand, a.miss.list, b.miss.list,
+      a.nc.miss.list, b.nc.miss.list
+  ) )
   # Same with actual inserts, but only include explicit promotions, as opposed
   # to those that happen because an expression is last.  The latter does not
   # require generating a `x <- vcopy(x)`, which is what we're doing here.
