@@ -110,6 +110,10 @@ unitizer_sect("Basic if/else", {
   pp3a <- r2c:::preprocess(call3a, optimize=TRUE)
   r2c:::clean_call(pp3a[['call.processed']])
 
+  # No need for `y <- vcopy(y)`
+  call3a1 <- quote(if(a) {y <- x; y})
+  r2c:::pp_clean(call3a1)
+
   # Previously bound symbols without rebinding shouldn't need vcopy
   call3b <- quote({
     y <- mean(x)
@@ -186,9 +190,89 @@ unitizer_sect("Basic if/else", {
   })
   r2c:::pp_clean(call3d1)
 
-  # if(a) {y <- x; y} # is y local binding?
-  warning("Assigning unbound symbol should not create local binding?")
+  # Even local assignments need to be balanced across both branches
+  call3e1 <- quote({
+    x <- y <- mean(z)
+    if(a) x <- mean(w) else y <- mean(u)
+    x + y
+  })
+  r2c:::pp_clean(call3e1)
 
+  # Don't balance unused symbol
+  call3e2 <- quote({
+    x <- y <- mean(z)
+    if(a) x <- mean(w) else y <- mean(u)
+    x
+  })
+  r2c:::pp_clean(call3e2)
+
+  # Example of why we can't re-use pre-if/else r2c allocations
+  call3f1 <- quote({
+    x <- mean(y)
+    if(a) {
+      y <- x
+    } else {
+      x <- mean(x)
+      z <- mean(y)
+      y <- x
+    }
+    y + z
+  })
+  # In this case we don't need to vcopy z
+  call3f2 <- quote({
+    x <- mean(y)
+    z <- if(a) {
+      y <- x
+    } else {
+      x <- mean(x)
+      z <- mean(y)
+      y <- x
+    }
+    y + z
+  })
+  r2c:::pp_clean(call3f1)
+  # But here we do because it is returned
+  call3f3 <- quote({
+    x <- mean(y)
+    if(a) {
+      y <- x
+    } else {
+      x <- mean(x)
+      z <- mean(y)
+      y <- x
+    }
+    if(b) y else z
+  })
+  r2c:::pp_clean(call3f3)
+})
+unitizer_sect("Nested", {
+  call4a <- quote({
+    if(a) z
+    else if (if(b) x else y) w
+    else u
+  })
+  r2c:::pp_clean(call4a)
+
+  # Nesting that actually used vcopy
+  call4b <- quote({
+    y <- mean(w)
+    if(a) z
+    else if (b) {if(c) x else y}
+    else u
+  })
+  r2c:::pp_clean(call4b)
+
+  # Nesting in if-test (this is illegal)
+  call4c1 <- quote(if(x <- mean(y)) x else y)
+  r2c:::pp_clean(call4c1)
+
+  # Nested assignments later used
+  call4c4 <- quote({
+    y <- mean(z)
+    if(a) {if(b){if(y) x else w <- z} else x <- y }
+    w + x
+  })
+  r2c:::pp_clean(call4c4)
 })
 
 
@@ -203,103 +287,8 @@ unitizer_sect("Basic if/else", {
 # pp5 <- r2c:::preprocess(call5, optimize=TRUE)
 # pp5[['call.processed']]
 # r2c:::clean_call(pp5[['call.processed']])
-# 
-# # Nesting that actually used vcopy
-# call5a <- quote({
-#   y <- mean(w)
-#   if(a) z
-#   else if (b) {if(c) x else y}
-#   else u
-# })
-# pp5a <- r2c:::preprocess(call5a, optimize=TRUE)
-# pp5a[['call.processed']]
-# r2c:::clean_call(pp5a[['call.processed']])
-# 
-# # Presumably `check` runs on the pre-processed expression and thus not subject
-# # to the if/else substitution?
-# r2cq(if(a) x1 else x2, check=TRUE)
-# 
-# # No else, and encumbered symbol should require a vcopy added to the else
-# call6 <- quote({
-#   z <- x <- y
-#   if(mean(y) > .5) x <- mean(y) / 2
-#   x
-# })
-# pp6 <- r2c:::preprocess(call6, optimize=TRUE)
-# pp6[['call.processed']]
-# r2c:::clean_call(pp6[['call.processed']])
-# 
-# call6a <- quote({
-#   z <- x <- y
-#   if(mean(y) > .5) x <- mean(y) / 2
-#   x + z
-# })
-# pp6a <- r2c:::preprocess(call6a, optimize=TRUE)
-# pp6a[['call.processed']]
-# r2c:::clean_call(pp6a[['call.processed']])
-# 
-# call6b <- quote({
-#   z <- x <- y
-#   if(mean(y) > .5) x <- mean(y) / 2
-#   x + z
-# })
-# pp6a <- r2c:::preprocess(call6a, optimize=TRUE)
-# pp6a[['call.processed']]
-# r2c:::clean_call(pp6a[['call.processed']])
-# 
-# 
-# # This will error at runtime unless x is zero length
-# call7 <- quote(if(a) y <- x)
-# pp7 <- r2c:::preprocess(call7, optimize=TRUE)
-# r2c:::clean_call(pp7[['call.processed']])
-# 
-# # Also runtime error, if/else vcopy not needed because target not used outside
-# # of branch, but needed for return symbol.
-# call7a <- quote({if(a) y <- x; x })
-# pp7a <- r2c:::preprocess(call7a, optimize=TRUE)
-# r2c:::clean_call(pp7a[['call.processed']])
-# 
-# 
-# call7b <- quote({
-#   if(a) y <- x
-#   y
-# })
-# pp7b <- r2c:::preprocess(call7b, optimize=TRUE)
-# r2c:::clean_call(pp7b[['call.processed']])
-# 
-# call7c <- quote({
-#   x <- mean(x)
-#   if(a) y <- x
-#   y
-# })
-# pp7c <- r2c:::preprocess(call7c, optimize=TRUE)
-# r2c:::clean_call(pp7c[['call.processed']])
-# 
-# call7d <- quote({
-#   if(a) {
-#     x <- mean(x)
-#     y <- x
-#   }
-#   y
-# })
-# pp7d <- r2c:::preprocess(call7d, optimize=TRUE)
-# r2c:::clean_call(pp7d[['call.processed']])
-# 
-# 
-# call7 <- quote({
-# x <- mean(y)
-# if(a) {
-#   y <- x
-# } else {
-#   x <- mean(x)
-#   z <- mean(y)
-#   y <- x
-# }
-# y + z
-# })
-# pp7 <- r2c:::preprocess(call7, optimize=TRUE)
-# r2c:::clean_call(pp7[['call.processed']])
-# 
+#
+#
 # # No else, length mismatch
 # y <- 1:2
 # r2cq({
@@ -307,33 +296,33 @@ unitizer_sect("Basic if/else", {
 #   if(mean(y) > .5) x <- mean(y) / 2
 # })
 # # No else, length mismatch but unused so irrelevant
-# 
+#
 # test <- TRUE
 # y <- 1
 # r2cq({
 #   x <- if(test) y
 #   y
 # })
-# 
+#
 # # With else, okay to mismatch first value
 # r2cq({
 #   x <- z
 #   x <- if(test) y else y + 1
 #   x
 # })(z = 1:2, y=1, test=TRUE)
-# 
+#
 # # With else, no length mistmatch
-# 
+#
 # x <- y
 # r2cq(if(mean(y) > .5) x <- mean(y) / 2)
-# 
+#
 # # Check that vcopy happens correctly
 # f <- r2cq({if(a) {x <- y} else {x <- z}; x})
 # get_r_code(f)
-# 
+#
 # # Bound symbol discrepancy
-# 
+#
 # r2cq({if(a) x <- y}; x)  # not-ok
 # r2cq({if(a) x <- y}; y)  # ok
-# 
-# 
+#
+#
