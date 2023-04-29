@@ -833,14 +833,6 @@ merge_copy_dat <- function(old, a, b, index) {
   names(copy.cand) <- vapply(copy.cand, "[[", "", 1L)
   names(copy.act) <- vapply(copy.act, "[[", "", 1L)
 
-  # # Assume bindings set in one branch are set in the other.  This is not
-  # # true as bindings that are never accessed after the if/else need not exist in
-  # # both branches.  However, if they are accessed after the if/else, then the
-  # # logic above ensures the binding exists in both branches.  It is therefore
-  # # okay to pretend that symbols set in one branch are set in both.
-  # bind.loc <- union(a[[c('bind', 'loc')]], b[[c('bind', 'loc')]])
-  # bind.all <- union(a[[c('bind', 'all')]], b[[c('bind', 'all')]])
-
   list(
     copy=list(cand=copy.cand, act=copy.act),
     # Bindings added in branches could be to candidates, so they are unresolved
