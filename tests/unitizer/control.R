@@ -24,6 +24,11 @@ unitizer_sect("Basic Symbol Copy", {
   pp1a1 <- r2c:::preprocess(call1a1, optimize=TRUE)
   r2c:::clean_call(pp1a1[['call.processed']])
 
+  r2c:::pp_clean(quote({x}))
+
+  # No vcopy because used in non-passive call
+  r2c:::pp_clean(quote(mean(x)))
+
   # Rebound external symbol
   call1b <- quote({z <- x; x})
   pp1b <- r2c:::preprocess(call1b, optimize=TRUE)
@@ -43,8 +48,8 @@ unitizer_sect("Basic Symbol Copy", {
   pp1d <- r2c:::preprocess(call1d, optimize=TRUE)
   r2c:::clean_call(pp1d[['call.processed']])
 
-  # Make sure logic that cleares previous candidates is correct
-  warning('exercise clearing prior bindings')
+  # Overwritten binding is not vcopyied (i.e. don't vcopy y)
+  r2c:::pp_clean(quote({z <- y; z <- x; z}))
 
   # Nested passive
   call1e <- quote({z <- {y <- x}; x})
@@ -136,9 +141,8 @@ unitizer_sect("Basic if/else", {
   pp3c1 <- r2c:::preprocess(call3c1, optimize=TRUE)
   r2c:::clean_call(pp3c1[['call.processed']])
 
-  # In theory no copies because assigned to symbol unused after branch,
-  # but the forward pass can't tell because it's not last, but the revpass adds
-  # the copy because the symbol is last.
+  # No copies because assigned to symbol unused after branch so we can rely on
+  # the return values that are safe.
   call3c2 <- quote({
     x <- y <- mean(x)
     if(a) {y <- x; y} else y
@@ -171,6 +175,20 @@ unitizer_sect("Basic if/else", {
   })
   pp3c3 <- r2c:::preprocess(call3c3, optimize=TRUE)
   r2c:::clean_call(pp3c3[['call.processed']])
+
+  # Candidates reset due to re-assignment (only second vcopied).  Problem we
+  # have here is that the the merge re-introduces old candidates if they were
+  # not cleared in one branch.
+  call3d1 <- quote({
+    if(a) y <- x
+    if(b) y <- x
+    y
+  })
+  r2c:::pp_clean(call3d1)
+
+  # if(a) {y <- x; y} # is y local binding?
+  warning("Assigning unbound symbol should not create local binding?")
+
 })
 
 
