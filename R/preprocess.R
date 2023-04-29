@@ -524,30 +524,8 @@ transform_call_rec <- function(call) {
 # have e.g. `z <- x`  and `x` isn't touched we could avoid the `vcopy`, but we
 # don't worry about that special case.
 #
-# The injection of `vcopy` calls is done in two passes:
-#
-# 1. A reverse pass that `vcopy`s aggressively `vcopy`ing any symbols that are
-#    used after the "context" they are bound in.
-# 2. A forward pass that identifies and removes the subset of `vcopy`s that can
-#    are unnecessary because the symbol that is being rebound is one that poinst
-#    to a local allocation.
-#
-# This two pass process is not perfect as neither pass has complete information,
-# but it is simpler than building up the data structure to track all instances
-# of each symbol and then vcopying only those that need to be.
 #
 # @param x call to process
-# @param in.scope vector of symbol names that reference data computed by `r2c`
-#   (i.e. not external).
-# @param parent.passive TRUE or FALSE, whether the parent.call is one of the
-#   passive calls.
-
-#  For each symbol assigned to or returned:
-#  * If it is assigned to from / is non-local:
-#    * Mark as candidate (overwritting prior candidacy)
-#  Try a depth first traversal, where as we processess the depeest branches, we
-#  disassemble the sym.use/set trees so the nested symbols are not visible
-#  anymore.
 
 CAND <- c('copy', 'cand')
 ACT <- c('copy', 'act')
@@ -572,7 +550,7 @@ copy_symdat <- function(x) {
       # Inject the vcopies
       for(i in promoted[rev(indices.order)]) {
         if(i[[2L]][length(i[[2L]])]) {
-          # Wrap a symbol in vcopy
+          # Trailing index not zero, so wrap a symbol in vcopy
           if(is.symbol(x[[i[[2L]]]]) && identical(i[[2L]], 0L)) {
             # standalone symbol
             x <- en_vcopy(x)
@@ -598,14 +576,59 @@ copy_symdat <- function(x) {
     } } }
     x
   }
-
 }
+# Compute Locations of Required `vcopy`s
+#
+# Because we don't now know whether we need to `vcopy` an unbound symbol or a
+# symbol bound in an if/else branch until after the point where the `vcopy`
+# needs to happen, we record the coordinates of all such symbols in the call
+# tree as "candidates" for `vcopy`.  Once we can determine whether they should
+# be `vcopy`ed, we promote the candidates to an "actual" `vcopy` list.  When
+# the full recursive traversal of the input call is complete, we can use the
+# returned "actual" list and modify calls to add `vcopy` (this happens outside
+# of this function).
+#
+# In addition to tracking candidates and actual vcopy promotions, we also track
+# active bindings (i.e. symbols that have been assigned to in the call being
+# processed).  We only consider bindings to be active when they are known to
+# reference r2c allocated memory.  This means we do not include bindings to
+# `vcopy` candidates until such a time as the candidates are promoted.  So e.g.
+# in:
+#
+#    x <- y
+#
+# If `y` is an external symbol, then `x` is not considered an active binding
+# until **after** `x` is used and triggers the promotion of `y` into an actual
+# `vcopy`ed symbol.
+#
+# Symbols bound in branches are only required to reference memory allocated in
+# the branch if they are used outside of the branch.  Other branch-bound symbols
+# are branch-local and thus don't require `vcopy`  Because of this distinction
+# we track local bindings and global bindings separately in the `data` object.
+#
+# Unfortunately the code is hideously complicated.  There should be a simpler
+# solution that doesn't require handling so many corner cases, but the
+# interactions between `vcopy` for last vs `vcopy` for accessing branch-assigned
+# symbols complicate things.
+#
+# @seealso `copy_symdat` for context.
+# @param index integer vector that can be used to pull up a sub-call within a
+#   call tree e.g. with `x[[index]]` where `index` might be `c(2,3,1)`.
+# @param assign.to character vector of symbol names that are part of current
+#   binding call chain (e.g. in `a <- b <- {d <- a+b; c}` once we get to `c`
+#   this will be `c("a", "b")`.
+# @param last whether the current call being processed was the last sub-call of
+#   the parent call.  This is only ultimately relevant for passive calls like
+#   assignment and braces because for normal calls like `mean(x)` we know the
+#   computation result will be an r2c allocation..
+# @param data list of realized bindings "bind", and candidate/actual `vcopy`
+#   symbols.  See details.
+
 copy_symdat_rec <- function(
   x, index=integer(), assign.to=character(), last=TRUE,
   data=list(
     bind=list(loc=character(), all=character()),
-    copy=list(cand=list(), act=list()),
-    missing=list()
+    copy=list(cand=list(), act=list())
   )
 ) {
   if(is.call(x)) {
@@ -622,7 +645,7 @@ copy_symdat_rec <- function(
         x[[c(3L,2L)]], index=c(index, c(3L,2L)), data=data, last=last
       )
       # Combine the copy data.
-      data <- merge_copy_dat(data.T, data.F, index)
+      data <- merge_copy_dat(data, data.T, data.F, index)
     } else {
       call.assign <- call.sym %in% ASSIGN.SYM
       call.passive <- call.sym %in% PASSIVE.SYM
@@ -633,15 +656,17 @@ copy_symdat_rec <- function(
         assign.to <- union(assign.to, tar.sym)
         rec.skip <- 1:2
       }
+      # Recurse on language subcomponents
       for(i in seq_along(x)[-rec.skip]) {
-        # assign.to is forwarded by the last expression in passive calls
-        assign.to.next <-
-          if(!call.passive || i < length(x)) character() else assign.to
-        data <- copy_symdat_rec(
-          x[[i]], index=c(index, i), assign.to=assign.to.next,
-          data=data, last=last && i == length(x)
-        )
-      }
+        if(is.language(x[[i]])) {
+          # assign.to is forwarded by the last expression in passive calls
+          assign.to.next <-
+            if(!call.passive || i < length(x)) character() else assign.to
+          data <- copy_symdat_rec(
+            x[[i]], index=c(index, i), assign.to=assign.to.next, data=data,
+            last=last && i == length(x) && call.passive
+          )
+      } }
       if(call.assign) {
         # Need to clear candidates bound to this symbol, except that:
         # * We don't want to clear the candidate we just created.
@@ -677,12 +702,18 @@ copy_symdat_rec <- function(
     cand.prom <- cand[cand.prom.i]
 
     # If last, turn off the "candidate" flag (later used in merging).
-    # This is because last candidates are effectively the same as last
-    # auto-promotes.
+    # Last candidates are dont require `x <- vcopy(x)`.
     if(last) cand.prom <- lapply(cand.prom, "[[<-", "candidate", FALSE)
 
     data[[ACT]] <- c(data[[ACT]], cand.prom)
     data[[CAND]][cand.prom.i] <- NULL
+
+    # Once a symbol is promoted, it can be added to the bindings.
+    bind.prom <- names(cand.prom)
+    data[[c('bind', 'all')]] <- union(data[[c('bind', 'all')]], bind.prom)
+    data[[c('bind', 'loc')]] <- union(data[[c('bind', 'loc')]], bind.prom)
+    sym.local <- sym.name %in% data[[c('bind', 'loc')]]
+    sym.global <- sym.name %in% data[[c('bind', 'all')]]
 
     # Generate new candidates/promotes if warranted.  Name is included so that
     # `union` etc. on lists can distinguish b/w same name but different index
@@ -704,7 +735,8 @@ copy_symdat_rec <- function(
 }
 # A "Pointer" To Symbol To `vcopy`
 #
-# Allows us to track potential candidates for `vcopy` promotion.
+# Allows us to track potential candidates for `vcopy` promotion along with meta
+# data to discern if promotion is truly needed..
 #
 # @param name scalar character the symbol that triggers promotion of a
 #   candidate, which is typically not the name of the symbol being promoted
@@ -726,8 +758,6 @@ cpyptr <- function(name, index, candidate=TRUE, global=FALSE) {
   )
 }
 
-
-
 # TRUE if the index a points to `a` position later in the tree than `b` in a
 # depth-first traversal order.
 index_greater <- function(a, b) {
@@ -738,41 +768,48 @@ index_greater <- function(a, b) {
   all(a >= b) & any(a > b)
 }
 
-
 # Merge Candidates between Branches
-#
-# We lean towards having duplicated candidates since there is no harm in the
-# same candidate being promoted multiple times.  The only way we lose candidates
-# is if they are voided or promoted in both branches.
 #
 # Both `a` and `b` contain lists at index CAND and ACT.  These are named lists
 # with the names being those of symbols in the expression, and the elements a
 # list of that same name as a scalar character, and the index to the symbol to
-# vcopy, e.g:
+# vcopy, (and some other info not shown, see `cpyptr`) e.g:
 #
 #     list(a=list("a", c(1L, 4L, 2L)), b=list("b", c(1L, 4L, 4L)))
 #
-# The thing being `vcopy`ed and the name are not necessarily the same as often
-# we see `x <- y` where the name is "x" but `y` is getting vcopied).  We
-# include the symbol name in the data even though it's present in the names so
-# `unique` and similar recognize that indices with different names are different
-# as e.g. multiple symbols may reference the same symbol.
+# The thing being `vcopy`ed need not be the same as often we see `x <- y` where
+# the name is "x" but `y` is getting vcopied).  We include the symbol name in
+# the data even though it's present in the names so `unique` and similar
+# recognize that indices with different names are different as e.g. multiple
+# symbols may reference the same symbol.
 #
 # @param a list should be `data` (see details)
 # @param index integer vector the index into the call returning the expression
 #   setting the current if/else context.
 
-merge_copy_dat <- function(a, b, index) {
-  # We need to find new candidates missing in the current to inject e.g.
-  # `x <- vcopy(x)` at the beginning of a block (hence 0L)
-  a.missing <- setdiff(b[[CAND]], a[[CAND]])
-  b.missing <- setdiff(a[[CAND]], b[[CAND]])
+merge_copy_dat <- function(old, a, b, index) {
+  # Removed shared history from both branches.  This is for the case where a
+  # pre-existing candidate is cleared in one branch, but not the other.  If we
+  # didn't remove shared history, the old candidate would be seen as new.
+  a.cand <- setdiff(a[[CAND]], old[[CAND]])
+  b.cand <- setdiff(b[[CAND]], old[[CAND]])
+  # Track shared history to add back later.
+  old.cand <- intersect(a[[CAND]], b[[CAND]])
+
+  # Find candidates added in one branch missing in the other to inject e.g.
+  # `x <- vcopy(x)` at start (hence 0L; so branch return value unchanged).
+  a.missing <- setdiff(b.cand, a.cand)
+  b.missing <- setdiff(a.cand, b.cand)
   a.miss.list <- lapply(a.missing, "[[<-", "index", c(index, 2L, 0L))
   b.miss.list <- lapply(b.missing, "[[<-", "index", c(index, 3L, 0L))
-  copy.cand <- unique(c(a[[CAND]], b[[CAND]], a.miss.list, b.miss.list))
+
+  # Recombine all the pieces into the new set of candidates
+  copy.cand <- unique(c(old.cand, a.cand, b.cand, a.miss.list, b.miss.list))
 
   # Same with actual inserts, but only include explicit promotions, as opposed
-  # to those that happen because an expression is last
+  # to those that happen because an expression is last.  The latter does not
+  # require generating a `x <- vcopy(x)`, which is what we're doing here.
+  # Promotions are never demoted so we don't worry about `old`.
   a.prom <- a[[ACT]][vapply(a[[ACT]], "[[", TRUE, 'candidate')]
   b.prom <- b[[ACT]][vapply(b[[ACT]], "[[", TRUE, 'candidate')]
   a.missing <- setdiff(b.prom, a.prom)
@@ -785,15 +822,21 @@ merge_copy_dat <- function(a, b, index) {
   names(copy.cand) <- vapply(copy.cand, "[[", "", 1L)
   names(copy.act) <- vapply(copy.act, "[[", "", 1L)
 
+  # # Assume bindings set in one branch are set in the other.  This is not
+  # # true as bindings that are never accessed after the if/else need not exist in
+  # # both branches.  However, if they are accessed after the if/else, then the
+  # # logic above ensures the binding exists in both branches.  It is therefore
+  # # okay to pretend that symbols set in one branch are set in both.
+  # bind.loc <- union(a[[c('bind', 'loc')]], b[[c('bind', 'loc')]])
+  # bind.all <- union(a[[c('bind', 'all')]], b[[c('bind', 'all')]])
+
   list(
     copy=list(cand=copy.cand, act=copy.act),
-    # new bindings only count if they are created in both branches
-    bind=list(
-      loc=intersect(a[[c('bind', 'loc')]], b[[c('bind', 'loc')]]),
-      all=intersect(a[[c('bind', 'all')]], b[[c('bind', 'all')]])
-  ) )
+    # Bindings added in branches could be to candidates, so they are unresolved
+    # and cannot be relied to point to r2c allocated memory yet.
+    bind=old[['bind']]
+  )
 }
-
 
 # Only symbols bound in branches that are used after the branch need to
 # reference memory allocated in the branch.  Other branch-bound symbols are
