@@ -529,6 +529,8 @@ transform_call_rec <- function(call) {
 
 CAND <- c('copy', 'cand')
 ACT <- c('copy', 'act')
+B.LOC <- c('bind', 'loc')
+B.ALL <- c('bind', 'all')
 
 copy_symdat <- function(x) {
   if(is.symbol(x)) {
@@ -635,7 +637,7 @@ copy_symdat_rec <- function(
     call.sym <- get_lang_name(x)
     if(call.sym == 'r2c_if') {
       # New if/else context resets all local bindings
-      data[[c('bind', 'loc')]] <- character()
+      data[[B.LOC]] <- character()
       # Recurse through each branch independently since they are "simultaneous"
       # with respect to call order (either could be last too).
       data.T <- copy_symdat_rec(
@@ -685,14 +687,14 @@ copy_symdat_rec <- function(
             data[[CAND]][names(data[[CAND]]) != tar.sym | indices.gt]
         }
         # Record local and global bindings.
-        data[[c('bind', 'loc')]] <- union(data[[c('bind', 'loc')]], tar.sym)
-        data[[c('bind', 'all')]] <- union(data[[c('bind', 'all')]], tar.sym)
+        data[[B.LOC]] <- union(data[[B.LOC]], tar.sym)
+        data[[B.ALL]] <- union(data[[B.ALL]], tar.sym)
       }
     }
   } else if (is.symbol(x)) {
     sym.name <- as.character(x)
-    sym.local <- sym.name %in% data[[c('bind', 'loc')]]
-    sym.global <- sym.name %in% data[[c('bind', 'all')]]
+    sym.local <- sym.name %in% data[[B.LOC]]
+    sym.global <- sym.name %in% data[[B.ALL]]
     # If any existing candidates match this symbol, promote them unless they
     # are local, or it is the last expression and it points to a global var.
     cand <- data[[CAND]]
@@ -710,14 +712,14 @@ copy_symdat_rec <- function(
 
     # Once a symbol is promoted, it can be added to the bindings.
     bind.prom <- names(cand.prom)
-    data[[c('bind', 'all')]] <- union(data[[c('bind', 'all')]], bind.prom)
-    data[[c('bind', 'loc')]] <- union(data[[c('bind', 'loc')]], bind.prom)
-    sym.local <- sym.name %in% data[[c('bind', 'loc')]]
-    sym.global <- sym.name %in% data[[c('bind', 'all')]]
+    data[[B.ALL]] <- union(data[[B.ALL]], bind.prom)
+    data[[B.LOC]] <- union(data[[B.LOC]], bind.prom)
+    sym.local <- sym.name %in% data[[B.LOC]]
+    sym.global <- sym.name %in% data[[B.ALL]]
 
     # Generate new candidates/promotes if warranted.  Name is included so that
     # `union` etc. on lists can distinguish b/w same name but different index
-    if (last && !sym.name %in% data[[c('bind', 'all')]]) {
+    if (last && !sym.name %in% data[[B.ALL]]) {
       # last symbol in r2c exp referencing ext symbol automatically promoted
       # trailing FALSE denotes this was not an explicit promotion
       new.act <- list(cpyptr(sym.name, index, FALSE))
