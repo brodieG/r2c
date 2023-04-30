@@ -79,7 +79,7 @@ PASSIVE.SYM <- unique(
 )
 
 # For `record_call_dat`.
-CALL.DAT.VEC <- c('argn', 'depth', 'type', 'assign', 'indent')
+CALL.DAT.VEC <- c('argn', 'depth', 'type', 'assign', 'indent', 'vcopy')
 
 # To avoid typos
 CTRL.FLAG <- c("control", "flag")

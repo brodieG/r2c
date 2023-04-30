@@ -15,7 +15,7 @@
 
 #' @include code.R
 #' @include optim.R
-#' @include preproc-control.R
+#' @include preproc-copy.R
 
 NULL
 
@@ -199,6 +199,11 @@ pp_internal <- function(
     # Check if we're in assignment call
     name <- get_lang_name(call[[1L]]) # should this just be `func`?
     next.assign <- name %in% ASSIGN.SYM
+    # Are we in a vcopy chain?
+    vcopy <- name == "vcopy" || (
+      name %in% PASSIVE.SYM &&
+      length(x[['vcopy']]) > 0L && x[['vcopy']][length(x[['vcopy']])]
+    )
     # Assignments only allowed at brace level or top level because we cannot
     # assure the order of evaluation so safer to just disallow.  We _could_
     # allow it but it just seems dangerous.
@@ -207,7 +212,7 @@ pp_internal <- function(
       !call.parent.name %in% c(ASSIGN.SYM, "{", IF.SUB.SYM, LOOP.SYM) &&
       !is.null(call.parent)
     ) {
-      call.dep <- deparse(call)
+      call.dep <- deparse(clean_call(call))
       msg <- sprintf(
         "r2c disallows assignments inside arguments. Found: %s",
         if(length(call.dep) == 1) call.dep
@@ -221,7 +226,8 @@ pp_internal <- function(
         x <- record_call_dat(
           x, call=args[[i]], depth=depth + 1L, argn=names(args)[i],
           type=args.types[i], code=code_blank(),
-          sym.free=sym_free(x, args[[i]]), assign=FALSE, indent=indent
+          sym.free=sym_free(x, args[[i]]), assign=FALSE, indent=indent,
+          vcopy=vcopy
         )
       } else {
         x <- pp_internal(
@@ -246,7 +252,7 @@ pp_internal <- function(
     code_valid(code, call)
     record_call_dat(
       x, call=call, depth=depth, argn=argn, type=type, code=code, assign=assign,
-      indent=indent
+      indent=indent, vcopy=vcopy
     )
   } else {
     # - Symbol or Constant -----------------------------------------------------
@@ -271,7 +277,7 @@ pp_internal <- function(
     }
     record_call_dat(
       x, call=call, depth=depth, argn=argn, type=type, code=code, assign=assign,
-      indent=indent
+      indent=indent, vcopy=FALSE
     )
 } }
 
@@ -304,6 +310,7 @@ pp_internal <- function(
 #'   correspond to the **renamed** variables.
 #' $call.rename: version of `call` with symbols renamed using `rename`.
 #' $type: argument type
+#' $vcopy: whether current call is a part of a chain that ends with a `vcopy`
 #'
 #' @noRd
 
@@ -319,7 +326,8 @@ init_call_dat <- function(formals)
     dot.arg.i=1L,
     last.read=integer(),
     assign=logical(),
-    indent=integer()
+    indent=integer(),
+    vcopy=logical()
   )
 
 ## Record Expression Data
@@ -331,7 +339,8 @@ init_call_dat <- function(formals)
 ## them (for external symbols).
 
 record_call_dat <- function(
-  x, call, depth, argn, type, code, assign, sym.free=sym_free(x, call), indent
+  x, call, depth, argn, type, code, assign, sym.free=sym_free(x, call), indent,
+  vcopy
 ) {
   # list data
   x[['call']] <- c(
@@ -348,6 +357,7 @@ record_call_dat <- function(
   x[['type']] <- c(x[['type']], type)
   x[['assign']] <- c(x[['assign']], assign)
   x[['indent']] <- c(x[['indent']], indent)
+  x[['vcopy']] <- c(x[['vcopy']], vcopy)
   if(length(unique(lengths(x[CALL.DAT.VEC]))) != 1L)
     stop("Internal Error: irregular vector call data.")
 
@@ -568,7 +578,6 @@ recompose_ifelse <- function(x) {
   }
   x
 }
-
 
 sym_free <- function(x, sym) {
   if(is.symbol(sym)) {
