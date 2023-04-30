@@ -118,6 +118,8 @@ copy_symdat <- function(x) {
           sym.vcopy <- call("<-", sym.miss, en_vcopy(sym.miss))
           call.list <- as.list(call)
           call <- as.call(c(call.list[1L], list(sym.vcopy), call.list[-1L]))
+          # in order to look match-called we need names on the call
+          names(call)[seq(2L, length(call), 1L)] <- "..."
           x[[c(par.idx, 2L)]] <- call
     } } }
     x

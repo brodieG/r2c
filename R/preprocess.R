@@ -526,6 +526,7 @@ transform_ifelse <- function(x) {
           )
         }
       )
+      names(x)[2:3] <- "..."  # needed for alloc logic
     } else if (call.sym == "{" && length(x) == 2L) {
       # remove redundant nested braces as could be introduced above.  This could
       # remove other redundant nested braces.
