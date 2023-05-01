@@ -53,6 +53,12 @@ shown (see \code{\link{r2cq}}).
 \item \code{get_compile_out} the "stdout" produced during the compilation of the
 shared object.
 }
+
+Most calls seen in the raw version of what \code{get_r_code} returns will have a C
+level counterpart labeled with the R call in a comment.  This includes calls
+that are nested as arguments to other calls, which will appear before the
+outer call.  Due to how how control structures are implemented the R calls
+and the C level counterparts will not match up exactly.
 }
 \examples{
 r2c_sum_sub <- r2cq(sum(x + y))

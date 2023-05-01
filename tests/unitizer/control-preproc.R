@@ -206,6 +206,21 @@ unitizer_sect("Basic if/else", {
   })
   r2c:::pp_clean(call3e2)
 
+  # Don't balance symbols assigned in both branches
+  call3e2 <- quote({
+    x <- mean(z)
+    if(a) x <- mean(w) else x <- mean(u)
+    x
+  })
+  r2c:::pp_clean(call3e2)
+  call3e3 <- quote({
+    if(a) x <- mean(w) else x <- mean(u)
+    x
+  })
+  r2c:::pp_clean(call3e3)
+  call3e4 <- quote({if(a) z <- x else z <- y; z})
+  r2c::pp_clean(call3e4)
+
   # Example of why we can't re-use pre-if/else r2c allocations
   call3f1 <- quote({
     x <- mean(y)

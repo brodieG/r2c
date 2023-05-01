@@ -133,11 +133,11 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
   # Status control placeholder.
   sts.vec <- numeric(IX[['STAT.N']])
   vdat <- vec_dat(sts.vec, "sts", typeof='double', group=0, size=IX[['STAT.N']])
-  alloc <- append_dat(alloc, vdat=vdat, depth=0L, call.i=0L)
+  alloc <- append_dat(alloc, vdat=vdat, depth=0L, call.i=0L, vcopy=FALSE)
 
   # Result placeholder, to be alloc'ed once we know group sizes.
   vdat <- vec_dat(numeric(), size=0L, type="res", typeof='double', group=0)
-  alloc <- append_dat(alloc, vdat=vdat, depth=0L, call.i=0L)
+  alloc <- append_dat(alloc, vdat=vdat, depth=0L, call.i=0L, vcopy=FALSE)
 
   # Add group data.
   if(!all(nzchar(names(data)))) stop("All data must be named.")
@@ -148,7 +148,8 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
     dname <- names(data.naked)[i]
     typeof <- typeof(datum)
     vdat <- vec_dat(datum, type="grp", typeof=typeof, group=1, size=NA_real_)
-    alloc <- append_dat(alloc, vdat=vdat, depth=0L, name=dname, call.i=0L)
+    alloc <-
+      append_dat(alloc, vdat=vdat, depth=0L, name=dname, call.i=0L, vcopy=FALSE)
   }
   # Bump scope so the data cannot be overwritten
   alloc[['scope']] <- alloc[['scope']] + 1L
@@ -173,6 +174,7 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
     call <- x[['call']][[i]]
     depth <- x[['depth']][[i]]
     argn <- x[['argn']][[i]]
+    vcopy <- x[['vcopy']][[i]]
     pkg <- name <- ""
     if(!type %in% CTRL.FLAG) {
       tmp <- get_lang_info(call)
@@ -227,7 +229,8 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
       } else stop("Internal Error: unknown function type.")
 
       # Cleanup expired symbols, and bind new ones
-      alloc <- names_update(alloc, i, call, call.name=name, call.i=i)
+      alloc <-
+        names_update(alloc, i, call, call.name=name, call.i=i, vcopy=vcopy)
 
       # Prepare new vec data (if any), and tweak objet depending on situation.
       # Alloc is made later, but only if vec.dat[['new']] is not null.
@@ -294,10 +297,10 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
 
     # - Update Stack / Data ----------------------------------------------------
 
-    # Append new data to our data array.  Not all branches produce data; those
+    # Append new data to our data array.  Not all calls produce data; those
     # that do have non-NULL vec.dat[['new']].
     if(!is.null(vec.dat[['new']]))
-      alloc <- append_dat(alloc, vec.dat, depth=depth, call.i=i)
+      alloc <- append_dat(alloc, vec.dat, depth=depth, call.i=i, vcopy=vcopy)
 
     # Call actions that need to happen after allocation data updated
     if(type == "call") {
@@ -349,8 +352,9 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
 ## tracking is done via their depth in the call tree, and also whether any
 ## symbols were bound to them (using the `names` matrix).  Once allocated, a
 ## vector is never truly freed until the whole function execution ends.  It will
-## however be re-used within a group if it becomes available, and all allocated
-## vectors will be re-used for each group.
+## however be re-used within a group if the originally allocated vector is no
+## longer needed, and each new group will re-use the allocations from the prior
+## group.  Allocations are sized to accommodate the largest group.
 ##
 ## This is a description of the input `dat` (which is also the returned value
 ## after update).
@@ -381,13 +385,13 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
 ##   row `ids` are the ids in `dat` each symbol is bound to, `scope` is the
 ##   scope level the symbol was created in, and `i.max` is the largest index in
 ##   the linearized call list that the symbol exists in as a leaf (indicating
-##   that beyond that the name binding need not prevent release of memory).
+##   that beyond that the name binding need not prevent release of memory), and
+##   `i.assign` the index in which the symbol was bound.
 ## * group: whether the allocation is of group size.  This is distinct to
 ##   `type=="grp"`, which refers to data from the original group varying data.
 ##   This designation is needed so that if a group sized allocation is bound to
 ##   a variable, that that allocation is group sized is still available when the
 ##   variable is retrieved later (it's possible this is a bit duplicative of NA
-##   size).
 ##
 ## We're mixing return value elements and params, a bit, but there are some
 ## differences, e.g.:
@@ -398,9 +402,13 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
 ##   symbols
 ## @param size could differ from `length(vdat[['new']])` when new is a special
 ##   size vector like a group dependent one.
+## @param vcopy whether current call is part of a vcopy chain
+##   (e.g. `x <- z <- vcopy(y)`)
 ## @return dat, updated
 
-append_dat <- function(dat, vdat, name=NULL, depth) {
+append_dat <- function(
+  dat, vdat, name=NULL, depth, call.i, vcopy
+) {
   if(is.null(name)) name <- ""
   if(!is.vec_dat(vdat)) stop("Internal Error: bad vec_dat.")
   type <- vdat[['type']]
@@ -443,7 +451,7 @@ append_dat <- function(dat, vdat, name=NULL, depth) {
     name %in% colnames(names[,names['scope',] == dat[['scope']], drop=FALSE])
   )
     stop("Internal error: cannot append names existing in current scope.")
-  if(nzchar(name)) dat <- names_bind(dat, name)
+  if(nzchar(name)) dat <- names_bind(dat, name, call.i, vcopy)
 
   dat
 }
@@ -465,7 +473,10 @@ init_dat <- function(call, meta, scope) {
   list(
     # Allocation data
     dat=list(),
-    names=rbind(ids=integer(), scope=integer(), i.max=integer()),
+    names=rbind(
+      ids=integer(), scope=integer(),
+      i.max=integer(), i.assign=integer(), vcopy=integer()
+    ),
 
     # Equal length vector data
     alloc=numeric(),
@@ -567,7 +578,10 @@ append_call_dat <- function(
     )
   # alloc[['i']] is the last made allocation, which will be the result
   ids <- c(param.ids, alloc[['i']])
-  c(call.dat, list(list(call=call, ids=ids, ctrl=ctrl, flag=flag, call.i=call.i)))
+  c(
+    call.dat, 
+    list(list(call=call, ids=ids, ctrl=ctrl, flag=flag, call.i=call.i))
+  )
 }
 # "free" the data produced by arguments.  Not in the malloc sense, just an
 # indication that next time this function is called it can re-use the
@@ -594,6 +608,12 @@ alloc_result <- function(alloc, vdat){
   alloc[['size']][slot] <- vdat[['size']]
   alloc
 }
+# Reconcile Allocations Across Branches
+#
+# Based on how the preprocessor works, we know that symbols that are still bound
+# at the end of an if/else statement can be rebound to a shared common
+# allocation.
+#
 # Compare bound names at end of if_true branch to those in if_false, and ensure
 # all names surviving past `if` are the same size and point to the same
 # allocation so they can safely be used irrespective of what branch is taken.
@@ -613,7 +633,11 @@ reconcile_control_flow <- function(
   names.t <- binding.stack[[length(binding.stack)]]
   binding.stack <- binding.stack[-length(binding.stack)]
 
-  # names surviving past current if/else
+  # a name bound in both branches to a `vcopy` allocation must point to the same
+  # allocation in both branches.  See "preproc-copy.R" for context.
+  browser()
+
+  # names surviving past current if/else; this is not nowable
   names.check <- names(which(alloc[['meta']]['i.sym.max'] > i.call))
 
   n.a <- names.t[, colnames(names.t) %in% names.check, drop=FALSE]
@@ -661,7 +685,7 @@ reconcile_control_flow <- function(
     new <- numeric(asize)
     vec.dat <-
       vec_dat(new, "tmp", typeof="double", group=is.na(size), size=size)
-    alloc <- append_dat(alloc, vec.dat, depth=depth)
+    alloc <- append_dat(alloc, vec.dat, depth=depth, vcopy=TRUE)
     # adjust the call data for the id remapping.  This should be done for all
     # calls that exceed the earlier of the creation time of the symbol across
     # the two branches.
@@ -824,6 +848,12 @@ check_fun <- function(name, pkg, env) {
     else get(name, envir=env, mode="function"),
     silent=TRUE
   )
+  if(inherits(got.fun, "try-error")) {
+    stop(
+      "Failed retrieving `", name, "` with error:",
+      conditionMessage(attr(got.fun, 'condition'))
+    )
+  }
   if(!identical(got.fun, VALID_FUNS[[c(name, "fun")]])) {
     tar.fun <- VALID_FUNS[[c(name, "fun")]]
     env.fun <-
@@ -862,26 +892,27 @@ names_free <- function(alloc, new.names) {
   alloc[['names']] <- names[, !to.free, drop=FALSE]
   alloc
 }
-names_bind <- function(alloc, new.name, call.i) {
+names_bind <- function(alloc, new.name, call.i, vcopy) {
   new.name.dat <- c(
     ids=alloc[['i']],
     scope=alloc[['scope']],
     i.max=unname(alloc[['meta']][['i.sym.max']][new.name]),
-    i.assign=call.i
+    i.assign=call.i,
+    vcopy=vcopy
   )
   if(is.na(new.name.dat['i.max'])) new.name.dat['i.max'] <- 0L
   alloc[['names']] <- cbind(alloc[['names']], new.name.dat)
   colnames(alloc[['names']])[ncol(alloc[['names']])] <- new.name
   alloc
 }
-names_update <- function(alloc, i, call, call.name, call.i) {
+names_update <- function(alloc, i, call, call.name, call.i, vcopy) {
   alloc <- names_clean(alloc, i)
   if(call.name %in% ASSIGN.SYM) {
     # Remove protection from prev assignment to same name, and bind previous
     # computation (`alloc[[i]]`) to it.
     sym <- get_target_symbol(call, call.name)
     alloc <- names_free(alloc, sym)
-    alloc <- names_bind(alloc, sym, call.i)
+    alloc <- names_bind(alloc, sym, call.i, vcopy)
   }
   alloc
 }

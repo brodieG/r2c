@@ -169,27 +169,40 @@ code_gen_if <- function(...) {
     "instead of decomponsed one."
   )
 }
-#' Decompose If / Else
+#' If / Else Counterparts
 #'
-#' Internal functions that integrate the `if / else` construct between the R and
-#' C level.  These are purely an implementation detail and not intended to be
-#' used directly, but are documented so users can understand what they are if
+#' "Internal" functions that integrate the `if / else` construct between the R
+#' and C level.  These are purely an implementation detail and not intended to
+#' be used directly, but are documented so users can understand what they are if
 #' they encounter them when inspect "r2c_fun" objects.
 #'
-#' Most R level calls are converted 1-1 into a C level call.  Control structures
+#' Most R level calls are converted 1-1 into C level calls.  Control structures
 #' are more complicated because we need to generate the call structure itself
-#' without a direct correspondence of R call to structural element.  This
-#' decomposition creates that correspondence without changing the overall
-#' semantics (although the intermediate semantics are not the same due to the
-#' use of implicit state to decide what branch to evaluate).  Unlike most other
-#' `r2c` functions, you cannot run these from the R level at all.  There is only
-#' a loose correspondence between the R function names and the C code they cause
-#' to be generated as we exploit how `r2c` linearizes the AST to cause the
-#' pieces of the control structure to be emitted at the right spots.
+#' without a direct correspondence of R call to structural element.  The
+#' preprocessor decomposes regular `if / else` calls such as:
 #'
-#' Put less kindly: this is a hack to get control flow to fit into an
-#' implementation that originally did not intend to allow them.
+#' ```
+#' if(a) x else y
+#' ```
+#' Into:
+#' ```
+#' if_test(a)
+#' r2c_if(if_true(x), if_false(y))
+#' ```
 #'
+#' The decomposition creates a 1-1 R-C correspondence without changing the
+#' overall semantics (although the intermediate semantics are not the same due
+#' to the use of implicit state to decide what branch to evaluate).  You can
+#' run these functions as R functions, but there is no reason to do so, and
+#' further `r2c_if` will always return the true branch as the state from
+#' `if_test` is not recorded in pure R evaluation.  There is only a loose
+#' correspondence between the R function names and the C code they cause to be
+#' generated as we exploit how `r2c` linearizes the AST to cause the pieces of
+#' the control structure to be emitted at the right spots (i.e.  this is a hack
+#' to get control flow to fit into an implementation that originally did not
+#' intend to allow them).
+#'
+#' @export
 #' @param true expression to evaluate if previous `if_test` is TRUE.
 #' @param false expression to evaluate if previous `if_test` is FALSE
 #' @param expr an expression to evaluate
@@ -199,17 +212,16 @@ code_gen_if <- function(...) {
 #' @examples
 #' get_r_code(r2cq(if(a) b else c), raw=TRUE)
 
-r2c_if <- function(true, false)
-  stop("This is an internal `r2c` function unavailable for direct use.")
+r2c_if <- function(true, false) true
 
+#' @export
 #' @rdname r2c_if
-if_true <- function(expr)
-  stop("This is an internal `r2c` function unavailable for direct use.")
+if_true <- function(expr) expr
 
+#' @export
 #' @rdname r2c_if
-if_false <- function(expr)
-  stop("This is an internal `r2c` function unavailable for direct use.")
+if_false <- function(expr) expr
 
+#' @export
 #' @rdname r2c_if
-if_test <- function(cond)
-  stop("This is an internal `r2c` function unavailable for direct use.")
+if_test <- function(cond) expr
