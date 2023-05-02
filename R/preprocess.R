@@ -197,13 +197,8 @@ pp_internal <- function(
     args.types[names(args) %in% VALID_FUNS[[c(func, "flag")]]] <- "flag"
 
     # Check if we're in assignment call
-    name <- get_lang_name(call[[1L]]) # should this just be `func`?
+    name <- get_lang_name(call) # should this just be `func`?
     next.assign <- name %in% ASSIGN.SYM
-    # Are we in a vcopy chain?
-    vcopy <- name == "vcopy" || (
-      name %in% PASSIVE.SYM &&
-      length(x[['vcopy']]) > 0L && x[['vcopy']][length(x[['vcopy']])]
-    )
     # Assignments only allowed at brace level or top level because we cannot
     # assure the order of evaluation so safer to just disallow.  We _could_
     # allow it but it just seems dangerous.
@@ -227,7 +222,7 @@ pp_internal <- function(
           x, call=args[[i]], depth=depth + 1L, argn=names(args)[i],
           type=args.types[i], code=code_blank(),
           sym.free=sym_free(x, args[[i]]), assign=FALSE, indent=indent,
-          vcopy=vcopy
+          vcopy=FALSE
         )
       } else {
         x <- pp_internal(
@@ -236,12 +231,17 @@ pp_internal <- function(
           call.parent=call, call.parent.name=func,
           indent=indent + (func %in% IF.SUB.SYM) * 2L
     ) } }
+    # Are we in a vcopy chain?  Needed for alloc to know which bindings are
+    # from vcopy (see reconcile_control_flow).
+    vcopy <- name == "vcopy" || (
+      name %in% PASSIVE.SYM &&
+      length(x[['vcopy']]) && x[['vcopy']][length(x[['vcopy']])]
+    )
     # Bind assignments (we do it after processing of the rest of the call)
     if(next.assign) {
       sym.bound <- get_target_symbol(call, name)
       x[['sym.bound']] <- union(sym.bound, x[['sym.bound']])
     }
-    type <- "call"
     # Generate Code
     code <- VALID_FUNS[[c(func, "code.gen")]](
       func,
@@ -250,8 +250,10 @@ pp_internal <- function(
       args[args.types == "flag"]
     )
     code_valid(code, call)
+
+    # Record linearized call data
     record_call_dat(
-      x, call=call, depth=depth, argn=argn, type=type, code=code, assign=assign,
+      x, call=call, depth=depth, argn=argn, type="call", code=code, assign=assign,
       indent=indent, vcopy=vcopy
     )
   } else {
