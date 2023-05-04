@@ -339,6 +339,8 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
     id.replace <- call.dat[[i]][['ids']] == last.alloc
     call.dat[[i]][['ids']][id.replace] <- res.alloc
   }
+  alloc[['i']] <- res.alloc
+
   # Remove unused data, and re-index to account for that
   ids.all <- seq_along(alloc[['dat']])
   ids.keep <- ids.all[
