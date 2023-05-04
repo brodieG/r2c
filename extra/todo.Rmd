@@ -21,6 +21,29 @@
 
 ## Current
 
+* Defer creation of temporary vectors until end (just record their size) so that
+  we don't allocate vectors we don't use.  We should also identify unused
+  vectors and not allocate them (e.g. because branch reconciliation made a
+  vector unused - does this actually happen)?
+
+* Need to figure out how to handle the assignment to the result slot now that
+  there could be multiple calls writing to it due to branches.  It seems like we
+  need to switch this to be an ex-post step where we identify the last
+  computation.  The challenge is if the last computation is also an assignment.
+  Maybe we don't allow assignments as the last step?  That would simplify code
+  somewhat?  Maybe it doesn't matter since assignments just forward their
+  allocation.  So we let the process run, then, at the very end, get the final
+  memory slot used, and go back and update all instances of that in the call
+  data?
+
+* is `r2c_if` really passive?
+
+* Do `for` and `while` need to be decomposed?  Probably.
+
+* Try to simplify `copy_symdat` by removing unused bindings.  Then being used
+  out of context can be simplified to being return value of braces or a being
+  used outside of context?
+
 * Rethink the reverse pass to add vcopy at the very beginning for any used
   symbols that are still live at the beginning: these are the external symbols.
   If we do this we should be able to clean up the logic by getting rid of all

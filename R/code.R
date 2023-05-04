@@ -28,10 +28,16 @@ is.valid_arglen <- function(type)
   !is.na(type[[2L]]) &&
   (length(type) <= 2L || is.function(type[[3L]]))
 
-is.valid_vecrec <- function(type)
-  type[[1L]] == "vecrec" &&
+is.valid_n_arglen <- function(type)
+  length(type) == 2L &&
   (is.character(type[[2L]]) || is.integer(type[[2L]])) &&
   !anyNA(type[[2L]])
+
+is.valid_vecrec <- function(type)
+  is.valid_n_arglen(type) && type[[1L]] == "vecrec"
+
+is.valid_eqlen <- function(type)
+  is.valid_n_arglen(type) && type[[1L]] == "eqlen"
 
 is.valid_constant <- function(type)
   is.integer(type[[2L]]) &&
@@ -108,9 +114,9 @@ is.valid_constant <- function(type)
 #'     the result size (e.g. `probs` for [`quantile`]), also allows specifying a
 #'     function at position 3 to e.g. pick which of multiple arguments matching
 #'     `...` to use for the length.
-#'   * vecrec: character(n) the names of the arguments to use to compute result
-#'     size under assumption of recycling to longest, or zero if any argument is
-#'     zero length.
+#'   * vecrec: character(n) (or integer(n)) the names (or indices in the matched
+#'     call) of the arguments to use to compute result size under assumption of
+#'     recycling to longest, or zero if any argument is zero length.
 #'
 #' @param code.gen a function that generates the C code corresponding to an R
 #'   function, which accepts three parameters (see details for the expected
@@ -164,14 +170,12 @@ cgen <- function(
       (type[[1L]] == "constant" && is.valid_constant(type)) ||
       (type[[1L]] == "arglen" && is.valid_arglen(type)) ||
       (type[[1L]] == "vecrec" && is.valid_vecrec(type)) ||
-      # possibly in the future "eqlen" could be a applied to only some elements?
-      # This is primarly to support if/else.
-      (type[[1L]] == "eqlen" && length(type) == 1L)
+      (type[[1L]] == "eqlen" && is.valid_eqlen(type))
     ),
     # positional matching or match.call?
-    type[[1L]] %in% c("constant", "eqlen") ||
+    type[[1L]] %in% c("constant") ||
     (
-      type[[1L]] %in% c('arglen', 'vecrec') && (
+      type[[1L]] %in% c('arglen', 'vecrec', 'eqlen') && (
         (is.null(defn) && is.integer(type[[2L]])) ||
         (!is.null(defn) && is.character(type[[2L]]))
       )
@@ -307,7 +311,8 @@ VALID_FUNS <- c(
       res.type="logical", fun=if_test
     ),
     cgen(
-      "r2c_if", type=list("eqlen"), code.gen=code_gen_r2c_if, fun=r2c_if
+      "r2c_if", type=list("eqlen", c("true", "false")),
+      code.gen=code_gen_r2c_if, fun=r2c_if
     ),
     cgen(
       "if_true", type=list("arglen", "expr"), code.gen=code_gen_if_true,
@@ -318,12 +323,9 @@ VALID_FUNS <- c(
       fun=if_false
     ),
     # This one can't actually generate code and needs to be first decomposed
-    # into the above, but we need it here so the early parsing passes recognize
-    # it as an allowed function.
-    cgen(
-      "if", type=list("eqlen"), code.gen=code_gen_if,
-      defn=function(...) NULL
-    )
+    # into the above if_test/r2c_if/if_true/if_false, but we need it here so the
+    # early parsing passes recognize it as an allowed function.
+    cgen("if", type=list("eqlen", 2:3), code.gen=code_gen_if)
   ),
   # - r2c funs -----------------------------------------------------------------
   list(

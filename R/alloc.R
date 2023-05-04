@@ -127,8 +127,6 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
     i.call.max=length(x[['call']]),                # call count
     i.sym.max=latest_symbol_instance(x[['call']])  # last symbol maybe touched
   )
-  i.last.action <- latest_action_call(x[['call']]) # last computing call
-
   alloc <- init_dat(x[['call']], meta=meta, scope=0L)
   # Status control placeholder.
   sts.vec <- numeric(IX[['STAT.N']])
@@ -188,7 +186,7 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
       # Based on previously accrued stack and function type, compute call result
       # size, allocate for it, etc.  Stack reduction happens later.
       check_fun(name, pkg, env)
-      ftype <- VALID_FUNS[[c(name, "type")]]
+      ftype <- VALID_FUNS[[c(name, "type")]] # see cgen() docs
 
       # If data inputs are know to be integer, and function returns integer for
       # those, make it known the result should be integer.
@@ -198,21 +196,6 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
         else "double"
       } else VALID_FUNS[[c(name, "res.type")]]
 
-      # Handle name reconciliation for control flow calls
-      if(name == "if_true") {
-        # Needs to be stack to handle , e.g. in `if(a) b else {if(c) d}`
-        binding.stack <- c(
-          binding.stack, list(list(names=alloc[['names']], i.call=i))
-        )
-      } else if (name == "if_false") {
-        rcf_dat <- reconcile_control_flow(
-          alloc, call.dat, binding.stack, i.call=i, call=call, depth=depth,
-          gmax=gmax
-        )
-        alloc <- rcf_dat[['alloc']]
-        call.dat <- rcf.dat[['call.dat']]
-        binding.stack <- binding.stack[-length(binding.stack)]
-      }
       # Compute result size
       if(ftype[[1L]] == "constant") {
         # Always constant size, e.g. 1 for `sum`
@@ -222,15 +205,27 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
         # Length of a specific argument, like `probs` for `quantile`
         # `depth + 1L` should be params to current call (this is only true for
         # the stack, not necessarily for other things in `x`)
-        sizes.tmp <- compute_call_res_size(stack, depth, ftype, .CALL)
+        sizes.tmp <- cand_arg_size_dat(stack, depth, ftype, .CALL)
 
         # asize uses max group size instead of NA so we can allocate for it
-        asize  <- vec_rec_max_size(sizes.tmp, gmax)
-        size <- vec_rec_known_size(sizes.tmp[1L,])  # knowable sizes could be NA
+        asize  <- vecrec_max_size(sizes.tmp, gmax)
+        size <- vecrec_known_size(sizes.tmp[1L,])  # knowable sizes could be NA
         group <- max(sizes.tmp[2L,])                # any group size in the lot?
       } else if(ftype[[1L]] == "eqlen") {
         # All arguments must be equal length.
-        stop("'eqlen' not implemented")
+        sizes.tmp <- cand_arg_size_dat(stack, depth, ftype, .CALL)
+        s.tmp <- sizes.tmp['size',]
+        if(!(all(is.na(s.tmp)) || length(unique(s.tmp)) == 1L)) {
+          stop(
+            "Potentially unequal sizes for parameters ",
+            toString(ftype[[2L]]), " in a function that requires them ",
+            "to be equal sized.:\n",
+            deparseLines(.CALL)
+          )
+        }
+        asize  <- if(anyNA(sizes.tmp['size',])) NA_real_
+        size <- if(anyNA(sizes.tmp['size',])) gmax else sizes.tmp['size', 1L]
+        group <- max(sizes.tmp[2L,])  # any group size in the lot?
       } else stop("Internal Error: unknown function type.")
 
       # Cleanup expired symbols, and bind new ones
@@ -240,13 +235,7 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
       # Prepare new vec data (if any), and tweak objet depending on situation.
       # Alloc is made later, but only if vec.dat[['new']] is not null.
       vec.dat <- vec_dat(NULL, "tmp", typeof=res.typeof, group=group, size=size)
-      if(i == i.last.action) {
-        warning("this doesn't work with branches")
-        # Last computing call should be written to result slot, vec.dat still
-        # used to populate the stack.
-        vec.dat[['type']] <- "res"
-        alloc <- alloc_result(alloc, vec.dat)
-      } else if(!name %in% c(PASSIVE.SYM, ASSIGN.SYM)) {
+      if(!name %in% c(PASSIVE.SYM, ASSIGN.SYM)) {
         # We have a computing expression in need of a free slots.
         # (NB: PASSIVE includes ASSIGN, but use both in case that changes).
         free <-
@@ -317,6 +306,21 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
         call.dat, call=call, call.name=name, stack=stack, depth=depth,
         alloc=alloc, ctrl=stack.ctrl, flag=stack.flag, call.i=i
       )
+      # Handle name reconciliation for control flow calls
+      if(name == "if_true") {
+        # Needs to be stack to handle , e.g. in `if(a) b else {if(c) d}`
+        binding.stack <- c(
+          binding.stack, list(list(names=alloc[['names']], i.call=i))
+        )
+      } else if (name == "if_false") {
+        rcf.dat <- reconcile_control_flow(
+          alloc, call.dat, binding.stack, i.call=i, call=call, depth=depth,
+          gmax=gmax
+        )
+        alloc <- rcf.dat[['alloc']]
+        call.dat <- rcf.dat[['call.dat']]
+        binding.stack <- binding.stack[-length(binding.stack)]
+      }
       # Reduce stack
       stack <- stack[,stack['depth',] <= depth, drop=FALSE]
       stack.ctrl <- stack.flag <- list()
@@ -327,6 +331,14 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
   }
   # - Finalize -----------------------------------------------------------------
 
+  # Last allocation should be redirected to the result.
+  last.call <- call.dat[[length(call.dat)]]
+  last.alloc <- last.call[['ids']][length(last.call[['ids']])]
+  res.alloc <- which(alloc[['type']] == "res")
+  for(i in seq_along(call.dat)) {
+    id.replace <- call.dat[[i]][['ids']] == last.alloc
+    call.dat[[i]][['ids']][id.replace] <- res.alloc
+  }
   # Remove unused data, and re-index to account for that
   ids.all <- seq_along(alloc[['dat']])
   ids.keep <- ids.all[
@@ -685,14 +697,13 @@ reconcile_control_flow <- function(
   # available allocations have been used in the different branches.  Step 1 is
   # to create the allocations, Step 2 is to re-point the call data to them.
 
-  browser()
   for(i in seq_len(ncol(rc.t))) {
     # Size and generate allocation
     size <- size.t[1L,i]
     asize <- if(is.na(size)) gmax else size
     new <- numeric(asize)
     vec.dat <-
-      vec_dat(new, "tmp", typeof="double", group=is.na(size), size=size)
+      vec_dat(new, "tmp", typeof="double", group=is.na(size) + 0, size=size)
     alloc <- append_dat(alloc, vec.dat, depth=depth, vcopy=TRUE)
 
     # Adjust the call data for the id remapping.  This should be done for all
@@ -720,27 +731,36 @@ reconcile_control_flow <- function(
 # @parem end the end of the current branch
 
 update_cdat_alloc <- function(call.dat, old, new, start, end) {
+  # Call dat does not contain every index in the original call list, so we need
+  # to map those indices to those available in call.dat
+  c.i <- vapply(call.dat, '[[', 1L, 'call.i')
+
   # start is the assignment, trace back and find the source of the assigned-to
   # allocation, it should be a `vcopy`.
-  if(!call.dat[[start]][['name']] %in% ASSIGN.SYM)
+  if(!call.dat[[which(c.i == start)]][['name']] %in% ASSIGN.SYM)
     stop("Internal Error: reconcile can only be done on assigned symbols.")
-  for(i in rev(seq_len(start))) {
+  for(c.ii in rev(c.i[c.i <= start])) {
+    i <- which(c.ii == c.i)
     if(call.dat[[i]][['name']] == "vcopy") {
-      if(call.dat[[i]][['ids']][length(ids)] != old)
-        stop("Internal Error: reconcile found incorrect old alloc.")
+      ids <- call.dat[[i]][['ids']]
+      if(ids[length(ids)] != old) stop("Internal Error: found bad old alloc.")
       call.dat[[i]][['ids']][length(ids)] <- new
       break;
     } else if(!call.dat[[i]][['name']] %in% PASSIVE.SYM) {
-      stop("Internal Error: reconcile encountered non-passive chain.")
+      # we should find a vcopy before we exit the current assignment chain
+      stop("Internal Error: encountered non-passive chain.")
     }
-    if(i == 1L) stop("Internal Error: could not find vcopy for reconcile.")
+    if(c.ii == c.i[1L])
+      stop("Internal Error: could not find vcopy.")
   }
   # Trace forward updating ids until if_true / if_false (end)
-  if(length(call.dat) <= i)
+  if(c.i[length(c.i)] < end)
     stop("Internal Error: call.dat does not include end of update range.")
-  for(j in seq(i + 1L, end, by=1L)) {
+
+  for(c.ij in c.i[c.i > c.ii & c.i <= end]) {
     # We should not be writing to an allocation of a reconciliation target as
     # these are supposed to survive outside the if/else.
+    j <- which(c.ij == c.i)
     if(
       !call.dat[[j]][['name']] %in% PASSIVE.SYM &
       call.dat[[j]][['ids']][length(call.dat[[j]][['ids']])] == old
@@ -836,7 +856,7 @@ stack_param_missing <- function(params, stack.avail, call, .CALL) {
 ## IMPORTANT: the result of this alone _must_ be combined with preserving
 ## whether the data was group data or not.
 
-vec_rec_known_size <- function(x) {
+vecrec_known_size <- function(x) {
   tmp <- x[!is.na(x)]             # non-group sizes
   if(!length(tmp)) NA_real_
   else if(any(tmp == 0)) 0
@@ -844,7 +864,7 @@ vec_rec_known_size <- function(x) {
 }
 # only difference with above is we use the max group size for alloc
 
-vec_rec_max_size <- function(x, gmax) {
+vecrec_max_size <- function(x, gmax) {
   if(
     !is.numeric(x) || !is.matrix(x) || nrow(x) != 2 ||
     any(is.na(x[1L,] & !x[2L,]))
@@ -856,8 +876,14 @@ vec_rec_max_size <- function(x, gmax) {
   size[is.na(size) | group] <- gmax
   if(any(size == 0)) 0 else max(size)
 }
+# Retrieve Size Data For Candidate Parameters
+#
+# For size resolution that depends on the size of potentially multiple
+# candidates arguments, return the size data for the relevant candidates.
+#
+# @param ftype see `type` for `cgen`
 
-compute_call_res_size <- function(stack, depth, ftype, .CALL) {
+cand_arg_size_dat <- function(stack, depth, ftype, .CALL) {
   stack.cand <- stack['depth',] == depth + 1L
   if(is.character(ftype[[2L]])) {
     param.cand.tmp <- colnames(stack)[stack.cand]
