@@ -118,7 +118,8 @@ preprocess <- function(call, formals=character(), optimize=FALSE) {
             indent[i],
             if(bitwAnd(out.ctrl.keep[i], CGEN.OUT.MUTE)) "// NOOP: ",
             # add the i to e.g. di[i]
-            if(grepl("%1\\$d", c.calls.keep[i])) sprintf(c.calls.keep[i], i)
+            if(grepl("%1\\$d", c.calls.keep[i]))
+              sprintf(c.calls.keep[i], i - 1L)
             else c.calls.keep[i]
           )
         }
