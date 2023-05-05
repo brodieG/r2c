@@ -698,7 +698,6 @@ reconcile_control_flow <- function(
   # new allocations because we are not tracking how and where the currently
   # available allocations have been used in the different branches.  Step 1 is
   # to create the allocations, Step 2 is to re-point the call data to them.
-
   for(i in seq_len(ncol(rc.t))) {
     # Size and generate allocation
     size <- size.t[1L,i]
@@ -719,6 +718,16 @@ reconcile_control_flow <- function(
       call.dat, old=rc.f['ids', i], new=new.i,
       start=rc.f['i.assign', i], end=i.call
     )
+    # Also update the names matrix (do we need to worry about scope here?  We
+    # shouldn't since we have the i-range, but feels a bit dangerous).
+    names.assign <- alloc[['names']]['i.assign',]
+    names.target <- (
+      (names.assign >= rc.t['i.assign', i] & names.assign <= i.call.t) |
+      (names.assign >= rc.f['i.assign', i] & names.assign <= i.call)
+    ) & (
+      alloc[['names']]['ids',] %in% c(rc.t['ids', i], rc.f['ids', i])
+    )
+    alloc[['names']]['ids', names.target] <- new.i
   }
   list(alloc=alloc, call.dat=call.dat)
 }
