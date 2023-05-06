@@ -13,11 +13,21 @@
 ##
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
-## Functions to support preprocessing of calls that require external memory
-## copied into internal r2c allocated memory.  Primarily this is for
-## control structures that require that memory is allocated in a way that is
-## consistent irrespective of branch taken at runtime, or for expressions that
-## return a symbol possibly bound to external memory.
+## Functions to support preprocessing of calls so data is bound to memory
+## allocated in a manner compatible with branching code.  Primarily this is for
+## data e.g. set in branches, and used after the branches.  Post branch code can
+## address a single location for a particular variable irrespective of what
+## branch is taken.  This creates the constraint that such variables must be the
+## same size irrespective of branch.  Implementation means ensuring such data is
+## assigned to an r2c generated allocation that can be relocated, which is done
+## by adding instruction to copy data into such allocations.
+
+# Frequently used indices (probably should just make data flat...).
+
+CAND <- c('copy', 'cand')
+ACT <- c('copy', 'act')
+B.LOC <- c('bind', 'loc')
+B.ALL <- c('bind', 'all')
 
 # Copy Symbol Data
 #
@@ -67,63 +77,37 @@
 # have e.g. `z <- x`  and `x` isn't touched we could avoid the `vcopy`, but we
 # don't worry about that special case.
 #
+# Finally, the e.g. if/else return value itself must be written to the same
+# location irrespective of branch taken.  This creates a broader set of
+# situations that require copying data, e.g.:
+#
+#    y <- if(a) {
+#      x <- mean(y)
+#      sum(y)
+#    } else {
+#      x <- mean(z)    # this whole expression needs `vcopy`ing
+#    }
+#    x + y
+#
+# Where even though `x` is created independently in each branch, we still need
+# to `vcopy` it because we cannot have the `x` memory bound both `x`, and to the
+# return value of the `if`.
+#
 # @param x call to process
-
-# Frequently used indices
-
-CAND <- c('copy', 'cand')
-ACT <- c('copy', 'act')
-B.LOC <- c('bind', 'loc')
-B.ALL <- c('bind', 'all')
 
 copy_symdat <- function(x) {
   if(is.symbol(x)) {
-    # Special case: a single symbol.  For logic to work cleanly every symbol
-    # needs to be part of a call
+    # Special case: a single symbol.  For recursive logic to work cleanly every
+    # symbol needs to be part of a call
     x <- en_vcopy(x)
   } else {
     # Compute locations requring vcopy
     promoted <- unique(copy_symdat_rec(x)[[ACT]])
 
-    # We want to apply the changes in reverse order so that indices are not made
-    # invalid by tree modifications ahead of them.
-    if(length(promoted)) {
-      indices <- lapply(promoted, "[[", 2L)
-      indices.eq <- lapply(indices, `length<-`, max(lengths(indices)))
-      indices.mx <- do.call(cbind, indices.eq)
-      indices.order <- do.call(order, split(indices.mx, row(indices.mx)))
-
-      # Inject the vcopies
-      for(i in promoted[rev(indices.order)]) {
-        if(i[[2L]][length(i[[2L]])]) {
-          # Trailing index not zero, so wrap a symbol in vcopy
-          if(is.symbol(x[[i[[2L]]]]) && identical(i[[2L]], 0L)) {
-            # standalone symbol
-            x <- en_vcopy(x)
-          } else if (is.call(x)) {
-            # symbol in top level (passive) call e.g. `{x}`
-            if(!is.symbol(x[[i[[2L]]]]))
-              stop("Internal Error: attempting to vcopy non symbol.")
-            x[[i[[2L]]]] <- en_vcopy(x[[i[[2L]]]])
-          } else stop("Internal Error: bad context for symbol vcopy.")
-        } else {
-          # Insert an e.g. `x <- vcopy(x)` when trailing index is zero
-          par.idx <- i[[2L]][-length(i[[2L]])]
-          call <- x[[c(par.idx, 2L)]]  # par.idx should point to if_true/false
-          call.sym <- get_lang_name(call)
-          if(!is.call(call) || call.sym != "{") call <- call("{", call)
-
-          # generate e.g. `x <- vcopy(x)`
-          sym.miss <- as.symbol(i[[1L]])
-          sym.vcopy <- call("<-", sym.miss, en_vcopy(sym.miss))
-          call.list <- as.list(call)
-          call <- as.call(c(call.list[1L], list(sym.vcopy), call.list[-1L]))
-          # in order to look match-called we need names on the call
-          names(call)[seq(2L, length(call), 1L)] <- "..."
-          x[[c(par.idx, 2L)]] <- call
-    } } }
-    x
+    # Modify the symbols / sub-calls that need to be vcopy'ed
+    x <- en_vcopy_expr(x, promoted)
   }
+  x
 }
 # Compute Locations of Required `vcopy`s
 #
@@ -169,11 +153,18 @@ copy_symdat <- function(x) {
 #   assignment and braces which could pass on an external allocation as the
 #   result of an `r2c` expression. Normal calls like `mean(x)` compute and thus
 #   their result will be an r2c allocation.
+# @param in.branch whether the parent call is a branch call, AND the result of
+#   the branch is potentially used (dead code notwithstanding) so we know we
+#   need to vcopy the return value.
+# @param in.compute whether there is some parent call that computes on the
+#   current call (e.g. `mean(x)` where `x` is the current call).  Used to
+#   determine whether the result of a branch is further used.
 # @param data list of realized bindings "bind", and candidate/actual `vcopy`
 #   symbols.  See details.
 
 copy_symdat_rec <- function(
-  x, index=integer(), assign.to=character(), last=TRUE,
+  x, index=integer(), assign.to=character(),
+  last=TRUE, in.branch=FALSE, in.compute=FALSE,
   data=list(
     bind=list(loc=character(), all=character()),
     copy=list(cand=list(), act=list())
@@ -210,19 +201,11 @@ copy_symdat_rec <- function(
     sym.global <- sym.name %in% data[[B.ALL]]
 
     # Generate new candidates/promotes if warranted (see cpyptr docs).
-    if ("end of branch - only true if directly at end of branch bracexp") {
-      if("branch result used") {
-        if("local symbol") "make candidate triggered by this symbol"
-        else if("global symbol") "make candidate triggered by this symbol"
-        else if("external symbol") "direct promotion?"
-        else stop("Internal error: impossible outcome.")
-      } else {
-        "do nothing"
-      }
-    } else {
-      "do nothing"
-    }
-    if (last && !sym.name %in% data[[B.ALL]]) {
+    if (in.branch) {
+      # Inside branch, symbol is result, and will be used, so must vcopy.
+      new.act <- list(cpyptr(sym.name, index, FALSE))
+      data[[ACT]] <- c(data[[ACT]], new.act)
+    } else if (last && !sym.name %in% data[[B.ALL]]) {
       # last symbol in r2c exp referencing ext symbol automatically promoted
       # trailing FALSE denotes this was never a pending candidate
       new.act <- list(cpyptr(sym.name, index, FALSE))
@@ -241,13 +224,19 @@ copy_symdat_rec <- function(
     if(call.sym == 'r2c_if') {
       # New if/else context resets all local bindings
       data[[B.LOC]] <- character()
+
+      # When branch result used, subsequent code needs to know it is in branch.
+      in.branch <- last || length(assign.to) || in.compute
+
       # Recurse through each branch independently since they are "simultaneous"
       # with respect to call order (either could be last too).
       data.T <- copy_symdat_rec(
-        x[[c(2L,2L)]], index=c(index, c(2L,2L)), data=data, last=last
+        x[[c(2L,2L)]], index=c(index, c(2L,2L)), data=data, last=last,
+        in.branch=in.branch
       )
       data.F <- copy_symdat_rec(
-        x[[c(3L,2L)]], index=c(index, c(3L,2L)), data=data, last=last
+        x[[c(3L,2L)]], index=c(index, c(3L,2L)), data=data, last=last,
+        in.branch=in.branch
       )
       # Combine the copy data.
       data <- merge_copy_dat(data, data.T, data.F, index)
@@ -256,6 +245,7 @@ copy_symdat_rec <- function(
       call.passive <- call.sym %in% PASSIVE.SYM
 
       rec.skip <- 1L
+      first.assign <- length(assign.to) == 0L
       if(call.assign) {
         tar.sym <- get_target_symbol(x, call.sym)
         assign.to <- union(assign.to, tar.sym)
@@ -267,25 +257,24 @@ copy_symdat_rec <- function(
           # assign.to is forwarded by the last expression in passive calls
           assign.to.next <-
             if(!call.passive || i < length(x)) character() else assign.to
+          next.last <- i == length(x) && call.passive
           data <- copy_symdat_rec(
-            x[[i]], index=c(index, i), assign.to=assign.to.next, data=data,
-            last=last && i == length(x) && call.passive
+            x[[i]], index=c(index, i), assign.to=assign.to.next,
+            last=last && next.last,
+            in.branch=in.branch && next.last,
+            in.compute=in.compute || !call.passive,
+            data=data
           )
       } }
-      if ("end of branch - only true if directly at end of branch bracexp") {
-        # maybe this goes after the call assign?
-        TBD
-      }
       if(call.assign) {
         # Any prior candidates bound to this symbol are voided by the new
         # assignment.  We need to clear them, except:
         #
         # * We don't want to clear the candidate we just created.
         # * We need to allow candidates that will be cleared to be used during
-        #   computation of the assignment (so we do it after recursion)
+        #   computation of the assignment (so we do it after recursion above)
         # * We should not clear any candidates on the last call (odd case where
         #   the return value assigns itself `x <- x`).
-
         if(!last) {
           #  Start by finding the first candidate earlier than this assignment
           indices <- lapply(data[[CAND]], "[[", 2L)
@@ -293,6 +282,13 @@ copy_symdat_rec <- function(
           # Clear those candidates
           data[[CAND]] <-
             data[[CAND]][names(data[[CAND]]) != tar.sym | indices.gt]
+        }
+        # If last call of a branch is an assigning call, we need to vcopy the
+        # entire assignment expression so we can reconcile branch return values.
+        # Only do it for the outermost assign if there is assign chain.
+        if(first.assign && in.branch) {
+          new.act <- list(cpyptr(tar.sym, index, FALSE))
+          data[[ACT]] <- c(data[[ACT]], new.act)
         }
         # Record local and global bindings.
         data[[B.LOC]] <- union(data[[B.LOC]], tar.sym)
@@ -302,6 +298,7 @@ copy_symdat_rec <- function(
   }
   data
 }
+
 # A "Pointer" To Symbol To `vcopy`
 #
 # Allows us to track potential candidates for `vcopy` promotion along with meta
@@ -410,5 +407,40 @@ merge_copy_dat <- function(old, a, b, index) {
     bind=old[['bind']]
   )
 }
+# Inject vcopy Calls
+#
+# @param x call to modify.
+# @promoted list of `cpyptr` objects pointing to sub-calls/symbols that need to
+#   be wrapped in `vcopy`.
 
+en_vcopy_expr <- function(x, promoted) {
+  if(length(promoted)) {
+    indices <- lapply(promoted, "[[", 2L)
+    indices.eq <- lapply(indices, `length<-`, max(lengths(indices)))
+    indices.mx <- do.call(cbind, indices.eq)
+    indices.order <- do.call(order, split(indices.mx, row(indices.mx)))
 
+    # Inject the vcopies in reverse order so that indices are not made invalid
+    # by tree modifications ahead of them.
+    for(i in promoted[rev(indices.order)]) {
+      if(i[[2L]][length(i[[2L]])]) {
+        # Trailing index not zero, so wrap a symbol/call in vcopy
+        x[[i[[2L]]]] <- en_vcopy(x[[i[[2L]]]])
+      } else {
+        # Insert an e.g. `x <- vcopy(x)` when trailing index is zero
+        par.idx <- i[[2L]][-length(i[[2L]])]
+        call <- x[[c(par.idx, 2L)]]  # par.idx should point to if_true/false
+        call.sym <- get_lang_name(call)
+        if(!is.call(call) || call.sym != "{") call <- call("{", call)
+
+        # generate e.g. `x <- vcopy(x)`
+        sym.miss <- as.symbol(i[[1L]])
+        sym.vcopy <- call("<-", sym.miss, en_vcopy(sym.miss))
+        call.list <- as.list(call)
+        call <- as.call(c(call.list[1L], list(sym.vcopy), call.list[-1L]))
+        # in order to look match-called we need names on the call
+        names(call)[seq(2L, length(call), 1L)] <- "..."
+        x[[c(par.idx, 2L)]] <- call
+  } } }
+  x
+}
