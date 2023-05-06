@@ -413,11 +413,13 @@ merge_copy_dat <- function(old, a, b, index) {
 
 en_vcopy_expr <- function(x, promoted) {
   if(length(promoted)) {
+    # Order the indices in reverse order of appearance
     indices <- lapply(promoted, "[[", 2L)
     indices.eq <- lapply(indices, `length<-`, max(lengths(indices)))
     indices.mx <- do.call(cbind, indices.eq)
-    indices.order <- do.call(order, split(indices.mx, row(indices.mx)))
-
+    indices.order <- do.call(
+      order, c(split(indices.mx, row(indices.mx)), list(na.last=FALSE))
+    )
     # Inject the vcopies in reverse order so that indices are not made invalid
     # by tree modifications ahead of them.
     for(i in promoted[rev(indices.order)]) {
