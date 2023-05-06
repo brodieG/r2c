@@ -62,7 +62,7 @@ preprocess <- function(call, formals=character(), optimize=FALSE) {
   call <- transform_ifelse(call)
 
   # Copy "external" data to r2c alloc mem (see fun docs); must be the last step.
-  call <- copy_symdat(call)
+  call <- copy_branchdat(call)
 
   # WARNING: Read warning at top of section before making changes.
 

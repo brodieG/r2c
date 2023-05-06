@@ -95,14 +95,14 @@ B.ALL <- c('bind', 'all')
 #
 # @param x call to process
 
-copy_symdat <- function(x) {
+copy_branchdat <- function(x) {
   if(is.symbol(x)) {
     # Special case: a single symbol.  For recursive logic to work cleanly every
     # symbol needs to be part of a call
     x <- en_vcopy(x)
   } else {
     # Compute locations requring vcopy
-    promoted <- unique(copy_symdat_rec(x)[[ACT]])
+    promoted <- unique(copy_branchdat_rec(x)[[ACT]])
 
     # Modify the symbols / sub-calls that need to be vcopy'ed
     x <- en_vcopy_expr(x, promoted)
@@ -141,7 +141,7 @@ copy_symdat <- function(x) {
 # of this distinction we track local bindings and global bindings separately in
 # the `data` object.
 #
-# @seealso `copy_symdat` for context.
+# @seealso `copy_branchdat` for context.
 # @param index integer vector that can be used to pull up a sub-call within a
 #   call tree e.g. with `x[[index]]` where `index` might be `c(2,3,1)`.
 # @param assign.to character vector of symbol names that are part of current
@@ -162,7 +162,7 @@ copy_symdat <- function(x) {
 # @param data list of realized bindings "bind", and candidate/actual `vcopy`
 #   symbols.  See details.
 
-copy_symdat_rec <- function(
+copy_branchdat_rec <- function(
   x, index=integer(), assign.to=character(),
   last=TRUE, in.branch=FALSE, in.compute=FALSE,
   data=list(
@@ -230,11 +230,11 @@ copy_symdat_rec <- function(
 
       # Recurse through each branch independently since they are "simultaneous"
       # with respect to call order (either could be last too).
-      data.T <- copy_symdat_rec(
+      data.T <- copy_branchdat_rec(
         x[[c(2L,2L)]], index=c(index, c(2L,2L)), data=data, last=last,
         in.branch=in.branch
       )
-      data.F <- copy_symdat_rec(
+      data.F <- copy_branchdat_rec(
         x[[c(3L,2L)]], index=c(index, c(3L,2L)), data=data, last=last,
         in.branch=in.branch
       )
@@ -258,7 +258,7 @@ copy_symdat_rec <- function(
           assign.to.next <-
             if(!call.passive || i < length(x)) character() else assign.to
           next.last <- i == length(x) && call.passive
-          data <- copy_symdat_rec(
+          data <- copy_branchdat_rec(
             x[[i]], index=c(index, i), assign.to=assign.to.next,
             last=last && next.last,
             in.branch=in.branch && next.last,
@@ -299,19 +299,19 @@ copy_symdat_rec <- function(
   data
 }
 
-# A "Pointer" To Symbol To `vcopy`
+# A "Pointer" To Expression To `vcopy`
 #
 # Allows us to track potential candidates for `vcopy` promotion along with meta
 # data to discern if promotion is truly needed.
 #
 # @param name scalar character the symbol that triggers promotion of a
-#   candidate, which is typically not the name of the symbol being promoted
-#   (e.g. in `x <- y; x` the trigger is `x`, but the symbol that will be
-#   `vcopy`ed is `y`).
-# @param index the location of the symbol to vcopy; if the index ends in 0L then
-#   a `x <- vcopy(x)` is added at the beginning of the branch the index points
-#   to as this represents an external symbol missing from one branch but used in
-#   the other.
+#   candidate, which when a symbol is up for promotion is typically not that
+#   symbols name (e.g. in `x <- y; x` the trigger is `x`, but the symbol that
+#   will be `vcopy`ed is `y`).
+# @param index the location of the expression to vcopy; if the index ends in 0L
+#   then a `x <- vcopy(x)` (assuming expression is `x`) is added at the
+#   beginning of the branch the index points to as this represents an external
+#   symbol missing from one branch but used in the other.
 # @param candidate TRUE if element is a candidate that requires explicit
 #   promotion via a later reference to its name, as opposed to it
 #   automatically became an actual vcopy because e.g. it was last.
@@ -324,7 +324,6 @@ cpyptr <- function(name, index, candidate=TRUE, global=FALSE) {
     name=name, index=index, candidate=candidate, global=global
   )
 }
-
 # Compare Two `cpyptr` Indices
 #
 # TRUE if the index a points to `a` position later in the tree than `b` in a
@@ -337,7 +336,6 @@ index_greater <- function(a, b) {
   b[is.na(b)] <- 0L
   all(a >= b) & any(a > b)
 }
-
 # Merge Candidates between Branches
 #
 # Both `a` and `b` contain lists at index CAND and ACT.  These are named lists
@@ -352,7 +350,7 @@ index_greater <- function(a, b) {
 # have multiple triggers, e.g. if `x` is a candidate in `y <- z <- x`, then
 # either use of `y` or `z` could result in promotion).
 #
-# @param a list should be `data` from `copy_symdat_rec` (see details).
+# @param a list should be `data` from `copy_branchdat_rec` (see details).
 # @param index integer vector the index into the call returning the expression
 #   setting the current if/else context.
 
