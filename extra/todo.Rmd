@@ -21,6 +21,43 @@
 
 ## Current
 
+* New return value cases to handle in branches:
+  * If it is a local binding from a computation, do we need to vcopy?  Maybe
+    not?  No, we don't need to copy it.  The problem is when the binding is
+    non-local.  So we make a candidate on that binding.  If that binding is
+    used, then it will be vcopied.  Otherwise we can just use it directly as the
+    return value.
+  * If it is a non-local biding it needs to be copied if the return value is
+    used (last part could potentially be handled by dead code removal).
+  * It is a computing expression.
+    * Nothing, we can reconcile directly.
+  * A binding expression?
+    * Same as a local binding, but for the whole expression.  So we add
+      candidates for the entire `assign.to` in the binding chain?  Basically,
+      same behavior as normal, except that we require candidacy even when the
+      thing being bound is a computing expression.  So we need a modification on
+      the `last` flag which is when the expression is returned.
+  * A passive expression, presumably depends on what it contains.
+
+  * It is a maybe non-local binding, an assignment expression, or a passive
+    expression returning .
+    * If `if` inside a computing call, assignment, or if it is returned, vcopy
+      it (possibly again).
+  * It is a binding expression.
+    * `vcopy` the whole thing.
+  * It is a passive expression.
+
+* Do we allow if's nested inside arguments (probably yes)?  If we do, what
+  happens to assignments within the if branches (probably disallow these)?
+
+* Modifiers:
+  * `if` is last expression vs not.
+  * Return value is used or not.
+
+
+* Formal detection incorrect for `r2cq({if(a) x <- y else x <- z; x})` as `x` is
+  included in the formals.
+
 * Defer creation of temporary vectors until end (just record their size) so that
   we don't allocate vectors we don't use.  We should also identify unused
   vectors and not allocate them (e.g. because branch reconciliation made a
@@ -42,13 +79,8 @@
 
 * Try to simplify `copy_symdat` by removing unused bindings.  Then being used
   out of context can be simplified to being return value of braces or a being
-  used outside of context?
-
-* Rethink the reverse pass to add vcopy at the very beginning for any used
-  symbols that are still live at the beginning: these are the external symbols.
-  If we do this we should be able to clean up the logic by getting rid of all
-  the last business.  If we do this it the 0 context should then be the same as
-  the other ones.
+  used outside of context?  See dead code removal in control notes.
+* Dead code optimization.
 
 * Check that user doesn't introduce their own `vcopy`'s.
 
@@ -57,11 +89,6 @@
 * Move the disallowed assignment error to somewhere that does not use the
   renamed expression as that is then incomprehensible.
 
-* How many preprocessing things can we test without actually compiling the code?
-  Seems like much of the logic we could just produce the manipulated R
-  expressions and evaluate those (will have to change `rc2:::if_true` and
-  similar to be evaluable).
-
 * Test error handling around missing symbols that are `vcopy`ed.  In particular
   whether error messages around them when they are part of the iteration data vs
   external makes sense.
@@ -69,16 +96,8 @@
 * At what point in preprocess can we start assuming valid calls (assignments
   with 3-4 parameters, only known funs, etc.).  Matters for the OOS stuff.
 
-* Check and drop unused allocations (maybe there should be some check here as to
-  where the unused allocations are coming from? e.g. okay if caused by branch
-  handling, but maybe not always ok).
-
 * Make sure branches work well with multiple symbol assigned to same slot (`x <-
   y <- z`).
-
-* Dead code optimization.  Increasingly this will simplify a lot of things.  For
-  example, we don't have to worry about shared symbols with a symbol that is not
-  used (`{x <- y <- z; x}` is interesting - how do we resolve it).
 
 * Double check that the re-use optimization doesn't attempt to re-use an
   expression computed only in one branch.  Or maybe if there are two if/else's,

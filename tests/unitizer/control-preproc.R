@@ -260,6 +260,8 @@ unitizer_sect("Basic if/else", {
   })
   r2c:::pp_clean(call3f3)
 })
+
+
 unitizer_sect("Nested", {
   call4a <- quote({
     if(a) z
@@ -288,4 +290,55 @@ unitizer_sect("Nested", {
     w + x
   })
   r2c:::pp_clean(call4c4)
+})
+unitizer_sect("Vcopy Branch Return", {
+  # `x <- mean(z)` requiers vcopy when symbol is used outside of local context
+  # as it cannot share an alloc with a branch return value.
+  call5a1 <- quote({
+    y <- if(a) {
+      x <- mean(y)
+      sum(y)
+    } else {
+      x <- mean(z)
+    }
+    x + y
+  })
+  r2c:::pp_clean(call5a1)
+  call5a2 <- quote({
+    y <- if(a) {
+      x <- mean(y)
+      y
+    } else {
+      x <- mean(z)
+    }
+    x + y
+  })
+  r2c:::pp_clean(call5a2)
+  # Both branches need to vcopy the assignment return
+  call5b1 <- quote({
+    y <-
+      if(a) x <- mean(y)
+      else x <- mean(z)
+    x + y
+  })
+  r2c:::pp_clean(call5b1)
+  # Neither branch needs to copy
+  call5b2 <- quote(
+    if(a) x <- mean(y)
+    else x <- mean(z)
+  )
+  r2c:::pp_clean(call5b2)
+  # Vcopy of required because last, not because of assignments
+  call5b3 <- quote(
+    if(a) x <- y
+    else x <- z
+  )
+  r2c:::pp_clean(call5b3)
+  # Double vcopy required, both for return value and and symbol binding??
+  # Return value is unused, as might often be the case for branches.
+  call5b4 <- quote({
+    if(a) x <- y
+    else x <- z
+    x
+  })
 })

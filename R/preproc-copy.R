@@ -210,9 +210,21 @@ copy_symdat_rec <- function(
     sym.global <- sym.name %in% data[[B.ALL]]
 
     # Generate new candidates/promotes if warranted (see cpyptr docs).
+    if ("end of branch - only true if directly at end of branch bracexp") {
+      if("branch result used") {
+        if("local symbol") "make candidate triggered by this symbol"
+        else if("global symbol") "make candidate triggered by this symbol"
+        else if("external symbol") "direct promotion?"
+        else stop("Internal error: impossible outcome.")
+      } else {
+        "do nothing"
+      }
+    } else {
+      "do nothing"
+    }
     if (last && !sym.name %in% data[[B.ALL]]) {
       # last symbol in r2c exp referencing ext symbol automatically promoted
-      # trailing FALSE denotes this was not an explicit promotion
+      # trailing FALSE denotes this was never a pending candidate
       new.act <- list(cpyptr(sym.name, index, FALSE))
       data[[ACT]] <- c(data[[ACT]], new.act)
     } else if(length(assign.to) && !sym.local) {
@@ -260,6 +272,10 @@ copy_symdat_rec <- function(
             last=last && i == length(x) && call.passive
           )
       } }
+      if ("end of branch - only true if directly at end of branch bracexp") {
+        # maybe this goes after the call assign?
+        TBD
+      }
       if(call.assign) {
         # Any prior candidates bound to this symbol are voided by the new
         # assignment.  We need to clear them, except:

@@ -31,6 +31,22 @@ Need to think about what compatible allocations are.  Certainly different
 branches must produce the same size result.  Does the result need to end up in
 the same allocation id?
 
+# Dead Code Removal
+
+1. Remove all non-last statements that are neither bound to symbols nor are last
+   in a braces call.
+2. Remove all unused bindings leaving the RHS around (self-assignments corner
+   case).
+3. Repeat until no changes?
+
+For implementation, start at end(s) (plural for cases where we end in branches)?
+
+(`{x <- y <- z; x}` is interesting - how do we resolve it - this was an earlier
+question).
+
+What to do about braces that don't have their return value used (just
+assignments).  Should be able to keep trimming from end until first assignment.
+
 # C Implementation / Allocation
 
 Probably the way a loop would work is:
