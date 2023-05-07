@@ -202,9 +202,13 @@ copy_branchdat_rec <- function(
 
     # Generate new candidates/promotes if warranted (see cpyptr docs).
     if (in.branch) {
-      # Inside branch, symbol is result, and will be used, so must vcopy.
-      new.act <- list(cpyptr(sym.name, index, FALSE))
-      data[[ACT]] <- c(data[[ACT]], new.act)
+      # Inside branch, symbol is branch result, and will be used, so must vcopy
+      # unless is part of an assignment chain, in which case the whole
+      # assignment is copied (see `if(call.assign) ...` after recursion).
+      if(!length(assign.to)) {
+        new.act <- list(cpyptr(sym.name, index, FALSE))
+        data[[ACT]] <- c(data[[ACT]], new.act)
+      }
     } else if (last && !sym.name %in% data[[B.ALL]]) {
       # last symbol in r2c exp referencing ext symbol automatically promoted
       # trailing FALSE denotes this was never a pending candidate
@@ -238,7 +242,6 @@ copy_branchdat_rec <- function(
         x[[c(3L,2L)]], index=c(index, c(3L,2L)), data=data, last=last,
         in.branch=in.branch
       )
-      # Combine the copy data.
       data <- merge_copy_dat(data, data.T, data.F, index)
     } else {
       call.assign <- call.sym %in% ASSIGN.SYM
@@ -272,23 +275,26 @@ copy_branchdat_rec <- function(
         #
         # * We don't want to clear the candidate we just created.
         # * We need to allow candidates that will be cleared to be used during
-        #   computation of the assignment (so we do it after recursion above)
+        #   computation of the assignment (so we do it after recursion above).
         # * We should not clear any candidates on the last call (odd case where
         #   the return value assigns itself `x <- x`).
+        #
+        #  Start by finding the first candidate earlier than this assignment
         if(!last) {
-          #  Start by finding the first candidate earlier than this assignment
           indices <- lapply(data[[CAND]], "[[", 2L)
           indices.gt <- vapply(indices, index_greater, TRUE, index)
           # Clear those candidates
           data[[CAND]] <-
             data[[CAND]][names(data[[CAND]]) != tar.sym | indices.gt]
         }
-        # If last call of a branch is an assigning call, we need to vcopy the
-        # entire assignment expression so we can reconcile branch return values.
+        # If last call of a branch is an assignment, we vcopy the entire
+        # assignment call so we can reconcile branch return values.  Otherwise
+        # the return value could conflict with the binding across the branches.
         # Only do it for the outermost assign if there is assign chain.
         if(first.assign && in.branch) {
-          new.act <- list(cpyptr(tar.sym, index, FALSE))
-          data[[ACT]] <- c(data[[ACT]], new.act)
+          # candidate b/c if binding unused this is not necesary
+          new.cand <- cpyptr(tar.sym, index, candidate=TRUE, global=FALSE)
+          data[[CAND]] <- c(data[[CAND]], list(new.cand))
         }
         # Record local and global bindings.
         data[[B.LOC]] <- union(data[[B.LOC]], tar.sym)
@@ -315,9 +321,11 @@ copy_branchdat_rec <- function(
 # @param candidate TRUE if element is a candidate that requires explicit
 #   promotion via a later reference to its name, as opposed to it
 #   automatically became an actual vcopy because e.g. it was last.
-# @param global whether the symbol had a potential valid global binding, for the
-#   special case where we generate a candidate due to assignment in if/else, but
-#   then just return the symbol as the last expression.
+# @param global when the object to vcopy is a symbol (i.e. in `x <- y`, the
+#   `y`), whether that symbol has a potential valid global binding (i.e. is not
+#   external), for the special case where we generate a candidate due to
+#   assignment in if/else, but then just return the symbol as the last
+#   expression.
 
 cpyptr <- function(name, index, candidate=TRUE, global=FALSE) {
   list(

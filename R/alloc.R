@@ -729,16 +729,9 @@ reconcile_control_flow <- function(
     )
     alloc[['names']]['ids', names.target] <- new.i
   }
-  # Return value from both branches must also point to same memory
-  # How do we deal with something like:
-  # if(a) {
-  #   x <- mean(y)
-  #   sum(y)
-  # } else {
-  #   x <- mean(z)
-  # }
-  # Where we reconcile the x allocation, but now we also have to reconcile the
-  # return value.  And we can't have both be the same.
+  # Return value from both branches must also point to same memory.
+
+  browser()
 
   list(alloc=alloc, call.dat=call.dat)
 }
