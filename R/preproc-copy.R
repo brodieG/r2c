@@ -159,15 +159,19 @@ copy_branchdat <- function(x) {
 # @param in.compute whether there is some parent call that computes on the
 #   current call (e.g. `mean(x)` where `x` is the current call).  Used to
 #   determine whether the result of a branch is further used.
-# @param data list of realized bindings "bind", and candidate/actual `vcopy`
-#   symbols.  See details.
+# @param data list of realized bindings "bind", candidate/actual `vcopy`
+#   symbols "copy", all in-branch created and post-branch used symbols
+#   "used.branch.bind", and a flag denoting if the processed call was fully
+#   passive. See details.
 
 copy_branchdat_rec <- function(
   x, index=integer(), assign.to=character(),
   last=TRUE, in.branch=FALSE, in.compute=FALSE,
   data=list(
     bind=list(loc=character(), all=character()),
-    copy=list(cand=list(), act=list())
+    copy=list(cand=list(), act=list()),
+    used.branch.bind=list(),
+    passive=TRUE
   )
 ) {
   if (is.symbol(x)) {
@@ -186,7 +190,7 @@ copy_branchdat_rec <- function(
     cand.prom <- cand[cand.prom.i]
 
     # If last, turn off the "candidate" flag (later used in merging).
-    # Last candidates are dont require `x <- vcopy(x)`.
+    # Last candidates dont require `x <- vcopy(x)`.
     if(last) cand.prom <- lapply(cand.prom, "[[<-", "candidate", FALSE)
 
     data[[ACT]] <- c(data[[ACT]], cand.prom)
@@ -210,8 +214,8 @@ copy_branchdat_rec <- function(
         data[[ACT]] <- c(data[[ACT]], new.act)
       }
     } else if (last && !sym.name %in% data[[B.ALL]]) {
-      # last symbol in r2c exp referencing ext symbol automatically promoted
-      # trailing FALSE denotes this was never a pending candidate
+      # Last symbol in r2c exp referencing external symbol auto-promoted.
+      # Trailing FALSE denotes this was never a pending candidate
       new.act <- list(cpyptr(sym.name, index, FALSE))
       data[[ACT]] <- c(data[[ACT]], new.act)
     } else if(length(assign.to) && !sym.local) {
@@ -227,7 +231,8 @@ copy_branchdat_rec <- function(
     call.sym <- get_lang_name(x)
     if(call.sym == 'r2c_if') {
       # New if/else context resets all local bindings
-      data[[B.LOC]] <- character()
+      data.next <- data
+      data.next[[B.LOC]] <- character()
 
       # When branch result used, subsequent code needs to know it is in branch.
       in.branch <- last || length(assign.to) || in.compute
@@ -235,17 +240,19 @@ copy_branchdat_rec <- function(
       # Recurse through each branch independently since they are "simultaneous"
       # with respect to call order (either could be last too).
       data.T <- copy_branchdat_rec(
-        x[[c(2L,2L)]], index=c(index, c(2L,2L)), data=data, last=last,
+        x[[c(2L,2L)]], index=c(index, c(2L,2L)), data=data.next, last=last,
         in.branch=in.branch
       )
       data.F <- copy_branchdat_rec(
-        x[[c(3L,2L)]], index=c(index, c(3L,2L)), data=data, last=last,
+        x[[c(3L,2L)]], index=c(index, c(3L,2L)), data=data.next, last=last,
         in.branch=in.branch
       )
+      # Recombine branch data and the pre-branch data
       data <- merge_copy_dat(data, data.T, data.F, index)
     } else {
       call.assign <- call.sym %in% ASSIGN.SYM
       call.passive <- call.sym %in% PASSIVE.SYM
+      data[['passive']] <- data[['passive']] && call.passive
 
       rec.skip <- 1L
       first.assign <- length(assign.to) == 0L
@@ -292,9 +299,17 @@ copy_branchdat_rec <- function(
         # the return value could conflict with the binding across the branches.
         # Only do it for the outermost assign if there is assign chain.
         if(first.assign && in.branch) {
-          # candidate b/c if binding unused this is not necesary
-          new.cand <- cpyptr(tar.sym, index, candidate=TRUE, global=FALSE)
-          data[[CAND]] <- c(data[[CAND]], list(new.cand))
+          if(last && data[['passive']]) {
+            # If last expression of r2c call (as opposed to branch) we
+            # auto-promote b/c not sure that value is local or not.  This is
+            # probably knowable.
+            new.act <- cpyptr(tar.sym, index, candidate=FALSE)
+            data[[ACT]] <- c(data[[ACT]], list(new.act))
+          } else {
+            # candidate b/c if binding unused this is not necesary
+            new.cand <- cpyptr(tar.sym, index, candidate=TRUE, global=FALSE)
+            data[[CAND]] <- c(data[[CAND]], list(new.cand))
+          }
         }
         # Record local and global bindings.
         data[[B.LOC]] <- union(data[[B.LOC]], tar.sym)
@@ -370,6 +385,7 @@ merge_copy_dat <- function(old, a, b, index) {
   b.cand <- setdiff(b[[CAND]], old[[CAND]])
   # Track shared history to add back later.
   old.cand <- intersect(a[[CAND]], b[[CAND]])
+  new.cand <- setdiff(union(a[[CAND]], b[[cand]]), old.cand)
 
   # Find candidates added in one branch missing in the other to inject e.g.
   # `x <- vcopy(x)` at start (hence 0L; so branch return value unchanged).
@@ -405,6 +421,12 @@ merge_copy_dat <- function(old, a, b, index) {
   # regen names lost in unique/union
   names(copy.cand) <- vapply(copy.cand, "[[", "", 1L)
   names(copy.act) <- vapply(copy.act, "[[", "", 1L)
+
+  # Update the local bindings; some previously local bindings could have been
+  # made non-local via re-assignment in the branches.  These are the ones that
+  # have been made into candidates (they will become local again once they are
+  # triggered, but to be triggered, they need to be set to non-local).
+  old[[B.LOC]] <- setdiff(old[[B.LOC]], new.cand)
 
   list(
     copy=list(cand=copy.cand, act=copy.act),

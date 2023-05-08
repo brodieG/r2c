@@ -21,6 +21,9 @@
 
 ## Current
 
+* Local symbols are completely cleared by nested branches, but we only want to
+  clear those symbols that are re-assigned.
+
 * New return value cases to handle in branches:
   * If it is a local binding from a computation, do we need to vcopy?  Maybe
     not?  No, we don't need to copy it.  The problem is when the binding is

@@ -64,6 +64,9 @@ preprocess <- function(call, formals=character(), optimize=FALSE) {
   # Copy "external" data to r2c alloc mem (see fun docs); must be the last step.
   call <- copy_branchdat(call)
 
+  # For each symbol record latest use
+  sym.use <- call_symbol_use(call)
+
   # WARNING: Read warning at top of section before making changes.
 
   # - Code Gen -----------------------------------------------------------------
@@ -254,8 +257,8 @@ pp_internal <- function(
 
     # Record linearized call data
     record_call_dat(
-      x, call=call, depth=depth, argn=argn, type="call", code=code, assign=assign,
-      indent=indent, vcopy=vcopy
+      x, call=call, depth=depth, argn=argn, type="call", code=code,
+      assign=assign, indent=indent, vcopy=vcopy
     )
   } else {
     # - Symbol or Constant -----------------------------------------------------

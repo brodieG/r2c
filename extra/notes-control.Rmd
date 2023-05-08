@@ -1,3 +1,28 @@
+# Reconcile
+
+* Any symbols bound in branches used after that branch:
+  * Reconcile: all.
+  * Copy: those bound to non-local memory, and balance branches.
+* Branch return value:
+  * Reconcile: all, including if truly last.
+  * Copy: those bound to non-local memory.
+* Final value:
+  * Copy: if bound to external memory.
+
+
+# Symbol Tracking
+
+For each assigned symbol/instance, we need to track when it's cleared vs used to
+e.g. determine whether it is used outside of ifelse.  For ifelse purposes, we
+can just record name/index of things that are used after ifelse.  To do this, we
+create candidates, and promote them on use recording the use index.  We then
+keep the latest use index for each symbol/creation index.
+
+Each linearized call entry can track its tree index too?
+
+How do we know the variable was used outside of current if/else though?  In the
+other preproc we know because we track the local symbols.
+
 # Constraint Overview
 
 The over riding constraint is that every symbol must resolve to an unambiguous

@@ -114,7 +114,9 @@ unitizer_sect("Basic if/else", {
   call3a1 <- quote(if(a) {y <- x; y})
   r2c:::pp_clean(call3a1)
 
-  # Previously bound symbols without rebinding shouldn't need vcopy
+  # Strictly this case does not require a vcopy of the `y`, but that relies on
+  # `y` being unused elsewhere and tracking that is complex so we force the
+  # vcopy anyway.
   call3b <- quote({
     y <- mean(x)
     if(a) x else y
@@ -122,6 +124,7 @@ unitizer_sect("Basic if/else", {
   pp3b <- r2c:::preprocess(call3b, optimize=TRUE)
   r2c:::clean_call(pp3b[['call.processed']])
 
+  # See 3b, copies not strictly necessary here but we do them anyway
   call3b1 <- quote({
     x <- y <- mean(x)
     if(a) x else y
@@ -129,7 +132,7 @@ unitizer_sect("Basic if/else", {
   pp3b1 <- r2c:::preprocess(call3b1, optimize=TRUE)
   r2c:::clean_call(pp3b1[['call.processed']])
 
-  # Rebinding should not require copy unless binding used again
+  # Again lean cautious and always copy things being returned if not local
   call3c <- quote({
     x <- y <- mean(x)
     if(a) y <- x else y
@@ -290,6 +293,25 @@ unitizer_sect("Nested", {
     w + x
   })
   r2c:::pp_clean(call4c4)
+
+  # Local symbol becomes non-local due to nesting; this should be fine because
+  # the nested vcopying should make it again local.
+  call4d1 <- quote(
+    if(a) {
+      x <- mean(y)
+      if(b) x <- z
+      x
+  } )
+  r2c:::pp_clean(call4d1)
+  call4d2 <- quote({
+    if(a) {
+      x <- mean(y)
+      if(b) x <- z
+    }
+    x
+  })
+  r2c:::pp_clean(call4d2)
+
 })
 unitizer_sect("Vcopy Branch Return", {
   # `x <- mean(z)` requiers vcopy when symbol is used outside of local context
@@ -328,17 +350,34 @@ unitizer_sect("Vcopy Branch Return", {
     else x <- mean(z)
   )
   r2c:::pp_clean(call5b2)
+
+  # Shouldn't need copies b/c we don't use return value.
+  call5b2 <- quote({
+    if(a) x <- mean(y)
+    else x <- mean(z)
+    x
+  })
+  r2c:::pp_clean(call5b2)
+
   # Vcopy of required because last, not because of assignments
-  call5b3 <- quote(
+  call5b4 <- quote(
     if(a) x <- y
     else x <- z
   )
-  r2c:::pp_clean(call5b3)
+  r2c:::pp_clean(call5b4)
   # Double vcopy required, both for return value and and symbol binding??
   # Return value is unused, as might often be the case for branches.
-  call5b4 <- quote({
+  call5b5 <- quote({
     if(a) x <- y
     else x <- z
     x
   })
+  r2c:::pp_clean(call5b5)
+
+
+  # Branch as input to computing fun
+  r5c1 <- quote(mean(if(a) x else y))
+  r2c:::pp_clean(r5c1)
+
+
 })
