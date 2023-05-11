@@ -64,9 +64,6 @@ preprocess <- function(call, formals=character(), optimize=FALSE) {
   # Copy "external" data to r2c alloc mem (see fun docs); must be the last step.
   call <- copy_branchdat(call)
 
-  # For each symbol record latest use
-  sym.use <- call_symbol_use(call)
-
   # WARNING: Read warning at top of section before making changes.
 
   # - Code Gen -----------------------------------------------------------------

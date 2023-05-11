@@ -108,7 +108,7 @@ FUN.NAMES <- c(
 
   mean1="mean1", square="square",
 
-  vcopy="vcopy",
+  vcopy="vcopy", rec="rec",
 
   # "for"="for", "while"="while", "repeat"="repeat", "if"="if"
 

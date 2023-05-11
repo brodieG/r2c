@@ -35,7 +35,7 @@ static void %s(%s) {
 code_gen_copy <- function(fun, args.reg, args.ctrl, args.flags) {
   vetr(
     identical(., "vcopy"),
-    args.reg=list(),
+    args.reg=list(NULL),
     args.ctrl=list() && length(.) == 0L,
     args.flags=list() && length(.) == 0L
   )
@@ -60,6 +60,40 @@ code_gen_copy <- function(fun, args.reg, args.ctrl, args.flags) {
 #' @export
 
 vcopy <- function(x) x + 0
+
+# No-op functions like assignment and braces don't compute, thus don't write to
+# memory.  To ensure that their "output" is written to the result vector, we
+# need to make sure it is explicitly copied (e.g. when we assign an external
+# symbol, we actually want that copied into the result).
+
+f_rec <- '
+// Reconciliation is a no-op
+// static void %s(%s) { /* NOOP */ }'
+
+code_gen_rec <- function(fun, args.reg, args.ctrl, args.flags) {
+  vetr(
+    identical(., "rec"),
+    args.reg=list(NULL),
+    args.ctrl=list() && length(.) == 0L,
+    args.flags=list() && length(.) == 0L
+  )
+  name <- FUN.NAMES[fun]
+  defn <- sprintf(f_rec, name, toString(F.ARGS.BASE))
+  code_res(defn=defn, name=name)
+}
+#' Mark a Vector for Reconciliation
+#'
+#' "Internal" function that `r2c` uses for book-keeping of what expressions need
+#' to be reconciled across branches so that post-branch expressions can address
+#' their side effects (i.e. assignments) or results irrespective of what branch
+#' was taken at run time.  This function is exposed only so that users can
+#' understand what it is should they see it in processed `r2c` calls.
+#'
+#' @param x numeric vector to reconcile.
+#' @return `x`
+#' @export
+
+rec <- function(x) x
 
 # - Braces and Assign ----------------------------------------------------------
 

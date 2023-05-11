@@ -346,6 +346,12 @@ VALID_FUNS <- c(
       type=list("arglen", 1L),
       code.gen=code_gen_copy,
       res.type="preserve.int"   # for uplus
+    ),
+    cgen(
+      "rec", fun=rec, defn=NULL,
+      type=list("arglen", 1L),
+      code.gen=code_gen_rec,
+      res.type="preserve.int"
     )
   )
 )
