@@ -26,9 +26,12 @@
 
 CAND <- c('copy', 'cand')
 ACT <- c('copy', 'act')
+# Local binding
 B.LOC <- c('bind', 'loc')
-B.ALL <- c('bind', 'all')
+# Local and computing
 B.CMP <- c('bind', 'computed')
+# Global and computing
+B.ALL <- c('bind', 'all')
 
 # Copy Branch Data
 #
@@ -176,12 +179,10 @@ copy_branchdat_rec <- function(
   )
 ) {
   if (is.symbol(x)) {
-    data[['passive']] <- TRUE
-
     # In depth-first traversal, we generate candidates for `vcopy` when we
     # encounter symbols with the appropriate characteristics.
     sym.name <- as.character(x)
-    sym.local <- sym.name %in% data[[B.LOC]]
+    sym.local <- sym.name %in% data[[B.LOC]]  # should this be CMP?
     sym.global <- sym.name %in% data[[B.ALL]]
 
     # For symbols matching candidate(s): promote candidate if allowed.
@@ -198,16 +199,20 @@ copy_branchdat_rec <- function(
     data[[ACT]] <- c(data[[ACT]], cand.prom)
     data[[CAND]][cand.prom.i] <- NULL
 
-    # Promoted symbols become global (but never local because promotion is only
-    # triggered once outside of local scope).
+    # Promoted symbols are known to point to local computations.
     data[[B.ALL]] <- union(data[[B.ALL]], names(cand)[cand.prom.i])
+    data[[B.LOC]] <- union(data[[B.LOC]], names(cand)[cand.prom.i])
+    data[[B.CMP]] <- union(data[[B.CMP]], names(cand)[cand.prom.i])
+    data[['passive']] <- !sym.name %in% data[[B.ALL]]
+    sym.local <- sym.name %in% data[[B.LOC]]
+    sym.global <- sym.name %in% data[[B.ALL]]
 
     # Generate new candidates/actuals if warranted (see callptr docs).
     if(in.branch) {
       if(branch.res && !length(assign.to)) {
-        # Auto-promote b/c branch result will be used, except that if part of an
-        # assignment chain, the vcopy is done on the whole assignment call
-        data <- add_actual_callptr(data, index)
+        # Auto-promote b/c branch result will be used, but if part of assignment
+        # chain, the vcopy is done on the assignment call (see call section).
+        data <- add_actual_callptr(data, index, copy=!sym.local)
       } else if (length(assign.to)) {
         # All non-local symbols being bound to other symbols are candidates
         data <- add_candidate_callptr(
@@ -220,6 +225,7 @@ copy_branchdat_rec <- function(
       if(!sym.name %in% data[[B.ALL]])
         data <- add_actual_callptr(data, index, rec=FALSE)
     }
+
   } else if(is.call(x)) {
     # Recursion, except special handling for if/else and for assignments
     call.sym <- get_lang_name(x)
@@ -295,14 +301,20 @@ copy_branchdat_rec <- function(
         # Only do it for the outermost assign if there is assign chain.
         if(first.assign && branch.res) {
           # candidate b/c binding might be unused even if return value is used.
-          data <- add_candidate_callptr(data, index, triggers=tar.sym)
+          data <- add_actual_callptr(data, index, rec=TRUE)
         }
         # Update bindings
-        data[[B.ALL]] <- union(data[[B.ALL]], tar.sym)
         data[[B.LOC]] <- union(data[[B.LOC]], tar.sym)
         # Mark whether what was assigned was a computing expression or not
-        if(!data[['passive']]) data[[B.CMP]] <- union(data[[B.CMP]], tar.sym)
-  } } }
+        if(!data[['passive']]) {
+          data[[B.CMP]] <- union(data[[B.CMP]], tar.sym)
+          data[[B.ALL]] <- union(data[[B.ALL]], tar.sym)
+        }
+      } else if (!call.passive && branch.res) {
+        # Branch result always needs reconciliation if used
+        data <- add_actual_callptr(data, index, rec=TRUE, copy=FALSE)
+      }
+  } }
   data
 }
 
@@ -347,8 +359,8 @@ callptr <- function(
     global=global
   )
 }
-add_actual_callptr  <- function(data, index, rec=TRUE) {
-  new.act <- callptr(NA_character_, index, copy=TRUE, candidate=FALSE, rec=rec)
+add_actual_callptr  <- function(data, index, rec=TRUE, copy=TRUE) {
+  new.act <- callptr(NA_character_, index, copy=copy, candidate=FALSE, rec=rec)
   data[[ACT]] <- c(data[[ACT]], list(new.act))
   data
 }
@@ -443,6 +455,8 @@ merge_copy_dat <- function(old, a, b, index) {
   # to trigger candidates bound to them if we encounter them in this branch.
   old[[B.LOC]] <- setdiff(old[[B.LOC]], union(a[[B.LOC]], b[[B.LOC]]))
   old[[B.CMP]] <- setdiff(old[[B.CMP]], union(a[[B.CMP]], b[[B.CMP]]))
+  # Global bindings become non global unless they remain global in both branches
+  old[[B.ALL]] <- union(old[[B.ALL]], intersect(a[[B.ALL]], b[[B.ALL]]))
 
   old[['copy']] <- list(cand=copy.cand, act=copy.act)
   old
@@ -492,10 +506,11 @@ inject_rec_and_copy <- function(x, promoted) {
         # in order to look match-called we need names on the call
         names(call)[seq(2L, length(call), 1L)] <- "..."
         x[[c(par.idx, 2L)]] <- call
+        # update index to point to new `vcopy` for potential `rec` next
+        i[["index"]] <- c(par.idx, 2L, 2L, 3L)
       }
       if(i[['rec']]) x[[i[["index"]]]] <- en_rec(x[[i[["index"]]]])
     }
-    # Mark calls for reconcilition
   }
   x
 }
