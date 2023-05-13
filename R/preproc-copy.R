@@ -300,13 +300,18 @@ copy_branchdat_rec <- function(
         # Update bindings
         data[[B.LOC]] <- union(data[[B.LOC]], tar.sym)
         # Mark whether what was assigned was a computing expression or not
-        if(!data[['passive']]) {
-          data[[B.CMP]] <- union(data[[B.CMP]], tar.sym)
-          data[[B.ALL]] <- union(data[[B.ALL]], tar.sym)
-        }
+        data[[B.ALL]] <-
+          if(!data[['passive']]) union(data[[B.ALL]], tar.sym)
+          else setdiff(data[[B.ALL]], tar.sym)
+
       } else if (!call.passive && branch.res) {
         # Branch result always needs reconciliation if used
         data <- add_actual_callptr(data, index, rec=TRUE, copy=FALSE)
+      } else if (!call.passive && in.branch && length(assign.to)) {
+        # Assignment of computed exp in branch requires reconciliation b/c
+        # symbol could be used outside of the branch (but no need to copy).
+        data <-
+          add_candidate_callptr(data, index, triggers=assign.to, copy=FALSE)
       }
   } }
   data
