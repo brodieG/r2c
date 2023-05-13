@@ -185,7 +185,6 @@ copy_branchdat_rec <- function(
 
     # For symbols matching candidate(s): promote candidate if allowed.
     cand <- data[[CAND]]
-    # cand.global <- vapply(cand, "[[", TRUE, "global")
     cand.prom.i <- which(names(cand) == sym.name & !sym.local)
     cand.prom <- cand[cand.prom.i]
 
@@ -350,16 +349,11 @@ copy_branchdat_rec <- function(
 #   assignment in if/else, but then just return the symbol as the last
 #   expression.
 
-callptr <- function(
-  name, index, rec=TRUE, copy=FALSE, candidate=TRUE, global=FALSE
-) {
-  list(
-    name=name, index=index, rec=rec, copy=copy, candidate=candidate,
-    global=global
-  )
+callptr <- function(name, index, rec=TRUE, copy=FALSE) {
+  list(name=name, index=index, rec=rec, copy=copy)
 }
 add_actual_callptr  <- function(data, index, rec=TRUE, copy=TRUE) {
-  new.act <- callptr(NA_character_, index, copy=copy, candidate=FALSE, rec=rec)
+  new.act <- callptr(NA_character_, index, copy=copy, rec=rec)
   data[[ACT]] <- c(data[[ACT]], list(new.act))
   data[['passive']] <- FALSE
   data
