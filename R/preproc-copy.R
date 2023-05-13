@@ -28,8 +28,6 @@ CAND <- c('copy', 'cand')
 ACT <- c('copy', 'act')
 # Local binding
 B.LOC <- c('bind', 'loc')
-# Local and computing
-B.CMP <- c('bind', 'computed')
 # Global and computing
 B.ALL <- c('bind', 'all')
 
@@ -182,7 +180,7 @@ copy_branchdat_rec <- function(
     # In depth-first traversal, we generate candidates for `vcopy` when we
     # encounter symbols with the appropriate characteristics.
     sym.name <- as.character(x)
-    sym.local <- sym.name %in% data[[B.LOC]]  # should this be CMP?
+    sym.local <- sym.name %in% data[[B.LOC]]
     sym.global <- sym.name %in% data[[B.ALL]]
 
     # For symbols matching candidate(s): promote candidate if allowed.
@@ -199,13 +197,9 @@ copy_branchdat_rec <- function(
     data[[ACT]] <- c(data[[ACT]], cand.prom)
     data[[CAND]][cand.prom.i] <- NULL
 
-    # Promoted symbols are known to point to local computations.
-    data[[B.ALL]] <- union(data[[B.ALL]], names(cand)[cand.prom.i])
-    data[[B.LOC]] <- union(data[[B.LOC]], names(cand)[cand.prom.i])
-    data[[B.CMP]] <- union(data[[B.CMP]], names(cand)[cand.prom.i])
-    data[['passive']] <- !sym.name %in% data[[B.ALL]]
-    sym.local <- sym.name %in% data[[B.LOC]]
-    sym.global <- sym.name %in% data[[B.ALL]]
+    # Symbol is passive unless we add candidate/actual (those set passive to
+    # FALSE), or it already is a local computed symbol
+    data[['passive']] <- !sym.local
 
     # Generate new candidates/actuals if warranted (see callptr docs).
     if(in.branch) {
@@ -362,6 +356,7 @@ callptr <- function(
 add_actual_callptr  <- function(data, index, rec=TRUE, copy=TRUE) {
   new.act <- callptr(NA_character_, index, copy=copy, candidate=FALSE, rec=rec)
   data[[ACT]] <- c(data[[ACT]], list(new.act))
+  data[['passive']] <- FALSE
   data
 }
 add_candidate_callptr <- function(data, index, triggers, copy=TRUE) {
@@ -369,6 +364,7 @@ add_candidate_callptr <- function(data, index, triggers, copy=TRUE) {
     triggers, callptr, copy=copy, index, candidate=TRUE, simplify=FALSE
   )
   data[[CAND]] <- c(data[[CAND]], new.cand)
+  data[['passive']] <- FALSE
   data
 }
 
@@ -409,7 +405,6 @@ merge_copy_dat <- function(old, a, b, index) {
   a.cand <- setdiff(a[[CAND]], old[[CAND]])
   b.cand <- setdiff(b[[CAND]], old[[CAND]])
   # Track shared history to add back later.
-
   old.cand <- intersect(a[[CAND]], b[[CAND]])
 
   # Find candidates added in one branch missing in the other to inject e.g.
@@ -450,15 +445,15 @@ merge_copy_dat <- function(old, a, b, index) {
   # regen names lost in unique/union
   names(copy.cand) <- vapply(copy.cand, "[[", "", 1L)
   names(copy.act) <- vapply(copy.act, "[[", "", 1L)
-
-  # Local bindings become non-local if re-assigned in child branches b/c we need
-  # to trigger candidates bound to them if we encounter them in this branch.
-  old[[B.LOC]] <- setdiff(old[[B.LOC]], union(a[[B.LOC]], b[[B.LOC]]))
-  old[[B.CMP]] <- setdiff(old[[B.CMP]], union(a[[B.CMP]], b[[B.CMP]]))
-  # Global bindings become non global unless they remain global in both branches
-  old[[B.ALL]] <- union(old[[B.ALL]], intersect(a[[B.ALL]], b[[B.ALL]]))
-
   old[['copy']] <- list(cand=copy.cand, act=copy.act)
+
+  # Any symbols that were assigned to in the branches are no longer local
+  # in the parent expression.
+  branch.all.new <- setdiff(union(a[[B.ALL]], b[[B.ALL]]), old[[B.ALL]])
+  branch.loc <- union(a[[B.LOC]], b[[B.LOC]])
+  old[[B.LOC]] <- setdiff(old[[B.LOC]], union(branch.all.new, branch.loc))
+  old[[B.ALL]] <- union(old[[B.ALL]], branch.all.new)
+
   old
 }
 # Wrap a Symbol in vcopy / rec
