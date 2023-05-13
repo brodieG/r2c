@@ -468,9 +468,10 @@ inject_rec_and_copy <- function(x, promoted) {
     # vcopies such as `vcopy(y <- vcopy(x))` at end of branch).
     for(i in promoted[rev(indices.order)]) {
       if(i[["index"]][length(i[["index"]])]) {
-        # Trailing index not zero, so wrap a symbol/call in vcopy
-        x[[i[["index"]]]] <- en_vcopy(x[[i[["index"]]]])
+        # Trailing index not zero, so wrap a symbol/call in vcopy if needed
+        if(i[['copy']]) x[[i[["index"]]]] <- en_vcopy(x[[i[["index"]]]])
       } else {
+        # These always require a copy, even if the alternate branch doesn't.
         # Insert an e.g. `x <- vcopy(x)` when trailing index is zero
         par.idx <- i[["index"]][-length(i[["index"]])]
         call <- x[[c(par.idx, 2L)]]  # par.idx should point to if_true/false
