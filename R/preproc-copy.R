@@ -359,13 +359,13 @@ add_actual_callptr  <- function(data, index, rec=TRUE, copy=TRUE) {
   data
 }
 add_candidate_callptr <- function(data, index, triggers, copy=TRUE) {
-  new.cand <- sapply(
-    triggers, callptr, copy=copy, index, candidate=TRUE, simplify=FALSE
-  )
+  new.cand <- gen_callptrs(triggers, index, copy=copy, rec=TRUE)
   data[[CAND]] <- c(data[[CAND]], new.cand)
   data[['passive']] <- FALSE
   data
 }
+gen_callptrs <- function(names, index, rec, copy)
+  sapply(names, callptr, copy=copy, rec=rec, index=index, simplify=FALSE)
 
 # Compare Two `callptr` Indices
 #
@@ -408,10 +408,10 @@ merge_copy_dat <- function(old, a, b, index) {
 
   # Find candidates added in one branch missing in the other to inject e.g.
   # `x <- vcopy(x)` at start (hence 0L; so branch return value unchanged).
-  a.miss <- setdiff(b.cand, a.cand)
-  b.miss <- setdiff(a.cand, b.cand)
-  a.miss.list <- lapply(a.miss, "[[<-", "index", c(index, 2L, 0L))
-  b.miss.list <- lapply(b.miss, "[[<-", "index", c(index, 3L, 0L))
+  a.miss <- setdiff(names(b.cand), names(a.cand))
+  b.miss <- setdiff(names(a.cand), names(b.cand))
+  a.miss.list <- gen_callptrs(a.miss, c(index, 2L, 0L), copy=TRUE, rec=TRUE)
+  b.miss.list <- gen_callptrs(b.miss, c(index, 3L, 0L), copy=TRUE, rec=TRUE)
 
   # Recombine all the pieces into the new set of candidates
   copy.cand <- unique(
