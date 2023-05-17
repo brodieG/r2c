@@ -229,23 +229,26 @@ copy_branchdat_rec <- function(
   } else if(is.call(x)) {
     # Recursion, except special handling for if/else and for assignments
     call.sym <- get_lang_name(x)
+    call.assign <- call.sym %in% ASSIGN.SYM
+    call.passive <- call.sym %in% PASSIVE.SYM
+
     if(call.sym == 'r2c_if') {
       # New if/else context resets all local bindings
       data.next <- data
       data.next[[B.LOC]] <- character()
 
       # When branch result used, subsequent code needs to know it is branch.res.
-      branch.res <- last || length(assign.to) || in.compute
+      branch.res.next <- last || length(assign.to) || in.compute
 
       # Recurse through each branch independently since they are "simultaneous"
       # with respect to call order (either could be last too).
       data.T <- copy_branchdat_rec(
         x[[c(2L,2L)]], index=c(index, c(2L,2L)), data=data.next, last=last,
-        in.branch=TRUE, branch.res=branch.res
+        in.branch=TRUE, branch.res=branch.res.next
       )
       data.F <- copy_branchdat_rec(
         x[[c(3L,2L)]], index=c(index, c(3L,2L)), data=data.next, last=last,
-        in.branch=TRUE, branch.res=branch.res
+        in.branch=TRUE, branch.res=branch.res.next
       )
       # Recombine branch data and the pre-branch data
       data <- merge_copy_dat(data, data.T, data.F, index)
@@ -253,12 +256,8 @@ copy_branchdat_rec <- function(
       # Guaranteed branch result is non-passive (if it is used)
       data[['passive']] <- FALSE
     } else {
-      call.assign <- call.sym %in% ASSIGN.SYM
-      call.passive <- call.sym %in% PASSIVE.SYM
-      passive.now <- data[['passive']]
-
+      passive.now <- data[['passive']] # pre-recursion passive status
       rec.skip <- 1L
-      first.assign <- length(assign.to) == 0L && call.assign
       if(call.assign) {
         tar.sym <- get_target_symbol(x, call.sym)
         assign.to <- union(assign.to, tar.sym)
@@ -309,8 +308,13 @@ copy_branchdat_rec <- function(
         }
         data[['assigned.to']] <- assign.to
       }
-      if(branch.res && (!call.passive || first.assign)) {
-        passive.now <- data[['passive']]  # add_actual changes passive status
+    }
+    first.assign <- length(assign.to) == 0L && call.assign
+    passive.now <- data[['passive']]  # add_actual changes passive status
+    if(branch.res) {
+      if(
+        !call.passive || first.assign || call.sym == 'r2c_if'
+      ) {
         data <- add_actual_callptr(data, index, rec=TRUE, copy=FALSE)
         if(first.assign && !passive.now) {
           data <- add_candidate_callptr(
@@ -319,12 +323,13 @@ copy_branchdat_rec <- function(
         } else if (first.assign) {
           data <- add_actual_callptr(data, index, rec=FALSE, copy=TRUE)
         }
-      } else if (in.branch && first.assign && !passive.now) {
-        data <- add_candidate_callptr(
-          data, index, triggers=data[['assigned.to']], rec=TRUE, copy=FALSE
-        )
       }
-  } }
+    } else if (in.branch && first.assign && !passive.now) {
+      data <- add_candidate_callptr(
+        data, index, triggers=data[['assigned.to']], rec=TRUE, copy=FALSE
+      )
+    }
+  }
   data
 }
 
@@ -451,7 +456,11 @@ VCOPY.FUN.NAME <- call("::", as.name("r2c"), as.name("vcopy"))
 en_vcopy <- function(x) as.call(list(VCOPY.FUN.NAME, x=x))
 
 REC.FUN.NAME <- call("::", as.name("r2c"), as.name("rec"))
-en_rec <- function(x) as.call(list(REC.FUN.NAME, x=x))
+en_rec <- function(x, clean=FALSE) {
+  tmp <- as.call(list(REC.FUN.NAME, x=x))
+  if(clean) names(tmp) <- NULL  # recompose_ifelse uses en_rec, hence this option
+  tmp
+}
 
 # Inject vcopy Calls
 #

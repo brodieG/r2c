@@ -75,7 +75,7 @@ IF.SUB.SYM <- c("if_true", "if_false")
 # computations that happen in their arguments `for` is a bit tricky as it does
 # "compute" the counter value.
 PASSIVE.SYM <- unique(
-  c(ASSIGN.SYM, LOOP.SYM, "if", "{", "uplus", "r2c_if", IF.SUB.SYM)
+  c(ASSIGN.SYM, LOOP.SYM, "if", "{", "uplus", IF.SUB.SYM)
 )
 
 # For `record_call_dat`.

@@ -544,7 +544,9 @@ transform_ifelse <- function(x) {
 #
 # This is not a perferct reversal because we don't track if an `else numeric(0)`
 # was there originally or added by `transform_if_else`.  Additionally, we always
-# remove braces when they only contain one sub-call.
+# remove braces when they only contain one sub-call, and we don't check for
+# stray `r2c_if`s not paired with a corresonding `if_test` (which shouldn't
+# happen).
 #
 # This is NOT recursive as `clean_call` does the recursion.
 
@@ -553,30 +555,47 @@ recompose_ifelse <- function(x) {
     call.sym <- get_lang_name(x)
     if(call.sym == "{") {
       x.call <- vapply(x[-1L], is.call, TRUE)
-      x.call.name <- vapply(x[-1L][x.call], get_lang_name, "")
+      x.call.name <- c("", vapply(x[-1L][x.call], get_lang_name, ""))
       if.test <- which(x.call.name == "if_test")
-      if.branch <- which(x.call.name == "r2c_if")
-      if(length(if.test) != length(if.branch) || !all(if.test == if.branch - 1))
+      # Every if.test needs to be followed either by and `r2c_if`, or by an
+      # `rec(r2c_if)`
+      if(any(if.test == length(x.call.name)))
         stop("Internal Error, bad decomposed if call:\n", deparseLines(x))
 
+      is.rec <- FALSE
+      for(i in if.test) {
+        if(
+          x.call.name[i + 1L] != "r2c_if" && x.call.name[i + 1L] != "rec" &&
+          !is.call(x[[i + 1L]]) &&
+          (call.sym.2 <- get_lang_name(x[[i + 1L]])) != "r2c_if"
+        )
+          stop("Internal Error, bad decomposed if call 2:\n", deparseLines(x))
+        if(x.call.name[i + 1L] == "rec") {
+          is.rec <- TRUE
+          x[[i + 1L]] <- x[[i + 1L]][[2L]]
+        }
+      }
       # reconstruct call from end so indices don't change, +1L because `if.test`
       # is not counting the function slot
-      for(i in rev(if.test) + 1L) {
+      for(i in rev(if.test)) {
+        if.call <- call(
+          "if",
+          x[[i]][[2L]],                 # test
+          x[[i + 1L]][[c(2L, 2L)]],     # true
+          x[[i + 1L]][[c(3L, 2L)]]      # false
+        )
+        # Undo empty else (this might undo a legit numeric(0L))
+        if(identical(if.call[[3L]], numeric(0L))) if.call[[3L]] <- NULL
+
+        # Add back the `rec` around the entire if
+        if(is.rec) if.call <- en_rec(if.call, clean=TRUE)
         x <- as.call(
           c(
             if(i - 1L) as.list(x[seq_len(i - 1L)]),
-            list(
-              call(
-                "if",
-                x[[i]][[2L]],                 # test
-                x[[i + 1L]][[c(2L, 2L)]],     # true
-                x[[i + 1L]][[c(3L, 2L)]]      # false
-            ) ),
+            list(if.call),
             if(length(x) > i + 1L)
               as.list(x[seq(i + 2L, by=1L, length.out=length(x) - i - 1L)])
         ) )
-        # Undo empty else (this might undo a legit numeric(0L))
-        if(identical(x[[i]][[3L]], numeric(0L))) x[[i]][[3L]] <- NULL
       }
     }
     # Remove potentially uncessary braces
