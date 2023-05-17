@@ -205,7 +205,9 @@ pp_internal <- function(
     # allow it but it just seems dangerous.
     if(
       next.assign &&
-      !call.parent.name %in% c(ASSIGN.SYM, "{", IF.SUB.SYM, LOOP.SYM, "vcopy") &&
+      !call.parent.name %in% c(
+        ASSIGN.SYM, "{", IF.SUB.SYM, LOOP.SYM, "vcopy", "rec"
+      ) &&
       !is.null(call.parent)
     ) {
       call.dep <- deparse(clean_call(call))
