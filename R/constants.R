@@ -73,7 +73,9 @@ IF.SUB.SYM <- c("if_true", "if_false")
 
 # Calls that don't actually do any computing themselves, rather rely on
 # computations that happen in their arguments `for` is a bit tricky as it does
-# "compute" the counter value.
+# "compute" the counter value, and `r2c_if` also because it doesn't per-se
+# compute, but if the return value is used, it ensures that both of it's
+# branches either compute or `vcopy` that..
 PASSIVE.SYM <- unique(
   c(ASSIGN.SYM, LOOP.SYM, "if", "{", "uplus", IF.SUB.SYM)
 )

@@ -231,11 +231,12 @@ copy_branchdat_rec <- function(
     call.sym <- get_lang_name(x)
     call.assign <- call.sym %in% ASSIGN.SYM
     call.passive <- call.sym %in% PASSIVE.SYM
+    first.assign <- length(assign.to) == 0L && call.assign
 
     if(call.sym == 'r2c_if') {
       # New if/else context resets all local bindings
       data.next <- data
-      data.next[[B.LOC]] <- character()
+      data.next[[B.LOC]] <- data.next[[B.LOC.CMP]] <- character()
 
       # When branch result used, subsequent code needs to know it is branch.res.
       branch.res.next <- last || length(assign.to) || in.compute
@@ -309,7 +310,6 @@ copy_branchdat_rec <- function(
         data[['assigned.to']] <- assign.to
       }
     }
-    first.assign <- length(assign.to) == 0L && call.assign
     passive.now <- data[['passive']]  # add_actual changes passive status
     if(branch.res) {
       if(
@@ -324,7 +324,7 @@ copy_branchdat_rec <- function(
           data <- add_actual_callptr(data, index, rec=FALSE, copy=TRUE)
         }
       }
-    } else if (in.branch && first.assign && !passive.now) {
+    } else if (in.branch && !call.passive && length(assign.to)) {
       data <- add_candidate_callptr(
         data, index, triggers=data[['assigned.to']], rec=TRUE, copy=FALSE
       )
@@ -442,11 +442,15 @@ merge_copy_dat <- function(old, a, b, index) {
   old[['copy']] <- list(cand=copy.cand, act=copy.act)
 
   # Any symbols that were assigned to in the branches are no longer local
-  # in the parent expression.
+  # in the parent expression.  Because usage of the symbols will promote any
+  # associated candidates we can assume all locals become global computed.
   branch.all.new <- setdiff(union(a[[B.ALL]], b[[B.ALL]]), old[[B.ALL]])
   branch.loc <- union(a[[B.LOC]], b[[B.LOC]])
+  branch.loc.cmp <- union(a[[B.LOC.CMP]], b[[B.LOC.CMP]])
+  old[[B.ALL]] <- unique(c(old[[B.ALL]], branch.loc, branch.loc.cmp))
   old[[B.LOC]] <- setdiff(old[[B.LOC]], union(branch.all.new, branch.loc))
-  old[[B.ALL]] <- union(old[[B.ALL]], branch.all.new)
+  old[[B.LOC.CMP]] <-
+    setdiff(old[[B.LOC.CMP]], union(branch.all.new, branch.loc.cmp))
 
   old
 }
