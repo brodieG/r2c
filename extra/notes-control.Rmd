@@ -6,9 +6,149 @@
 * Branch return value:
   * Reconcile: all, including if truly last.
   * Copy: those bound to non-local memory.
-* Final value:
+* Final value (when not branch):
   * Copy: if bound to external memory.
 
+# Merging
+
+Branch or final result never generate candidates, only assignments do.
+
+We have:
+
+* Original candidates.
+* New candidates in each branch.
+  * Add assignment in opposite branch to match the symbol.
+* Promoted original candidates in each branch.
+  * Remove candidate from alternate branch so it doesn't get double promoted?
+    Shouldn't matter though.
+* Overwritten candidates in each branch.
+  * Should be okay?
+
+Seems like locality cannot include nested branches?  So any symbol that is
+re-assigned in a nested branch becomes non-local.  Also needs to be balanced.
+
+    if(a) {
+      x <- z
+      if(b) {
+        z <- x
+        x <- y
+        w <- mean(z)
+        w + x
+      } else {
+        # x <- vcopy(x)  # is this needed?  YES!! RESIST TEMPTATION.
+        mean(z)
+      }
+      x + w            # this should trigger
+    } else {
+      x <- mean(z)
+    }
+
+We need to be able to know if a symbol is branch local.  On branch exit, symbols
+that are branch local and are either computed or will become computed by virtue
+of `vcopy` can be considered global?  They can be if they are computed across
+all branches being merged.  So, first we decide if a symbol use needs to be
+`vcopy`'ed.  If it does, then we make it a candidate and it becomes branch
+local / computed.  Subsequent uses of it should not trigger it, but once we exit
+the branch, it should become global (b/c it will be if it is triggered).
+
+So basically, on merge, anything that was local in the branch becomes global.
+
+Is there such a thing as a non-computed local symbol for these purposes?
+Probably not.
+
+# Return Global Computed
+
+    x <- mean(z); y <- mean(w); if(a) x else y
+
+What about:
+
+    > pp3c <- r2c:::preprocess(call3c, optimize = TRUE)
+    > r2c:::clean_call(pp3c[["call.processed"]])
+    {
+        x <- y <- mean(x)
+        if (a)
+            r2c::rec(y <- x)
+        else r2c::rec(r2c::vcopy(y))
+    }
+
+This happened when trying to fix:
+
+    > r2c:::pp_clean(call3g3)
+    {
+        x <- if (a)
+            r2c::rec(y <- mean(z))
+        else numeric(0)
+        x
+    }
+
+Problem is ultimately we don't want to vcopy `mean(z)` when `y` is unused, but
+we do need to `vcopy(x)`.  The key is we need to add a
+
+If symbol used:
+
+    rec(vcopy(y <- rec(vcopy(x)))
+    rec(vcopy(x <- rec(mean(x))))
+
+If symbol unused:
+
+    rec(vcopy(y <- x))
+    rec(x <- mean(x))
+
+So use the following:
+
+* Actual `rec` on the outer call always.
+* If computed expression:
+  * Candidate `vcopy` on the outer call.
+  * Candidate `rec` on the inner call.
+* If non-local symbol:
+  * Actual `vcopy` on the outer call.
+  * Candidate `vcopy`/`rec` on the inner call.
+
+We care about:
+
+* Is it in branch.
+* Is it branch result.
+* Is it an assignment of a non-computed expression.
+* Is it an assignment of a computed expression.
+* Is it overall result.
+
+    if (a)
+      r2c::rec(r2c::vcopy(z))
+    else
+      r2c::rec(
+        if (if (b) r2c::rec(r2c::vcopy(x)) else r2c::rec(r2c::vcopy(y)))
+          r2c::rec(r2c::vcopy(w))
+        else
+          r2c::rec(r2c::vcopy(u))
+      )
+
+
+    {
+        y <- mean(w)
+        if (a)
+            r2c::rec(r2c::vcopy(z))
+        else r2c::rec(
+          if (b)
+            r2c::rec(
+              if (c) r2c::rec(r2c::vcopy(x))
+              else r2c::rec(r2c::vcopy(y))
+            )
+          else r2c::rec(r2c::vcopy(u))
+        )
+    }
+
+Again running into the issue that we need to distinguish between a local symbol
+that is a candidate and a local symbol that is computed.
+
+    if (a) r2c::rec(r2c::vcopy(z)) 
+    else {
+      if (
+        if (b) r2c::rec(r2c::vcopy(x))
+        else r2c::rec(r2c::vcopy(y))
+      )
+        r2c::rec(r2c::vcopy(w))
+      else r2c::rec(r2c::vcopy(u))
+    }
 
 # Symbol Tracking
 
@@ -22,6 +162,15 @@ Each linearized call entry can track its tree index too?
 
 How do we know the variable was used outside of current if/else though?  In the
 other preproc we know because we track the local symbols.
+
+    if(a) {
+      x <- z
+      y <- x
+      z <- mean(y)
+    }
+    x + y
+    y
+
 
 # Constraint Overview
 
@@ -912,7 +1061,7 @@ if(assignment && source.is.symbol) {
 
 * symbol pre-exists gets assigned in both branches
 * symbol pre-exists gets assigned in one branch
-  * 
+  *
 
   / doesn't
 * symbol gets assigned in both branches

@@ -114,9 +114,9 @@ unitizer_sect("Basic if/else", {
   call3a1 <- quote(if(a) {y <- x; y})
   r2c:::pp_clean(call3a1)
 
-  # Strictly this case does not require a vcopy of the `y`, but that relies on
-  # `y` being unused elsewhere and tracking that is complex so we force the
-  # vcopy anyway.
+  # Strictly this case does not require a vcopy of the `y`, but it is generally
+  # unsafe to try to reconcile non-branch local memory so we don't try to find
+  # the special cases where it is okay.
   call3b <- quote({
     y <- mean(x)
     if(a) x else y
@@ -124,7 +124,9 @@ unitizer_sect("Basic if/else", {
   pp3b <- r2c:::preprocess(call3b, optimize=TRUE)
   r2c:::clean_call(pp3b[['call.processed']])
 
-  # See 3b, copies not strictly necessary here but we do them anyway
+  # See 3b, copies not strictly necessary here but we do them anyway, but only
+  # not necessary because both `x` and `y` point to same memory so no harm in
+  # reconciling them.
   call3b1 <- quote({
     x <- y <- mean(x)
     if(a) x else y
@@ -140,7 +142,7 @@ unitizer_sect("Basic if/else", {
   pp3c <- r2c:::preprocess(call3c, optimize=TRUE)
   r2c:::clean_call(pp3c[['call.processed']])
 
-  # But potentially returned external always
+  # In this case it is not safe to not copy at all.
   call3c1 <- quote({
     x <- y <- mean(x)
     if(a) {y <- x; z} else y
@@ -148,8 +150,7 @@ unitizer_sect("Basic if/else", {
   pp3c1 <- r2c:::preprocess(call3c1, optimize=TRUE)
   r2c:::clean_call(pp3c1[['call.processed']])
 
-  # No copies because assigned to symbol unused after branch so we can rely on
-  # the return values that are safe.
+  # See 3b1
   call3c2 <- quote({
     x <- y <- mean(x)
     if(a) {y <- x; y} else y
@@ -157,7 +158,8 @@ unitizer_sect("Basic if/else", {
   pp3c2 <- r2c:::preprocess(call3c2, optimize=TRUE)
   r2c:::clean_call(pp3c2[['call.processed']])
 
-  # One copy for external symbol, none for `y` b/c unused after branch
+  # We must copy here as otherwise reconciliation would try to merge `mean(x)`
+  # and a copy of `x`.
   call3c2a <- quote({
     y <- mean(x)
     if(a) {y <- x; y} else y
@@ -165,7 +167,7 @@ unitizer_sect("Basic if/else", {
   pp3c2a <- r2c:::preprocess(call3c2a, optimize=TRUE)
   r2c:::clean_call(pp3c2a[['call.processed']])
 
-  # Copies because assigned symbol used after branch
+  # Test effect of using assigned symbol out of branch
   call3c2b <- quote({
     x <- y <- mean(x)
     if(a) {y <- x; y} else y
@@ -182,6 +184,14 @@ unitizer_sect("Basic if/else", {
   })
   pp3c3 <- r2c:::preprocess(call3c3, optimize=TRUE)
   r2c:::clean_call(pp3c3[['call.processed']])
+
+
+  # Triggering candidate should obviate need to copy return value
+  call3d0 <- quote({
+    if(a) y <- x
+    y
+  })
+  r2c:::pp_clean(call3d0)
 
   # Candidates reset due to re-assignment (only second vcopied).  Problem we
   # have here is that the the merge re-introduces old candidates if they were
@@ -222,7 +232,7 @@ unitizer_sect("Basic if/else", {
   })
   r2c:::pp_clean(call3e3)
   call3e4 <- quote({if(a) z <- x else z <- y; z})
-  r2c::pp_clean(call3e4)
+  r2c:::pp_clean(call3e4)
 
   # Example of why we can't re-use pre-if/else r2c allocations
   call3f1 <- quote({
@@ -236,7 +246,26 @@ unitizer_sect("Basic if/else", {
     }
     y + z
   })
-  # In this case we don't need to vcopy z
+  r2c:::pp_clean(call3f1)
+
+  # Copy `x` in the else branch because we use it outside te branch and we can't
+  # have two references to the same memory that needs to be reconciled.
+  call3f1a <- quote({
+    x <- mean(y)
+    if(a) {
+      y <- x
+    } else {
+      x <- mean(x)
+      z <- mean(y)
+      y <- x
+    }
+    y + z + x
+  })
+  r2c:::pp_clean(call3f1a)
+
+  # In this case we don't need to vcopy z, but we do need to `vcopy` both the
+  # return value for the branches, and the value being assigned (although
+  # strictly it doesn't matter in this case, but it could in others).
   call3f2 <- quote({
     x <- mean(y)
     z <- if(a) {
@@ -248,7 +277,7 @@ unitizer_sect("Basic if/else", {
     }
     y + z
   })
-  r2c:::pp_clean(call3f1)
+  r2c:::pp_clean(call3f2)
   # But here we do because it is returned
   call3f3 <- quote({
     x <- mean(y)
@@ -262,10 +291,38 @@ unitizer_sect("Basic if/else", {
     if(b) y else z
   })
   r2c:::pp_clean(call3f3)
+
+  # Assignment chain across `if` boundary
+  call3g1 <- quote({
+    x <- if(a) y <- z
+    x
+  })
+  r2c:::pp_clean(call3g1)
+
+  # Assignment chain across `if` boundary, no explicit return
+  call3g2 <- quote({
+    x <- if(a) y <- z
+  })
+  r2c:::pp_clean(call3g2)
+
+  # Assignment chain across `if` boundary, with computing assignment unused
+  call3f1 <- quote({
+    x <- if(a) y <- mean(z)
+    x
+  })
+  r2c:::pp_clean(call3f1)
+  # Assignment chain across `if` boundary, with computing assignment used
+  call3f2 <- quote({
+    x <- if(a) y <- mean(z)
+    x + y
+  })
+  r2c:::pp_clean(call3f2)
+
+
 })
 
-
 unitizer_sect("Nested", {
+  # Nesting in both test and body
   call4a <- quote({
     if(a) z
     else if (if(b) x else y) w
@@ -273,7 +330,7 @@ unitizer_sect("Nested", {
   })
   r2c:::pp_clean(call4a)
 
-  # Nesting that actually used vcopy
+  # Nesting in nested if.
   call4b <- quote({
     y <- mean(w)
     if(a) z
@@ -312,9 +369,23 @@ unitizer_sect("Nested", {
   })
   r2c:::pp_clean(call4d2)
 
+  # Non local bindings unused
+  call4d3 <- quote({
+    if(a) {
+      x <- mean(y)
+      if(b) x <- z
+    }
+    z
+  })
+  r2c:::pp_clean(call4d3)
+
+  # Nested binding expression used (but not actual binding)
+  call4e1 <- quote(mean(if(a) x <- z else y))
+  r2c:::pp_clean(call4e1)
+
 })
 unitizer_sect("Vcopy Branch Return", {
-  # `x <- mean(z)` requiers vcopy when symbol is used outside of local context
+  # `x <- mean(z)` requires vcopy when symbol is used outside of local context
   # as it cannot share an alloc with a branch return value.
   call5a1 <- quote({
     y <- if(a) {
@@ -326,6 +397,7 @@ unitizer_sect("Vcopy Branch Return", {
     x + y
   })
   r2c:::pp_clean(call5a1)
+  # Return external symbol in one of the branches that should be copied.
   call5a2 <- quote({
     y <- if(a) {
       x <- mean(y)
@@ -344,7 +416,7 @@ unitizer_sect("Vcopy Branch Return", {
     x + y
   })
   r2c:::pp_clean(call5b1)
-  # Neither branch needs to copy
+  # Neither branch needs to copy, and only need to reconcile return value
   call5b2 <- quote(
     if(a) x <- mean(y)
     else x <- mean(z)
@@ -352,12 +424,12 @@ unitizer_sect("Vcopy Branch Return", {
   r2c:::pp_clean(call5b2)
 
   # Shouldn't need copies b/c we don't use return value.
-  call5b2 <- quote({
+  call5b3 <- quote({
     if(a) x <- mean(y)
     else x <- mean(z)
     x
   })
-  r2c:::pp_clean(call5b2)
+  r2c:::pp_clean(call5b3)
 
   # Vcopy of required because last, not because of assignments
   call5b4 <- quote(

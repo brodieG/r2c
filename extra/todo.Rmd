@@ -21,6 +21,31 @@
 
 ## Current
 
+* Make sure that changing `r2c_if` to non-passive didn't mes something up.
+
+* Check that reconciliation is not attempting to reconcile non-branch-local
+  memory.  Only in-branch allocations are reconcilable, i.e. don't reconcile
+  these: `x <- mean(z); y <- mean(w); if(a) x else y` without additional
+  `vcopy`.
+
+* See if it is easy to implement that returning a computed global symbol from a
+  branch doesn't require copy if the symbol isn't used again elsewhere.  See
+  `call3b`.
+
+* Currently `if/else` with missing `else` use `numeric(0)` as a literal value
+  rather than language.  Need some mechanism for handling this, maybe actual
+  return a special symbol that can be bound to an empty numeric as part of the
+  early data?  This also relates to the general issue with not handling
+  literals.
+
+* `clean_call` should have additional levels to remove `vcopy` / `rec`.
+
+* Get rid of `data[['passive']]` if we end up not needing to auto-promote `last`
+  case in `first.assign` branch.
+
+* `copy_branchdat` still not correct because the final return value may also
+  need to be copied.
+
 * Local symbols are completely cleared by nested branches, but we only want to
   clear those symbols that are re-assigned.
 
