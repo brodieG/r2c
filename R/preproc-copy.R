@@ -307,7 +307,6 @@ copy_branchdat_rec <- function(
           data[[B.LOC]] <- union(data[[B.LOC]], tar.sym)
           data[[B.ALL]] <- setdiff(data[[B.ALL]], tar.sym)
         }
-        data[['assigned.to']] <- assign.to
       }
     }
     passive.now <- data[['passive']]  # add_actual changes passive status
@@ -318,7 +317,7 @@ copy_branchdat_rec <- function(
         data <- add_actual_callptr(data, index, rec=TRUE, copy=FALSE)
         if(first.assign && !passive.now) {
           data <- add_candidate_callptr(
-            data, index, triggers=data[['assigned.to']], rec=FALSE, copy=TRUE
+            data, index, triggers=assign.to, rec=FALSE, copy=TRUE
           )
         } else if (first.assign) {
           data <- add_actual_callptr(data, index, rec=FALSE, copy=TRUE)
@@ -326,7 +325,7 @@ copy_branchdat_rec <- function(
       }
     } else if (in.branch && !call.passive && length(assign.to)) {
       data <- add_candidate_callptr(
-        data, index, triggers=data[['assigned.to']], rec=TRUE, copy=FALSE
+        data, index, triggers=assign.to, rec=TRUE, copy=FALSE
       )
     }
   }
@@ -422,16 +421,19 @@ merge_copy_dat <- function(old, a, b, index) {
   # Track shared history to add back later.
   old.cand <- intersect(a[[CAND]], b[[CAND]])
 
-  # Find candidates added in one branch missing in the other to inject e.g.
-  # `x <- vcopy(x)` at start (hence 0L; so branch return value unchanged).
-  a.miss <- setdiff(names(b.cand), names(a.cand))
-  b.miss <- setdiff(names(a.cand), names(b.cand))
+  # Candidates or computed bindings in one branch missing in the other need to
+  # be balanced by injecting e.g.  `x <- vcopy(x)`
+  a.names <- c(names(a.cand), a[[B.LOC.CMP]], a[[B.LOC]])
+  b.names <- c(names(b.cand), b[[B.LOC.CMP]], b[[B.LOC]])
+  a.miss <- setdiff(b.names, a.names)
+  b.miss <- setdiff(a.names, b.names)
+  # Inject at start (hence 0L; so branch return value unchanged).
   a.miss.list <- gen_callptrs(a.miss, c(index, 2L, 0L), copy=TRUE, rec=TRUE)
   b.miss.list <- gen_callptrs(b.miss, c(index, 3L, 0L), copy=TRUE, rec=TRUE)
 
   # Recombine all the pieces into the new set of candidates
   copy.cand <- unique(
-    c(old.cand, a.cand, b.cand, a.miss.list, b.miss.list) )
+    c(old.cand, a.cand, b.cand, a.miss.list, b.miss.list))
 
   # Merge all promotions. Promotions irrevocable, so union is sufficient.
   copy.act <- unique(c(a[[ACT]], b[[ACT]], old[[ACT]]))
