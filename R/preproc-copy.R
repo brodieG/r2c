@@ -230,8 +230,12 @@ copy_branchdat_rec <- function(
     } else if (last) {
       # Last symbol in r2c exp referencing external symbol auto-promoted.
       # Outside of branch so reconciliation not required (`rec=FALSE`).
-      if(!sym.name %in% data[[B.ALL]])
+      if(!sym.name %in% c(data[[B.ALL]], data[[B.LOC.CMP]]))
         data <- add_actual_callptr(data, index, rec=FALSE)
+    } else if(length(assign.to) && sym.local.cmp) {
+      # Outside of branches, aliasing a locally computed symbol makes the others
+      # also locally computed.
+      data[[B.LOC.CMP]] <- union(data[[B.LOC.CMP]], assign.to)
     }
   } else if(is.call(x)) {
     # Recursion, except special handling for if/else and for assignments
@@ -310,9 +314,11 @@ copy_branchdat_rec <- function(
           data[[B.LOC.CMP]] <- union(data[[B.LOC.CMP]], tar.sym)
           data[[B.ALL]] <- union(data[[B.ALL]], tar.sym)
         } else {
-          # non-computing local expressions make global bindings non-global
           data[[B.LOC]] <- union(data[[B.LOC]], tar.sym)
-          data[[B.ALL]] <- setdiff(data[[B.ALL]], tar.sym)
+          if(in.branch) {
+            # non-computing local expressions make global bindings non-global
+            data[[B.ALL]] <- setdiff(data[[B.ALL]], tar.sym)
+          }
         }
       }
     }
