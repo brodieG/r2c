@@ -201,14 +201,35 @@ copy_branchdat_rec <- function(
 
     # Generate new candidates/actuals if warranted (see callptr docs).
     if(in.branch) {
-      if(branch.res) {
-        data <- add_actual_callptr(data, index, copy=TRUE, rec=TRUE)
-      } else if (length(assign.to)) {
-        # All non-local symbols being bound to other symbols are candidates
-        data <- add_candidate_callptr(
-          data, index, triggers=assign.to[length(assign.to)],
-          copy=TRUE, rec=TRUE
-        )
+      # Symbol re-binding in branches requires copies/reconciliations
+      if(length(assign.to)) {
+        if(sym.local.cmp) {
+          # Locally computed symbol doesn't require copy unless the symbol being
+          # assigned from is also used (notice `sym.name`).
+          data <- add_actual_callptr(data, index, copy=FALSE, rec=TRUE)
+          data <- add_candidate_callptr(
+            data, index, triggers=sym.name, copy=TRUE, rec=FALSE
+          )
+        } else {
+          # Non locals always require copy if the target symbol is used.
+          data <- add_candidate_callptr(
+            data, index, triggers=assign.to[length(assign.to)],
+            copy=TRUE, rec=TRUE
+          )
+        }
+      }
+      # Returning a symbol in a branch also requires copies/reconciliation,
+      # but when part of an assignment that is done at the call level.
+      if(branch.res && !length(assign.to)) {
+        if(!sym.local.cmp) {
+          data <- add_actual_callptr(data, index, copy=TRUE, rec=TRUE)
+        } else {
+          # Local bindings returned only need copies if used outside of branch
+          data <- add_actual_callptr(data, index, copy=FALSE, rec=TRUE)
+          data <- add_candidate_callptr(
+            data, index, triggers=sym.name, copy=TRUE, rec=FALSE
+          )
+        }
       }
     } else if (last) {
       # Last symbol in r2c exp referencing external symbol auto-promoted.
