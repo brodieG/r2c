@@ -326,12 +326,7 @@ copy_branchdat_rec <- function(
         !call.passive || call.assign || call.sym == 'r2c_if'
       ) {
         data <- add_actual_callptr(data, index, rec=TRUE, copy=FALSE)
-        if(!call.passive && length(assign.to)) {
-          data <- add_candidate_callptr(
-            data, index, triggers=assign.to[[length(assign.to)]],
-            rec=FALSE, copy=TRUE
-          )
-        } else if(first.assign) {
+        if(first.assign) {
           data <- add_actual_callptr(data, index, rec=FALSE, copy=TRUE)
         } else if(call.assign) {
           data <- add_candidate_callptr(
