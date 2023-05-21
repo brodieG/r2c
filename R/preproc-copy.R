@@ -202,22 +202,12 @@ copy_branchdat_rec <- function(
     # Generate new candidates/actuals if warranted (see callptr docs).
     if(in.branch) {
       if(branch.res) {
-        if(!length(assign.to) && !sym.local.cmp) {
-          # Auto-promote b/c branch result will be used
-          data <-
-            add_actual_callptr(data, index, copy=data[['passive']], rec=TRUE)
-        } else if(length(assign.to)) {
-          # If part of binding only promote if binding is used (see
-          # `if(call.assign) ...` in the call section which potentially adds
-          # a `vcopy` around the entire assignemnt expression).
-          data <- add_candidate_callptr(
-            data, index, triggers=assign.to, copy=data[['passive']], rec=TRUE
-          )
-        }
+        data <- add_actual_callptr(data, index, copy=TRUE, rec=TRUE)
       } else if (length(assign.to)) {
         # All non-local symbols being bound to other symbols are candidates
         data <- add_candidate_callptr(
-          data, index, triggers=assign.to, copy=!sym.local.cmp, rec=TRUE
+          data, index, triggers=assign.to[length(assign.to)],
+          copy=TRUE, rec=TRUE
         )
       }
     } else if (last) {
@@ -312,21 +302,33 @@ copy_branchdat_rec <- function(
     passive.now <- data[['passive']]  # add_actual changes passive status
     if(branch.res) {
       if(
-        !call.passive || first.assign || call.sym == 'r2c_if'
+        !call.passive || call.assign || call.sym == 'r2c_if'
       ) {
         data <- add_actual_callptr(data, index, rec=TRUE, copy=FALSE)
-        if(first.assign && !passive.now) {
+        if(!call.passive && length(assign.to)) {
           data <- add_candidate_callptr(
-            data, index, triggers=assign.to, rec=FALSE, copy=TRUE
+            data, index, triggers=assign.to[[length(assign.to)]],
+            rec=FALSE, copy=TRUE
           )
-        } else if (first.assign) {
+        } else if(first.assign) {
           data <- add_actual_callptr(data, index, rec=FALSE, copy=TRUE)
+        } else if(call.assign) {
+          data <- add_candidate_callptr(
+            data, triggers=tar.sym, index, rec=FALSE, copy=TRUE
+          )
         }
       }
-    } else if (in.branch && !call.passive && length(assign.to)) {
-      data <- add_candidate_callptr(
-        data, index, triggers=assign.to, rec=TRUE, copy=FALSE
-      )
+    } else if (in.branch) {
+      if(call.assign && !first.assign) {
+        data <- add_candidate_callptr(
+          data, index, triggers=tar.sym, rec=TRUE, copy=TRUE
+        )
+      } else if (!call.passive && length(assign.to)) {
+        data <- add_candidate_callptr(
+          data, index, triggers=assign.to[length(assign.to)], rec=TRUE,
+          copy=FALSE
+        )
+      }
     }
   }
   data
