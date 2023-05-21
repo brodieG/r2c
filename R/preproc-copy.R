@@ -195,10 +195,6 @@ copy_branchdat_rec <- function(
     data[[ACT]] <- c(data[[ACT]], cand.prom)
     data[[CAND]][cand.prom.i] <- NULL
 
-    # Symbol is passive unless we add an actual promotion (those set passive to
-    # FALSE), or it already is a local computed symbol
-    data[['passive']] <- !sym.local.cmp
-
     # Generate new candidates/actuals if warranted (see callptr docs).
     if(in.branch) {
       # Symbol re-binding in branches requires copies/reconciliations
@@ -322,15 +318,19 @@ copy_branchdat_rec <- function(
     }
     passive.now <- data[['passive']]  # add_actual changes passive status
     if(branch.res) {
-      if(
-        !call.passive || call.assign || call.sym == 'r2c_if'
-      ) {
+      if(!call.passive && !length(assign.to)) {
         data <- add_actual_callptr(data, index, rec=TRUE, copy=FALSE)
+      } else if (length(assign.to)) {
+        # Ideally we would do last.assign as it would be cleaner
         if(first.assign) {
-          data <- add_actual_callptr(data, index, rec=FALSE, copy=TRUE)
-        } else if(call.assign) {
+          data <- add_actual_callptr(data, index, rec=TRUE, copy=FALSE)
+          if(passive.now) {
+            data <- add_actual_callptr(data, index, rec=FALSE, copy=TRUE)
+          }
+        } else if (call.assign) {
+          # Always make candidates for multi-assignments
           data <- add_candidate_callptr(
-            data, triggers=tar.sym, index, rec=FALSE, copy=TRUE
+            data, triggers=tar.sym, index, rec=TRUE, copy=TRUE
           )
         }
       }
@@ -389,7 +389,7 @@ callptr <- function(name, index, rec=TRUE, copy=FALSE) {
 add_actual_callptr  <- function(data, index, rec=TRUE, copy=TRUE) {
   new.act <- callptr(NA_character_, index, copy=copy, rec=rec)
   data[[ACT]] <- c(data[[ACT]], list(new.act))
-  data[['passive']] <- FALSE
+  data[['passive']] <- !copy
   data
 }
 add_candidate_callptr <- function(data, index, triggers, rec=TRUE, copy=TRUE) {
