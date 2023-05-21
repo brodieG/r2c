@@ -324,14 +324,25 @@ copy_branchdat_rec <- function(
     }
     passive.now <- data[['passive']]  # add_actual changes passive status
     if(branch.res) {
-      if(!call.passive && !length(assign.to)) {
-        data <- add_actual_callptr(data, index, rec=TRUE, copy=FALSE)
+      if(!call.passive) {
+        if(!length(assign.to)) {
+          data <- add_actual_callptr(data, index, rec=TRUE, copy=FALSE)
+        } else {
+          data <- add_candidate_callptr(
+            data, index, triggers=assign.to[length(assign.to)],
+            rec=TRUE, copy=FALSE
+          )
+        }
       } else if (length(assign.to)) {
         # Ideally we would do last.assign as it would be cleaner
         if(first.assign) {
           data <- add_actual_callptr(data, index, rec=TRUE, copy=FALSE)
           if(passive.now) {
             data <- add_actual_callptr(data, index, rec=FALSE, copy=TRUE)
+          } else {
+            data <- add_candidate_callptr(
+              data, index, triggers=tar.sym, rec=FALSE, copy=TRUE
+            )
           }
         } else if (call.assign) {
           # Always make candidates for multi-assignments
