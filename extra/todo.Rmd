@@ -21,6 +21,12 @@
 
 ## Current
 
+* Check that a non-local symbol inside an active expression doesn't get copied
+  just by virtue of being last in a computing function that takes such symbol
+  last (e.g. `mean` doesn't because of `na.rm`, etc.).
+
+* Add multi-assign test for branch result.
+
 * Make sure that changing `r2c_if` to non-passive didn't mes something up.
 
 * Check that reconciliation is not attempting to reconcile non-branch-local

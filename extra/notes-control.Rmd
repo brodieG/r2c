@@ -9,6 +9,20 @@
 * Final value (when not branch):
   * Copy: if bound to external memory.
 
+What do we do about:
+
+    if(a) {
+      x <- mean(x)    # 1 -> 4 -> 5
+      y <- mean(y)    # 2      -> 5
+    } else {
+      x <- mean(z)    # 3 -> 4 -> 5
+      y <- x          # 3 -> 4 -> 5
+    }
+
+We can't just rebind a symbol without copying because one branch might point to
+the same memory, but another mightn't.  So each assignment, even when nesting, must
+generate a copy always.
+
 # Merging
 
 Branch or final result never generate candidates, only assignments do.
