@@ -23,6 +23,18 @@ We can't just rebind a symbol without copying because one branch might point to
 the same memory, but another mightn't.  So each assignment, even when nesting, must
 generate a copy always.
 
+    y <- if (a) {
+      x <- mean(z)
+      rec(vcopy(x))
+    }
+    y + x
+
+Current problem: need to recognize that a last value that is an alias to a local
+computed binding does not require a copy if it is not in a branch.  But we have
+no mechanism to track aliases to locally computed bindings.
+
+
+
 # Merging
 
 Branch or final result never generate candidates, only assignments do.
