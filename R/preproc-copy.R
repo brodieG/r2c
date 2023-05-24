@@ -162,6 +162,25 @@ B.ALL <- c('bind', 'all')
 # reconciliations required in a single `if/else` the allocator will pair up
 # allocations from context.
 #
+# @section Passive vs Computing:
+#
+# In:
+#
+#     if(a) mean(x)
+#     else y
+#
+# `mean(x)` is considered a computing call, where as `y` is passive.
+# Assignments are considered passive so `x <- y` is also passive.  So are
+# braces.
+#
+# Passiveness is weak, so if a sub-call returns a computed expression then the
+# entire expression becomes computed, e.g.:
+#
+#     x <- y <- mean(z)
+#
+# Is computed and not passive.  So is `{mean(x)}`, but `{mean(x); y}` is
+# considered passive.
+#
 # @param x call to process
 
 copy_branchdat <- function(x) {
@@ -256,6 +275,9 @@ copy_branchdat_rec <- function(
     data[[CAND]] <- clear_candidates(data[[CAND]], cand.prom.i)
 
     # Generate new candidates/actuals if warranted (see callptr docs).
+    # See also the end of the call processing section which also generates
+    # candidates.  The symbol and call candidate generation work together and
+    # interact, so any  changes to one need to be accounted for by the other.
     if(in.branch) {
       # Symbol re-binding in branches requires copies/reconciliations
       if(length(assign.to)) {
@@ -337,7 +359,7 @@ copy_branchdat_rec <- function(
       # Recurse on language subcomponents
       for(i in seq_along(x)[-rec.skip]) {
         if(is.language(x[[i]])) {
-          # assign.to is forwarded in passive calls
+          # assign.to is forwarded by passive calls
           next.last <- i == length(x) && call.passive
           assign.to.next <- if(!next.last) character() else assign.to
           data[['passive']] <- passive.now
@@ -381,21 +403,33 @@ copy_branchdat_rec <- function(
         }
       }
     }
-    passive.now <- data[['passive']]  # add_actual changes passive status
+    # add_actual changes passive status, so record current passive status
+    passive.now <- data[['passive']]
+    # For assignment calls, exclude the current symbol being bound to from being
+    # a trigger.
     trigger <- if(call.assign) assign.to[-length(assign.to)] else assign.to
 
+    # Candidate generation.  See also symbol level candidate generation at
+    # beginning of function.
     if(branch.res) {
-      # Add an outer vcopy/rec if required (e.g. `vcopy(x <- ...)`
+      # Current expression is branch result (or child thereof), and the result
+      # could be used (bound to a symbol, or part of another call, or returned).
+      # Distinction with `in.branch` is we might need an outer `vcopy` around
+      # the entire expression (e.g `vcopy(x <- ...)` instead of just
+      # `x <- vcopy(...)`
       if(!call.passive && !length(assign.to)) {
+        # No assignments so only need to reconcile (no copy)
         data <- add_actual_callptr(data, index, rec=TRUE, copy=FALSE)
       } else if (length(assign.to)) {
         if(first.assign) {
+          # Always need a reconcile (note not a candidate)
           data <- add_actual_callptr(data, index, rec=TRUE, copy=FALSE)
           if(passive.now) {
+            # Passive expressions must be vcopied always.
             data <- add_actual_callptr(data, index, rec=FALSE, copy=TRUE)
           } else {
-            # non-passive expression in assignment needs to be copied only if it
-            # is returned from branch and used.
+            # Computed expressions only require an outer vcopy if some of the
+            # inner assignments are used.
             data <- add_candidate_callptr(
               data, index, triggers=data[['assigned.to']], rec=FALSE, copy=TRUE
             )
@@ -408,6 +442,7 @@ copy_branchdat_rec <- function(
         }
       }
     } else if (in.branch) {
+      # not return value, but an assignment so need to reconcile
       if(call.assign && !first.assign) {
         data <- add_candidate_callptr(
           data, index, triggers=trigger, rec=TRUE, copy=TRUE
