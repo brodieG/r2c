@@ -257,14 +257,19 @@ copy_branchdat_rec <- function(
   data=list(
     bind=list(loc=character(), all=character(), loc.compute=character()),
     copy=list(cand=list(), act=list()),
-    passive=TRUE, assigned.to=character()
+    passive=TRUE, assigned.to=character(), leaf.name=""
   )
 ) {
+  sym.name <- get_lang_name(x)
+  call.assign <- first.assign <- leaf <- FALSE
+
   if (is.symbol(x)) {
-    sym.name <- as.character(x)
     sym.local.cmp <- sym.name %in% data[[B.LOC.CMP]]
     sym.local <- sym.name %in% data[[B.LOC]]
     sym.global <- sym.name %in% data[[B.ALL]]
+    passive <- !sym.local.cmp
+    leaf <- TRUE
+    data[['leaf.name']] <- sym.name
 
     # For symbols matching candidate(s): promote candidate if allowed.
     cand <- data[[CAND]]
@@ -274,58 +279,22 @@ copy_branchdat_rec <- function(
     data[[ACT]] <- c(data[[ACT]], cand[cand.prom.i])
     data[[CAND]] <- clear_candidates(data[[CAND]], cand.prom.i)
 
-    # Generate new candidates/actuals if warranted (see callptr docs).
-    # See also the end of the call processing section which also generates
-    # candidates.  The symbol and call candidate generation work together and
-    # interact, so any  changes to one need to be accounted for by the other.
-    if(in.branch) {
-      # Symbol re-binding in branches requires copies/reconciliations
-      if(length(assign.to)) {
-        if(sym.local.cmp) {
-          # Locally computed symbol doesn't require copy unless the symbol being
-          # assigned from is also used (notice `sym.name`).
-          data <- add_actual_callptr(data, index, copy=FALSE, rec=TRUE)
-          data <- add_candidate_callptr(
-            data, index, triggers=sym.name, copy=TRUE, rec=FALSE
-          )
-        } else {
-          # Non locals always require copy if the target symbol is used.
-          data <- add_candidate_callptr(
-            data, index, triggers=assign.to, copy=TRUE, rec=TRUE
-          )
-        }
-      }
-      # Returning a symbol in a branch also requires copies/reconciliation,
-      # but when part of an assignment that is done at the call level.
-      if(branch.res && !length(assign.to)) {
-        if(!sym.local.cmp) {
-          data <- add_actual_callptr(data, index, copy=TRUE, rec=TRUE)
-        } else {
-          # Local bindings returned only need copies if used outside of branch
-          data <- add_actual_callptr(data, index, copy=FALSE, rec=TRUE)
-          data <- add_candidate_callptr(
-            data, index, triggers=sym.name, copy=TRUE, rec=FALSE
-          )
-        }
-      }
-    } else if (last) {
-      # Last symbol in r2c exp referencing external symbol auto-promoted.
-      # Outside of branch so reconciliation not required (`rec=FALSE`).
-      if(!sym.name %in% c(data[[B.ALL]], data[[B.LOC.CMP]]))
-        data <- add_actual_callptr(data, index, rec=FALSE)
-    } else if(length(assign.to) && sym.local.cmp) {
+    if(!in.branch && length(assign.to) && sym.local.cmp) {
       # Outside of branches, aliasing a locally computed symbol makes the others
       # also locally computed.
       data[[B.LOC.CMP]] <- union(data[[B.LOC.CMP]], assign.to)
     }
   } else if(is.call(x)) {
     # Recursion, except special handling for if/else and for assignments
-    call.sym <- get_lang_name(x)
-    call.assign <- call.sym %in% ASSIGN.SYM
-    call.passive <- call.sym %in% PASSIVE.SYM
+    call.assign <- sym.name %in% ASSIGN.SYM
     first.assign <- length(assign.to) == 0L && call.assign
+    # `passive` is whether this single call is passive, `data[['passive']]`
+    # is whether all its sub-calls also return passively (and is only knowable
+    # after we've recursed through the expression)
+    passive <- sym.name %in% PASSIVE.SYM
+    leaf <- !passive # for candidacy purposes, computing calls are leaves
 
-    if(call.sym == 'r2c_if') {
+    if(sym.name == 'r2c_if') {
       # New if/else context resets all local bindings
       data.next <- data
       data.next[[B.LOC]] <- data.next[[B.LOC.CMP]] <- character()
@@ -352,7 +321,7 @@ copy_branchdat_rec <- function(
       passive.now <- data[['passive']] # pre-recursion passive status
       rec.skip <- 1L
       if(call.assign) {
-        tar.sym <- get_target_symbol(x, call.sym)
+        tar.sym <- get_target_symbol(x, sym.name)
         assign.to <- union(assign.to, tar.sym)
         rec.skip <- 1:2
       }
@@ -360,19 +329,19 @@ copy_branchdat_rec <- function(
       for(i in seq_along(x)[-rec.skip]) {
         if(is.language(x[[i]])) {
           # assign.to is forwarded by passive calls
-          next.last <- i == length(x) && call.passive
+          next.last <- i == length(x) && passive
           assign.to.next <- if(!next.last) character() else assign.to
           data[['passive']] <- passive.now
           data <- copy_branchdat_rec(
             x[[i]], index=c(index, i),
             assign.to=assign.to.next, last=last && next.last,
             branch.res=branch.res && next.last,
-            in.compute=in.compute || !call.passive,
+            in.compute=in.compute || !passive,
             in.branch=in.branch,
             data=data
           )
       } }
-      data[['passive']] <- call.passive && data[['passive']]
+      data[['passive']] <- passive && data[['passive']]
 
       if(call.assign) {
         # Any prior candidates bound to this symbol are voided by the new
@@ -403,56 +372,60 @@ copy_branchdat_rec <- function(
         }
       }
     }
-    # add_actual changes passive status, so record current passive status
-    passive.now <- data[['passive']]
-    # For assignment calls, exclude the current symbol being bound to from being
-    # a trigger.
-    trigger <- if(call.assign) assign.to[-length(assign.to)] else assign.to
+  }
+  # add_actual sets data[['passive']], so save value. data[['passive']] is
+  # for all sub-calls, not just outer call (unlike `passive`).
+  passive.now <- data[['passive']]
+  # Several branches share the same trigger condition.
+  trigger <-
+    if(call.assign) assign.to[-length(assign.to)]
+    else c(assign.to, if(is.symbol(x)) sym.name)
 
-    # Candidate generation.  See also symbol level candidate generation at
-    # beginning of function.
-    if(branch.res) {
-      # Current expression is branch result (or child thereof), and the result
-      # could be used (bound to a symbol, or part of another call, or returned).
-      # Distinction with `in.branch` is we might need an outer `vcopy` around
-      # the entire expression (e.g `vcopy(x <- ...)` instead of just
-      # `x <- vcopy(...)`
-      if(!call.passive && !length(assign.to)) {
-        # No assignments so only need to reconcile (no copy)
+  # Candidate generation.  See also symbol level candidate generation at
+  # beginning of function.
+  if(branch.res) {
+    # Current expression is branch result (or child thereof), and the result
+    # could be used (bound to a symbol, or part of another call, or returned).
+    # Distinction with `in.branch` is we might need an outer `vcopy` around
+    # the entire expression (e.g `vcopy(x <- ...)` instead of just
+    # `x <- vcopy(...)`
+    if(leaf && !length(assign.to)) {
+      # No assignments so only one layer of reconcile/vcopy
+      data <- add_actual_callptr(data, index, rec=TRUE, copy=passive)
+    } else if (length(assign.to)) {
+      if(first.assign) {
+        # Always need a reconcile (note not a candidate)
         data <- add_actual_callptr(data, index, rec=TRUE, copy=FALSE)
-      } else if (length(assign.to)) {
-        if(first.assign) {
-          # Always need a reconcile (note not a candidate)
-          data <- add_actual_callptr(data, index, rec=TRUE, copy=FALSE)
-          if(passive.now) {
-            # Passive expressions must be vcopied always.
-            data <- add_actual_callptr(data, index, rec=FALSE, copy=TRUE)
-          } else {
-            # Computed expressions only require an outer vcopy if some of the
-            # inner assignments are used.
-            data <- add_candidate_callptr(
-              data, index, triggers=data[['assigned.to']], rec=FALSE, copy=TRUE
-            )
-          }
-        } else if (call.assign || !call.passive) {
-          # Always make candidates for multi-assignments
+        if(passive.now) {
+          # Passive expressions must be vcopied always.
+          data <- add_actual_callptr(data, index, rec=FALSE, copy=TRUE)
+        } else {
+          # Computed expressions only require an outer vcopy if symbols they are
+          # bound to are used.
           data <- add_candidate_callptr(
-            data, triggers=trigger, index, rec=TRUE, copy=call.passive
+            data, index, triggers=data[['assigned.to']], rec=FALSE, copy=TRUE
           )
         }
-      }
-    } else if (in.branch) {
-      # not return value, but an assignment so need to reconcile
-      if(call.assign && !first.assign) {
+      } else if (call.assign || leaf) {
+        # Always make candidates for multi-assignments
         data <- add_candidate_callptr(
-          data, index, triggers=trigger, rec=TRUE, copy=TRUE
-        )
-      } else if(!call.passive && length(assign.to)) {
-        data <- add_candidate_callptr(
-          data, index, triggers=trigger, rec=TRUE, copy=FALSE
+          data, triggers=trigger, index, rec=TRUE, copy=passive
         )
       }
     }
+  } else if (in.branch) {
+    # not return value, but an assignment so need to reconcile
+    if((call.assign && !first.assign) || leaf && length(assign.to)) {
+      data <- add_candidate_callptr(
+        data, index, triggers=trigger, rec=TRUE, copy=passive
+      )
+    }
+  } else if (last) {
+    computed.sym <- c(data[[B.ALL]], data[[B.LOC.CMP]])
+    assign.passive <- !data[['leaf.name']] %in% computed.sym
+    sym.passive <- is.symbol(x) && !sym.name %in% computed.sym
+    if((first.assign && passive.now && assign.passive) || sym.passive)
+      data <- add_actual_callptr(data, index, rec=FALSE)
   }
   data[['assigned.to']] <- assign.to
   data
@@ -492,6 +465,9 @@ copy_branchdat_rec <- function(
 #   expression.
 
 callptr <- function(name, index, rec=TRUE, copy=FALSE) {
+  # If the entire expression needs to be wrapped, the index is zero length.  We
+  # deal with that special case by setting an index of 0L
+  if(!length(index)) index <- 0L
   list(name=name, index=index, rec=rec, copy=copy)
 }
 add_actual_callptr  <- function(data, index, rec=TRUE, copy=TRUE) {
@@ -536,7 +512,6 @@ clear_candidates <- function(cand, ii) {
   }
   cand[!to.clear]
 }
-
 # Compare Two `callptr` Indices
 #
 # TRUE if the index a points to `a` position later in the tree than `b` in a
@@ -648,7 +623,10 @@ inject_rec_and_copy <- function(x, promoted) {
     # by tree modifications ahead of them (which could happen if we have nested
     # vcopies such as `vcopy(y <- vcopy(x))` at end of branch).
     for(i in promoted[rev(indices.order)]) {
-      if(i[["index"]][length(i[["index"]])]) {
+      if(identical(i[["index"]], 0L)) {
+        # Special case, wrap entire expression in vcopy
+        if(i[['copy']]) x <- en_vcopy(x)
+      } else if(i[["index"]][length(i[["index"]])]) {
         # Trailing index not zero, so wrap a symbol/call in vcopy if needed
         if(i[['copy']]) x[[i[["index"]]]] <- en_vcopy(x[[i[["index"]]]])
       } else {
@@ -670,7 +648,10 @@ inject_rec_and_copy <- function(x, promoted) {
         # update index to point to new `vcopy` for potential `rec` next
         i[["index"]] <- c(par.idx, 2L, 2L, 3L)
       }
-      if(i[['rec']]) x[[i[["index"]]]] <- en_rec(x[[i[["index"]]]])
+      if(i[['rec']]) {
+        if(identical(i[["index"]], 0L)) x <- en_rec(x)
+        else x[[i[["index"]]]] <- en_rec(x[[i[["index"]]]])
+      }
     }
   }
   x
