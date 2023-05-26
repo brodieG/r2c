@@ -10,6 +10,13 @@
 
 ## Done
 
+### v0.4.0
+
+#### To Test
+
+* `if` without `else`:
+  * Also cases where all `if` written symbols pre-exist, and where some don't.
+
 ### v0.3.0
 
 * Switch `noop` to be flags the control whether the call is issued, whether the

@@ -1,3 +1,40 @@
+# Passive vs Not and Chains
+
+## As a return value
+
+    x <- y <- mean(x)
+
+If either `x` or `y` are used, we need the entire outer expression copied.  That
+means we need to know at the `first.assign` level all the symbols the expression
+was assigned to.
+
+If only one of `x` or `y` is used, we don't need the first inner expression to
+be copied, but if both are we do.  However, we don't implement complex triggers
+that e.g. are only met when all names are triggered.  And it likely gets way
+more complex as there are more bindings, and the interactions of them.
+
+If neither `x` or `y` are used, then we just need a reconcile on the outside.
+
+Vs.
+
+    x <- y <- z
+
+The same as above, except we always need to copy the outside.
+
+## As a `in.branch` (but not return):
+
+    w <- x <- y <- mean(x)
+
+* Copy `y <- mean(x)` if `x` or `w` used.
+* Copy `x <- y <- mean(x)` if `w` used.
+
+    w <- x <- y <- z
+
+* Copy `y <- z` if `x` or `w` used.
+* Copy `x <- y <- z` if `w` used.
+* Copy `z` if `w`, `x` or `y` used and `z` is non-local-computed.
+* Copy `z` if `z` is local comp but used outside.
+
 # Reconcile
 
 * Any symbols bound in branches used after that branch:

@@ -16,14 +16,11 @@
 unitizer_sect("Basic Symbol Copy", {
   # External symbol
   call1a <- quote(x)
-  pp1a <- r2c:::preprocess(call1a, optimize=TRUE)
-  r2c:::clean_call(pp1a[['call.processed']])
+  r2c:::pp_clean(call1a)
 
   # External symbol
   call1a1 <- quote(x <- x)
-  pp1a1 <- r2c:::preprocess(call1a1, optimize=TRUE)
-  r2c:::clean_call(pp1a1[['call.processed']])
-
+  r2c:::pp_clean(call1a1)
   r2c:::pp_clean(quote({x}))
 
   # No vcopy because used in non-passive call
@@ -31,88 +28,80 @@ unitizer_sect("Basic Symbol Copy", {
 
   # Rebound external symbol
   call1b <- quote({z <- x; x})
-  pp1b <- r2c:::preprocess(call1b, optimize=TRUE)
-  r2c:::clean_call(pp1b[['call.processed']])
+  r2c:::pp_clean(call1b)
 
   call1c <- quote({z <- x; z})
-  pp1c <- r2c:::preprocess(call1c, optimize=TRUE)
-  r2c:::clean_call(pp1c[['call.processed']])
+  r2c:::pp_clean(call1c)
 
   # Rebound external not returned
   call1c1 <- quote({z <- x; y})
-  pp1c1 <- r2c:::preprocess(call1c1, optimize=TRUE)
-  r2c:::clean_call(pp1c1[['call.processed']])
+  r2c:::pp_clean(call1c1)
 
   # Multiple bindings
   call1d <- quote({z <- y <- x; z})
-  pp1d <- r2c:::preprocess(call1d, optimize=TRUE)
-  r2c:::clean_call(pp1d[['call.processed']])
+  r2c:::pp_clean(call1d)
 
   # Overwritten binding is not vcopyied (i.e. don't vcopy y)
   r2c:::pp_clean(quote({z <- y; z <- x; z}))
 
   # Nested passive
   call1e <- quote({z <- {y <- x}; x})
-  pp1e <- r2c:::preprocess(call1e, optimize=TRUE)
-  r2c:::clean_call(pp1e[['call.processed']])
+  r2c:::pp_clean(call1e)
 
   call1e1 <- quote({z <- {y <- x}; z})
-  pp1e1 <- r2c:::preprocess(call1e1, optimize=TRUE)
-  r2c:::clean_call(pp1e1[['call.processed']])
+  r2c:::pp_clean(call1e1)
 
   call1e2 <- quote({z <- {w; y <- x}; z})
-  pp1e2 <- r2c:::preprocess(call1e2, optimize=TRUE)
-  r2c:::clean_call(pp1e2[['call.processed']])
+  r2c:::pp_clean(call1e2)
 
   call1e3 <- quote({z <- {w; y <- x}; w})
-  pp1e3 <- r2c:::preprocess(call1e3, optimize=TRUE)
-  r2c:::clean_call(pp1e3[['call.processed']])
+  r2c:::pp_clean(call1e3)
 })
 unitizer_sect("Detect Computed Val Return", {
   call2a <- quote(mean(x))
-  pp2a <- r2c:::preprocess(call2a, optimize=TRUE)
-  r2c:::clean_call(pp2a[['call.processed']])
+  r2c:::pp_clean(call2a)
 
   call2b <- quote(x <- mean(x))
-  pp2b <- r2c:::preprocess(call2b, optimize=TRUE)
-  r2c:::clean_call(pp2b[['call.processed']])
+  r2c:::pp_clean(call2b)
 
   call2c <- quote({x <- mean(x); x})
-  pp2c <- r2c:::preprocess(call2c, optimize=TRUE)
-  r2c:::clean_call(pp2c[['call.processed']])
+  r2c:::pp_clean(call2c)
 
   call2d <- quote({y <- mean(x); y})
-  pp2d <- r2c:::preprocess(call2d, optimize=TRUE)
-  r2c:::clean_call(pp2d[['call.processed']])
+  r2c:::pp_clean(call2d)
 
   call2e <- quote({y <- mean(x); {z <- y}})
-  pp2e <- r2c:::preprocess(call2e, optimize=TRUE)
-  r2c:::clean_call(pp2e[['call.processed']])
+  r2c:::pp_clean(call2e)
 
   # Passive/Assign chains work correctly
   call2f <- quote({
     x <- {y <- mean(x); z}
     y <- x
   })
-  pp2f <- r2c:::preprocess(call2f, optimize=TRUE)
-  r2c:::clean_call(pp2f[['call.processed']])
+  r2c:::pp_clean(call2f)
 
   # redundant vcopy gets cleaned up
   call2g <- quote({
     x <- {y <- mean(x); y}
     y <- x
   })
-  pp2g <- r2c:::preprocess(call2g, optimize=TRUE)
-  r2c:::clean_call(pp2g[['call.processed']])
+  r2c:::pp_clean(call2g)
+
+  # Don't copy external symbol nested in computing expression
+  call2h <- quote(-x)
+  r2c:::pp_clean(call2h)
 })
 unitizer_sect("Basic if/else", {
   call3a <- quote(if(a) x else y)
-  pp3a <- r2c:::preprocess(call3a, optimize=TRUE)
-  r2c:::clean_call(pp3a[['call.processed']])
+  r2c:::pp_clean(call3a)
 
   # No need for `y <- vcopy(y)`
   call3a1 <- quote(if(a) {y <- x; y})
   r2c:::pp_clean(call3a1)
+
+  # Don't copy external symbol nested in computing expression
+  call3a2 <- quote(if(a) -x)
+  r2c:::pp_clean(call3a2)
 
   # Strictly this case does not require a vcopy of the `y`, but it is generally
   # unsafe to try to reconcile non-branch local memory so we don't try to find
@@ -121,8 +110,7 @@ unitizer_sect("Basic if/else", {
     y <- mean(x)
     if(a) x else y
   })
-  pp3b <- r2c:::preprocess(call3b, optimize=TRUE)
-  r2c:::clean_call(pp3b[['call.processed']])
+  r2c:::pp_clean(call3b)
 
   # See 3b, copies not strictly necessary here but we do them anyway, but only
   # not necessary because both `x` and `y` point to same memory so no harm in
@@ -131,32 +119,28 @@ unitizer_sect("Basic if/else", {
     x <- y <- mean(x)
     if(a) x else y
   })
-  pp3b1 <- r2c:::preprocess(call3b1, optimize=TRUE)
-  r2c:::clean_call(pp3b1[['call.processed']])
+  r2c:::pp_clean(call3b1)
 
   # Again lean cautious and always copy things being returned if not local
   call3c <- quote({
     x <- y <- mean(x)
     if(a) y <- x else y
   })
-  pp3c <- r2c:::preprocess(call3c, optimize=TRUE)
-  r2c:::clean_call(pp3c[['call.processed']])
+  r2c:::pp_clean(call3c)
 
   # In this case it is not safe to not copy at all.
   call3c1 <- quote({
     x <- y <- mean(x)
     if(a) {y <- x; z} else y
   })
-  pp3c1 <- r2c:::preprocess(call3c1, optimize=TRUE)
-  r2c:::clean_call(pp3c1[['call.processed']])
+  r2c:::pp_clean(call3c1)
 
   # See 3b1
   call3c2 <- quote({
     x <- y <- mean(x)
     if(a) {y <- x; y} else y
   })
-  pp3c2 <- r2c:::preprocess(call3c2, optimize=TRUE)
-  r2c:::clean_call(pp3c2[['call.processed']])
+  r2c:::pp_clean(call3c2)
 
   # We must copy here as otherwise reconciliation would try to merge `mean(x)`
   # and a copy of `x`.
@@ -164,8 +148,7 @@ unitizer_sect("Basic if/else", {
     y <- mean(x)
     if(a) {y <- x; y} else y
   })
-  pp3c2a <- r2c:::preprocess(call3c2a, optimize=TRUE)
-  r2c:::clean_call(pp3c2a[['call.processed']])
+  r2c:::pp_clean(call3c2a)
 
   # Test effect of using assigned symbol out of branch
   call3c2b <- quote({
@@ -173,8 +156,7 @@ unitizer_sect("Basic if/else", {
     if(a) {y <- x; y} else y
     y
   })
-  pp3c2b <- r2c:::preprocess(call3c2b, optimize=TRUE)
-  r2c:::clean_call(pp3c2b[['call.processed']])
+  r2c:::pp_clean(call3c2b)
 
   # Copies (included added to else) because rebound symbol is used
   call3c3 <- quote({
@@ -182,8 +164,7 @@ unitizer_sect("Basic if/else", {
     if(a) {y <- x; z} else z
     y
   })
-  pp3c3 <- r2c:::preprocess(call3c3, optimize=TRUE)
-  r2c:::clean_call(pp3c3[['call.processed']])
+  r2c:::pp_clean(call3c3)
 
 
   # Triggering candidate should obviate need to copy return value
@@ -220,7 +201,6 @@ unitizer_sect("Basic if/else", {
   r2c:::pp_clean(call3e2)
 
   # Don't balance symbols assigned in both branches
-
   call3e3 <- quote({
     x <- mean(z)
     if(a) x <- mean(w) else x <- mean(u)
@@ -308,17 +288,17 @@ unitizer_sect("Basic if/else", {
   r2c:::pp_clean(call3g2)
 
   # Assignment chain across `if` boundary, with computing assignment unused
-  call3f1 <- quote({
+  call3h1 <- quote({
     x <- if(a) y <- mean(z)
     x
   })
-  r2c:::pp_clean(call3f1)
+  r2c:::pp_clean(call3h1)
   # Assignment chain across `if` boundary, with computing assignment used
-  call3f2 <- quote({
+  call3h2 <- quote({
     x <- if(a) y <- mean(z)
     x + y
   })
-  r2c:::pp_clean(call3f2)
+  r2c:::pp_clean(call3h2)
 
 
 })
@@ -471,9 +451,9 @@ unitizer_sect('multi-assign', {
   })
   r2c:::pp_clean(call6a1)
 
-  # We don't use `u`, so don't need outermost rec/copy
+  # Don't use if/else result, so no need for outer rec/vcopy
   call6a2 <- quote({
-    u <- if(a) {
+    if(a) {
       x <- y <- mean(z)
     } else {
       x <- y <- w
@@ -482,8 +462,9 @@ unitizer_sect('multi-assign', {
   })
   r2c:::pp_clean(call6a2)
 
-  # Don't use `y`, so skip intermediate rec/copy
-  call6a3 <- quote({
+  # We don't use `y`, but we still do intermediate recs because logic to
+  # recognize when we can skip it is too complicated
+  call6a3a <- quote({
     u <- if(a) {
       x <- y <- mean(z)
     } else {
@@ -491,5 +472,28 @@ unitizer_sect('multi-assign', {
     }
     u + x + w
   })
-  r2c:::pp_clean(call6a3)
+  r2c:::pp_clean(call6a3a)
+  # Here we should be able to skip one of the rec/vcopys
+  call6a3b <- quote({
+    u <- if(a) {
+      x <- y <- mean(z)
+    } else {
+      x <- y <- w
+    }
+    u + y + w
+  })
+  r2c:::pp_clean(call6a3b)
+
+  # Multi-assign but not in branch result
+  call6b1 <- quote({
+    u <- if(a) {
+      x <- y <- mean(z)
+      x
+    } else {
+      x <- y <- v <- w
+      v
+    }
+    u + x + y + w
+  })
+  r2c:::pp_clean(call6b1)
 })
