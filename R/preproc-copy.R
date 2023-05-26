@@ -36,32 +36,102 @@ B.ALL <- c('bind', 'all')
 # Copy Branch Data
 #
 # `r2c` operates by analyzing an expression and pre-determining memory required
-# for each sub-computation in the expression.  Sub-computations take as inputs
-# pointers to the the results of prior computations, and write results to the
-# memory location pointed out by the result pointer.  Normally this is a
-# straightforward depth-first compute / reduce pattern, but it is substantially
-# complicated by:
+# for each sub-computation in the expression.  Temporary vectors are then
+# allocated to accomdate each sub-computation.  Different sub-computations may
+# use the same temporary allocation if their results are not required to exist
+# concurrently.
 #
-# 1. Presence of external memory references and non-computing expressions.
-# 2. Branches, and bindings in branches (e.g. `x <- mean(y)`).
+# Sub-computations take as inputs pointers to the temporary memory that
+# child sub-computations wrote their results to, as well as a pointer to a
+# temporary memory location to write its result to.  E.g in:
+#
+#     x + (y * z)
+#
+# Conceptually `r2c` could generates code as follows, where x, y, z, tmp1, tmp2,
+# and result are all pointers to doubles:
+#
+#     # Run once at allocation time (assuming all vectors same size)
+#     alloc(tmp1, sizeof(<iteration-vec>))
+#     alloc(tmp2, sizeof(<iteration-vec>))
+#     alloc(result, sizeof(<full-result-vec>))
+#
+#     # Each iteration
+#     mult(y, z, tmp1)                      # y * z -> tmp1
+#     add(x, tmp1, tmp2)                    # x + tmp1 -> tmp2
+#     # copy tmp2 to correct spot in result vector
+#     copy(result + iteration_offset, tmp2)
+#
+# But instead, for efficiency, `r2c` aliases `tmp2` to the result vector.  This
+# saves the copy each iteration:
+#
+#     # Run once at allocation time
+#     alloc(tmp1, sizeof(y * z))
+#     alloc(result, sizeof(<precomputed-full-result-size>))
+#
+#     # Each Iteration
+#     tmp2 = result + iteration_offset
+#     mult(y, z, tmp1)
+#     add(x, tmp1, tmp2)   # this writes directly to result
+#
+# In order for the aliasing to work it must be the case that e.g. `tmp2` can be
+# treated like any other temporary allocation.  It must be writeable, and it
+# has to be available to hold other intermediate calculations as any temporary
+# allocation would be.  Normally this is a straightforward in a depth-first
+# compute / reduce pattern, but it is complicated by:
+#
+# * External memory references.
+# * Non-computing expressions.
+# * Branches, and bindings in branches (e.g. `if(a) x <- mean(y)`).
 #
 # @section External Memory References:
 #
-# Normally we just redirect the write of the final expression to to the result
-# vector.  But the way this is done effectively assumes that the location of the
-# final result is read-write `r2c` allocated memory.  This will not be the case
-# if the final result is just a symbol referencing iteration or external data.
-# To allow this embeded assumption to be true, we inject a copy command.  E.g.
-# the expression (this would be the entire r2c expression):
+# External memory references are symbols that resolve to memory allocated
+# outside of `r2c`, either those bound to the iteration varying data, or to the
+# enclosing environment chain.  We have a problem when the result of an `r2c`
+# expression is such a value, e.g. one that simply returns such
+# an external reference:
 #
 #    x  # return whatever is bound to `x`
+#
+# In this case `x` would be external memory we cannot modify that needs to be
+# explicitly copied into the result, as opposed to implicitly copied by a
+# computing expression.  To allow this type of return value we inject copy calls
+# into the expression, such that:
+#
+#    x
 #
 # Becomes:
 #
 #    vcopy(x)
 #
-# The user-visible semantics are unchanged, but now the embeded assumption is
-# valid.
+# The user-visible semantics are unchanged, but now the R expression is
+# compatible with our result aliasing strategy.
+#
+# @section Passive vs Computing:
+#
+# In the prior example, `x` is a non-computing expression (a.k.a passive)
+# because the return value of the expression is the same memory as the input.
+# Other example are:
+#
+#     x <- y
+#     x <- {y; z}
+#
+# In contrast:
+#
+#     mean(x)
+#
+# Is a computing (non-passive) expression because it's result will be in
+# new `r2c` allocated memory.  A bit more complicated:
+#
+#     x <- {z <- mean(y); u}
+#
+# This is considered passive because the return value of `{` is `u`.  So it's
+# possible for a passive expression to contain a computed expression so long as
+# the computed expression is not returned.  Passiveness is weak, so if a
+# sub-call returns a computed expression then the entire expression becomes
+# computed, e.g. the following is computed:
+#
+#     x <- y <- mean(z)
 #
 # @section Branches
 #
@@ -70,15 +140,14 @@ B.ALL <- c('bind', 'all')
 # branches.  This allows subsequent references to that symbol to work
 # irrespective of branch taken at run time.  This is accomplished at allocation
 # time by first processing the call as if the branches are just sequential, but
-# then remapping the allocations across the branches to a shared allocations.
-# Subsequent accesses will then read from the shared location.  For the
-# remapping to be possible the allocations bound to each symbol across must have
-# been written to in the branch (i.e. be branch local).  If this does not happen
-# naturally it can be forced by injecting a `vcopy`.
+# then remapping the allocations across the branches bound to the same symbol to
+# a shared allocation.  Subsequent accesses will then read from the shared
+# allocation.  For the remapping to be possible the allocations bound to each
+# symbol must have been written to in the branch (i.e. be branch local).
+# If this does not happen naturally it can be forced by injecting a `vcopy`.
 #
-# The same remapping happens with the branch return value.  Substantial
-# complexity is added by the possibility of an assignment also being a return
-# value, e.g. `if(a) x <- y`.
+# The same remapping happens with the branch return value.  It is possible for
+# an assignment to also be a return value, e.g. `if(a) x <- y`.
 #
 # Consider:
 #
@@ -108,7 +177,7 @@ B.ALL <- c('bind', 'all')
 #    x <- mean(y)    # original `x` alloc, it is r2c local
 #    if(a) {
 #      x <- x + 1    # new `x` alloc, frees original `x` alloc
-#      z <- mean(x)  # potentially uses the original `x` alloc
+#      z <- mean(x)  # `z` could be written to the original `x` alloc
 #    } else {
 #      z <- x
 #    }
@@ -141,12 +210,12 @@ B.ALL <- c('bind', 'all')
 #
 # @section Vcopy vs Rec:
 #
-# The actual implementation of the call processing will inject `vcopy` calls
-# where necessary, and will also inject `rec` calls.  The `rec` call is a marker
-# that tells the allocator the expression in question needs to be reconciled
-# across branches (i.e. the pair of expressions need to write to the same
-# memory).  This is needed because some expressions that need to be reconciled
-# don't need to be copied.  So e.g. our earlier example:
+# The implementation of the call processing will inject `vcopy` calls where
+# necessary, and will also inject `rec` calls.  The `rec` call is a marker that
+# tells the allocator the expression in question needs to be reconciled across
+# branches (i.e. the pair of expressions need to write to the same memory).
+# This is needed because some expressions that need to be reconciled don't need
+# to be copied.  So e.g. our earlier example:
 #
 #     if(a) mean(x)
 #     else y
@@ -162,25 +231,7 @@ B.ALL <- c('bind', 'all')
 # reconciliations required in a single `if/else` the allocator will pair up
 # allocations from context.
 #
-# @section Passive vs Computing:
-#
-# In:
-#
-#     if(a) mean(x)
-#     else y
-#
-# `mean(x)` is considered a computing call, where as `y` is passive.
-# Assignments are considered passive so `x <- y` is also passive.  So are
-# braces.
-#
-# Passiveness is weak, so if a sub-call returns a computed expression then the
-# entire expression becomes computed, e.g.:
-#
-#     x <- y <- mean(z)
-#
-# Is computed and not passive.  So is `{mean(x)}`, but `{mean(x); y}` is
-# considered passive.
-#
+# @seealso copy_branchdat_rec for details on what gets copied and why.
 # @param x call to process
 
 copy_branchdat <- function(x) {
@@ -204,12 +255,12 @@ copy_branchdat <- function(x) {
 # needs to happen, we record the coordinates of all such symbols in the call
 # tree as "candidates" for `vcopy`.
 #
-# Once we can determine whether they should be `vcopy`ed, e.g. because the
-# symbol was used after the if/else, or it was returned as the final result, we
-# promote the candidates to an "actual" `vcopy` list.  These are components in
-# the `data` parameter and return value.  When the full recursive traversal of
-# the input call is complete, we can use the returned "actual" list and modify
-# calls to add `vcopy` (this is done outside of this function).
+# Once we can determine that they should be `vcopy`ed, e.g. because the symbol
+# was used after the if/else, or it was returned as the final result, we promote
+# the candidates to an "actual" `vcopy` list.  These are components in the
+# `data` parameter and return value.  When the full recursive traversal of the
+# input call is complete, we can use the returned "actual" list and modify calls
+# to add `vcopy` (this is done by `inject_rec_and_copy`).
 #
 # Symbols bound in branches are only required to reference memory allocated in
 # the branch if they are used after the corresponding if/else. Other
@@ -218,9 +269,15 @@ copy_branchdat <- function(x) {
 # the `data` object.  We also track whether local bindings were computed locally
 # or not, as sometimes locally computed values can avoid a copy.
 #
-# @seealso `copy_branchdat` for context.
-# @param index integer vector that can be used to pull up a sub-call within a
-#   call tree e.g. with `x[[index]]` where `index` might be `c(2,3,1)`.
+# In general, we try to avoid unnecessary `vcopy`s, but to avoid
+# over-complicating the code there is no guarantee that there are no redundant
+# `vcopy`s.
+#
+# @seealso `copy_branchdat` for context, `inject_rec_and_copy` for how we
+#   actually modify the call, `generate_candidate` for additional details on
+#   what requires reconciliation / copy..
+# @param index integer vector with the coordinates of `x` in the outermost
+#   expression (see `callptr`).
 # @param assign.to character vector of symbol names that are part of current
 #   binding call chain (e.g. in `a <- b <- {d <- a+b; c}` once the recursion
 #   gets to `c` it will be `c("a", "b")` because both `a` and `b` will be
@@ -233,11 +290,11 @@ copy_branchdat <- function(x) {
 # @param branch.res whether the parent call is a branch call, the current call
 #   is part of the return value, AND the result of the branch is potentially
 #   used (dead code notwithstanding) so we need to vcopy the return value.
+# @param in.branch whether the parent call (or effective parent call in the case
+#   the parent call is passive) is a branch.
 # @param in.compute whether there is some parent call that computes on the
 #   current call (e.g. `mean(x)` where `x` is the current call).  Used to
 #   determine whether the result of a branch is further used.
-# @param in.branch whether the parent call (or effective parent call in the case
-#   the parent call is passive) is a branch.
 # @param data list with named elements:
 #   * "bind": a list containing branch-local bindings, branch-local computed
 #     bindings, and global bindings.
@@ -249,6 +306,7 @@ copy_branchdat <- function(x) {
 #     vcopied.
 #   * "assigned.to": character vector of characters that were bound by the
 #     processed call or its children, used to set triggers in some cases.
+#   * "leaf.name": if the leaf of a call is a symbol, the name of the symbol.
 # @return an updated `data` object.
 
 copy_branchdat_rec <- function(
@@ -392,21 +450,21 @@ copy_branchdat_rec <- function(
 # branch return value might be used if it is assigned to a symbol, or if it is
 # also the return value of the entire `r2c` expression.
 #
-# Each candidate will be assigned a (set of) triggering symbol(s) that will
-# convert them to actual (requirement of `rec`/`vcopy`).  For example in:
+# Each candidate will be assigned a (set of) triggering symbol(s) that will,
+# should they appear after the branch, cause a promotion of the candidate to an
+# actual (requirement of `rec`/`vcopy`).  For example in:
 #
-#     if(a) x <- z
-#     x
+#     if(a) x <- z      # z is a candidate for promotion
+#     x                 # use of `x` triggers any `x` candidates
 #
 # `z` becomes a candidate with `x` as the triggering symbol.  Because we do use
-# the triggering symbol the candidate would be promoted and we would get:
+# `x` after the branch the candidate is promoted and we would get:
 #
 #     if(a) x <- rec(vcopy(z))
 #     x
 #
-# > For expositional convenience we ignore the implicit `else` branch, which
-# > would also be modified this example.  We will ignore the `else` branch
-# > in the following examples to.
+# > For expositional convenience we will ignore the implicit `else` branch in
+# > all examples.  Those would be modified (see `merge_copy_dat`).
 #
 # A variation:
 #
@@ -428,12 +486,12 @@ copy_branchdat_rec <- function(
 #     u <- if(a) rec(vcopy(x <- rec(vcopy(z))))
 #     x + u
 #
-# This may seem odd, but it is necessary to avoid conflicts with the same
-# symbols defined to different values in the alternate branch (not shown here).
+# If we did not copy both we could create conflicts in cases with the same
+# symbols bound to different values in the alternate branch (not shown here).
 #
-# The also the concept of a "passive" vs. computed expression (see "Passive
-# vs. Computing" in `copy_branchdat`) will affect whether a candidate is require
-# or not.
+# An important concept is  "passive" vs. computed expressions (see "Passive
+# vs. Computing" in `copy_branchdat`), which affect whether a candidate needs to
+# be copied or just reconciled.
 #
 # In some cases we can know (or wish to assume) that a `rec`/`vcopy` will always
 # be required irrespective of the code that follows.  In those cases we generate
@@ -443,8 +501,9 @@ copy_branchdat_rec <- function(
 #     if(a) rec(copy(x))  # this is branch result and r2c result
 #     else -y
 #
-# Here we don't need to look at the rest of the expression after the branch
-# because there is none, so we can immediately add the `rec`/`vcopy`.
+# We can tell if an sub-expression is part of the return value of an expression
+# without having to process the whole expression, so we know thta `x` needs to
+# be copied as soon as we encounter it.
 #
 # @param x current sub-expression being processed.
 # @param data see `copy_branchdat_rec`.
@@ -606,8 +665,8 @@ gen_callptrs <- function(names, index, rec, copy)
 # general, we remove candidates based on the position in the call tree they
 # promote, so it is possible that one promotion will clear many candidates,
 # including some bound to different trigger symbols.  The exception is for
-# balancing candidates (those with indices ending in 0, see `merge_copy_dat`),
-# which are only removed if they also match on symbol.
+# balancing candidates (those with indices ending in 0 that are not just 0, see
+# `merge_copy_dat`), which are only removed if they also match on symbol.
 #
 # @param cand list of candidate pointers
 # @param ii which of those in `cand` were promoted
@@ -632,6 +691,10 @@ clear_candidates <- function(cand, ii) {
 #
 # TRUE if the index a points to `a` position later in the tree than `b` in a
 # depth-first traversal order.
+#
+# @param a a integer vector of the form of `index` from `callptr`.
+# @param b same as a.
+# @return TRUE if `a` is a sub-call appearing later in the call tree than `b`.
 
 index_greater <- function(a, b) {
   if(length(a) > length(b)) length(b) <- length(a)
@@ -642,14 +705,14 @@ index_greater <- function(a, b) {
 }
 # Merge Candidates between Branches
 #
+# `a` corresponds to the TRUE branch, and `b` to the FALSE branch.
+# `old` is the state before the branch.  This function compares the three sets
+# of candidates and actuals and reconciles them into one self consistent set.
 # Both `a` and `b` contain lists at index CAND and ACT.  These are named lists
 # with the names being those of symbols in the expression that trigger
 # promotions, and the elements each produced by `callptr` (essentially a
 # "pointer" to the location of a symbol that might need to be `vcopy`ed, see
-# `callptr`). `a` corresponds to the TRUE branch, and `b` to the FALSE branch.
-# `old` is the state before the branch.  This function compares the three sets
-# of candidates and actuals and reconciles them into one self consistent set.
-# Binding tracking information is also reconciled.
+# `callptr`).  Binding tracking information is also reconciled.
 #
 # The pointer lists are named for convenience, but we rely on each "pointer"
 # element also containing the name.  This allows us to use `unique` and similar
@@ -659,10 +722,10 @@ index_greater <- function(a, b) {
 # either use of `y` or `z` could result in promotion).
 #
 # @param a list should be `data` from `copy_branchdat_rec` (see details).
-# @param b list should be `data` from `copy_branchdat_rec` (see details).
-# @param old list should be `data` from `copy_branchdat_rec` (see details).
+# @param b like `a`.
+# @param old like `a`.
 # @param index integer vector the index into the call returning the expression
-#   setting the current if/else context.
+#   setting the current if/else context (see `callptr`).
 
 merge_copy_dat <- function(old, a, b, index) {
   # Removed shared history from both branches.  This is for the case where a
