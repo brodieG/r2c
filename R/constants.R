@@ -77,7 +77,7 @@ IF.SUB.SYM <- c("if_true", "if_false")
 # compute, but if the return value is used, it ensures that both of it's
 # branches either compute or `vcopy` that..
 PASSIVE.SYM <- unique(
-  c(ASSIGN.SYM, LOOP.SYM, "if", "{", "uplus", IF.SUB.SYM, 'rec')
+  c(ASSIGN.SYM, LOOP.SYM, "if", "{", "uplus", IF.SUB.SYM, 'r2c_if', 'rec')
 )
 
 # For `record_call_dat`.
