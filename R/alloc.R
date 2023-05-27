@@ -223,8 +223,8 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
             deparseLines(.CALL)
           )
         }
-        asize  <- if(anyNA(sizes.tmp['size',])) NA_real_
-        size <- if(anyNA(sizes.tmp['size',])) gmax else sizes.tmp['size', 1L]
+        asize  <- if(anyNA(sizes.tmp['size',])) NA_real_ else s.tmp[1L]
+        size <- if(anyNA(sizes.tmp['size',])) gmax else s.tmp[1L]
         group <- max(sizes.tmp[2L,])  # any group size in the lot?
       } else stop("Internal Error: unknown function type.")
 
@@ -490,7 +490,7 @@ reuse_dat <- function(alloc, fit, vec.dat, depth) {
   alloc
 }
 init_dat <- function(call, meta, scope) {
-  list(
+  data <- list(
     # Allocation data
     dat=list(),
     names=rbind(
@@ -513,6 +513,8 @@ init_dat <- function(call, meta, scope) {
     scope=scope,
     meta=meta
   )
+  colnames(data[['names']]) <- character()
+  data
 }
 init_vec_dat <- function() {
   list(
@@ -658,49 +660,82 @@ reconcile_control_flow <- function(
     stop(
       "Internal Error: nothing to pop from `binding.stack`, mismatched if/else?"
     )
-  names.f <- alloc[['names']]
-  names.t <- binding.stack[[length(binding.stack)]][['names']]
-  i.call.t <- binding.stack[[length(binding.stack)]][['i.call']]
+  names.F <- alloc[['names']]
+  names.T <- binding.stack[[length(binding.stack)]][['names']]
+  i.call.F <- i.call
+  i.call.T <- binding.stack[[length(binding.stack)]][['i.call']]
+  call.dat.i <- vapply(call.dat, '[[', 0L, 'call.i')
 
-  # Identify shared bindings across branches that need to be reconciled
-  rec.cand <- intersect(colnames(names.t), colnames(names.f))
-  rec.cand.diff <- rec.cand[
-    names.t['i.assign', rec.cand] != names.f['i.assign', rec.cand]
-  ]
-  rc.t <- names.t[, rec.cand.diff, drop=FALSE]
-  rc.f <- names.f[, rec.cand.diff, drop=FALSE]
-  # # Currently this might be possible with an unused binding in one branch that
-  # # is returned.
-  # if(any(xor(rc.t['rec',], rc.f['rec',])))
-  #   stop("Internal Error: symbols should be vcopied or not across branches.")
-  rec.both <- rc.t['rec', ] & rc.f['rec', ]
-  rc.t <- rc.t[, rec.both, drop=FALSE]
-  rc.f <- rc.f[, rec.both, drop=FALSE]
+  # Identify shared bindings across branches that need to be reconciled.
+  rc.nm.F <- sort(colnames(names.F)[names.F['rec',]])
+  rc.nm.T <- sort(colnames(names.T)[names.T['rec',]])
+  if(!identical(rc.nm.F, rc.nm.T))
+    stop("Internal Error: mismatched symbols to reconcile")
+
+  names.rc.F <- names.F[, rc.nm.F, drop=FALSE]
+  names.rc.T <- names.T[, rc.nm.T, drop=FALSE]
+
+  # Identify return values from both branches and check if they need to
+  # be reconciled (if no set to 0)
+  call.i.F <- which(call.dat.i == i.call.F)
+  call.i.T <- which(call.dat.i == i.call.T)
+  call.dat.F <- call.dat[[call.i.F]]
+  call.dat.T <- call.dat[[call.i.T]]
+  id.ret.F <- call.dat.F[['ids']][length(call.dat.F[['ids']])]
+  id.ret.T <- call.dat.T[['ids']][length(call.dat.T[['ids']])]
+  if(xor(call.dat.F[['name']] == "rec", call.dat.T[['name']] == "rec"))
+    stop("Internal Error: inconsistent reconcile for branch return value.")
+  rec.ret <- call.dat.F[['name']] != "rec"
+
+  # All ids that need to be reconciled (tack return at end if needed)
+  id.rc.F <- c(names.rc.F['ids',], if(rec.ret) id.ret.F)
+  id.rc.T <- c(names.rc.T['ids',], if(rec.ret) id.ret.T)
+  rc.sym.names <- c(colnames(names.rc.F), if(rec.ret) "<return-value>")
 
   # Find sizes (they should be the same).  'group' might be redundant.
-  size.t <- rbind(alloc[['size']], alloc[['group']])[, rc.t['ids',], drop=FALSE]
-  size.f <- rbind(alloc[['size']], alloc[['group']])[, rc.f['ids',], drop=FALSE]
-  size.eq <- (size.t == size.f) | (is.na(size.t) & is.na(size.f))
+  size.F <- rbind(alloc[['size']], alloc[['group']])[, id.rc.F, drop=FALSE]
+  size.T <- rbind(alloc[['size']], alloc[['group']])[, id.rc.T, drop=FALSE]
+  size.eq <- (size.T == size.F) | (is.na(size.T) & is.na(size.F))
 
   if(!all(size.eq)) {
     stop(
-      "Assigned variables must be same size across all branches; potential ",
-      "size discrepancy for ",
-      toString(sprintf("`%s`", names(rc.t)[colSums(size.eq) != 2L])),
+      "Assigned variables and return value must be same size across branches; ",
+      "potential size discrepancy for ",
+      toString(sprintf("`%s`", rc.sym.names[colSums(size.eq) != 2L])),
       " in:\n", paste0(deparse(call), collapse="\n")
     )
   }
-  # Check that all the targets for reconciliation or of temporary type.
-  if(any(alloc[['type']][c(rc.t['ids',], rc.f['ids',])] != 'tmp'))
+  # All the targets for reconciliation must be `r2c` allocated.
+  if(any(alloc[['type']][c(id.rc.F, id.rc.T)] != 'tmp'))
     stop("Internal Error: reconciliation allocs not r2c generated.")
+
+  # Allocations to remap should all be branch local. To check find matching
+  # 'if_test' and confirm all allocs are inside..
+  call.names <- vapply(call.dat, "[[", "", "name")
+
+  if.lvl <- cumsum(call.names == 'if_test') -  cumsum(call.names == 'if_false')
+  if.cur <- if.lvl[call.i.T]
+  if.lvl.cur <- if.lvl == if.cur
+  if.lvl.run <- cumsum(c(0L, if.lvl.cur[-1] != if.lvl.cur[-length(if.lvl.cur)]))
+  if.cur.start <- min(which(if.lvl.run == if.lvl.run[call.i.T]))
+  if(!is.finite(if.cur.start))
+    stop("Internal Error: mismatched `if_test` `if_false`.")
+  if.cur.start.i <- call.dat.i[if.cur.start]
+
+  alloc.i.F <- c(names.rc.F['i.assign',], i.call.F)
+  alloc.i.T <- c(names.rc.T['i.assign',], i.call.T)
+  if(any(alloc.i.F <= i.call.T | alloc.i.F > i.call.F))
+    stop("Internal Error: reconcile allocation not branch local in FALSE.")
+  if(any(alloc.i.T <= if.cur.start.i | alloc.i.T > i.call.T))
+    stop("Internal Error: reconcile allocation not branch local in TRUE")
 
   # Reconcile allocations so they point to the same id.  We must use entirely
   # new allocations because we are not tracking how and where the currently
   # available allocations have been used in the different branches.  Step 1 is
   # to create the allocations, Step 2 is to re-point the call data to them.
-  for(i in seq_len(ncol(rc.t))) {
+  for(i in seq_along(id.rc.F)) {
     # Size and generate allocation
-    size <- size.t[1L,i]
+    size <- size.T[1L,i]
     asize <- if(is.na(size)) gmax else size
     new <- numeric(asize)
     vec.dat <-
@@ -708,31 +743,30 @@ reconcile_control_flow <- function(
     alloc <- append_dat(alloc, vec.dat, depth=depth, rec=TRUE)
 
     # Adjust the call data for the id remapping.  This should be done for all
-    # calls within a branch that exceed creation time of the symbol.
+    # calls within the branch
     new.i <- alloc[['i']]
     call.dat <- update_cdat_alloc(  # true branch
-      call.dat, old=rc.t['ids', i], new=new.i,
-      start=rc.t['i.assign', i], end=i.call.t
+      call.dat, old=id.rc.T[i], new=new.i,
+      start=if.cur.start.i + 1L, end=i.call.T
     )
     call.dat <- update_cdat_alloc(  # false branch
-      call.dat, old=rc.f['ids', i], new=new.i,
-      start=rc.f['i.assign', i], end=i.call
+      call.dat, old=id.rc.F[i], new=new.i,
+      start=i.call.T + 1L, end=i.call.F
     )
     # Also update the names matrix (do we need to worry about scope here?  We
     # shouldn't since we have the i-range, but feels a bit dangerous).
-    names.assign <- alloc[['names']]['i.assign',]
-    names.target <- (
-      (names.assign >= rc.t['i.assign', i] & names.assign <= i.call.t) |
-      (names.assign >= rc.f['i.assign', i] & names.assign <= i.call)
-    ) & (
-      alloc[['names']]['ids',] %in% c(rc.t['ids', i], rc.f['ids', i])
-    )
-    alloc[['names']]['ids', names.target] <- new.i
+    # Last value is the return value, so no names to update for that.
+    if(i < length(id.rc.F) || !rec.ret) {
+      names.assign <- alloc[['names']]['i.assign',]
+      names.Target <- (
+        (names.assign >= rc.T['i.assign', i] & names.assign <= i.call.T) |
+        (names.assign >= rc.F['i.assign', i] & names.assign <= i.call.F)
+      ) & (
+        alloc[['names']]['ids',] %in% c(rc.T['ids', i], rc.F['ids', i])
+      )
+      alloc[['names']]['ids', names.Target] <- new.i
+    }
   }
-  # Return value from both branches must also point to same memory.
-
-  browser()
-
   list(alloc=alloc, call.dat=call.dat)
 }
 # Update Call Data Allocations
@@ -750,39 +784,9 @@ update_cdat_alloc <- function(call.dat, old, new, start, end) {
   # to map those indices to those available in call.dat
   c.i <- vapply(call.dat, '[[', 1L, 'call.i')
 
-  # start is the assignment, trace back and find the source of the assigned-to
-  # allocation, it should be a `rec`.
-  if(!call.dat[[which(c.i == start)]][['name']] %in% ASSIGN.SYM)
-    stop("Internal Error: reconcile can only be done on assigned symbols.")
-  for(c.ii in rev(c.i[c.i <= start])) {
-    i <- which(c.ii == c.i)
-    if(call.dat[[i]][['name']] == "rec") {
-      ids <- call.dat[[i]][['ids']]
-      if(ids[length(ids)] != old) stop("Internal Error: found bad old alloc.")
-      call.dat[[i]][['ids']][length(ids)] <- new
-      break;
-    } else if(!call.dat[[i]][['name']] %in% PASSIVE.SYM) {
-      # we should find a rec before we exit the current assignment chain
-      stop("Internal Error: encountered non-passive chain.")
-    }
-    if(c.ii == c.i[1L])
-      stop("Internal Error: could not find rec.")
-  }
-  # Trace forward updating ids until if_true / if_false (end)
-  if(c.i[length(c.i)] < end)
-    stop("Internal Error: call.dat does not include end of update range.")
-
-  for(c.ij in c.i[c.i > c.ii & c.i <= end]) {
-    # We should not be writing to an allocation of a reconciliation target as
-    # these are supposed to survive outside the if/else.
-    j <- which(c.ij == c.i)
-    if(
-      !call.dat[[j]][['name']] %in% PASSIVE.SYM &
-      call.dat[[j]][['ids']][length(call.dat[[j]][['ids']])] == old
-    )
-      stop("Internal Error: attempting to write to reconcile target.")
-
-    call.dat[[j]][['ids']][call.dat[[j]][['ids']] == old] <- new
+  # In the eligible range, remap all the ids
+  for(i in which(c.i >= start & c.i <= end)) {
+    call.dat[[i]][['ids']][call.dat[[i]][['ids']] == old] <- new
   }
   call.dat
 }
