@@ -77,11 +77,11 @@ IF.SUB.SYM <- c("if_true", "if_false")
 # compute, but if the return value is used, it ensures that both of it's
 # branches either compute or `vcopy` that..
 PASSIVE.SYM <- unique(
-  c(ASSIGN.SYM, LOOP.SYM, "if", "{", "uplus", IF.SUB.SYM)
+  c(ASSIGN.SYM, LOOP.SYM, "if", "{", "uplus", IF.SUB.SYM, 'rec')
 )
 
 # For `record_call_dat`.
-CALL.DAT.VEC <- c('argn', 'depth', 'type', 'assign', 'indent', 'vcopy')
+CALL.DAT.VEC <- c('argn', 'depth', 'type', 'assign', 'indent', 'rec')
 
 # To avoid typos
 CTRL.FLAG <- c("control", "flag")

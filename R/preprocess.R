@@ -225,7 +225,7 @@ pp_internal <- function(
           x, call=args[[i]], depth=depth + 1L, argn=names(args)[i],
           type=args.types[i], code=code_blank(),
           sym.free=sym_free(x, args[[i]]), assign=FALSE, indent=indent,
-          vcopy=FALSE
+          rec=FALSE
         )
       } else {
         x <- pp_internal(
@@ -234,11 +234,11 @@ pp_internal <- function(
           call.parent=call, call.parent.name=func,
           indent=indent + (func %in% IF.SUB.SYM) * 2L
     ) } }
-    # Are we in a vcopy chain?  Needed for alloc to know which bindings are
-    # from vcopy (see reconcile_control_flow).
-    vcopy <- name == "vcopy" || (
+    # Are we in a rec chain?  Needed for alloc to know which bindings are
+    # from rec (see reconcile_control_flow).
+    rec <- name == "rec" || (
       name %in% PASSIVE.SYM &&
-      length(x[['vcopy']]) && x[['vcopy']][length(x[['vcopy']])]
+      length(x[['rec']]) && x[['rec']][length(x[['rec']])]
     )
     # Bind assignments (we do it after processing of the rest of the call)
     if(next.assign) {
@@ -257,7 +257,7 @@ pp_internal <- function(
     # Record linearized call data
     record_call_dat(
       x, call=call, depth=depth, argn=argn, type="call", code=code,
-      assign=assign, indent=indent, vcopy=vcopy
+      assign=assign, indent=indent, rec=rec
     )
   } else {
     # - Symbol or Constant -----------------------------------------------------
@@ -282,7 +282,7 @@ pp_internal <- function(
     }
     record_call_dat(
       x, call=call, depth=depth, argn=argn, type=type, code=code, assign=assign,
-      indent=indent, vcopy=FALSE
+      indent=indent, rec=FALSE
     )
 } }
 
@@ -315,7 +315,7 @@ pp_internal <- function(
 #'   correspond to the **renamed** variables.
 #' $call.rename: version of `call` with symbols renamed using `rename`.
 #' $type: argument type
-#' $vcopy: whether current call is a part of a chain that ends with a `vcopy`
+#' $rec: whether current call is a part of a chain that ends with a `rec`
 #'
 #' @noRd
 
@@ -332,7 +332,7 @@ init_call_dat <- function(formals)
     last.read=integer(),
     assign=logical(),
     indent=integer(),
-    vcopy=logical()
+    rec=logical()
   )
 
 ## Record Expression Data
@@ -345,7 +345,7 @@ init_call_dat <- function(formals)
 
 record_call_dat <- function(
   x, call, depth, argn, type, code, assign, sym.free=sym_free(x, call), indent,
-  vcopy
+  rec
 ) {
   # list data
   x[['call']] <- c(
@@ -362,7 +362,7 @@ record_call_dat <- function(
   x[['type']] <- c(x[['type']], type)
   x[['assign']] <- c(x[['assign']], assign)
   x[['indent']] <- c(x[['indent']], indent)
-  x[['vcopy']] <- c(x[['vcopy']], vcopy)
+  x[['rec']] <- c(x[['rec']], rec)
   if(length(unique(lengths(x[CALL.DAT.VEC]))) != 1L)
     stop("Internal Error: irregular vector call data.")
 

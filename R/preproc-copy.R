@@ -787,7 +787,7 @@ en_rec <- function(x, clean=FALSE) {
 #
 # @param x call to modify.
 # @promoted list of `callptr` objects pointing to sub-calls/symbols that need to
-#   be wrapped in `vcopy`.
+#   be wrapped in `vcopy` / `rec`.
 
 inject_rec_and_copy <- function(x, promoted) {
   if(length(promoted)) {

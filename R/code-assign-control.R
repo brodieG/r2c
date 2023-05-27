@@ -79,7 +79,7 @@ code_gen_rec <- function(fun, args.reg, args.ctrl, args.flags) {
   )
   name <- FUN.NAMES[fun]
   defn <- sprintf(f_rec, name, toString(F.ARGS.BASE))
-  code_res(defn=defn, name=name)
+  code_res(defn=defn, name=name, out.ctrl=CGEN.OUT.NONE)
 }
 #' Mark a Vector for Reconciliation
 #'

@@ -131,11 +131,11 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
   # Status control placeholder.
   sts.vec <- numeric(IX[['STAT.N']])
   vdat <- vec_dat(sts.vec, "sts", typeof='double', group=0, size=IX[['STAT.N']])
-  alloc <- append_dat(alloc, vdat=vdat, depth=0L, call.i=0L, vcopy=FALSE)
+  alloc <- append_dat(alloc, vdat=vdat, depth=0L, call.i=0L, rec=FALSE)
 
   # Result placeholder, to be alloc'ed once we know group sizes.
   vdat <- vec_dat(numeric(), size=0L, type="res", typeof='double', group=0)
-  alloc <- append_dat(alloc, vdat=vdat, depth=0L, call.i=0L, vcopy=FALSE)
+  alloc <- append_dat(alloc, vdat=vdat, depth=0L, call.i=0L, rec=FALSE)
 
   # Add group data.
   if(!all(nzchar(names(data)))) stop("All data must be named.")
@@ -147,7 +147,7 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
     typeof <- typeof(datum)
     vdat <- vec_dat(datum, type="grp", typeof=typeof, group=1, size=NA_real_)
     alloc <-
-      append_dat(alloc, vdat=vdat, depth=0L, name=dname, call.i=0L, vcopy=FALSE)
+      append_dat(alloc, vdat=vdat, depth=0L, name=dname, call.i=0L, rec=FALSE)
   }
   # Bump scope so the data cannot be overwritten
   alloc[['scope']] <- alloc[['scope']] + 1L
@@ -172,7 +172,7 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
     call <- x[['call']][[i]]
     depth <- x[['depth']][[i]]
     argn <- x[['argn']][[i]]
-    vcopy <- x[['vcopy']][[i]]
+    rec <- x[['rec']][[i]]
     pkg <- name <- ""
     if(!type %in% CTRL.FLAG) {
       tmp <- get_lang_info(call)
@@ -230,7 +230,7 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
 
       # Cleanup expired symbols, and bind new ones
       alloc <-
-        names_update(alloc, i, call, call.name=name, call.i=i, vcopy=vcopy)
+        names_update(alloc, i, call, call.name=name, call.i=i, rec=rec)
 
       # Prepare new vec data (if any), and tweak objet depending on situation.
       # Alloc is made later, but only if vec.dat[['new']] is not null.
@@ -295,7 +295,7 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
     # Append new data to our data array.  Not all calls produce data; those
     # that do have non-NULL vec.dat[['new']].
     if(!is.null(vec.dat[['new']]))
-      alloc <- append_dat(alloc, vec.dat, depth=depth, call.i=i, vcopy=vcopy)
+      alloc <- append_dat(alloc, vec.dat, depth=depth, call.i=i, rec=rec)
 
     # Call actions that need to happen after allocation data updated
     if(type == "call") {
@@ -422,12 +422,12 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
 ##   symbols
 ## @param size could differ from `length(vdat[['new']])` when new is a special
 ##   size vector like a group dependent one.
-## @param vcopy whether current call is part of a vcopy chain
-##   (e.g. `x <- z <- vcopy(y)`)
+## @param rec whether current call is part of a rec chain
+##   (e.g. `x <- z <- rec(vcopy(y))`)
 ## @return dat, updated
 
 append_dat <- function(
-  dat, vdat, name=NULL, depth, call.i, vcopy
+  dat, vdat, name=NULL, depth, call.i, rec
 ) {
   if(is.null(name)) name <- ""
   if(!is.vec_dat(vdat)) stop("Internal Error: bad vec_dat.")
@@ -471,7 +471,7 @@ append_dat <- function(
     name %in% colnames(names[,names['scope',] == dat[['scope']], drop=FALSE])
   )
     stop("Internal error: cannot append names existing in current scope.")
-  if(nzchar(name)) dat <- names_bind(dat, name, call.i, vcopy)
+  if(nzchar(name)) dat <- names_bind(dat, name, call.i, rec)
 
   dat
 }
@@ -495,7 +495,7 @@ init_dat <- function(call, meta, scope) {
     dat=list(),
     names=rbind(
       ids=integer(), scope=integer(),
-      i.max=integer(), i.assign=integer(), vcopy=integer()
+      i.max=integer(), i.assign=integer(), rec=integer()
     ),
 
     # Equal length vector data
@@ -635,8 +635,8 @@ alloc_result <- function(alloc, vdat){
 # Reconcile Allocations Across Branches
 #
 # Based on how the preprocessor works, we know that allocations that are bound
-# to the same symbol after a branch, and were `vcopy`ed, must be redirected to
-# the same allocation.  The `vcopy`ed symbols are those that are used later in
+# to the same symbol after a branch, and were `rec`ed, must be redirected to
+# the same allocation.  The `rec`ed symbols are those that are used later in
 # the call.
 #
 # We compare the snapshot of bindings at the end of the `if_true` call to that
@@ -671,11 +671,11 @@ reconcile_control_flow <- function(
   rc.f <- names.f[, rec.cand.diff, drop=FALSE]
   # # Currently this might be possible with an unused binding in one branch that
   # # is returned.
-  # if(any(xor(rc.t['vcopy',], rc.f['vcopy',])))
+  # if(any(xor(rc.t['rec',], rc.f['rec',])))
   #   stop("Internal Error: symbols should be vcopied or not across branches.")
-  vcopy.both <- rc.t['vcopy', ] & rc.f['vcopy', ]
-  rc.t <- rc.t[, vcopy.both, drop=FALSE]
-  rc.f <- rc.f[, vcopy.both, drop=FALSE]
+  rec.both <- rc.t['rec', ] & rc.f['rec', ]
+  rc.t <- rc.t[, rec.both, drop=FALSE]
+  rc.f <- rc.f[, rec.both, drop=FALSE]
 
   # Find sizes (they should be the same).  'group' might be redundant.
   size.t <- rbind(alloc[['size']], alloc[['group']])[, rc.t['ids',], drop=FALSE]
@@ -705,7 +705,7 @@ reconcile_control_flow <- function(
     new <- numeric(asize)
     vec.dat <-
       vec_dat(new, "tmp", typeof="double", group=is.na(size) + 0, size=size)
-    alloc <- append_dat(alloc, vec.dat, depth=depth, vcopy=TRUE)
+    alloc <- append_dat(alloc, vec.dat, depth=depth, rec=TRUE)
 
     # Adjust the call data for the id remapping.  This should be done for all
     # calls within a branch that exceed creation time of the symbol.
@@ -751,22 +751,22 @@ update_cdat_alloc <- function(call.dat, old, new, start, end) {
   c.i <- vapply(call.dat, '[[', 1L, 'call.i')
 
   # start is the assignment, trace back and find the source of the assigned-to
-  # allocation, it should be a `vcopy`.
+  # allocation, it should be a `rec`.
   if(!call.dat[[which(c.i == start)]][['name']] %in% ASSIGN.SYM)
     stop("Internal Error: reconcile can only be done on assigned symbols.")
   for(c.ii in rev(c.i[c.i <= start])) {
     i <- which(c.ii == c.i)
-    if(call.dat[[i]][['name']] == "vcopy") {
+    if(call.dat[[i]][['name']] == "rec") {
       ids <- call.dat[[i]][['ids']]
       if(ids[length(ids)] != old) stop("Internal Error: found bad old alloc.")
       call.dat[[i]][['ids']][length(ids)] <- new
       break;
     } else if(!call.dat[[i]][['name']] %in% PASSIVE.SYM) {
-      # we should find a vcopy before we exit the current assignment chain
+      # we should find a rec before we exit the current assignment chain
       stop("Internal Error: encountered non-passive chain.")
     }
     if(c.ii == c.i[1L])
-      stop("Internal Error: could not find vcopy.")
+      stop("Internal Error: could not find rec.")
   }
   # Trace forward updating ids until if_true / if_false (end)
   if(c.i[length(c.i)] < end)
@@ -985,27 +985,27 @@ names_free <- function(alloc, new.names) {
   alloc[['names']] <- names[, !to.free, drop=FALSE]
   alloc
 }
-names_bind <- function(alloc, new.name, call.i, vcopy) {
+names_bind <- function(alloc, new.name, call.i, rec) {
   new.name.dat <- c(
     ids=alloc[['i']],
     scope=alloc[['scope']],
     i.max=unname(alloc[['meta']][['i.sym.max']][new.name]),
     i.assign=call.i,
-    vcopy=vcopy
+    rec=rec
   )
   if(is.na(new.name.dat['i.max'])) new.name.dat['i.max'] <- 0L
   alloc[['names']] <- cbind(alloc[['names']], new.name.dat)
   colnames(alloc[['names']])[ncol(alloc[['names']])] <- new.name
   alloc
 }
-names_update <- function(alloc, i, call, call.name, call.i, vcopy) {
+names_update <- function(alloc, i, call, call.name, call.i, rec) {
   alloc <- names_clean(alloc, i)
   if(call.name %in% ASSIGN.SYM) {
     # Remove protection from prev assignment to same name, and bind previous
     # computation (`alloc[[i]]`) to it.
     sym <- get_target_symbol(call, call.name)
     alloc <- names_free(alloc, sym)
-    alloc <- names_bind(alloc, sym, call.i, vcopy)
+    alloc <- names_bind(alloc, sym, call.i, rec)
   }
   alloc
 }
