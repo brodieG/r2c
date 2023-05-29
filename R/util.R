@@ -140,7 +140,7 @@ is.call_w_args <- function(x) is.call(x) && length(x) > 1L
 is.assign_call <- function(x)
   is.call(x) && isTRUE(get_lang_name(x) %in% ASSIGN.SYM) && length(x) == 3L
 is.brace_call <- function(x)
-  is.call(x) && get_lang_name(x) == "{"
+  is.call(x) && identical(x[[1L]], QBRACE)
 
 ## Specifically tests for pkg::name, not pkg::name(...) (for the latter you can
 ## use e.g. `nzchar(get_lang_info(x)[['pkg']])`
