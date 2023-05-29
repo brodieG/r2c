@@ -667,13 +667,18 @@ reconcile_control_flow <- function(
   call.dat.i <- vapply(call.dat, '[[', 0L, 'call.i')
 
   # Identify shared bindings across branches that need to be reconciled.
-  rc.nm.F <- sort(colnames(names.F)[names.F['rec',]])
-  rc.nm.T <- sort(colnames(names.T)[names.T['rec',]])
+  rc.nm.F <- sort(colnames(names.F)[names.F['rec',] == 1])
+  rc.nm.T <- sort(colnames(names.T)[names.T['rec',] == 1])
   if(!identical(rc.nm.F, rc.nm.T))
     stop("Internal Error: mismatched symbols to reconcile")
 
   names.rc.F <- names.F[, rc.nm.F, drop=FALSE]
   names.rc.T <- names.T[, rc.nm.T, drop=FALSE]
+
+  # Drop those that are the same across the branches (set prior to if/else)
+  names.rc.drop <- colSums(names.rc.F == names.rc.T) == nrow(names.rc.F)
+  names.rc.F <- names.rc.F[, !names.rc.drop, drop=FALSE]
+  names.rc.T <- names.rc.T[, !names.rc.drop, drop=FALSE]
 
   # Identify return values from both branches and check if they need to
   # be reconciled (if no set to 0)
@@ -710,9 +715,8 @@ reconcile_control_flow <- function(
     stop("Internal Error: reconciliation allocs not r2c generated.")
 
   # Allocations to remap should all be branch local. To check find matching
-  # 'if_test' and confirm all allocs are inside..
+  # 'if_test' and confirm all allocs are inside.
   call.names <- vapply(call.dat, "[[", "", "name")
-
   if.lvl <- cumsum(call.names == 'if_test') -  cumsum(call.names == 'if_false')
   if.cur <- if.lvl[call.i.T]
   if.lvl.cur <- if.lvl == if.cur
@@ -753,18 +757,17 @@ reconcile_control_flow <- function(
       call.dat, old=id.rc.F[i], new=new.i,
       start=i.call.T + 1L, end=i.call.F
     )
-    # Also update the names matrix (do we need to worry about scope here?  We
-    # shouldn't since we have the i-range, but feels a bit dangerous).
+    # Also update the names matrix.  Just match the FALSE branch location.
     # Last value is the return value, so no names to update for that.
     if(i < length(id.rc.F) || !rec.ret) {
       names.assign <- alloc[['names']]['i.assign',]
-      names.Target <- (
-        (names.assign >= rc.T['i.assign', i] & names.assign <= i.call.T) |
-        (names.assign >= rc.F['i.assign', i] & names.assign <= i.call.F)
-      ) & (
-        alloc[['names']]['ids',] %in% c(rc.T['ids', i], rc.F['ids', i])
+      names.target <- which(
+        names.rc.F['i.assign', i] == alloc[['names']]['i.assign',] &
+        alloc[['names']]['ids',] == id.rc.F[i]
       )
-      alloc[['names']]['ids', names.Target] <- new.i
+      if(length(names.target) != 1L)
+        stop('Internal Error: failed to find reconciled name in alloc data.')
+      alloc[['names']]['ids', names.target] <- new.i
     }
   }
   list(alloc=alloc, call.dat=call.dat)
