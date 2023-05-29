@@ -205,7 +205,7 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
         # Length of a specific argument, like `probs` for `quantile`
         # `depth + 1L` should be params to current call (this is only true for
         # the stack, not necessarily for other things in `x`)
-        sizes.tmp <- cand_arg_size_dat(stack, depth, ftype, .CALL)
+        sizes.tmp <- cand_arg_size_dat(stack, depth, ftype, call, .CALL)
 
         # asize uses max group size instead of NA so we can allocate for it
         asize  <- vecrec_max_size(sizes.tmp, gmax)
@@ -213,7 +213,7 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
         group <- max(sizes.tmp[2L,])                # any group size in the lot?
       } else if(ftype[[1L]] == "eqlen") {
         # All arguments must be equal length.
-        sizes.tmp <- cand_arg_size_dat(stack, depth, ftype, .CALL)
+        sizes.tmp <- cand_arg_size_dat(stack, depth, ftype, call, .CALL)
         s.tmp <- sizes.tmp['size',]
         if(!(all(is.na(s.tmp)) || length(unique(s.tmp)) == 1L)) {
           stop(
@@ -861,7 +861,7 @@ stack_param_missing <- function(params, stack.avail, call, .CALL) {
       paste0(
         "Parameter(s) ",
         deparse1(params[!params %in% stack.avail]),
-        " missing but required for sizing in ", deparse1(call)
+        " missing but required for sizing in\n", deparseLines(call)
       ),
       .CALL
   ) )
@@ -905,7 +905,7 @@ vecrec_max_size <- function(x, gmax) {
 #
 # @param ftype see `type` for `cgen`
 
-cand_arg_size_dat <- function(stack, depth, ftype, .CALL) {
+cand_arg_size_dat <- function(stack, depth, ftype, call, .CALL) {
   stack.cand <- stack['depth',] == depth + 1L
   if(is.character(ftype[[2L]])) {
     param.cand.tmp <- colnames(stack)[stack.cand]
