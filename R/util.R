@@ -138,7 +138,8 @@ is.chr_or_sym <- function(x) is.symbol(x) || is.character(x) && length(x) == 1L
 is.call_w_args <- function(x) is.call(x) && length(x) > 1L
 
 is.assign_call <- function(x)
-  is.call(x) && isTRUE(get_lang_name(x) %in% ASSIGN.SYM) && length(x) == 3L
+  is.call(x) && isTRUE(get_lang_name(x) %in% ASSIGN.SYM) &&
+  length(x) %in% 3:4 # (`for` has four parameters, and it assigns to its second)
 is.brace_call <- function(x)
   is.call(x) && identical(x[[1L]], QBRACE)
 
