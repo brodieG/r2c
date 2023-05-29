@@ -71,6 +71,7 @@ MISSING <- list(formals(base::identical)[[1L]])
 ASSIGN.SYM <- c("<-", "=", "for")
 LOOP.SYM <- c("for", "while", "repeat")
 IF.SUB.SYM <- c("if_true", "if_false")
+CTRL.SYM <- c("if", LOOP.SYM)
 
 # Calls that don't actually do any computing themselves, rather rely on
 # computations that happen in their arguments `for` is a bit tricky as it does

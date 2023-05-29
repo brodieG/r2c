@@ -39,6 +39,7 @@ NULL
 #' @return a call dat list as described in `init_call_dat`.
 
 preprocess <- function(call, formals=character(), optimize=FALSE) {
+  call0 <- call
   # - Call Manipulations -------------------------------------------------------
 
   # WARNINGS:
@@ -545,7 +546,7 @@ transform_ifelse <- function(x) {
 # This is not a perferct reversal because we don't track if an `else numeric(0)`
 # was there originally or added by `transform_if_else`.  Additionally, we always
 # remove braces when they only contain one sub-call, and we don't check for
-# stray `r2c_if`s not paired with a corresonding `if_test` (which shouldn't
+# stray `r2c_if`s not paired with a corresponding `if_test` (which shouldn't
 # happen).
 #
 # This is NOT recursive as `clean_call` does the recursion.
