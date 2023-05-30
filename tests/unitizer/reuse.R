@@ -84,3 +84,13 @@ unitizer_sect("re-use", {
   (ru4.r <- reuse_calls(ru4))
   identical(eval(ru4), eval(ru4.r))
 })
+unitizer_sect("Complex Hoisting", {
+  ru5a <- quote({
+    if(a == 2) {
+      sum(x)
+    } else sum(x) * sum(x)
+  })
+  reuse_calls(ru5a)
+
+})
+

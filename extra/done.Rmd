@@ -17,6 +17,53 @@
 * `if` without `else`:
   * Also cases where all `if` written symbols pre-exist, and where some don't.
 
+* Check that a non-local symbol inside an active expression doesn't get copied
+  just by virtue of being last in a computing function that takes such symbol
+  last (e.g. `mean` doesn't because of `na.rm`, etc., can use `-`).
+
+* Add multi-assign test for branch result.
+
+* See if it is easy to implement that returning a computed global symbol from a
+  branch doesn't require copy if the symbol isn't used again elsewhere.  See
+  `call3b`.
+
+* is `r2c_if` really passive?  No, the result will be computed if it is used.
+
+* New return value cases to handle in branches:
+  * If it is a local binding from a computation, do we need to vcopy?  Maybe
+    not?  No, we don't need to copy it.  The problem is when the binding is
+    non-local.  So we make a candidate on that binding.  If that binding is
+    used, then it will be vcopied.  Otherwise we can just use it directly as the
+    return value.
+  * If it is a non-local biding it needs to be copied if the return value is
+    used (last part could potentially be handled by dead code removal).
+  * It is a computing expression.
+    * Nothing, we can reconcile directly.
+  * A binding expression?
+    * Same as a local binding, but for the whole expression.  So we add
+      candidates for the entire `assign.to` in the binding chain?  Basically,
+      same behavior as normal, except that we require candidacy even when the
+      thing being bound is a computing expression.  So we need a modification on
+      the `last` flag which is when the expression is returned.
+  * A passive expression, presumably depends on what it contains.
+
+  * It is a maybe non-local binding, an assignment expression, or a passive
+    expression returning .
+    * If `if` inside a computing call, assignment, or if it is returned, vcopy
+      it (possibly again).
+  * It is a binding expression.
+    * `vcopy` the whole thing.
+  * It is a passive expression.
+
+* Make sure branches work well with multiple symbol assigned to same slot (`x <-
+  y <- z`).
+
+* Implement "eqlen" r2c token type (for e.g. `r2c_if`).
+
+* Undo the `if/else` conversion for display in `get_r_code`.
+
+
+
 ### v0.3.0
 
 * Switch `noop` to be flags the control whether the call is issued, whether the

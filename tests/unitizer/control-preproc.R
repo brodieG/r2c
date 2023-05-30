@@ -299,10 +299,7 @@ unitizer_sect("Basic if/else", {
     x + y
   })
   r2c:::pp_clean(call3h2)
-
-
 })
-
 unitizer_sect("Nested", {
   # Nesting in both test and body
   call4a <- quote({
@@ -364,7 +361,6 @@ unitizer_sect("Nested", {
   # Nested binding expression used (but not actual binding)
   call4e1 <- quote(mean(if(a) x <- z else y))
   r2c:::pp_clean(call4e1)
-
 })
 unitizer_sect("Vcopy Branch Return", {
   # `x <- mean(z)` requires vcopy when symbol is used outside of local context

@@ -162,3 +162,10 @@ unitizer_sect("Ambiguous Symbols", {
   identical(call7, r2c:::unrename_call(res7[['x']], res7[['rn']]))
 
 })
+unitizer_sect("Implicit Symbols and Re-assignment", {
+  # this is an in-arg re-assignment, so normally not allowed, but testing
+  # both `x` should be renamed even though it looks weird
+  call8a <- quote(y <- (x <- a) - mean(x))
+  (res8a <- r2c:::rename_call(call8a))[['x']]
+  identical(call8a, r2c:::unrename_call(res8a[['x']], res8a[['rn']]))
+})
