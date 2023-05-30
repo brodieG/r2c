@@ -112,7 +112,7 @@ rename_call <- function(x, rn=init_rename()) {
   # name is invalidated (e.g. overwritten), and generate new renames then for
   # application at appropriate time.
   is.renames(rn)
-  rename.ctrls <- c("if", LOOP.SYM)
+  rename.ctrls <- CTRL.SYM
   if(is.call_w_args(x)) {
     fun.name <- get_lang_name(x[[1L]])
     rec.ids <- seq(2L, length(x), 1L)
