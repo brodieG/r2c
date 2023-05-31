@@ -115,7 +115,7 @@ NULL
 #' @noRd
 #' @param x the result of preprocessing an expression
 
-alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
+alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
   call.len <- length(x[['call']])
   call.outer <- x[['call']][[call.len]]
 
@@ -313,9 +313,12 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
           binding.stack, list(list(names=alloc[['names']], i.call=i))
         )
       } else if (name == "if_false") {
+        if(length(x[['call']]) < i + 1L)
+          stop("Internal Error: missing 'r2c_if' after 'if_else'")
         rcf.dat <- reconcile_control_flow(
-          alloc, call.dat, binding.stack, i.call=i, call=call, depth=depth,
-          gmax=gmax
+          alloc, call.dat, binding.stack, i.call=i,
+          call=x[['call']][[i + 1L]],  # send full if/else for error message
+          depth=depth, gmax=gmax, gmin=gmin
         )
         alloc <- rcf.dat[['alloc']]
         call.dat <- rcf.dat[['call.dat']]
@@ -654,7 +657,7 @@ alloc_result <- function(alloc, vdat){
 #   if_true branches.  See details.
 
 reconcile_control_flow <- function(
-  alloc, call.dat, binding.stack, i.call, call, depth, gmax
+  alloc, call.dat, binding.stack, i.call, call, depth, gmax, gmin
 ) {
   if(!length(binding.stack))
     stop(
@@ -697,11 +700,19 @@ reconcile_control_flow <- function(
   id.rc.T <- c(names.rc.T['ids',], if(rec.ret) id.ret.T)
   rc.sym.names <- c(colnames(names.rc.F), if(rec.ret) "<return-value>")
 
-  # Find sizes (they should be the same).  'group' might be redundant.
-  size.F <- rbind(alloc[['size']], alloc[['group']])[, id.rc.F, drop=FALSE]
-  size.T <- rbind(alloc[['size']], alloc[['group']])[, id.rc.T, drop=FALSE]
-  size.eq <- (size.T == size.F) | (is.na(size.T) & is.na(size.F))
-
+  # Find sizes (they should be the same).
+  size.F <- alloc[['size']][id.rc.F]
+  size.T <- alloc[['size']][id.rc.T]
+  group.F <- alloc[['group']][id.rc.F]
+  group.T <- alloc[['group']][id.rc.T]
+  if(gmax == gmin) {
+    size.eq <- size.F == size.T | (is.na(size.F) & is.na(size.T)) |
+      (is.na(size.F) & size.T == gmax) |
+      (is.na(size.T) & size.F == gmax)
+  } else {
+    size.eq <- (size.F == size.T | (is.na(size.F) & is.na(size.T))) &
+      group.F == group.T
+  }
   if(!all(size.eq)) {
     stop(
       "Assigned variables and return value must be same size across branches; ",
@@ -739,11 +750,11 @@ reconcile_control_flow <- function(
   # to create the allocations, Step 2 is to re-point the call data to them.
   for(i in seq_along(id.rc.F)) {
     # Size and generate allocation
-    size <- size.T[1L,i]
+    size <- size.T[i]
+    group <- as.numeric(group.T[i] | group.F[i])
     asize <- if(is.na(size)) gmax else size
     new <- numeric(asize)
-    vec.dat <-
-      vec_dat(new, "tmp", typeof="double", group=is.na(size) + 0, size=size)
+    vec.dat <- vec_dat(new, "tmp", typeof="double", group=group, size=size)
     alloc <- append_dat(alloc, vec.dat, depth=depth, rec=TRUE)
 
     # Adjust the call data for the id remapping.  This should be done for all

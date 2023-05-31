@@ -18,7 +18,7 @@
 ## Run steps that share a close resemblance to those in `group_exec`
 
 roll_prep <- function(
-  obj, data, r.len, formals, call, runner, MoreArgs, wmax
+  obj, data, r.len, formals, call, runner, MoreArgs, wmax, wmin
 ) {
   if(!r.len > 0) stop("Internal Error: prep only when there is result length.")
   preproc <- obj[['preproc']]
@@ -38,7 +38,7 @@ roll_prep <- function(
   alloc <- match_and_alloc(
     do=data, MoreArgs=MoreArgs, preproc=preproc, formals=formals,
     enclos=enclos, call=call, runner=runner,
-    gmax=wmax
+    gmax=wmax, gmin=wmin
   )
   stack <- alloc[['stack']]
 
@@ -82,12 +82,13 @@ roll_call <- function(
   if(r.len) {
     size <-
       if(!is.numeric(csizer)) .Call(csizer, r.len, ...)
-      else as.numeric(csizer)
+      else as.numeric(rep(csizer, 2))
 
     obj <- get_r2c_dat(fun)
     prep <- roll_prep(
       obj, data=data, r.len=r.len, formals=formals(fun),
-      call=call, runner=runner, MoreArgs=MoreArgs, wmax=size
+      call=call, runner=runner, MoreArgs=MoreArgs, 
+      wmax=size[1L], wmin=size[2L]
     )
     status <- .Call(
       crunner,
