@@ -129,9 +129,13 @@ is.valid_constant <- function(type)
 #'
 #' @param ctrl.validate a function to validate both control and flag parameters,
 #'   should `stop`, or return the flag parameters encoded into an integer.
-#' @param res.type one of "double", "integer", "logical", or "preserve.int", the
-#'   latter equivalent to integer if all stack inputs are "integer" or
-#'   "logical", double otherwise.
+#' @param res.type one of "double", "integer", "logical", "preserve.int",
+#'   "preserve.last", or "preserve".  "preserve" will cause all output to be
+#'   "logical" if all inputs are "logical", "integer" if there is a mix of
+#'   "logical" and "integer" (including all "integer"), and "double" if any
+#'   doubles are present.  "preserve.int" is like "preserve", except the only
+#'   possible output types are "integer" and "double".  "preserve.last" is like
+#'   "preserve" except it only considers the last input (e.g. as for braces).
 #'
 #' @return a list containing the above information after validating it.
 
@@ -158,7 +162,10 @@ cgen <- function(
     code.gen=is.function(.),
     ctrl.validate=is.function(.),
     transform=is.function(.),
-    res.type=CHR.1 && . %in% c('logical', 'double', 'numeric', 'preserve.int')
+    res.type=CHR.1 &&
+      . %in% c(
+        'logical', 'double', 'preserve.int', 'preserve', 'preserve.last'
+      )
   )
   if(length(intersect(ctrl.params, flag.params)))
     stop("Control and Flag parameters may not overlap.")
@@ -291,19 +298,25 @@ VALID_FUNS <- c(
     ),
     cgen(
       "ifelse", type=list("arglen", "test"), code.gen=code_gen_ifelse,
-      res.type="preserve.int" # not faithful to what R does
+      res.type="preserve" # not faithful to what R does
     )
   ),
   # - Assign / Control----------------------------------------------------------
 
   list(
-    cgen("<-", type=list("arglen", 2L), code.gen=code_gen_assign),
-    cgen("=", type=list("arglen", 2L), code.gen=code_gen_assign),
+    cgen(
+      "<-", type=list("arglen", 2L), code.gen=code_gen_assign,
+      res.type="preserve.last"
+    ),
+    cgen(
+      "=", type=list("arglen", 2L), code.gen=code_gen_assign,
+      res.type="preserve.last"
+    ),
     cgen(
       "{", defn=function(...) NULL,
       # arglen of last argument matching dots
       type=list("arglen", "...", function(x) x[length(x)]),
-      code.gen=code_gen_braces
+      code.gen=code_gen_braces, res.type="preserve.last"
     ),
     # result of this one is not used outside of the C code
     cgen(
@@ -311,21 +324,24 @@ VALID_FUNS <- c(
       res.type="logical", fun=if_test
     ),
     cgen(
-      "r2c_if", type=list("eqlen", c("true", "false")),
-      code.gen=code_gen_r2c_if, fun=r2c_if
-    ),
-    cgen(
       "if_true", type=list("arglen", "expr"), code.gen=code_gen_if_true,
-      fun=if_true
+      fun=if_true, res.type="preserve"
     ),
     cgen(
       "if_false", type=list("arglen", "expr"), code.gen=code_gen_if_false,
-      fun=if_false
+      fun=if_false, res.type="preserve"
+    ),
+    # `res.type` gets special handling in `reconcile_control_flow` for `r2c_if`.
+    cgen(
+      "r2c_if", type=list("eqlen", c("true", "false")),
+      code.gen=code_gen_r2c_if, fun=r2c_if, res.type="preserve"
     ),
     # This one can't actually generate code and needs to be first decomposed
     # into the above if_test/r2c_if/if_true/if_false, but we need it here so the
     # early parsing passes recognize it as an allowed function.
-    cgen("if", type=list("eqlen", 2:3), code.gen=code_gen_if)
+    cgen(
+      "if", type=list("eqlen", 2:3), code.gen=code_gen_if, res.type="preserve"
+    )
   ),
   # - r2c funs -----------------------------------------------------------------
   list(
@@ -345,13 +361,13 @@ VALID_FUNS <- c(
       "vcopy", fun=vcopy, defn=NULL,
       type=list("arglen", 1L),
       code.gen=code_gen_copy,
-      res.type="preserve.int"   # for uplus
+      res.type="preserve"   # for uplus
     ),
     cgen(
       "rec", fun=rec, defn=NULL,
       type=list("arglen", 1L),
       code.gen=code_gen_rec,
-      res.type="preserve.int"
+      res.type="preserve"
     )
   )
 )

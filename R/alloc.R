@@ -188,13 +188,17 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
       check_fun(name, pkg, env)
       ftype <- VALID_FUNS[[c(name, "type")]] # see cgen() docs
 
-      # If data inputs are know to be integer, and function returns integer for
-      # those, make it known the result should be integer.
-      res.typeof <- if(VALID_FUNS[[c(name, "res.type")]] == 'preserve.int') {
-        input.id <- stack['id', stack['depth',] == depth + 1L]
-        input.type <- alloc[['typeof']][input.id]
-        if(all(input.type %in% c("logical", "integer"))) "integer"
-        else "double"
+      # Preserve input type of logical/integer if inputs and function allow it
+      res.type.mode <- VALID_FUNS[[c(name, "res.type")]]
+      res.typeof <- if(grepl('^preserve', res.type.mode)) {
+        stack.input <- stack_inputs(stack, depth)
+        input.type <- alloc[['typeof']][stack.input['id', ]]
+        if(res.type.mode == "preserve.last") {
+          input.type[length(input.type)]
+        } else {
+          min.type <- if(res.type.mode == 'preserve') 1L else 2L
+          NUM.TYPES[max(c(match(input.type, NUM.TYPES), min.type))]
+        }
       } else VALID_FUNS[[c(name, "res.type")]]
 
       # Compute result size
@@ -206,7 +210,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
         # Length of a specific argument, like `probs` for `quantile`
         # `depth + 1L` should be params to current call (this is only true for
         # the stack, not necessarily for other things in `x`)
-        sizes.tmp <- cand_arg_size_dat(stack, depth, ftype, call, .CALL)
+        sizes.tmp <- input_arg_size_dat(stack, depth, ftype, call, .CALL)
 
         # asize uses max group size instead of NA so we can allocate for it
         asize  <- vecrec_max_size(sizes.tmp, gmax)
@@ -214,7 +218,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
         group <- max(sizes.tmp[2L,])                # any group size in the lot?
       } else if(ftype[[1L]] == "eqlen") {
         # All arguments must be equal length.
-        sizes.tmp <- cand_arg_size_dat(stack, depth, ftype, call, .CALL)
+        sizes.tmp <- input_arg_size_dat(stack, depth, ftype, call, .CALL)
         s.tmp <- sizes.tmp['size',]
         if(!(all(is.na(s.tmp)) || length(unique(s.tmp)) == 1L)) {
           stop(
@@ -254,8 +258,9 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
     # - Assigned-To Symbol -----------------------------------------------------
     } else if(x[['assign']][i]) {
       # in e.g. `x <- y`, this is the `x`, which isn't actually data,
-      # We don't need to record it but we do for consistency.
-      vec.dat <- vec_dat(numeric(), "tmp", typeof="double", group=0, size=0)
+      # We don't need to record it but we do for consistency.  The values here
+      # shouldn't realy get used anywhere where they have an impact.
+      vec.dat <- vec_dat(numeric(), "tmp", typeof="logical", group=0, size=0)
     # - Control Parameter / External -------------------------------------------
     } else if (
       type %in% CTRL.FLAG || !name %in% colnames(alloc[['names']])
@@ -317,12 +322,13 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
         if(length(x[['call']]) < i + 1L)
           stop("Internal Error: missing 'r2c_if' after 'if_else'")
         rcf.dat <- reconcile_control_flow(
-          alloc, call.dat, binding.stack, i.call=i,
+          alloc, call.dat, stack, binding.stack, i.call=i,
           call=x[['call']][[i + 1L]],  # send full if/else for error message
           depth=depth, gmax=gmax, gmin=gmin
         )
         alloc <- rcf.dat[['alloc']]
         call.dat <- rcf.dat[['call.dat']]
+        stack <- rcf.dat[['stack']]
         binding.stack <- binding.stack[-length(binding.stack)]
       }
       # Reduce stack
@@ -344,6 +350,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
     call.dat[[i]][['ids']][id.replace] <- res.alloc
   }
   alloc[['i']] <- res.alloc
+  alloc[['typeof']][res.alloc] <- alloc[['typeof']][last.alloc]
 
   # Remove unused data, and re-index to account for that
   ids.all <- seq_along(alloc[['dat']])
@@ -658,7 +665,7 @@ alloc_result <- function(alloc, vdat){
 #   if_true branches.  See details.
 
 reconcile_control_flow <- function(
-  alloc, call.dat, binding.stack, i.call, call, depth, gmax, gmin
+  alloc, call.dat, stack, binding.stack, i.call, call, depth, gmax, gmin
 ) {
   if(!length(binding.stack))
     stop(
@@ -706,6 +713,8 @@ reconcile_control_flow <- function(
   size.T <- alloc[['size']][id.rc.T]
   group.F <- alloc[['group']][id.rc.F]
   group.T <- alloc[['group']][id.rc.T]
+  typeof.F <- alloc[['typeof']][id.rc.F]
+  typeof.T <- alloc[['typeof']][id.rc.T]
   if(gmax == gmin) {
     size.eq <- size.F == size.T | (is.na(size.F) & is.na(size.T)) |
       (is.na(size.F) & size.T == gmax) |
@@ -755,12 +764,16 @@ reconcile_control_flow <- function(
     group <- as.numeric(group.T[i] | group.F[i])
     asize <- if(is.na(size)) gmax else size
     new <- numeric(asize)
-    vec.dat <- vec_dat(new, "tmp", typeof="double", group=group, size=size)
+    # Take the most general type from the two branches
+    typeof.num <- match(c(typeof.F[i], typeof.T[i]), NUM.TYPES)
+    typeof <- NUM.TYPES[max(typeof.num)]
+    vec.dat <- vec_dat(new, "tmp", typeof=typeof, group=group, size=size)
     alloc <- append_dat(alloc, vec.dat, depth=depth, rec=TRUE)
 
     # Adjust the call data for the id remapping.  This should be done for all
     # calls within the branch
     new.i <- alloc[['i']]
+    new.id0 <- alloc[['ids0']][new.i] # might be the same as new.i always?
     call.dat <- update_cdat_alloc(  # true branch
       call.dat, old=id.rc.T[i], new=new.i,
       start=if.cur.start.i + 1L, end=i.call.T
@@ -781,8 +794,13 @@ reconcile_control_flow <- function(
         stop('Internal Error: failed to find reconciled name in alloc data.')
       alloc[['names']]['ids', names.target] <- new.i
     }
+    # Finally update stack just in case
+    stack.up <- c('id', 'id0', 'size', 'group')
+    stack.up.val <- c(new.i, new.id0, size, group)
+    stack[stack.up, stack['id',] == id.rc.F[i]] <- stack.up.val
+    stack[stack.up, stack['id',] == id.rc.T[i]] <- stack.up.val
   }
-  list(alloc=alloc, call.dat=call.dat)
+  list(alloc=alloc, call.dat=call.dat, stack=stack)
 }
 # Update Call Data Allocations
 #
@@ -910,14 +928,19 @@ vecrec_max_size <- function(x, gmax) {
   size[is.na(size) | group] <- gmax
   if(any(size == 0)) 0 else max(size)
 }
-# Retrieve Size Data For Candidate Parameters
+# Retrieve Inputs to Current Call From Stack
+
+stack_inputs <- function(stack, depth)
+  stack[, stack['depth',] == depth + 1L, drop=FALSE]
+
+# Retrieve Size Data For Input Parameters
 #
 # For size resolution that depends on the size of potentially multiple
 # candidates arguments, return the size data for the relevant candidates.
 #
 # @param ftype see `type` for `cgen`
 
-cand_arg_size_dat <- function(stack, depth, ftype, call, .CALL) {
+input_arg_size_dat <- function(stack, depth, ftype, call, .CALL) {
   stack.cand <- stack['depth',] == depth + 1L
   if(is.character(ftype[[2L]])) {
     param.cand.tmp <- colnames(stack)[stack.cand]

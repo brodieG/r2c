@@ -73,6 +73,8 @@ LOOP.SYM <- c("for", "while", "repeat")
 IF.SUB.SYM <- c("if_true", "if_false")
 CTRL.SYM <- c("if", LOOP.SYM)
 
+NUM.TYPES <- c('logical', 'integer', 'double')
+
 # Calls that don't actually do any computing themselves, rather rely on
 # computations that happen in their arguments `for` is a bit tricky as it does
 # "compute" the counter value, and `r2c_if` also because it doesn't per-se
