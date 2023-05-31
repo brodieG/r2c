@@ -167,6 +167,7 @@ reuse_calls_int <- function(x) {
   calls.ix.mx <- vapply(
     calls.ix, function(x) {length(x) <- depth.max; x}, integer(depth.max)
   )
+  if(depth.max == 1L) dim(calls.ix.mx) <- c(1L, length(calls.ix.mx))
   # Find all calls with same call tree root
   root_calls <- function(ix)
     colSums(calls.ix.mx[seq_along(ix), ,drop=FALSE] == ix, na.rm=TRUE) ==
