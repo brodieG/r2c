@@ -416,7 +416,8 @@ static double ** copy_dat(struct R2C_dat dp) {
  * See ROLL_WINDOW for L_END, R_END
  */
 #define WIN_SIZE do{                                           \
-  if(len >= len_max) len_max = len;                            \
+  if(len > len_max) len_max = len;                             \
+  if(len < len_min) len_min = len;                             \
 } while(0)
 
 #define SIZE_WINDOW(L_END, R_END) do {                         \
@@ -424,6 +425,7 @@ static double ** copy_dat(struct R2C_dat dp) {
   lclosed = wa.bounds & 1;                                     \
   rclosed = wa.bounds & 2;                                     \
   R_xlen_t len_max = 0;                                        \
+  R_xlen_t len_min = R_XLEN_T_MAX;                             \
                                                                \
   if(lclosed && !rclosed) {                                    \
     ROLL_BOUND(left = L_END, right = R_END, <, <, WIN_SIZE);   \
@@ -434,7 +436,11 @@ static double ** copy_dat(struct R2C_dat dp) {
   } else if (!lclosed && !rclosed) {                           \
     ROLL_BOUND(left = L_END, right = R_END, <, <, WIN_SIZE);   \
   }                                                            \
-  return Rf_ScalarReal((double) len_max);                      \
+  SEXP size_fin = PROTECT(Rf_allocVector(REALSXP, 2));         \
+  REAL(size_fin)[0] = (double) len_max;                        \
+  REAL(size_fin)[1] = (double) len_min;                        \
+  UNPROTECT(1);                                                \
+  return size_fin;                                             \
 } while(0)
 
 // ROLL_XX: one of ROLL_BY, ROLL_AT, ROLL_BW

@@ -49,6 +49,7 @@ SEXP R2C_group_sizes(SEXP g) {
   double *gsize = REAL(gsize_sxp);
   int *glabs = INTEGER(glabs_sxp);
   double gmax = 0;
+  double gmin = 0;
 
   if(glen == 1) {
     *gsize = (double) glen;
@@ -71,6 +72,7 @@ SEXP R2C_group_sizes(SEXP g) {
         if(g_int_val != g_int_prev_val) {
           *(gsize++) = gsize_i;
           if(gsize_i > gmax) gmax = gsize_i;
+          if(gsize_i < gmin || gi == 1) gmin = gsize_i;
           *(glabs++) = g_int_val;
           gsize_i = 0;
       } }
@@ -85,12 +87,15 @@ SEXP R2C_group_sizes(SEXP g) {
     // One extra item in the trailing group we will not have counted
     *gsize = gsize_i + 1;
     if(*gsize > gmax) gmax = *gsize;
+    if(*gsize < gmin) gmin = *gsize;
   }
-  SEXP res = PROTECT(Rf_allocVector(VECSXP, 3)); ++prt;
+  SEXP res = PROTECT(Rf_allocVector(VECSXP, 4)); ++prt;
   SEXP gmax_sxp = PROTECT(Rf_ScalarReal(gmax)); ++prt;
+  SEXP gmin_sxp = PROTECT(Rf_ScalarReal(gmin)); ++prt;
   SET_VECTOR_ELT(res, 0, gsize_sxp);
   SET_VECTOR_ELT(res, 1, glabs_sxp);
   SET_VECTOR_ELT(res, 2, gmax_sxp);
+  SET_VECTOR_ELT(res, 3, gmin_sxp);
   UNPROTECT(prt);
   return res;
 }
