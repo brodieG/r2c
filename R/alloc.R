@@ -191,8 +191,9 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
       # If data inputs are know to be integer, and function returns integer for
       # those, make it known the result should be integer.
       res.typeof <- if(VALID_FUNS[[c(name, "res.type")]] == 'preserve.int') {
-        if(all(alloc[['typeof']][stack['id', ]] %in% c("logical", "integer")))
-          "integer"
+        input.id <- stack['id', stack['depth',] == depth + 1L]
+        input.type <- alloc[['typeof']][input.id]
+        if(all(input.type %in% c("logical", "integer"))) "integer"
         else "double"
       } else VALID_FUNS[[c(name, "res.type")]]
 
