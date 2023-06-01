@@ -729,7 +729,7 @@ reconcile_control_flow <- function(
     stop(
       "Assigned variables and return value must be same size across branches; ",
       "potential size discrepancy for ",
-      toString(sprintf("`%s`", rc.sym.names[colSums(size.eq) != 2L])),
+      toString(sprintf("`%s`", rc.sym.names[!size.eq])),
       " in:\n", paste0(deparse(call), collapse="\n")
     )
   }
