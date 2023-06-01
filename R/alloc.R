@@ -985,7 +985,7 @@ check_fun <- function(name, pkg, env) {
   )
   if(inherits(got.fun, "try-error")) {
     stop(
-      "Failed retrieving `", name, "` with error:",
+      "Failed retrieving `", name, "` with error: ",
       conditionMessage(attr(got.fun, 'condition'))
     )
   }
