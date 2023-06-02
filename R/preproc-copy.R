@@ -348,12 +348,15 @@ copy_branchdat_rec <- function(
     # `passive` is whether this single call is passive, `data[['passive']]`
     # is whether all its sub-calls also return passively (and is only knowable
     # after we've recursed through the expression).  For this function purposes
-    # we treat `r2c_if` as computing, b/c we are guaranteed the return value
-    # will be computed if used, even though strictly it does not compute itself.
-    passive <- sym.name %in% PASSIVE.SYM & sym.name != 'r2c_if'
+    # we treat `r2c_if`  and similar as computing, b/c we are guaranteed the
+    # return value will be computed if used, even though strictly it does not
+    # compute itself.
+    passive <- sym.name %in% PASSIVE.BRANCH.SYM
     leaf <- !passive # for candidacy purposes, computing calls are leaves
 
-    if(sym.name == 'r2c_if') {
+    if(sym.name %in% BRANCH.EXEC.SYM) {
+      if(sym.name != 'r2c_if')
+        stop("Internal Error: add support for loop branch")
       # New if/else context resets all local bindings
       data.next <- data
       data.next[[B.LOC]] <- data.next[[B.LOC.CMP]] <- character()

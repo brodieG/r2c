@@ -166,13 +166,13 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
   stack <- init_stack()
   stack.ctrl <- stack.flag <- list()
   call.dat <- list()
+  branch.lvl <- 0L
 
   for(i in seq_along(x[['call']])) {
     type <- x[['type']][[i]]
     call <- x[['call']][[i]]
     depth <- x[['depth']][[i]]
     argn <- x[['argn']][[i]]
-    rec <- x[['rec']][[i]]
     pkg <- name <- ""
     if(!type %in% CTRL.FLAG) {
       tmp <- get_lang_info(call)
@@ -180,6 +180,11 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
       pkg <- tmp[['pkg']]
     }
     vec.dat <- init_vec_dat()
+
+    # reconciliation level
+    rec <- x[['rec']][[i]]
+    if(rec && !branch.lvl) stop("Internal Error: rec found out of branch.")
+    rec <- rec * branch.lvl
 
     # - Process Call -----------------------------------------------------------
     if(type == "call") {
@@ -326,12 +331,16 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
         rcf.dat <- reconcile_control_flow(
           alloc, call.dat, stack, binding.stack, i.call=i,
           call=x[['call']][[i + 1L]],  # send full if/else for error message
-          depth=depth, gmax=gmax, gmin=gmin
+          depth=depth, gmax=gmax, gmin=gmin, branch.lvl=branch.lvl
         )
         alloc <- rcf.dat[['alloc']]
         call.dat <- rcf.dat[['call.dat']]
         stack <- rcf.dat[['stack']]
         binding.stack <- binding.stack[-length(binding.stack)]
+      } else if (name %in% BRANCH.TEST.SYM) {
+        branch.lvl <- branch.lvl + 1L
+      } else if (name %in% BRANCH.EXEC.SYM) {
+        branch.lvl <- branch.lvl - 1L
       }
       # Reduce stack
       stack <- stack[,stack['depth',] <= depth, drop=FALSE]
@@ -667,7 +676,8 @@ alloc_result <- function(alloc, vdat){
 #   if_true branches.  See details.
 
 reconcile_control_flow <- function(
-  alloc, call.dat, stack, binding.stack, i.call, call, depth, gmax, gmin
+  alloc, call.dat, stack, binding.stack, i.call, call, depth, gmax, gmin,
+  branch.lvl
 ) {
   if(!length(binding.stack))
     stop(
@@ -680,8 +690,10 @@ reconcile_control_flow <- function(
   call.dat.i <- vapply(call.dat, '[[', 0L, 'call.i')
 
   # Identify shared bindings across branches that need to be reconciled.
-  rc.nm.F <- sort(colnames(names.F)[names.F['rec',] == 1])
-  rc.nm.T <- sort(colnames(names.T)[names.T['rec',] == 1])
+  rc.nm.F <- sort(colnames(names.F)[names.F['rec',] == branch.lvl])
+  rc.nm.T <- sort(colnames(names.T)[names.T['rec',] == branch.lvl])
+  if(is.null(rc.nm.F)) rc.nm.F <- character()
+  if(is.null(rc.nm.T)) rc.nm.T <- character()
   if(!identical(rc.nm.F, rc.nm.T))
     stop("Internal Error: mismatched symbols to reconcile")
 
@@ -729,7 +741,11 @@ reconcile_control_flow <- function(
     stop(
       "Assigned variables and return value must be same size across branches; ",
       "potential size discrepancy for ",
-      toString(sprintf("`%s`", rc.sym.names[!size.eq])),
+      toString(
+        sprintf(
+          "`%s` (TRUE: %d vs FALSE: %d)",
+          rc.sym.names[!size.eq], size.T[!size.eq], size.F[!size.eq]
+      ) ),
       " in:\n", paste0(deparse(call), collapse="\n")
     )
   }
@@ -770,7 +786,9 @@ reconcile_control_flow <- function(
     typeof.num <- match(c(typeof.F[i], typeof.T[i]), NUM.TYPES)
     typeof <- NUM.TYPES[max(typeof.num)]
     vec.dat <- vec_dat(new, "tmp", typeof=typeof, group=group, size=size)
-    alloc <- append_dat(alloc, vec.dat, depth=depth, rec=TRUE)
+    # rec=0L b/c reconciliation decisions made on names matrix, so this
+    # value should not be used anymore.
+    alloc <- append_dat(alloc, vec.dat, depth=depth, rec=0L)
 
     # Adjust the call data for the id remapping.  This should be done for all
     # calls within the branch
@@ -795,6 +813,8 @@ reconcile_control_flow <- function(
       if(length(names.target) != 1L)
         stop('Internal Error: failed to find reconciled name in alloc data.')
       alloc[['names']]['ids', names.target] <- new.i
+      alloc[['names']]['rec', names.target] <-
+        alloc[['names']]['rec', names.target] - 1L
     }
     # Finally update stack just in case
     stack.up <- c('id', 'id0', 'size', 'group')

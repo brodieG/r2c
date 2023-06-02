@@ -72,6 +72,8 @@ ASSIGN.SYM <- c("<-", "=", "for")
 LOOP.SYM <- c("for", "while", "repeat")
 IF.SUB.SYM <- c("if_true", "if_false")
 CTRL.SYM <- c("if", LOOP.SYM)
+BRANCH.TEST.SYM <- c("if_test")
+BRANCH.EXEC.SYM <- c("r2c_if")
 
 NUM.TYPES <- c('logical', 'integer', 'double')
 
@@ -81,8 +83,11 @@ NUM.TYPES <- c('logical', 'integer', 'double')
 # compute, but if the return value is used, it ensures that both of it's
 # branches either compute or `vcopy` that..
 PASSIVE.SYM <- unique(
-  c(ASSIGN.SYM, LOOP.SYM, "if", "{", "uplus", IF.SUB.SYM, 'r2c_if', 'rec')
+  c(ASSIGN.SYM, LOOP.SYM, "if", "{", "uplus", IF.SUB.SYM, BRANCH.EXEC.SYM, 'rec')
 )
+# In branches, some symbols are not considered passive even though they don't
+# strictly compute.
+PASSIVE.BRANCH.SYM <- setdiff(PASSIVE.SYM, BRANCH.EXEC.SYM)
 
 # For `record_call_dat`.
 CALL.DAT.VEC <- c('argn', 'depth', 'type', 'assign', 'indent', 'rec')

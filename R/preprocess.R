@@ -59,7 +59,7 @@ preprocess <- function(call, formals=character(), optimize=FALSE) {
     call <- callr[['x']]  # also contains renames
   }
   # Restructure if/else and loops.  Not done as a transformation as
-  # `reuse_calls_int` needs to be able to recognize the original constrol flow
+  # `reuse_calls_int` needs to be able to recognize the original control flow
   call <- transform_ifelse(call)
 
   # Copy "external" data to r2c alloc mem (see fun docs); must be the last step.
@@ -238,7 +238,7 @@ pp_internal <- function(
     # Are we in a rec chain?  Needed for alloc to know which bindings are
     # from rec (see reconcile_control_flow).
     rec <- name == "rec" || (
-      name %in% PASSIVE.SYM &&
+      name %in% PASSIVE.BRANCH.SYM &&
       length(x[['rec']]) && x[['rec']][length(x[['rec']])]
     )
     # Bind assignments (we do it after processing of the rest of the call)
