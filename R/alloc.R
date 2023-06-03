@@ -220,17 +220,22 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
         # asize uses max group size instead of NA so we can allocate for it
         asize  <- vecrec_max_size(sizes.tmp, gmax)
         size <- vecrec_known_size(sizes.tmp[1L,])  # knowable sizes could be NA
-        group <- max(sizes.tmp[2L,])                # any group size in the lot?
+        group <- max(sizes.tmp[2L,])               # any group size in the lot?
       } else if(ftype[[1L]] == "eqlen") {
-        # All arguments must be equal length.
         sizes.tmp <- input_arg_size_dat(stack, depth, ftype, call, .CALL)
         s.tmp <- sizes.tmp['size',]
-        if(!(all(is.na(s.tmp)) || length(unique(s.tmp)) == 1L)) {
+        # All arguments must be equal length.  Branch exec funs are checked in
+        # `reconcile_control_flow`, but not here because we don't actually care
+        # if the results are unequal sizes in the case the result isn't used.
+        if(
+          !(all(is.na(s.tmp)) || length(unique(s.tmp)) == 1L) &&
+          !name %in% BRANCH.EXEC.SYM
+        ) {
           stop(
             "Potentially unequal sizes for parameters ",
             toString(ftype[[2L]]), " in a function that requires them ",
-            "to be equal sized.:\n",
-            deparseLines(.CALL)
+            "to be equal sized:\n",
+            deparseLines(clean_call(call))
           )
         }
         asize  <- if(anyNA(sizes.tmp['size',])) NA_real_ else s.tmp[1L]
