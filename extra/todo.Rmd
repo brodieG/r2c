@@ -19,6 +19,24 @@
 
 ## Current
 
+* Add `get_r_function` to recover an R function with formals, etc.
+
+* Empty braces can't just be merged into parent braces, so we need to check the
+  empty condition before we simplify them away (`{5;{}}` is not equal to `{5}`).
+
+* `mean(x) * mean(x)` should re-use `mean(x)` but doesn't?
+
+* Could reconciliation use a previously allocated but freed vector?  Need to
+  make absolutely sure it e.g. is not used in the TRUE branch, so maybe not?
+  Feels a bit dangerous.
+
+* Check into why NA size is not carrying forward across calculations and instead
+  getting replaces by `gmax`.
+
+* Does re-use correctly recognize that an assignment in one branch cannot be
+  used in the alternate (particularly if the assignment happens in the TRUE
+  branch?
+
 * if/else with NA test.
 
 * Check that return value actually has a `rec`.

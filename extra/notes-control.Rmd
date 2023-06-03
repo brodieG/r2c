@@ -35,6 +35,21 @@ The same as above, except we always need to copy the outside.
 * Copy `z` if `w`, `x` or `y` used and `z` is non-local-computed.
 * Copy `z` if `z` is local comp but used outside.
 
+# Nested Reconciliation
+
+We want to avoid requiring reconciliation in the last `if/else`, but we also
+want to make sure two reconciliations happen in the nested one.  So we probably
+need a reconciliation counter along with a nesting counter?
+
+    if(a) {
+      x1 <- mean(x)
+      if(b) x1 <- sum(x)
+    } else {
+      x1 <- sum(x^2)
+    }
+    if(b) x1 else x1 + 1
+    x1
+
 # Reconcile
 
 * Any symbols bound in branches used after that branch:

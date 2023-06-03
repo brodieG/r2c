@@ -361,6 +361,29 @@ unitizer_sect("Nested", {
   # Nested binding expression used (but not actual binding)
   call4e1 <- quote(mean(if(a) x <- z else y))
   r2c:::pp_clean(call4e1)
+
+  # Indirect return of nested
+  call4f1 <-quote({
+    x2 <- if(a == 1) a
+    else if (a == 2) b
+    else c
+    x2
+  })
+  r2c:::pp_clean(call4f1)
+
+  # Nested via else/if
+  call4f1 <-quote({
+    x2 <- if(a == 1) {
+      x3 <- mean(x)
+    } else if (a == 2) {
+      x3 <- sum(x)
+    } else {
+      x3 <- a
+    }
+    x2
+  })
+
+
 })
 unitizer_sect("Vcopy Branch Return", {
   # `x <- mean(z)` requires vcopy when symbol is used outside of local context
@@ -434,6 +457,7 @@ unitizer_sect("Vcopy Branch Return", {
   # Branch as input to computing fun
   call5c1 <- quote(mean(if(a) x else y))
   r2c:::pp_clean(call5c1)
+
 })
 unitizer_sect('multi-assign', {
   # everything needs to be rec/vcopy, except `mean(z)` which needs rec only
