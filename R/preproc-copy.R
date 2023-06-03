@@ -362,7 +362,7 @@ copy_branchdat_rec <- function(
       data.next[[B.LOC]] <- data.next[[B.LOC.CMP]] <- character()
 
       # When branch result used, subsequent code needs to know it is branch.res.
-      branch.res.next <- last || length(assign.to) || in.compute
+      branch.res.next <- branch.res || last || length(assign.to) || in.compute
 
       # Recurse through each branch independently since they are "simultaneous"
       # with respect to call order (either could be last too).
