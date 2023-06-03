@@ -485,11 +485,9 @@ append_dat <- function(
   dat[['type']] <- c(dat[['type']], type)
   dat[['typeof']] <- c(dat[['typeof']], typeof)
   dat[['group']] <- c(dat[['group']], group)
+  dat[['rec']] <- c(dat[['rec']], rec)
 
-  vec.el <- c(
-    'ids0', 'alloc', 'size', 'depth', 'type', 'typeof', 'group'
-  )
-  if(length(unique(lengths(dat[vec.el]))) != 1L)
+  if(length(unique(lengths(dat[ALLOC.DAT.VEC]))) != 1L)
     stop("Internal Error: irregular vector alloc data.")
 
   # Append dat should never overwrite names in the existing scope
@@ -508,11 +506,11 @@ reuse_dat <- function(alloc, fit, vec.dat, depth) {
   target <- which.min(fit)
   slot <- seq_along(alloc[['dat']])[fit][target]
 
+  update.vecs <- setdiff(ALLOC.DAT.VEC, c('ids0', 'alloc', 'depth'))
+  for(i in update.vecs) alloc[[i]][slot] <- vec.dat[[i]]
+
   alloc[['depth']][slot] <- depth
-  alloc[['size']][slot] <- vec.dat[['size']]
-  alloc[['typeof']][slot] <- vec.dat[['typeof']]
   alloc[['ids0']][slot] <- alloc[['id0']] <- alloc[['id0']] + 1L
-  alloc[['group']][slot] <- vec.dat[['group']]
   alloc[['i']] <- slot
   alloc
 }
@@ -533,6 +531,7 @@ init_dat <- function(call, meta, scope) {
     type=character(),
     typeof=character(),
     group=numeric(),     # because it is used in a numeric matrix too
+    rec=numeric(),
 
     # Other data
     i=0L,
@@ -540,6 +539,12 @@ init_dat <- function(call, meta, scope) {
     scope=scope,
     meta=meta
   )
+  if(
+    !all(ALLOC.DAT.VEC %in% names(data)) &&
+    !all(lengths(data[ALLOC.DAT.VEC]) == 0L)
+  )
+    stop("Internal Error: Bad alloc data initialization.")
+
   colnames(data[['names']]) <- character()
   data
 }
@@ -718,9 +723,11 @@ reconcile_control_flow <- function(
   call.dat.T <- call.dat[[call.i.T]]
   id.ret.F <- call.dat.F[['ids']][length(call.dat.F[['ids']])]
   id.ret.T <- call.dat.T[['ids']][length(call.dat.T[['ids']])]
-  if(xor(call.dat.F[['name']] == "rec", call.dat.T[['name']] == "rec"))
+  rec.ret.F <- alloc[['rec']][id.ret.F] == branch.lvl
+  rec.ret.T <- alloc[['rec']][id.ret.T] == branch.lvl
+  if(xor(rec.ret.F, rec.ret.T))
     stop("Internal Error: inconsistent reconcile for branch return value.")
-  rec.ret <- call.dat.F[['name']] != "rec"
+  rec.ret <- rec.ret.F
 
   # All ids that need to be reconciled (tack return at end if needed)
   id.rc.F <- c(names.rc.F['ids',], if(rec.ret) id.ret.F)

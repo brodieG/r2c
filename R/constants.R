@@ -89,8 +89,12 @@ PASSIVE.SYM <- unique(
 # strictly compute.
 PASSIVE.BRANCH.SYM <- setdiff(PASSIVE.SYM, BRANCH.EXEC.SYM)
 
-# For `record_call_dat`.
+# For `record_call_dat` and `alloc_dat`, fields that are supposed to be scalar
+# for each allocation/call
 CALL.DAT.VEC <- c('argn', 'depth', 'type', 'assign', 'indent', 'rec')
+ALLOC.DAT.VEC <- c(
+  'ids0', 'alloc', 'size', 'depth', 'type', 'typeof', 'group', 'rec'
+)
 
 # To avoid typos
 CTRL.FLAG <- c("control", "flag")
