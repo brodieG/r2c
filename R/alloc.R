@@ -298,7 +298,8 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
       } else if (name %in% PASSIVE.SYM) {
         # Don't do anything for these, effectively causing `dat[[i]]` to remain
         # unchanged for use by the next call, except we do update the `typeof`
-        # for the case where a logical gets turned to numeric by uplus.
+        # for when logical gets turned to numeric by uplus, and also `rec`.
+        alloc[['rec']][alloc[['i']]] <- rec
         alloc[['typeof']][alloc[['i']]] <- res.typeof
       } else stop("Internal Error: unexpected call allocation state.")
 
