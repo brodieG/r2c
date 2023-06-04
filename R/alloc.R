@@ -22,12 +22,12 @@ NULL
 #' This is internal documentation.  Please be sure to read `?r2c-compile` and
 #' the documentation for the `preprocess` internal function before reading this.
 #'
-#' We iterate through the linearized call list (see `preprocess` for details) to
-#' determine the memory needs to support the evaluation of the function, and
-#' pre-allocate this memory.  The allocations are sized to fit the largest
-#' iteration (and thus should fit all iterations).  The allocations are appended
-#' to the storage list that is part of the `alloc` object (`alloc[['dat']]).
-#' See docs for `append_dat`.
+#' We iterate through the linearized call list (see "Linearaziation"` for
+#' details) to determine the memory needs to support the evaluation of the
+#' function, and pre-allocate this memory.  The allocations are sized to fit
+#' the largest iteration (and thus should fit all iterations).  The
+#' allocations are appended to the storage list that is part of the `alloc`
+#' object (`alloc[['dat']]).  See docs for `append_dat`.
 #'
 #' Every leaf expression that might affect allocation requirements (i.e.
 #' excluding control and flag values) is brought into the storage list if
@@ -35,8 +35,8 @@ NULL
 #' are shallow copied into the storage list (i.e. just referenced, not actually
 #' copied, per standard R semantics).  The semantics of lookup should mimic
 #' those of e.g. `with`, where we first look through any symbols previously
-#' bound in the evaluation environment, then in the data in `with`, and finally
-#' in the calling environment.
+#' bound in the `r2c` evaluation environment, then in the data in `with`, and
+#' finally in the calling environment.
 #'
 #' The sizes of leaf expressions are tracked in the `stack` array, along with
 #' their depth, and where in the storage list they reside.  When we reach a
@@ -58,6 +58,38 @@ NULL
 #'
 #' Control and flags are tracked in separate stacks that are also merged into
 #' `call.dat`.
+#'
+#' @section Linearization:
+#'
+#' Linearization is very convenient when we have a sequence of calls that reduce
+#' their parameters into a single result.  This is because we can keep all sorts
+#' of meta data in parallel lists that map 1-1 with each call component.
+#' Otherwise we need a complex recursive structure that matches the call
+#' and also carries the meta data, and it is more awkward to deal with
+#' that.  Linearization is done by `preprocess`.  An example:
+#'
+#'     x + y * z
+#'
+#' When linearized becomes:
+#'
+#'     expression          depth
+#'     x               2-------+
+#'                             |
+#'     y                  3--+ |
+#'     z                  3--+ |
+#'                           | |
+#'     y * z           2-----+-+
+#'                             |
+#'     x + y * z     1---------+
+#'
+#' Processing the expressions sequentially can be done straightforwardly with a
+#' simple stack.
+#'
+#' Unfortunately much after the initial implementation we decided it
+#' would be a fun challenge to add branches, and the linearized format is not
+#' well suited for them.  Rather than try to transition everything to a
+#' recursive structure we resorted to some convolutions to deal with the
+#' branches
 #'
 #' @section Depth:
 #'
@@ -131,11 +163,15 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
   # Status control placeholder.
   sts.vec <- numeric(IX[['STAT.N']])
   vdat <- vec_dat(sts.vec, "sts", typeof='double', group=0, size=IX[['STAT.N']])
-  alloc <- append_dat(alloc, vdat=vdat, depth=0L, call.i=0L, rec=FALSE)
+  alloc <- append_dat(
+    alloc, vdat=vdat, depth=0L, call.i=0L, rec=FALSE, branch.lvl=0L
+  )
 
   # Result placeholder, to be alloc'ed once we know group sizes.
   vdat <- vec_dat(numeric(), size=0L, type="res", typeof='double', group=0)
-  alloc <- append_dat(alloc, vdat=vdat, depth=0L, call.i=0L, rec=FALSE)
+  alloc <- append_dat(
+    alloc, vdat=vdat, depth=0L, call.i=0L, rec=FALSE, branch.lvl=0L
+  )
 
   # Add group data.
   if(!all(nzchar(names(data)))) stop("All data must be named.")
@@ -147,13 +183,14 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
     typeof <- typeof(datum)
     vdat <- vec_dat(datum, type="grp", typeof=typeof, group=1, size=NA_real_)
     alloc <-
-      append_dat(alloc, vdat=vdat, depth=0L, name=dname, call.i=0L, rec=FALSE)
+      append_dat(alloc, vdat=vdat, depth=0L, name=dname, call.i=0L, rec=0L)
   }
   # Bump scope so the data cannot be overwritten
   alloc[['scope']] <- alloc[['scope']] + 1L
 
-  # Stack to track name state before and after control flow branches
-  binding.stack <- list()
+  # Stacks to track name state and call index before/after control flow branches
+  binding.stack <- list()         # track after first branch
+  branch.start.stack <- integer()
 
   # - Process ------------------------------------------------------------------
 
@@ -244,9 +281,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
       } else stop("Internal Error: unknown function type.")
 
       # Cleanup expired symbols, and bind new ones
-      alloc <-
-        names_update(alloc, i, call, call.name=name, call.i=i, rec=rec)
-
+      alloc <- names_update(alloc, i, call, call.name=name, call.i=i, rec=rec)
       # Prepare new vec data (if any), and tweak objet depending on situation.
       # Alloc is made later, but only if vec.dat[['new']] is not null.
       vec.dat <- vec_dat(NULL, "tmp", typeof=res.typeof, group=group, size=size)
@@ -275,7 +310,8 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
       vec.dat <- vec_dat(numeric(), "tmp", typeof="logical", group=0, size=0)
     # - Control Parameter / External -------------------------------------------
     } else if (
-      type %in% CTRL.FLAG || !name %in% colnames(alloc[['names']])
+      type %in% CTRL.FLAG ||
+      !(id <- name_to_id(alloc, name)) # `id` used in next else if
     ) {
       # Need to eval parameter
       tryCatch(
@@ -301,7 +337,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
       }
 
     # - Match a Symbol In Data -------------------------------------------------
-    } else if (id <- name_to_id(alloc, name)) {
+    } else if (id) {  # see prior else if for `id`
       alloc[['i']] <- id
       # Update symbol depth (needed for assigned-to symbols)
       if(alloc[['depth']][id] > depth) alloc[['depth']][id] <- depth
@@ -313,7 +349,9 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
     # Append new data to our data array.  Not all calls produce data; those
     # that do have non-NULL vec.dat[['new']].
     if(!is.null(vec.dat[['new']]))
-      alloc <- append_dat(alloc, vec.dat, depth=depth, call.i=i, rec=rec)
+      alloc <- append_dat(
+        alloc, vec.dat, depth=depth, call.i=i, rec=rec, branch.lvl=0L
+      )
 
     # Call actions that need to happen after allocation data updated
     if(type == "call") {
@@ -324,13 +362,32 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
         call.dat, call=call, call.name=name, stack=stack, depth=depth,
         alloc=alloc, ctrl=stack.ctrl, flag=stack.flag, call.i=i
       )
-      # Handle name reconciliation for control flow calls
-      if(name == "if_true") {
+      # Handle name reconciliation for control flow calls.  Recall that call
+      # linearization causes paramters to be seen before the call that computes
+      # on them.  Also, because we make the control flow test a separate
+      # expression (e.g `if()` becomes `if_test(); r2c_if()`) the test and
+      # execution calls sandwich all the branch calls.
+      if (name %in% BRANCH.TEST.SYM) {
+        # First in branch expression after this one
+        branch.lvl <- branch.lvl + 1L
+        branch.start.stack <- c(branch.start.stack, i)
+      } else if (name %in% BRANCH.EXEC.SYM) {
+        # Last branch expression before this one
+        branch.lvl <- branch.lvl - 1L
+      } else if(name == "if_true") {
+        # Just completed TRUE branch
         # Needs to be stack to handle , e.g. in `if(a) b else {if(c) d}`
         binding.stack <- c(
           binding.stack, list(list(names=alloc[['names']], i.call=i))
         )
+        # Hide all the names bound between here and the matching 'if_test'
+        # Unhiding done by `reconcile_control_flow`
+        names.assign <- alloc[['names']]['i.assign',]
+        names.assign.in.br <-
+          names.assign > branch.start.stack[length(branch.start.stack)]
+        alloc[['names']]['br.hide', names.assign.in.br] <- branch.lvl
       } else if (name == "if_false") {
+        # Just completed FALSE branch
         if(length(x[['call']]) < i + 1L)
           stop("Internal Error: missing 'r2c_if' after 'if_else'")
         rcf.dat <- reconcile_control_flow(
@@ -342,10 +399,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
         call.dat <- rcf.dat[['call.dat']]
         stack <- rcf.dat[['stack']]
         binding.stack <- binding.stack[-length(binding.stack)]
-      } else if (name %in% BRANCH.TEST.SYM) {
-        branch.lvl <- branch.lvl + 1L
-      } else if (name %in% BRANCH.EXEC.SYM) {
-        branch.lvl <- branch.lvl - 1L
+        branch.start.stack <- branch.start.stack[-length(branch.start.stack)]
       }
       # Reduce stack
       stack <- stack[,stack['depth',] <= depth, drop=FALSE]
@@ -439,6 +493,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
 ##   This designation is needed so that if a group sized allocation is bound to
 ##   a variable, that that allocation is group sized is still available when the
 ##   variable is retrieved later (it's possible this is a bit duplicative of NA
+## * rec: see `rec` paramater.
 ##
 ## We're mixing return value elements and params, a bit, but there are some
 ## differences, e.g.:
@@ -454,7 +509,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
 ## @return dat, updated
 
 append_dat <- function(
-  dat, vdat, name=NULL, depth, call.i, rec
+  dat, vdat, name=NULL, depth, call.i, rec, branch.lvl
 ) {
   if(is.null(name)) name <- ""
   if(!is.vec_dat(vdat)) stop("Internal Error: bad vec_dat.")
@@ -520,7 +575,8 @@ init_dat <- function(call, meta, scope) {
     dat=list(),
     names=rbind(
       ids=integer(), scope=integer(),
-      i.max=integer(), i.assign=integer(), rec=integer()
+      i.max=integer(), i.assign=integer(), rec=integer(),
+      br.hide=integer()
     ),
 
     # Equal length vector data
@@ -683,7 +739,7 @@ alloc_result <- function(alloc, vdat){
 # See "preproc-copy.R" for context.
 #
 # @param binding.stack list of snapshots of bindings as of the completion of the
-#   if_true branches.  See details.
+#   `if_true` branches.  See details.
 
 reconcile_control_flow <- function(
   alloc, call.dat, stack, binding.stack, i.call, call, depth, gmax, gmin,
@@ -700,17 +756,19 @@ reconcile_control_flow <- function(
   call.dat.i <- vapply(call.dat, '[[', 0L, 'call.i')
 
   # Identify shared bindings across branches that need to be reconciled.
-  rc.nm.F <- sort(colnames(names.F)[names.F['rec',] == branch.lvl])
-  rc.nm.T <- sort(colnames(names.T)[names.T['rec',] == branch.lvl])
+  names.rc.F <- names.F[, names.F['rec',] == branch.lvl, drop=FALSE]
+  names.rc.T <- names.T[, names.T['rec',] == branch.lvl, drop=FALSE]
+  rc.nm.F <- sort(colnames(names.rc.F))
+  rc.nm.T <- sort(colnames(names.rc.T))
   if(is.null(rc.nm.F)) rc.nm.F <- character()
   if(is.null(rc.nm.T)) rc.nm.T <- character()
   if(!identical(rc.nm.F, rc.nm.T))
-    stop("Internal Error: mismatched symbols to reconcile")
-
-  names.rc.F <- names.F[, rc.nm.F, drop=FALSE]
-  names.rc.T <- names.T[, rc.nm.T, drop=FALSE]
+    stop("Internal Error: mismatched symbols to reconcile.")
+  if(anyDuplicated(rc.nm.F))
+    stop("Internal Error: duplicate symbols to reconcile.")
 
   # Drop those that are the same across the branches (set prior to if/else)
+  # Not sure if there should be any of these given rec == branch.lvl
   names.rc.drop <- colSums(names.rc.F == names.rc.T) == nrow(names.rc.F)
   names.rc.F <- names.rc.F[, !names.rc.drop, drop=FALSE]
   names.rc.T <- names.rc.T[, !names.rc.drop, drop=FALSE]
@@ -800,8 +858,9 @@ reconcile_control_flow <- function(
     vec.dat <- vec_dat(new, "tmp", typeof=typeof, group=group, size=size)
     # rec=0L b/c reconciliation decisions made on names matrix, so this
     # value should not be used anymore.
-    alloc <- append_dat(alloc, vec.dat, depth=depth, rec=0L)
-
+    alloc <- append_dat(
+      alloc, vec.dat, depth=depth, rec=0L, branch.lvl=branch.lvl
+    )
     # Adjust the call data for the id remapping.  This should be done for all
     # calls within the branch
     new.i <- alloc[['i']]
@@ -834,6 +893,10 @@ reconcile_control_flow <- function(
     stack[stack.up, stack['id',] == id.rc.F[i]] <- stack.up.val
     stack[stack.up, stack['id',] == id.rc.T[i]] <- stack.up.val
   }
+  # Undo branch hiding.
+  hidden <- alloc[['names']]['br.hide', ] == branch.lvl
+  alloc[['names']]['br.hide', hidden] <- branch.lvl - 1L
+
   list(alloc=alloc, call.dat=call.dat, stack=stack)
 }
 # Update Call Data Allocations
@@ -1067,7 +1130,8 @@ names_bind <- function(alloc, new.name, call.i, rec) {
     scope=alloc[['scope']],
     i.max=unname(alloc[['meta']][['i.sym.max']][new.name]),
     i.assign=call.i,
-    rec=rec
+    rec=rec,
+    br.hide=0L
   )
   if(is.na(new.name.dat['i.max'])) new.name.dat['i.max'] <- 0L
   alloc[['names']] <- cbind(alloc[['names']], new.name.dat)
@@ -1091,11 +1155,20 @@ names_update <- function(alloc, i, call, call.name, call.i, rec) {
 ## generated.
 
 name_to_id <- function(alloc, name) {
-  if (id <- match(name, rev(colnames(alloc[['names']])), nomatch=0)) {
-    # Reconvert the name id into data id (`rev` simulates masking)
-    id <- ncol(alloc[['names']]) - id + 1L
-    alloc[['names']]['ids', id]
-  }
+  names <- alloc[['names']]
+  res <- 0L
+  if(ncol(names)) {
+    hide.lvl <- max(names['br.hide',])
+    visible <- names['br.hide',] != hide.lvl | hide.lvl == 0L
+    # Only look through non hidden names (hidden are those in the "TRUE" branch)
+    names.v <- names[, visible, drop=FALSE]
+    if (id <- match(name, rev(colnames(names.v)), nomatch=0)) {
+      # Reconvert the name id into data id (`rev` simulates masking), but we need
+      # to undo it with `ncol(names.v) - id + 1L`
+      id <- seq_along(visible)[visible][ncol(names.v) - id + 1L]
+      res <- names['ids', id]
+  } }
+  res
 }
 ## Check That External Vectors are OK
 
