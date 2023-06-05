@@ -1,3 +1,25 @@
+# Names in Branches
+
+Problem is that the logic in the FALSE branch will see the names bound in the
+TRUE branch currently.  We can't just remove the relevant names because
+otherwise we might free the related memory, but we can hide it.  Hiding a single
+level should be straightforward.
+
+
+    x <- 0
+    if(a) {
+      x <- 1
+      if(b) x <- x + 1
+      else x               # needs to see 1, 0
+      x                    # needs to see reconciled 2 and 1, 0
+
+    } else x               # needs to see 0
+
+Every else branch must be able to see everything except what was just assigned
+inside the matched TRUE, including all sub-branches of that.  If we record the
+state of names at the `if_test` step, then we can mark all those that should be
+ignored.
+
 # Passive vs Not and Chains
 
 ## As a return value

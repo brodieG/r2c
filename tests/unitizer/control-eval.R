@@ -20,6 +20,23 @@ unitizer_sect("basic", {
   f1a(FALSE, 1:3)
   f1a(NA, 1:3)
 
+  f1b <- r2cq({
+      if(a) x <- y
+      x - y
+    },
+    check=TRUE
+  )
+  f1b(0, 1, 2)
+  f1c <- r2cq({
+      x <- x
+      if(a) x <- y
+      x - y
+    },
+    check=TRUE
+  )
+  f1c(0, 1, 2)
+
+
   f2a <- r2cq({
       z <-
         if(a) {y <- mean(x); sum(z)}

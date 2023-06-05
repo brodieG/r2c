@@ -19,6 +19,26 @@
 
 ## Current
 
+* Reconcile needs to functionalize all the code that is running on the `T` and
+  `F` in "parallel".  So long as the intermediate results aren't used later we
+  should be able to do it.
+
+* Need a way to get the clean call to show in errors, e.g. this is terrible, but
+  hard to fix because we need the `if_test` part of it:
+
+    Error in alloc(x = preproc, data = do, gmax = gmax, gmin = gmin, par.env = enclos,  : 
+      Potentially unequal sizes for parameters true, false in a function that requires them to be equal sized:
+    r2c::r2c_if(true = r2c::if_true(x <- r2c::rec(r2c::vcopy(y))), 
+        false = r2c::if_false({
+            x <- r2c::rec(r2c::vcopy(x))
+            numeric(0)
+        }))
+
+* We now track `rec` status both in the "names" matrix as well as in the `alloc`
+  data.  Should we drop everything in that matrix (and maybe the stack) that can
+  be recovered from `alloc` via `id0` to mitigate potential synchronization
+  issues.
+
 * Add `get_r_function` to recover an R function with formals, etc.
 
 * Empty braces can't just be merged into parent braces, so we need to check the
