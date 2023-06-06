@@ -93,7 +93,7 @@ PASSIVE.BRANCH.SYM <- setdiff(PASSIVE.SYM, BRANCH.EXEC.SYM)
 # for each allocation/call
 CALL.DAT.VEC <- c('argn', 'depth', 'type', 'assign', 'indent', 'rec')
 ALLOC.DAT.VEC <- c(
-  'ids0', 'alloc', 'size', 'depth', 'type', 'typeof', 'group', 'rec'
+  'ids0', 'alloc', 'size', 'depth', 'type', 'typeof', 'group'
 )
 
 # To avoid typos

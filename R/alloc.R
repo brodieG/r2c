@@ -164,13 +164,13 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
   sts.vec <- numeric(IX[['STAT.N']])
   vdat <- vec_dat(sts.vec, "sts", typeof='double', group=0, size=IX[['STAT.N']])
   alloc <- append_dat(
-    alloc, vdat=vdat, depth=0L, call.i=0L, rec=FALSE, branch.lvl=0L
+    alloc, vdat=vdat, depth=0L, call.i=0L, rec=0L, branch.lvl=0L
   )
 
   # Result placeholder, to be alloc'ed once we know group sizes.
   vdat <- vec_dat(numeric(), size=0L, type="res", typeof='double', group=0)
   alloc <- append_dat(
-    alloc, vdat=vdat, depth=0L, call.i=0L, rec=FALSE, branch.lvl=0L
+    alloc, vdat=vdat, depth=0L, call.i=0L, rec=0L, branch.lvl=0L
   )
 
   # Add group data.
@@ -298,8 +298,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
       } else if (name %in% PASSIVE.SYM) {
         # Don't do anything for these, effectively causing `dat[[i]]` to remain
         # unchanged for use by the next call, except we do update the `typeof`
-        # for when logical gets turned to numeric by uplus, and also `rec`.
-        alloc[['rec']][alloc[['i']]] <- rec
+        # for when logical gets turned to numeric by uplus
         alloc[['typeof']][alloc[['i']]] <- res.typeof
       } else stop("Internal Error: unexpected call allocation state.")
 
@@ -541,7 +540,6 @@ append_dat <- function(
   dat[['type']] <- c(dat[['type']], type)
   dat[['typeof']] <- c(dat[['typeof']], typeof)
   dat[['group']] <- c(dat[['group']], group)
-  dat[['rec']] <- c(dat[['rec']], rec)
 
   if(length(unique(lengths(dat[ALLOC.DAT.VEC]))) != 1L)
     stop("Internal Error: irregular vector alloc data.")
@@ -588,7 +586,6 @@ init_dat <- function(call, meta, scope) {
     type=character(),
     typeof=character(),
     group=numeric(),     # because it is used in a numeric matrix too
-    rec=numeric(),
 
     # Other data
     i=0L,
@@ -780,10 +777,10 @@ reconcile_control_flow <- function(
   call.i.T <- which(call.dat.i == i.call.T)
   call.dat.F <- call.dat[[call.i.F]]
   call.dat.T <- call.dat[[call.i.T]]
+  rec.ret.F <- is.rec_ret(call.dat.F[['call']])
+  rec.ret.T <- is.rec_ret(call.dat.T[['call']])
   id.ret.F <- call.dat.F[['ids']][length(call.dat.F[['ids']])]
   id.ret.T <- call.dat.T[['ids']][length(call.dat.T[['ids']])]
-  rec.ret.F <- alloc[['rec']][id.ret.F] == branch.lvl
-  rec.ret.T <- alloc[['rec']][id.ret.T] == branch.lvl
   if(xor(rec.ret.F, rec.ret.T))
     stop("Internal Error: inconsistent reconcile for branch return value.")
   rec.ret <- rec.ret.F
@@ -900,6 +897,18 @@ reconcile_control_flow <- function(
 
   list(alloc=alloc, call.dat=call.dat, stack=stack)
 }
+# Determine if Call Return is Rec Tagged
+
+is.rec_ret <- function(x) {
+  if(is.call(x)) {
+    call.sym <- get_lang_name(x)
+    if(call.sym == "rec") TRUE
+    else if(call.sym %in% PASSIVE.SYM && !call.sym %in% ASSIGN.SYM)
+      is.rec_ret(x[[length(x)]])
+    else FALSE
+  } else FALSE
+}
+
 # Update Call Data Allocations
 #
 # Find all the in-branch usage of the allocation that needs to be reconciled,
