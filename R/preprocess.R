@@ -63,14 +63,18 @@ preprocess <- function(call, formals=character(), optimize=FALSE) {
   call <- transform_ifelse(call)
 
   # Copy "external" data to r2c alloc mem (see fun docs); must be the last step.
-  call <- copy_branchdat(call)
+  tmp <- copy_branchdat(call)
+  call <- tmp[['call']]
+  sym.free <- tmp[['sym.free']]
 
   # WARNING: Read warning at top of section before making changes.
 
   # - Code Gen -----------------------------------------------------------------
 
   # All the data generated goes into x
-  x <- init_call_dat(formals)
+  x <- init_call_dat()
+  x[['sym.free']] <- sym.free
+
   # Classify parameters and generate code recursively
   x <- pp_internal(call=call, depth=0L, x=x)
   x[['call.processed']] <- call
@@ -224,8 +228,7 @@ pp_internal <- function(
         if(next.assign) stop("Internal error: controls/flag on assignment.")
         x <- record_call_dat(
           x, call=args[[i]], depth=depth + 1L, argn=names(args)[i],
-          type=args.types[i], code=code_blank(),
-          sym.free=sym_free(x, args[[i]]), assign=FALSE, indent=indent,
+          type=args.types[i], code=code_blank(), assign=FALSE, indent=indent,
           rec=FALSE
         )
       } else {
@@ -296,8 +299,7 @@ pp_internal <- function(
 #' $args.type: unused leftover from prior bad implementation?
 #' $argn: parameter name argument is bound to.
 #' $code: the generated C code
-#' $sym.free/bound: ? Not sure this is still correct since we add the `formals`
-#'   parameter.
+#' $sym.free: symbols that were used without first being defined.
 #' $dot.arg.i: counter used when generating the symbols that replace
 #'   the `..1`, `..2`, ... symbols.
 #' $rename.arg.i: counter used when generating the symbols that replace
@@ -320,15 +322,14 @@ pp_internal <- function(
 #'
 #' @noRd
 
-init_call_dat <- function(formals)
+init_call_dat <- function()
   list(
     call=list(),
     depth=integer(),
     args=list(),
     args.type=list(),
     code=list(),
-    sym.free=formals,
-    sym.bound=character(),
+    sym.free=character(),
     dot.arg.i=1L,
     last.read=integer(),
     assign=logical(),
@@ -345,8 +346,7 @@ init_call_dat <- function(formals)
 ## them (for external symbols).
 
 record_call_dat <- function(
-  x, call, depth, argn, type, code, assign, sym.free=sym_free(x, call), indent,
-  rec
+  x, call, depth, argn, type, code, assign, indent, rec
 ) {
   # list data
   x[['call']] <- c(
@@ -367,12 +367,6 @@ record_call_dat <- function(
   if(length(unique(lengths(x[CALL.DAT.VEC]))) != 1L)
     stop("Internal Error: irregular vector call data.")
 
-  # symbols only bound after first instance of being bound, i.e. can start off
-  # as free until actually gets assigned to.
-  if(!assign) {
-    x[['sym.free']] <-
-      union(x[['sym.free']], setdiff(sym.free, x[['sym.bound']]))
-  }
   x
 }
 ## Like names, but always return a character vector

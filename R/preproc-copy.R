@@ -238,15 +238,19 @@ copy_branchdat <- function(x) {
   if(is.symbol(x)) {
     # Special case: a single symbol.  For recursive logic to work cleanly every
     # symbol needs to be part of a call
+    sym.free <- as.character(x)
     x <- en_vcopy(x)
   } else {
     # Compute locations requring vcopy
-    promoted <- unique(copy_branchdat_rec(x)[[ACT]])
+    branch.dat <- copy_branchdat_rec(x)
+    promoted <- unique(branch.dat[[ACT]])
+    sym.free <- branch.dat[['free']]
 
     # Modify the symbols / sub-calls that need to be vcopy'ed
     x <- inject_rec_and_copy(x, promoted)
   }
-  x
+  sym.free[sym.free == '.R2C.DOTS'] <- '...'
+  list(call=x, sym.free=sym.free)
 }
 # Compute Locations of Required `rec` and `vcopy`s
 #
@@ -307,6 +311,7 @@ copy_branchdat <- function(x) {
 #   * "assigned.to": character vector of characters that were bound by the
 #     processed call or its children, used to set triggers in some cases.
 #   * "leaf.name": if the leaf of a call is a symbol, the name of the symbol.
+#   * "free": any used symbols that are not previously bound.
 # @return an updated `data` object.
 
 copy_branchdat_rec <- function(
@@ -315,7 +320,7 @@ copy_branchdat_rec <- function(
   data=list(
     bind=list(loc=character(), all=character(), loc.compute=character()),
     copy=list(cand=list(), act=list()),
-    passive=TRUE, assigned.to=character(), leaf.name=""
+    passive=TRUE, assigned.to=character(), leaf.name="", free=character()
   )
 ) {
   sym.name <- get_lang_name(x)
@@ -328,6 +333,8 @@ copy_branchdat_rec <- function(
     passive <- !sym.local.cmp
     leaf <- TRUE
     data[['leaf.name']] <- sym.name
+    if(!sym.local && !sym.local.cmp && !sym.global)
+      data[['free']] <- union(data[['free']], sym.name)
 
     # For symbols matching candidate(s): promote candidate if allowed.
     cand <- data[[CAND]]
@@ -750,6 +757,15 @@ merge_copy_dat <- function(old, a, b, index) {
   # Inject at start (hence 0L; so branch return value unchanged).
   a.miss.list <- gen_callptrs(a.miss, c(index, 2L, 0L), copy=TRUE, rec=TRUE)
   b.miss.list <- gen_callptrs(b.miss, c(index, 3L, 0L), copy=TRUE, rec=TRUE)
+
+  # Combine all found free symbols
+  prev.bound <- c(old[[B.LOC.CMP]], old[[B.LOC]], old[[B.ALL]])
+  old[['free']] <- unique(
+    c(
+      a[['free']], b[['free']],
+      # Injected e.g. `x <- vcopy(x)` means `x` could have been free
+      setdiff(a.miss, prev.bound), setdiff(b.miss, prev.bound)
+  ) )
 
   # Recombine all the pieces into the new set of candidates
   copy.cand <- unique(

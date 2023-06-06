@@ -344,7 +344,8 @@ r2c_core <- function(
     # Anything bad happen if we allow the below through?
     if(!length(sym.free))
       stop(
-        "Expression `", deparse(call), "` does not contain any parameter symbols."
+        "Expression does not contain any parameter symbols:\n",
+        deparseLines(call)
       )
     formals <- replicate(length(sym.free), alist(a=))
     names(formals) <- sym.free
