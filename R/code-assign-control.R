@@ -136,6 +136,7 @@ static int %s(%s) {
     if(lens[di[0]] > 1) Rf_error("the condition has length > 1");
     else if(lens[di[0]] < 1) Rf_error("the condition is of length zero");
   }
+  if (ISNAN(data[di[0]][0])) Rf_error("missing value where TRUE/FALSE needed.");
   lens[di[1]] = 1;
   return (int) data[di[0]][0];
 }'
