@@ -857,8 +857,8 @@ reconcile_control_flow <- function(
     typeof.num <- match(c(typeof.F[i], typeof.T[i]), NUM.TYPES)
     typeof <- NUM.TYPES[max(typeof.num)]
     vec.dat <- vec_dat(new, "tmp", typeof=typeof, group=group, size=size)
-    # rec=0L b/c reconciliation decisions made on names matrix, so this
-    # value should not be used anymore.
+    # rec=0L b/c reconciliation decisions made on 'rec' data from names matrix,
+    # so this value should not be used anymore.
     alloc <- append_dat(
       alloc, vec.dat, depth=depth, rec=0L, branch.lvl=branch.lvl
     )
@@ -884,9 +884,12 @@ reconcile_control_flow <- function(
       )
       if(length(names.target) != 1L)
         stop('Internal Error: failed to find reconciled name in alloc data.')
+
       alloc[['names']]['ids', names.target] <- new.i
-      alloc[['names']]['rec', names.target] <-
-        alloc[['names']]['rec', names.target] - 1L
+      # Free names at prior level
+      alloc <- names_free(alloc, names.target, branch.lvl - 1L)
+      # Update branch level
+      alloc[['names']]['rec', names.target] <- branch.lvl - 1L
     }
     # Finally update stack just in case
     stack.up <- c('id', 'id0', 'size', 'group')
@@ -894,8 +897,6 @@ reconcile_control_flow <- function(
     stack[stack.up, stack['id',] == id.rc.F[i]] <- stack.up.val
     stack[stack.up, stack['id',] == id.rc.T[i]] <- stack.up.val
   }
-  # Free names that were written to in both branches
-  alloc <- names_free(alloc, colnames(names.rc.F), rec - 1L)
   # Undo branch hiding
   hidden <- alloc[['names']]['br.hide', ] == branch.lvl
   alloc[['names']]['br.hide', hidden] <- branch.lvl - 1L
