@@ -392,8 +392,9 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
           stop("Internal Error: missing 'r2c_if' after 'if_else'")
         rcf.dat <- reconcile_control_flow(
           alloc, call.dat, stack, binding.stack, i.call=i,
-          call=x[['call']][[i + 1L]],  # send full if/else for error message
-          depth=depth, gmax=gmax, gmin=gmin, branch.lvl=branch.lvl
+          depth=depth, gmax=gmax, gmin=gmin, branch.lvl=branch.lvl,
+          # send if_true / r2c_if for full error message
+          call=x[['call']][c(tail(branch.start.stack, 1L), i + 1L)]
         )
         alloc <- rcf.dat[['alloc']]
         call.dat <- rcf.dat[['call.dat']]
@@ -806,6 +807,8 @@ reconcile_control_flow <- function(
       group.F == group.T
   }
   if(!all(size.eq)) {
+    # Reconstitute the call
+    call.rec <- clean_call(call("{", call[[1L]], call[[2L]]))
     stop(
       "Assigned variables and return value must be same size across branches; ",
       "potential size discrepancy for ",
@@ -814,7 +817,7 @@ reconcile_control_flow <- function(
           "`%s` (TRUE: %d vs FALSE: %d)",
           rc.sym.names[!size.eq], size.T[!size.eq], size.F[!size.eq]
       ) ),
-      " in:\n", paste0(deparse(call), collapse="\n")
+      " in:\n", deparseLines(call.rec)
     )
   }
   # All the targets for reconciliation must be `r2c` allocated.
