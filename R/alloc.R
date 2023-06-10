@@ -894,7 +894,9 @@ reconcile_control_flow <- function(
     stack[stack.up, stack['id',] == id.rc.F[i]] <- stack.up.val
     stack[stack.up, stack['id',] == id.rc.T[i]] <- stack.up.val
   }
-  # Undo branch hiding.
+  # Free names that were written to in both branches
+  alloc <- names_free(alloc, colnames(names.rc.F), rec - 1L)
+  # Undo branch hiding
   hidden <- alloc[['names']]['br.hide', ] == branch.lvl
   alloc[['names']]['br.hide', hidden] <- branch.lvl - 1L
 
@@ -1129,10 +1131,11 @@ names_clean <- function(alloc, i.call) {
   alloc[['names']] <- names[, names['i.max',] >= i.call, drop=FALSE]
   alloc
 }
-names_free <- function(alloc, new.names) {
+names_free <- function(alloc, new.names, rec) {
   names <- alloc[['names']]
   to.free <-
     names['scope', ] == alloc[['scope']] &
+    names['rec', ] == rec &
     colnames(names) %in% new.names
   alloc[['names']] <- names[, !to.free, drop=FALSE]
   alloc
@@ -1157,7 +1160,7 @@ names_update <- function(alloc, i, call, call.name, call.i, rec) {
     # Remove protection from prev assignment to same name, and bind previous
     # computation (`alloc[[i]]`) to it.
     sym <- get_target_symbol(call, call.name)
-    alloc <- names_free(alloc, sym)
+    alloc <- names_free(alloc, sym, rec)
     alloc <- names_bind(alloc, sym, call.i, rec)
   }
   alloc
