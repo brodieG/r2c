@@ -349,6 +349,12 @@ copy_branchdat_rec <- function(
       # also locally computed.
       data[[B.LOC.CMP]] <- union(data[[B.LOC.CMP]], assign.to)
     }
+  } else if(!is.call(x)) {
+    # These are literal objects in the call.  They will be checked for
+    # numeric-ness by the allocator.  It should never be the case that a
+    # control/flag parameters gets turned into a candidate.
+    leaf <- passive <- TRUE
+    data[['leaf.name']] <- ""
   } else if(is.call(x)) {
     # Recursion, except special handling for if/else and for assignments
     call.assign <- sym.name %in% ASSIGN.SYM
@@ -441,7 +447,8 @@ copy_branchdat_rec <- function(
         }
       }
     }
-  }
+  } else stop("Internal Error: disallowed token type ", typeof(x))
+
   data <- generate_candidate(
     x, data, index, branch.res=branch.res, in.branch=in.branch, last=last,
     passive=passive, call.assign=call.assign, assign.to=assign.to, leaf=leaf,
