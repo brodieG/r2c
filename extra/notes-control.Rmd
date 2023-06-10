@@ -1,3 +1,40 @@
+# Current
+
+Is there a problem with situations like `a + b` where `length(a)` is NA (group
+size) and `length(b)` is either larger than any group, or larger than some
+groups?  Specifically, how do we deal with:
+
+    if(x) a + b
+    else a
+
+These are equal size for all groups where `length(a) > length(b)`, but not the
+converse.
+
+We made some effort to keep track of this with `vecrec_known_size`, but that
+info just gets merged into `size` and gets confusing.
+
+Did this matter prior to branches?  Probably not because we just needed the
+allocation size to be big enough for either, and then at runtime it would be
+determined which branch of the binops to take.
+
+To resolve this we need to check in the reconcile the following:
+
+    Browse[1]> alloc[['size']][c(3,5,6)]
+    [1] NA  1  1
+    Browse[1]> alloc[['group']][c(3,5,6)]
+    [1] 1 0 1
+
+The issue here is that 'size' is known size, but we separately track the 'group'
+flag.  So we're overloading the meaning of NA in size; we cannot ever rely on it
+because it is only ever NA when all args are NA.  It should really be called
+'known.size' instead of size, and then we need to directly check against the
+'group' field before making decisions.
+
+So we need to go through all uses of 'size' and make sure they are correctly
+handling the group.  Also maybe rename to 'size.known' and clearly document what
+this means (in particular 'size.known' can only be taken at face value if
+'group' is 0).
+
 # Names in Branches
 
 Problem is that the logic in the FALSE branch will see the names bound in the

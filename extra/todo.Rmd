@@ -19,6 +19,27 @@
 
 ## Current
 
+* Document that `br.hide` business.
+
+* Fix error for invalid literal (not a symbol):
+
+Error in r2cq(x + "a")(5) : 
+  External argument `a` for `x + "a"` is not unclassed numeric (type: character).
+
+* Add a finalizer to unload and dump dlls:
+
+    qz1ylj3zna.so':
+      `maximal number of DLLs reached...
+
+* Need better error messaging that provides overall context for the error (i.e.
+  from top level r2c call / runner, as well as local context for the specific
+  problematic part of code).  Need to review all `stop` and `Rf_error` in the
+  code.
+
+* A bit weird that we need to propagate the `rec` value in alloc?  Maybe because
+  of allocation re-use?  Actually we might be able to drop this now that we go
+  back to looking for `rec(...)` for the return value (i.e undo 3b053fd).
+
 * Reconcile needs to functionalize all the code that is running on the `T` and
   `F` in "parallel".  So long as the intermediate results aren't used later we
   should be able to do it.
@@ -26,9 +47,9 @@
 * Need a way to get the clean call to show in errors, e.g. this is terrible, but
   hard to fix because we need the `if_test` part of it:
 
-    Error in alloc(x = preproc, data = do, gmax = gmax, gmin = gmin, par.env = enclos,  : 
+    Error in alloc(x = preproc, data = do, gmax = gmax, gmin = gmin, par.env = enclos,  :
       Potentially unequal sizes for parameters true, false in a function that requires them to be equal sized:
-    r2c::r2c_if(true = r2c::if_true(x <- r2c::rec(r2c::vcopy(y))), 
+    r2c::r2c_if(true = r2c::if_true(x <- r2c::rec(r2c::vcopy(y))),
         false = r2c::if_false({
             x <- r2c::rec(r2c::vcopy(x))
             numeric(0)

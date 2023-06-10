@@ -19,14 +19,19 @@ unitizer_sect("basic", {
   f1a(TRUE, 1:3)
   f1a(FALSE, 1:3)
   f1a(NA, 1:3)
+  f1a(NaN, 1:3)
 
+  # Branch return value unused, implicit else
   f1b <- r2cq({
       if(a) x <- y
       x - y
     },
     check=TRUE
   )
-  f1b(0, 1, 2)
+  f1b(TRUE, 1, 2)
+  f1b(FALSE, 1, 2)
+
+  # Branch return value unused, re-bound x
   f1c <- r2cq({
       x <- x
       if(a) x <- y
@@ -34,7 +39,18 @@ unitizer_sect("basic", {
     },
     check=TRUE
   )
-  f1c(0, 1, 2)
+  f1c(a=TRUE, 1, 2)
+  f1c(a=FALSE, 1, 2)
+
+  # Branch return value used
+  f1d <- r2cq(if(a) x <- y, check=TRUE)
+  # Error from length mismatch with implicit
+  f1d(TRUE, 1)
+  f1d(FALSE, 1)
+
+  # Implicit branch return should work
+  f1d(TRUE, numeric())
+  f1d(FALSE, numeric())
 
 
   f2a <- r2cq({
