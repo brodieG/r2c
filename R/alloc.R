@@ -257,10 +257,11 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
         # asize uses max group size instead of NA so we can allocate for it
         asize  <- vecrec_max_size(sizes.tmp, gmax)
         size <- vecrec_known_size(sizes.tmp[1L,])  # knowable sizes could be NA
-        group <- max(sizes.tmp[2L,])               # any group size in the lot?
+        group <- max(sizes.tmp['group',])          # any group size in the lot?
       } else if(ftype[[1L]] == "eqlen") {
         sizes.tmp <- input_arg_size_dat(stack, depth, ftype, call, .CALL)
         s.tmp <- sizes.tmp['size',]
+        g.tmp <- sizes.tmp['group',]
         # All arguments must be equal length.  Branch exec funs are checked in
         # `reconcile_control_flow`, but not here because we don't actually care
         # if the results are unequal sizes in the case the result isn't used.
@@ -275,9 +276,9 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
             deparseLines(clean_call(call))
           )
         }
-        asize  <- if(anyNA(sizes.tmp['size',])) NA_real_ else s.tmp[1L]
-        size <- if(anyNA(sizes.tmp['size',])) gmax else s.tmp[1L]
-        group <- max(sizes.tmp[2L,])  # any group size in the lot?
+        asize  <- if(anyNA(s.tmp)) NA_real_ else s.tmp[1L]
+        size <- if(anyNA(s.tmp)) gmax else s.tmp[1L]
+        group <- max(g.tmp)  # any group size in the lot?
       } else stop("Internal Error: unknown function type.")
 
       # Cleanup expired symbols, and bind new ones
@@ -467,16 +468,26 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
 ## * ids0: a unique identifier for each allocation, differs from column rank in
 ##   `dat` as soon as there is a re-use of a previous allocation.  This is a
 ##   sentinel to detect deviations between the stack and allocations.
-## * alloc: the true size of the vector (should be equivalent to
-##   `lengths(dat[['dat']])`?).
-## * size: the size of the vector in use (can be less than 'alloc' if a smaller
-##   vector is assigned to a freed bigger slot), can be NA for vectors that
-##   are group size.
 ## * type: one of "tmp" (allocated), "grp" (from the data we're generating
 ##   groups from, "ext" (any other data vector), "res" (the result), "sts"
 ##   (status flags, e.g. recycle warning).
 ## * typeof: the intended data format at the end of the computation.  Used to
-##   try to track integer-ness (if any).
+##   try to track whether a vector could be interpreted as logical or integer.
+## * alloc: the true size of the vector (should be equivalent to
+##   `lengths(dat[['dat']])`?).
+## * size: the largest **knowable** size of the vector in use (can be less than
+##   'alloc' if a smaller vector is assigned to a freed bigger slot), can be NA
+##   for vectors that are group size.  We say **knowable** because in op like
+##   `known + group` where `known` is constant known size, and `group` is
+##   iteration varying, we record `known` as `size` even though the actual size
+##   of the result will vary.  We must always consult `group` as we cannot
+##   always tell from `size` alone whether iteration size affects any given
+##   element.
+## * group: whether the allocation is of group size.  This is distinct to
+##   `type=="grp"`, which refers to data from the original group varying data.
+##   This designation is needed so that if a group sized allocation is bound to
+##   a variable, that allocation is group sized is still available when the
+##   variable is retrieved later (it's possible this is a bit duplicative of NA
 ## * depth: the depth at which allocation occurred, only relevant for
 ##   `type == "tmp"`
 ## * i: scalar integer the index in `data` of the most recently
@@ -489,11 +500,6 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
 ##   the linearized call list that the symbol exists in as a leaf (indicating
 ##   that beyond that the name binding need not prevent release of memory), and
 ##   `i.assign` the index in which the symbol was bound.
-## * group: whether the allocation is of group size.  This is distinct to
-##   `type=="grp"`, which refers to data from the original group varying data.
-##   This designation is needed so that if a group sized allocation is bound to
-##   a variable, that that allocation is group sized is still available when the
-##   variable is retrieved later (it's possible this is a bit duplicative of NA
 ## * rec: see `rec` paramater.
 ##
 ## We're mixing return value elements and params, a bit, but there are some
@@ -503,8 +509,6 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
 ## @param vdat see vec_dat
 ## @param name group data comes with names, or things that are assigned to
 ##   symbols
-## @param size could differ from `length(vdat[['new']])` when new is a special
-##   size vector like a group dependent one.
 ## @param rec whether current call is part of a rec chain
 ##   (e.g. `x <- z <- rec(vcopy(y))`)
 ## @return dat, updated
@@ -609,6 +613,8 @@ init_vec_dat <- function() {
     size=NA_real_
   )
 }
+# See `append_dat` for details on what these mean.
+
 vec_dat <- function(
   new=NULL, type=NA_character_, typeof=NA_character_, group=NA_real_,
   size=NA_real_
@@ -640,8 +646,8 @@ init_stack <- function() {
         'id',      # index in our allocated data structure
         'id0',     # unique id for integrity checks
         'depth',
-        'size',    # size, possibly NA if unknown
-        'group'    # size affected by group
+        'size',    # see `append_dat`
+        'group'    # see `append_dat`
       ),
       NULL
 ) ) }
@@ -1009,17 +1015,18 @@ stack_param_missing <- function(params, stack.avail, call, .CALL) {
       .CALL
   ) )
 }
-
-## Compute Max Possible Size
+## Compute Possible Size
 ##
 ## This is affected by maximum group size as well as any non-group parameters.
 ## This allows us to keep track of what the most significant size resulting from
 ## prior calls is in the presence of some calls affected by group sizes.  That
 ## way, if e.g. at some point we have a small group, but the limiting size is
-## from the non-group data, that info isn't lost.
+## from the non-group data, that info isn't lost.  This keeps the largest
+## knowable (non-group size).
 ##
 ## IMPORTANT: the result of this alone _must_ be combined with preserving
-## whether the data was group data or not.
+## whether the data was group data or not given that some groups might be larger
+## than the known size returned here.
 
 vecrec_known_size <- function(x) {
   tmp <- x[!is.na(x)]             # non-group sizes
@@ -1027,7 +1034,8 @@ vecrec_known_size <- function(x) {
   else if(any(tmp == 0)) 0
   else max(tmp)
 }
-# only difference with above is we use the max group size for alloc
+## As above, but sub-in max group size instead of treating group size as
+## unknown.
 
 vecrec_max_size <- function(x, gmax) {
   if(
