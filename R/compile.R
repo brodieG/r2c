@@ -69,6 +69,16 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' cases it is likely that using an "r2c_fun" directly instead of with a runner
 #' will be slower than evaluating the corresponding R expression.
 #'
+#' The lifecycle of an `r2c` function has two stages.
+#'
+#' 1. Compilation with `r2cq` or similar.
+#' 2. Execution, either direct or via [runners].
+#'    a. One time memory allocation for current data / groups.
+#'    b. Iterative execution over groups.
+#'
+#' The second stage involves a single allocation step, followed by as many
+#' iterations as their are groups (or windows).
+#'
 #' Each of the `r2c*` functions addresses different types of input:
 #'
 #' * `r2cf` generates an "r2c_fun" function from a regular R function.
@@ -85,25 +95,42 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' reserved for use by `r2c` and thus disallowed in `call`.  You may also
 #' directly set the parameter list with the `formals` parameter, or with `r2cf`.
 #'
-#' As with regular functions, unbound symbols are resolved in the lexical
-#' environment of the function.  You can set a different environment on creation
-#' of the function with the `envir` parameter, but currently there is no way to
-#' change it afterwards (`environment(r2c_fun) <- x` will likely just break the
-#' function).
+#' As with regular R functions, unbound symbols (a.k.a. external references) are
+#' resolved in the lexical environment of the function.  You can set a different
+#' environment on creation of the function with the `envir` parameter, but
+#' currently there is no way to change it afterwards (`environment(r2c_fun) <-
+#' x` will likely just break the function).  External references are evaluated
+#' once at allocation time and re-used for each iteration.
+#'
+#' @section Parameter and Return Value:
 #'
 #' Parameters used with "r2c_fun" supported functions are categorized into data
 #' parameters and control parameters.  For example, in `sum(x, na.rm=TRUE)`, `x`
-#' is considered a data parameter and `na.rm` a control parameter.  Control
-#' parameters are evaluated the same as external references (see above).  All
-#' data parameters must be attribute-less atomic vectors.  Numeric, integer, and
-#' logical vectors are supported, but they are coerced to numeric (double), and
-#' thus logical and integer vectors are copied before use.  All internal
+#' is considered a data parameter and `na.rm` a control parameter.
+#'
+#' All data parameters must be attribute-less atomic vectors.  Numeric, integer,
+#' and logical vectors are supported, but they are coerced to numeric (double),
+#' and thus logical and integer vectors are copied before use.  All internal
 #' operations are carried out on double precision floating point values.  In
 #' cases where the output type is knowable to be either integer or logical,
 #' `r2c` will coerce the result to the corresponding type, again with a copy.
-#' To avoid copies provide all inputs as doubles.  There are no general type
-#' restrictions on control parameters, but each implemented function will only
-#' accept values for them that would make sense for the R counterparts.
+#' To avoid copies provide all inputs as doubles.
+#'
+#' Control parameters are evaluated once at allocation time, even when they
+#' reference symbols that are otherwise iteration varying. So in
+#' `sum(x, na.rm=x)` where `x` is part of the iteration varying data, the second
+#' `x` will be evaluated a single time as the entire `x` vector.  That value
+#' will be used for `na.rm` for every iteration.  On the other hand, the first
+#' `x` will change across iterations to that iteration's subset.  Control
+#' parameters will not respect re-bindings that are made within an "r2c"
+#' expression.  In `x <- y; sum(x, na.rm=x)` the second `x` will still
+#' reference whatever `x` was prior to being re-bound to `y`.  While the
+#' semantic inconsistency of control parameters is unfortunate, it allows the
+#' use of arbitrary objects for iteration constant parameters, and should not
+#' manifest in the common use cases.  Each `r2c` supported function has a fixed
+#' definition of which parameters are control parameters.  There are no general
+#' type restrictions on control parameters, but each implemented function will
+#' only accept values for them that would make sense for the R counterparts.
 #'
 #' @section Supported R Functions and Constraints:
 #'
@@ -115,6 +142,7 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' * Logical functions: `&`, `&&`, `|`, `||`, `!`, `ifelse`.
 #' * Statistics: `mean`, `sum`, `length`, `all`, `any`.
 #' * Assignment and braces: `<-`, `=`, and `{`.
+#' * Branches: `if/else`.
 #'
 #' Calls must be in the form `fun(...)` (`a fun b` for operators)  where `fun`
 #' is the name of the function.  Functions must be bound to their original
@@ -125,14 +153,26 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' examples).  References to external variables (i.e. not in `data` or
 #' `MoreArgs`) that cause side effects (e.g. [active bindings][bindenv],
 #' promises the evaluation of which cause side effects) may cause unexpected
-#' results.  All external references are evaluated once before any other
-#' computations are carried out.
+#' results.  All external references and control parameter expressions (see "r2c
+#' Generated Functions") are evaluated once before any other computations are
+#' carried out.
+#'
+#' Control structures include `if` / `else` statements and loops.  All of these
+#' have branches; the loop branches are loop not taken (0 iterations) vs loop
+#' taken (1+ iterations).  Control structures add additional constraints:
+#'
+#' * If used, control return values must be guaranteed to be the same size
+#'   irrespective of the branch taken.
+#' * If used after a control structure, assignments therein must be consistent
+#'   in size irrespective of branch taken.
 #'
 #' Outside of the aforementioned constraints, `r2c` attempts to mimic the
 #' corresponding R function semantics to the `identical` level, but there may be
 #' corner cases that differ, particularly those involving missing or infinite
-#' values.  One exception is `ifelse` which in its `r2c` form always returns in
-#' a common type that can support both `yes` and `no` values.
+#' values.  One exception is `ifelse` and `if/else` which in their `r2c` form
+#' always return in a common type that can support both `yes` and `no` values.
+#' Additionally `if/else` and other control structures return `numeric(0)`
+#' instead of NULL if an empty branch is taken.
 #'
 #' @section Details:
 #'

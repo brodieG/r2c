@@ -24,7 +24,7 @@
 #' @name r2c-package
 #' @aliases r2c
 #' @import vetr
-#' @importFrom utils globalVariables
+#' @importFrom utils globalVariables tail head
 #' @useDynLib r2c, .registration=TRUE, .fixes="R2C_"
 
 NULL
