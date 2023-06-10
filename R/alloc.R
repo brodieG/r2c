@@ -265,15 +265,11 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
         # All arguments must be equal length.  Branch exec funs are checked in
         # `reconcile_control_flow`, but not here because we don't actually care
         # if the results are unequal sizes in the case the result isn't used.
-        if(
-          !(all(is.na(s.tmp)) || length(unique(s.tmp)) == 1L) &&
-          !name %in% BRANCH.EXEC.SYM
-        ) {
+        if(!vec_eqlen(s.tmp, g.tmp, gmax, gmin) && !name %in% BRANCH.EXEC.SYM) {
           stop(
             "Potentially unequal sizes for parameters ",
             toString(ftype[[2L]]), " in a function that requires them ",
-            "to be equal sized:\n",
-            deparseLines(clean_call(call))
+            "to be equal sized:\n", deparseLines(clean_call(call))
           )
         }
         asize  <- if(anyNA(s.tmp)) NA_real_ else s.tmp[1L]
@@ -797,21 +793,17 @@ reconcile_control_flow <- function(
   id.rc.T <- c(names.rc.T['ids',], if(rec.ret) id.ret.T)
   rc.sym.names <- c(colnames(names.rc.F), if(rec.ret) "<return-value>")
 
-  # Find sizes (they should be the same).
+  # Find sizes (they should be the same).  Compare pair wise.
   size.F <- alloc[['size']][id.rc.F]
   size.T <- alloc[['size']][id.rc.T]
   group.F <- alloc[['group']][id.rc.F]
   group.T <- alloc[['group']][id.rc.T]
-  typeof.F <- alloc[['typeof']][id.rc.F]
-  typeof.T <- alloc[['typeof']][id.rc.T]
-  if(gmax == gmin) {
-    size.eq <- size.F == size.T | (is.na(size.F) & is.na(size.T)) |
-      (is.na(size.F) & size.T == gmax) |
-      (is.na(size.T) & size.F == gmax)
-  } else {
-    size.eq <- (size.F == size.T | (is.na(size.F) & is.na(size.T))) &
-      group.F == group.T
-  }
+  size.eq <- vapply(
+    seq_along(size.F),
+    function(i)
+      vec_eqlen(c(size.F[i], size.T[i]), c(group.F[i], group.T[i]), gmax, gmin),
+    TRUE
+  )
   if(!all(size.eq)) {
     # Reconstitute the call
     call.rec <- clean_call(call("{", call[[1L]], call[[2L]]))
@@ -853,6 +845,8 @@ reconcile_control_flow <- function(
   # new allocations because we are not tracking how and where the currently
   # available allocations have been used in the different branches.  Step 1 is
   # to create the allocations, Step 2 is to re-point the call data to them.
+  typeof.F <- alloc[['typeof']][id.rc.F]
+  typeof.T <- alloc[['typeof']][id.rc.T]
   for(i in seq_along(id.rc.F)) {
     # Size and generate allocation
     size <- size.T[i]
@@ -883,6 +877,9 @@ reconcile_control_flow <- function(
     # Also update the names matrix.  Just match the FALSE branch location.
     # Last value is the return value, so no names to update for that.
     if(i < length(id.rc.F) || !rec.ret) {
+      # Free names at prior level
+      alloc <- names_free(alloc, rc.sym.names[i], branch.lvl - 1L)
+      # Find the entry in the names matrix we're updated
       names.assign <- alloc[['names']]['i.assign',]
       names.target <- which(
         names.rc.F['i.assign', i] == alloc[['names']]['i.assign',] &
@@ -891,9 +888,8 @@ reconcile_control_flow <- function(
       if(length(names.target) != 1L)
         stop('Internal Error: failed to find reconciled name in alloc data.')
 
+      # Reset to the reoncile allocation
       alloc[['names']]['ids', names.target] <- new.i
-      # Free names at prior level
-      alloc <- names_free(alloc, names.target, branch.lvl - 1L)
       # Update branch level
       alloc[['names']]['rec', names.target] <- branch.lvl - 1L
     }
@@ -1049,6 +1045,25 @@ vecrec_max_size <- function(x, gmax) {
   size[is.na(size) | group] <- gmax
   if(any(size == 0)) 0 else max(size)
 }
+#' Can All Vectors Be Considered Equal Size
+#'
+#' Each element in sizes and groups represents one parameter.
+#'
+#' @param sizes vector of size values (see `alloc_dat`)
+#' @param groups vector of group designations (see `alloc_dat`)
+#' @param gmax scalar maximum iteration varying iteration size
+#' @param gmin scalar minimum iteration varying iteration size
+
+vec_eqlen <- function(sizes, groups, gmax, gmin) {
+  if(gmax == gmin) {
+    sizes[is.na(sizes)] <- gmax
+    length(unique(sizes)) == 1L
+  } else {
+    all(is.na(sizes) & groups == 1) ||
+    (all(!is.na(sizes) & groups == 0) && length(unique(sizes)) == 1L)
+  }
+}
+
 # Retrieve Inputs to Current Call From Stack
 
 stack_inputs <- function(stack, depth)
