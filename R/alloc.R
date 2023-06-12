@@ -1055,13 +1055,15 @@ vecrec_max_size <- function(x, gmax) {
 #' @param gmin scalar minimum iteration varying iteration size
 
 vec_eqlen <- function(sizes, groups, gmax, gmin) {
+  # If the known size is less the gmin this is effectively group size always
+  # Unless special case of size 0
+  sizes[!is.na(sizes) & groups != 0 & sizes < gmin & sizes != 0] <- NA_real_
   if(gmax == gmin) {
     sizes[is.na(sizes)] <- gmax
     length(unique(sizes)) == 1L
-  } else {
-    all(is.na(sizes) & groups == 1) ||
-    (all(!is.na(sizes) & groups == 0) && length(unique(sizes)) == 1L)
-  }
+  } else if (all(groups != 0)) {
+    all(is.na(sizes)) || length(unique(sizes)) == 1L
+  } else FALSE
 }
 
 # Retrieve Inputs to Current Call From Stack
