@@ -767,6 +767,9 @@ reconcile_control_flow <- function(
     stop("Internal Error: mismatched symbols to reconcile.")
   if(anyDuplicated(rc.nm.F))
     stop("Internal Error: duplicate symbols to reconcile.")
+  # reorder
+  names.rc.F <- names.rc.F[, rc.nm.F, drop=FALSE]
+  names.rc.T <- names.rc.T[, rc.nm.T, drop=FALSE]
 
   # Drop those that are the same across the branches (set prior to if/else)
   # Not sure if there should be any of these given rec == branch.lvl
