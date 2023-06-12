@@ -149,35 +149,6 @@ unitizer_sect("basic", {
   f5a <- r2cf(f5a.r, check=TRUE)
   f5a(1:3, 2)
 
-  f5b.r <-function(x, y, a, b) {
-    x5 <- x * y
-    x2 <- if(a == 1) x5 <- y
-    else x
-    x5
-  }
-  f5b <- r2cf(f5b.r, check=TRUE)
-  f5b(1:3, 5:7, 2, 0)
-
-
-  f5a(1:3, 5:7, 1, 1)
-  f5a(1:3, 5:7, 2, 1)
-  f5a(1:3, 5:7, 3, 1)
-  f5a(1:3, 5:7, 1, 0)
-  f5a(1:3, 5:7, 3, 0)
-
-  f5b.r <-function(x, y, a, b) {
-    x5 <- x * y
-    if(a == 1) {
-      x5 <- x + y
-    } else {
-      x3 <- sum(x) * sum(x)
-      x
-    }
-    x5
-  }
-  f5b <- r2cf(f5b.r, check=TRUE)
-  f5b(1:3, 5:7, 2, 0)
-
   f5c.r <-function(x, y, a, b) {
     x0 <- x + y
     x1 <- x * y

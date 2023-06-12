@@ -19,6 +19,10 @@
 
 ## Current
 
+* Error for size mismatch in `reconcile_cf` need to handle NA size. 
+
+* Make sure to test the `known + group` size issue with varying group sizes.
+
 * Document that `br.hide` business.
 
 * Fix error for invalid literal (not a symbol):

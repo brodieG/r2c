@@ -35,6 +35,56 @@ handling the group.  Also maybe rename to 'size.known' and clearly document what
 this means (in particular 'size.known' can only be taken at face value if
 'group' is 0).
 
+What about more interesting example where we have one (or more group size), and
+multiple fixed sizes, e.g.,
+
+    a + (g + b)
+
+Where g is group size and we could have any of:
+
+    a < b < g
+    a < g < b
+    g < a < b
+
+Probably okay so long as no interactions of e.g. a x b or some such?
+
+One problem is that if we're told that something has known size 1, but is also
+part of a group, we need more information to be able to decide what the size of
+thing is in any given iteration.  If that outcome was from a vecrec, then we
+know that the size is the max of iteration size and known size.
+
+So we've got:
+
+* constant: just a number
+* vecrec: possibly NA, a number, or a number + group.
+* eqlen: identical size and group, or gmax == gmin and more flexibility.
+* arglen: any of the other options
+
+Do we always want max arg size?  What about stuff like 1 + numeric()?
+
+Future ones
+
+* concat:
+
+So we need some representation of size.
+
+vecrec produces:
+
+* 0 if one of the args is zero.
+* Max of group or known arg if known arg is not zero.
+
+Only vecrec can (currently) produce weird size arguments.  When are the things
+equal (size group)?
+
+* 5, 0   vs    5, 1  equal if gmax == gmin == 1
+
+* 5, 1   vs    3, 1  equal if gmin >= 5
+* 5, 1   vs   NA, 1  equal if gmin > 5?
+* 0, 1   vs   NA, 1  Can't be equal unless gma
+
+Basically vecrec with a known element sets a minimum size?
+
+
 # Names in Branches
 
 Problem is that the logic in the FALSE branch will see the names bound in the
