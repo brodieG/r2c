@@ -378,7 +378,8 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
           binding.stack, list(list(names=alloc[['names']], i.call=i))
         )
         # Hide all the names bound between here and the matching 'if_test'
-        # Unhiding done by `reconcile_control_flow`
+        # Unhiding done by `reconcile_control_flow`.  This prevents TRUE branch
+        # assignments from being seen in FALSE branch.
         names.assign <- alloc[['names']]['i.assign',]
         names.assign.in.br <-
           names.assign > branch.start.stack[length(branch.start.stack)]
@@ -494,8 +495,10 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
 ##   row `ids` are the ids in `dat` each symbol is bound to, `scope` is the
 ##   scope level the symbol was created in, and `i.max` is the largest index in
 ##   the linearized call list that the symbol exists in as a leaf (indicating
-##   that beyond that the name binding need not prevent release of memory), and
-##   `i.assign` the index in which the symbol was bound.
+##   that beyond that the name binding need not prevent release of memory),
+##   `i.assign` the index in which the symbol was bound, and `br.hide` is the
+##   branch level the symbols assigned in the TRUE branch need to be hidden from
+##   (so the FALSE branch can't see them)..
 ## * rec: see `rec` paramater.
 ##
 ## We're mixing return value elements and params, a bit, but there are some
