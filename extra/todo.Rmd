@@ -17,124 +17,19 @@
   * Executes vcopy correctly when needed
   * Coerces logical to integer
 
-## Current
+## Error Messages
 
 * Error for size mismatch in `reconcile_cf` need to handle NA size. 
-
-* Make sure to test the `known + group` size issue with varying group sizes.
-
-* Document that `br.hide` business.
 
 * Fix error for invalid literal (not a symbol):
 
 Error in r2cq(x + "a")(5) : 
   External argument `a` for `x + "a"` is not unclassed numeric (type: character).
 
-* Add a finalizer to unload and dump dlls:
-
-    qz1ylj3zna.so':
-      `maximal number of DLLs reached...
-
 * Need better error messaging that provides overall context for the error (i.e.
   from top level r2c call / runner, as well as local context for the specific
   problematic part of code).  Need to review all `stop` and `Rf_error` in the
   code.
-
-* A bit weird that we need to propagate the `rec` value in alloc?  Maybe because
-  of allocation re-use?  Actually we might be able to drop this now that we go
-  back to looking for `rec(...)` for the return value (i.e undo 3b053fd).
-
-* Reconcile needs to functionalize all the code that is running on the `T` and
-  `F` in "parallel".  So long as the intermediate results aren't used later we
-  should be able to do it.
-
-* Need a way to get the clean call to show in errors, e.g. this is terrible, but
-  hard to fix because we need the `if_test` part of it:
-
-    Error in alloc(x = preproc, data = do, gmax = gmax, gmin = gmin, par.env = enclos,  :
-      Potentially unequal sizes for parameters true, false in a function that requires them to be equal sized:
-    r2c::r2c_if(true = r2c::if_true(x <- r2c::rec(r2c::vcopy(y))),
-        false = r2c::if_false({
-            x <- r2c::rec(r2c::vcopy(x))
-            numeric(0)
-        }))
-
-* We now track `rec` status both in the "names" matrix as well as in the `alloc`
-  data.  Should we drop everything in that matrix (and maybe the stack) that can
-  be recovered from `alloc` via `id0` to mitigate potential synchronization
-  issues.
-
-* Add `get_r_function` to recover an R function with formals, etc.
-
-* Empty braces can't just be merged into parent braces, so we need to check the
-  empty condition before we simplify them away (`{5;{}}` is not equal to `{5}`).
-
-* `mean(x) * mean(x)` should re-use `mean(x)` but doesn't?
-
-* Could reconciliation use a previously allocated but freed vector?  Need to
-  make absolutely sure it e.g. is not used in the TRUE branch, so maybe not?
-  Feels a bit dangerous.
-
-* Check into why NA size is not carrying forward across calculations and instead
-  getting replaces by `gmax`.
-
-* Does re-use correctly recognize that an assignment in one branch cannot be
-  used in the alternate (particularly if the assignment happens in the TRUE
-  branch?
-
-* if/else with NA test.
-
-* Check that return value actually has a `rec`.
-
-* Does allocation recognized nested reconciliation?
-
-* Symbol expiration logic in `alloc` might not work well with branches.
-
-* Make sure that changing `r2c_if` to non-passive didn't mes something up.
-
-* Check that reconciliation is not attempting to reconcile non-branch-local
-  memory.  Only in-branch allocations are reconcilable, i.e. don't reconcile
-  these: `x <- mean(z); y <- mean(w); if(a) x else y` without additional
-  `vcopy`.
-
-* Implement `r2c::ccopy` to copy constants into vectors.
-* Currently `if/else` with missing `else` use `numeric(0)` as a literal value
-  rather than language.  Need some mechanism for handling this, maybe actual
-  return a special symbol that can be bound to an empty numeric as part of the
-  early data?  This also relates to the general issue with not handling
-  literals.
-
-* `clean_call` should have additional levels to remove `vcopy` / `rec`.
-
-* Do we allow if's nested inside arguments (probably yes)?  If we do, what
-  happens to assignments within the if branches (probably disallow these)?
-
-* Formal detection incorrect for `r2cq({if(a) x <- y else x <- z; x})` as `x` is
-  included in the formals.
-
-* Defer creation of temporary vectors until end (just record their size) so that
-  we don't allocate vectors we don't use.  We should also identify unused
-  vectors and not allocate them (e.g. because branch reconciliation made a
-  vector unused - does this actually happen)?
-
-* Need to figure out how to handle the assignment to the result slot now that
-  there could be multiple calls writing to it due to branches.  It seems like we
-  need to switch this to be an ex-post step where we identify the last
-  computation.  The challenge is if the last computation is also an assignment.
-  Maybe we don't allow assignments as the last step?  That would simplify code
-  somewhat?  Maybe it doesn't matter since assignments just forward their
-  allocation.  So we let the process run, then, at the very end, get the final
-  memory slot used, and go back and update all instances of that in the call
-  data?
-
-* Do `for` and `while` need to be decomposed?  Probably.
-
-* Try to simplify `copy_symdat` by removing unused bindings.  Then being used
-  out of context can be simplified to being return value of braces or a being
-  used outside of context?  See dead code removal in control notes.
-* Dead code optimization.
-
-* Check that user doesn't introduce their own `vcopy`'s.
 
 * Move the disallowed assignment error to somewhere that does not use the
   renamed expression as that is then incomprehensible.
@@ -143,15 +38,68 @@ Error in r2cq(x + "a")(5) :
   whether error messages around them when they are part of the iteration data vs
   external makes sense.
 
-* At what point in preprocess can we start assuming valid calls (assignments
-  with 3-4 parameters, only known funs, etc.).  Matters for the OOS stuff.
+## Current
+
+* Symbol expiration logic in `alloc` might not work well with branches.
+
+* Reconcile needs to functionalize all the code that is running on the `T` and
+  `F` in "parallel".  So long as the intermediate results aren't used later we
+  should be able to do it.
+
+* Should we drop everything in `alloc$names` matrix (and maybe the stack) that
+  can be recovered from `alloc` via `id0` to mitigate potential synchronization
+  issues?
+
+* Could reconciliation use a previously allocated but freed vector?  Need to
+  make absolutely sure it e.g. is not used in the TRUE branch, so maybe not?
+  Feels a bit dangerous.
+
+* `clean_call` should have additional levels to remove `vcopy` / `rec`.
+
+* Do we allow if's nested inside arguments (probably yes)?  If we do, what
+  happens to assignments within the if branches (probably disallow these)?
 
 * Double check that the re-use optimization doesn't attempt to re-use an
   expression computed only in one branch.  Or maybe if there are two if/else's,
   each with the expression in one branch, how does it treat that?
 
+* Prevent users from using `r2c::if_test` and related functions directly.  They
+  may only appear in a very specific order.  How do we disallow them?  Not sure
+  if we want to disallow them.
+* Check that user doesn't introduce their own `vcopy`'s.
+
+
+
+
+* Add a finalizer to unload and dump dlls:
+
+    qz1ylj3zna.so':
+      `maximal number of DLLs reached...
+
+* Add `get_r_function` to recover an R function with formals, etc.
+
+* Empty braces can't just be merged into parent braces, so we need to check the
+  empty condition before we simplify them away (`{5;{}}` is not equal to `{5}`).
+
+* `mean(x) * mean(x)` should re-use `mean(x)` but doesn't?
+
+* Defer creation of temporary vectors until end (just record their size) so that
+  we don't allocate vectors we don't use.  We should also identify unused
+  vectors and not allocate them (e.g. because branch reconciliation made a
+  vector unused - does this actually happen)?
+
+* Do `for` and `while` need to be decomposed?  Probably.
+
+* Try to simplify `copy_symdat` by removing unused bindings.  Then being used
+  out of context can be simplified to being return value of braces or a being
+  used outside of context?  See dead code removal in control notes.
+* Dead code optimization.
+
+
 * Are we appropriately checking that we don't assign to a symbol that is then
   used as the function name in a call?
+* Handle assignment to function symbols, etc?  There shouldn't be confusion with
+  invocation, but if we ever implement `lapply`, etc?
 
 * `code_gen_*` functions should be in a list instead of floating around as
   objects.  This would ensure we don't accidentally use the wrong code gen as we
@@ -162,24 +110,9 @@ Error in r2cq(x + "a")(5) :
   the passive symbols, it is a lot harder to accidentally forget to include
   something in `ACTIVE.SYM`.
 
-* Should we move `transform_ifelse` earlier to have it automatically generate
-  the `r2c::vcopy` for the `else` branch when it is missing?  In general it
-  seems dangerous to allow the possibility of `copy_last` not being run.
-
 * `call_valid` should have an option to check that a call has been matched to
   avoid problems where we introduce a new call via manipulation and it isn't
   matched.  But `call_valid` is used in the matching step too.
-
-* Remove unnecessary braces in for `get_r_code` (e.g. those generated by `if`
-  replacement).
-
-* Prevent users from using `r2c::if_test` and related functions directly.  They
-  may only appear in a very specific order.  How do we disallow them?  Not sure
-  if we want to disallow them.
-
-* Think carefully through case where the `else` branch doesn't exist but we code
-  it as returning an empty numeric vector.  This is a reasonably approximation
-  of returning a NULL.
 
 * Are `A && B` and `A || B` actually lazy?  Probably not given the linearization
   that evaluates each argument before the result?  We could consider translating
@@ -195,11 +128,6 @@ Error in r2cq(x + "a")(5) :
 
 * Should we be using `islessgreater` and similar?  Probably since the R NaN is
   not quiet by default.
-
-* If we implement unary `+` as a noop, do we do it at the function level, or at
-  the "parsing" level?  If we do it at the function level we need to check
-  carefully that the addition of a noop beyond braces and assignments doesn't
-  mess things up.
 
 * Be more aggressive about specifying lengths in args.reg (e.g. binops don't
   right now)?
@@ -264,12 +192,6 @@ Error in r2cq(x + "a")(5) :
   (although maybe that's not the best example given 0-len behavior).  Test would
   be to implement `pmax`.
 
-* For `if` and similar, how do we rationalize the same symbols being assigned to
-  in different branches?  We need to ensure they are the same size, but also
-  that they both use the same memory slot.
-* Handle assignment to function symbols, etc?  There shouldn't be confusion with
-  invocation, but if we ever implement `lapply`, etc?
-
 * Add post-processing of function result (e.g. to attach names, etc, as in
   `quantile`).
 
@@ -295,7 +217,7 @@ Error in r2cq(x + "a")(5) :
   unused expressions, which could potentially be eliminated (possibly
   iteratively for e.g. `x <- y; z <- x` where then `z` is unused).
 
-### Features
+### Error Messages
 
 * `reuse_call` needs to track what the original call was so we can provide
   better error messages if something goes wrong at some point.
@@ -303,6 +225,8 @@ Error in r2cq(x + "a")(5) :
 * Semi-internal error should issue conditions that can be caught by the
   compilers or runners to return as errors with a meaningful calling function
   instead of an internal function.
+
+### Other
 
 * Should we have safety tests in the code to be controlled by a debug mode flag?
 
@@ -320,10 +244,6 @@ Error in r2cq(x + "a")(5) :
 
 ## Other
 
-* Make sure there are interrupts.  Can we use "R_ext/Intermacros.h".  It seems
-  yes generally, but they are not explicitly part of the API, and then there is
-  the question of whether it makes sense to do so, or if we should just be doing
-  this at the group level?
 * share `lcurry` with klutometis
   https://github.com/klutometis/R-functional/issues
 * Make overflow testable.
