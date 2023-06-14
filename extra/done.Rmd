@@ -12,7 +12,9 @@
 
 ### v0.4.0
 
-#### To Test
+* Could reconciliation use a previously allocated but freed vector as the target
+  to put reconciliation in?  Need to make absolutely sure it e.g. is not used in
+  the TRUE branch, so maybe not?  Feels a bit dangerous.  No, let's not to this.
 
 * `if` without `else`:
   * Also cases where all `if` written symbols pre-exist, and where some don't.

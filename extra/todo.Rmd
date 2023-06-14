@@ -50,10 +50,6 @@ Error in r2cq(x + "a")(5) :
   can be recovered from `alloc` via `id0` to mitigate potential synchronization
   issues?
 
-* Could reconciliation use a previously allocated but freed vector?  Need to
-  make absolutely sure it e.g. is not used in the TRUE branch, so maybe not?
-  Feels a bit dangerous.
-
 * `clean_call` should have additional levels to remove `vcopy` / `rec`.
 
 * Do we allow if's nested inside arguments (probably yes)?  If we do, what
