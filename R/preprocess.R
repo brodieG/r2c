@@ -392,7 +392,7 @@ match_call_rec <- function(call) {
   }
   if(is.call(call)) {
     func <- call_valid(call)
-    # Only functions that have a closure definition are matched-called.  These
+    # Only functions that have a closure definition are match-called.  These
     # are either closures, or primitives that do argument matching that we
     # manually provided a stand-in closure for match.call purposes (e.g. `sum`)
     if(!is.null(defn <- VALID_FUNS[[c(func, "defn")]])) {

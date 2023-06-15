@@ -955,6 +955,11 @@ update_cdat_alloc <- function(call.dat, old, new, start, end) {
 #' cause some inefficiency in some cases where a symbol will not be released as
 #' early as it should just because it's used as a control/flag.
 #'
+#' If a symbol is re-assigned, it will not be released until the last use after
+#' the final re-assign.  This means earlier assignments could be held onto
+#' longer than needed if e.g. there is a gap between last use from previous
+#' assignment and re-assignment.
+#'
 #' @noRd
 #' @param x object as produced by preproc
 

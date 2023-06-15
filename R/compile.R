@@ -59,7 +59,9 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' code in the form of an "r2c_fun" function.  This function will carry out
 #' out numerical calculations with `r2c` native instructions instead of with the
 #' standard R routines. "r2c_fun" functions are intended to be run with the
-#' `r2c` [runners] for fast iterated calculations.
+#' `r2c` [runners] for fast iterated calculations.  It is the intention of `r2c`
+#' to adhere as closely as possible to R semantics for the subset of R that it
+#' supports when used with numeric vectors.
 #'
 #' @section r2c Generated Functions:
 #'
@@ -77,7 +79,8 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #'    b. Iterative execution over groups.
 #'
 #' The second stage involves a single allocation step, followed by as many
-#' iterations as their are groups (or windows).
+#' iterations as there are groups (or windows).  The same set of allocations is
+#' re-used for every iteration.
 #'
 #' Each of the `r2c*` functions addresses different types of input:
 #'
@@ -135,8 +138,8 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #'
 #' @section Supported R Functions and Constraints:
 #'
-#' Currently the following functions are supported in `x` (or in the body of `x`
-#' for `r2cf`):
+#' The following functions are supported in `x` (or in the body of `x` for
+#' `r2cf`):
 #'
 #' * Arithmetic functions: `+`, `-`, `*`, `/`, and `^`.
 #' * Relational functions: `<`, `<=`, `>`, `>=`, `==`, `!=`.
@@ -151,7 +154,7 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #'   both `yes` and `no` values.
 #' * `if`/`else` returns `numeric(0)` instead of NULL if an empty branch is taken.
 #' * `&&` and `||` always evaluate all parameters.
-#' * `{` must contain at least one parameter.
+#' * `{` must contain at least one parameter (no empty braces).
 #' * Assignments may only be nested in braces (`{`) or in control structure
 #'   branches.  This is a recursive requirement, so `mean(if(a) x <- y)` is
 #'   disallowed.
