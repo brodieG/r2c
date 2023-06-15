@@ -760,19 +760,10 @@ reconcile_control_flow <- function(
   call.dat.i <- vapply(call.dat, '[[', 0L, 'call.i')
 
   # Identify shared bindings across branches that need to be reconciled.
-  names.rc.F <- names.F[, names.F['rec',] == branch.lvl, drop=FALSE]
-  names.rc.T <- names.T[, names.T['rec',] == branch.lvl, drop=FALSE]
-  rc.nm.F <- sort(colnames(names.rc.F))
-  rc.nm.T <- sort(colnames(names.rc.T))
-  if(is.null(rc.nm.F)) rc.nm.F <- character()
-  if(is.null(rc.nm.T)) rc.nm.T <- character()
-  if(!identical(rc.nm.F, rc.nm.T))
+  names.rc.F <- cand_rec_bind(names.F, branch.lvl)
+  names.rc.T <- cand_rec_bind(names.T, branch.lvl)
+  if(!identical(colnames(names.rc.F), colnames(names.rc.T)))
     stop("Internal Error: mismatched symbols to reconcile.")
-  if(anyDuplicated(rc.nm.F))
-    stop("Internal Error: duplicate symbols to reconcile.")
-  # reorder
-  names.rc.F <- names.rc.F[, rc.nm.F, drop=FALSE]
-  names.rc.T <- names.rc.T[, rc.nm.T, drop=FALSE]
 
   # Drop those that are the same across the branches (set prior to if/else)
   # Not sure if there should be any of these given rec == branch.lvl
@@ -782,21 +773,15 @@ reconcile_control_flow <- function(
 
   # Identify return values from both branches and check if they need to
   # be reconciled (if no set to 0)
-  call.i.F <- which(call.dat.i == i.call.F)
-  call.i.T <- which(call.dat.i == i.call.T)
-  call.dat.F <- call.dat[[call.i.F]]
-  call.dat.T <- call.dat[[call.i.T]]
-  rec.ret.F <- is.rec_ret(call.dat.F[['call']])
-  rec.ret.T <- is.rec_ret(call.dat.T[['call']])
-  id.ret.F <- call.dat.F[['ids']][length(call.dat.F[['ids']])]
-  id.ret.T <- call.dat.T[['ids']][length(call.dat.T[['ids']])]
-  if(xor(rec.ret.F, rec.ret.T))
+  id.ret.F <- cand_ret(call.dat, call.dat.i, i.call.F)
+  id.ret.T <- cand_ret(call.dat, call.dat.i, i.call.T)
+  if(xor(length(id.ret.F), length(id.ret.T)))
     stop("Internal Error: inconsistent reconcile for branch return value.")
-  rec.ret <- rec.ret.F
+  rec.ret <- length(id.ret.F) > 0L
 
   # All ids that need to be reconciled (tack return at end if needed)
-  id.rc.F <- c(names.rc.F['ids',], if(rec.ret) id.ret.F)
-  id.rc.T <- c(names.rc.T['ids',], if(rec.ret) id.ret.T)
+  id.rc.F <- c(names.rc.F['ids',], id.ret.F)
+  id.rc.T <- c(names.rc.T['ids',],  id.ret.T)
   rc.sym.names <- c(colnames(names.rc.F), if(rec.ret) "<return-value>")
 
   # Find sizes (they should be the same).  Compare pair wise.
@@ -830,6 +815,7 @@ reconcile_control_flow <- function(
 
   # Allocations to remap should all be branch local. To check find matching
   # 'if_test' and confirm all allocs are inside.
+  call.i.T <- which(call.dat.i == i.call.T)
   call.names <- vapply(call.dat, "[[", "", "name")
   if.lvl <- cumsum(call.names == 'if_test') -  cumsum(call.names == 'if_false')
   if.cur <- if.lvl[call.i.T]
@@ -910,6 +896,28 @@ reconcile_control_flow <- function(
   alloc[['names']]['br.hide', hidden] <- branch.lvl - 1L
 
   list(alloc=alloc, call.dat=call.dat, stack=stack)
+}
+# Identify Bindings that Should Be Reconciled
+
+cand_rec_bind <- function(names, branch.lvl) {
+  names.rc <- names[, names['rec',] == branch.lvl, drop=FALSE]
+  rc.nm <- sort(colnames(names.rc))
+  if(is.null(rc.nm)) rc.nm <- character()
+  if(anyDuplicated(rc.nm))
+    stop("Internal Error: duplicate symbols to reconcile.")
+  # reorder (should be safe since no dup symbols)
+  names.rc[, rc.nm, drop=FALSE]
+}
+# Determine whether branch return values need reconciliation
+
+cand_ret <- function(call.dat, call.dat.i, i.call) {
+  # Identify return values from both branches and check if they need to
+  # be reconciled (if no set to 0)
+  call.i <- which(call.dat.i == i.call)
+  call.dat.sub <- call.dat[[call.i]]
+  if(is.rec_ret(call.dat.sub[['call']]))
+    call.dat.sub[['ids']][length(call.dat.sub[['ids']])]
+  else integer()
 }
 # Determine if Call Return is Rec Tagged
 
