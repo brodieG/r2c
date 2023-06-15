@@ -517,3 +517,11 @@ unitizer_sect('multi-assign', {
   })
   r2c:::pp_clean(call6b1)
 })
+unitizer_sect('errors', {
+  call7a <- quote({
+      x0 <- x + y
+      if (b) r2c::rec(x0 + y)
+      else r2c::rec(y + y)
+  })
+  r2c:::pp_clean(call7a)
+})

@@ -52,7 +52,6 @@ unitizer_sect("basic", {
   f1d(TRUE, numeric())
   f1d(FALSE, numeric())
 
-
   f2a <- r2cq({
       z <-
         if(a) {y <- mean(x); sum(z)}
@@ -64,17 +63,10 @@ unitizer_sect("basic", {
   f2a(a=TRUE, x=1:3, z=1:3 * 10)
   # Not identical b/c one branch returns numeric (`* 10`)
   f2a(a=FALSE, x=1:3, z=1:3 * 10)
-
-  f3a <- r2cq({
-      x0 <- x + y
-      if (b) r2c::rec(x0 + y)
-      else r2c::rec(y + y)
-    }, check=TRUE
-  )
-  f3a(1:3, 5:7, 1)
-  f3a(1:3, 5:7, 0)
-
-  f4a.r <-function(x, a) {
+})
+unitizer_sect("nesting", {
+  # simple nesting no internal assign, branch res assigned
+  f4a.r <- function(x, a) {
     x2 <- if(a == 1) mean(x)
     else if (a == 2) sum(x)
     else a
@@ -85,6 +77,7 @@ unitizer_sect("basic", {
   f4a(1:3, 2)
   f4a(1:3, 3)
 
+  # simple nesting with internal assign (x2/x3 always same so boring?)
   f4b.r <-function(x, a) {
     x2 <- if(a == 1) x3 <- mean(x)
     else if (a == 2) x3 <- sum(x)
@@ -96,6 +89,7 @@ unitizer_sect("basic", {
   f4b(1:3, 2)
   f4b(1:3, 3)
 
+  # simple nesting with internal assign
   f4c.r <-function(x, a) {
     x2 <- if(a == 1) {
       x3 <- mean(x)
@@ -114,6 +108,7 @@ unitizer_sect("basic", {
   f4c(1:3, 2)
   f4c(1:3, 3)
 
+  # nesting + sequential branch and top level/branch assign
   f4d.r <-function(x, a, b) {
     x1 <- mean(x * a)
     x2 <- if(a == 1) {
@@ -149,6 +144,7 @@ unitizer_sect("basic", {
   f5a <- r2cf(f5a.r, check=TRUE)
   f5a(1:3, 2)
 
+  # Tests that re-use is working as expected
   f5c.r <-function(x, y, a, b) {
     x0 <- x + y
     x1 <- x * y
@@ -178,6 +174,4 @@ unitizer_sect("basic", {
   f5c(1:3, 5:7, 1, 0)
   f5c(1:3, 5:7, 2, 0)
   f5c(1:3, 5:7, 3, 0)
-
-
 })
