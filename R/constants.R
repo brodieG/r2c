@@ -74,6 +74,7 @@ IF.SUB.SYM <- c("if_true", "if_false")
 CTRL.SYM <- c("if", LOOP.SYM)
 BRANCH.TEST.SYM <- c("if_test")
 BRANCH.EXEC.SYM <- c("r2c_if")
+INTERNAL.FUNS <- c(IF.SUB.SYM, BRANCH.TEST.SYM, BRANCH.EXEC.SYM, 'vcopy', 'rec')
 
 NUM.TYPES <- c('logical', 'integer', 'double')
 

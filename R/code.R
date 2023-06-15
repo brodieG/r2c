@@ -398,6 +398,23 @@ code_valid <- function(code, call) {
 
   TRUE
 }
+# Extract function / package name from function call
+
+fun_name <- function(x) {
+  x.c <- fun_components(x)
+  if(is.null(x.c))
+    stop("Internal error: `", deparse1(x.c), "` not a valid function name.")
+  x.c[[length(x.c)]]
+}
+fun_components <- function(x) {
+  if(is.symbol(x) || is.character(x)) list(as.character(x))
+  else if(
+    is.call(x) && is.dbl_colon_call(x) &&
+    (is.symbol(x[[3L]]) || is.character(x[[3L]])) &&
+    (is.symbol(x[[2L]]) || is.character(x[[2L]]))
+  ) list(as.character(x[[2L]]), as.character(x[[3L]]))
+}
+
 # Check whether a call is in valid format
 #
 # We allow pkg::fun for a select set of packages that r2c implements functions
@@ -405,23 +422,30 @@ code_valid <- function(code, call) {
 # not implemented such, and the assumption simplifies things).
 
 call_valid <- function(call) {
-  fun <- call[[1L]]
-  if(is.call(fun)) {
-    if(is.dbl_colon_call(fun) && as.character(fun[[2L]]) %in% VALID.PKG) {
-      fun <- as.character(fun[[3L]])
-    } else {
-      stop("`", deparse1(call[[1L]]), "` is not a supported function.")
+  if(is.call(call)) {
+    fun.c <- fun_components(call[[1L]])
+    if(is.null(fun.c)) {
+      stop(
+        "Only calls in form `fun(...)` and `pkg::fun(...)` where `fun` is a ",
+        "symbol or character are supported (i.e. not `", deparse1(call), "`)."
+      )
     }
+    if(length(fun.c) == 2L && !fun.c[[1L]] %in% VALID.PKG)
+      stop("Package `", fun.c[[1L]], "` not a supported package in ", deparse1(call))
+    else if (length(fun.c) == 1 && !fun.c[[1L]] %in% names(VALID_FUNS))
+      stop("`", fun.c[[1L]], "` is not a supported function.")
+    else if (!length(fun.c) %in% 1:2)
+      stop("Internal Error: bad function name decomposition.")
+
+    fun.name <- fun.c[[length(fun.c)]]
+    if(fun.name %in% INTERNAL.FUNS)
+      stop(
+        "`", fun.name,
+        "` is an internal r2c function and invalid as an input to compilation."
+      )
+    fun.name
   }
-  if(!is.chr_or_sym(fun))
-    stop(
-      "only calls in form `symbol(<parameters>)` are supported (i.e. not ",
-      deparse1(call), ")."
-    )
-  func <- as.character(fun)
-  if(!func %in% names(VALID_FUNS))
-    stop("`", deparse1(call[[1L]]), "` is not a supported function.")
-  func
+
 }
 #' Default C Call Generation
 #'

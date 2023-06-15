@@ -197,7 +197,7 @@ pp_internal <- function(
     # Classify Params
     args <- as.list(call[-1L])
     if(is.null(names(args))) names(args) <- character(length(args))
-    func <- call_valid(call)
+    func <- fun_name(call[[1L]])
     args.types <- rep("other", length(args))
     args.types[names(args) %in% VALID_FUNS[[c(func, "ctrl")]]] <- "control"
     args.types[names(args) %in% VALID_FUNS[[c(func, "flag")]]] <- "flag"
@@ -478,7 +478,7 @@ match_call_rec <- function(call) {
 
 transform_call_rec <- function(call) {
   while(is.call(call)) { # equivalent to if(...) repeat
-    func <- call_valid(call)
+    func <- fun_name(call[[1L]])
     call.transform <- VALID_FUNS[[c(func, "transform")]](call)
     if(identical(call.transform, call)) break
     call <- call.transform
