@@ -443,6 +443,8 @@ call_valid <- function(call) {
         "`", fun.name,
         "` is an internal r2c function and invalid as an input to compilation."
       )
+    if(fun.name == "{" && length(call) < 2L)
+      stop("Empty braces {} disallowed in r2c expressions.")
     fun.name
   }
 
