@@ -605,7 +605,7 @@ clean_call <- function(x) {
     if(length(x) == 2L) names(x) <- NULL
 
     # Undo the if decomposition
-    x <- recompose_ifelse(x)
+    x <- recompose_control(x)
 
     # Recurse
     for(i in seq(2L, length(x))) x[[i]] <- clean_call(x[[i]])

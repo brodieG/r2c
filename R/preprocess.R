@@ -60,7 +60,7 @@ preprocess <- function(call, formals=character(), optimize=FALSE) {
   }
   # Restructure if/else and loops.  Not done as a transformation as
   # `reuse_calls_int` needs to be able to recognize the original control flow
-  call <- transform_ifelse(call)
+  call <- transform_control(call)
 
   # Copy "external" data to r2c alloc mem (see fun docs); must be the last step.
   tmp <- copy_branchdat(call)
@@ -489,9 +489,10 @@ transform_call_rec <- function(call) {
   }
   call
 }
-# Expand if/else Into Expected Format
+# Expand Control Structures Into Expected Format
 #
-# An if/else lik:
+# Modifies control structures and other things like nested braces so they meet
+# expectations of subsequent logic.  For example an if/else like:
 #
 # ```
 # if(a) b else c
@@ -505,11 +506,14 @@ transform_call_rec <- function(call) {
 # ```
 #
 # This allows us to generate the control structures in C and line them up with
-# calls for required allocations.
+# calls for required allocations, and also creates several other useful patterns
+# to help deal with the limitation of linearized calls.  For example, we know
+# that the TRUE branch contents will be between the `if_test` and `if_true`
+# call.
 
-transform_ifelse <- function(x) {
+transform_control <- function(x) {
   if(is.call(x)) {
-    x[-1L] <- lapply(x[-1L], transform_ifelse)
+    x[-1L] <- lapply(x[-1L], transform_control)
     call.sym <- get_lang_name(x)
     if(call.sym == "if") {
       if(!length(x) %in% 3:4)
@@ -535,7 +539,7 @@ transform_ifelse <- function(x) {
   }
   x
 }
-# Undo `transform_ifelse`
+# Undo `transform_control`
 #
 # This is not a perferct reversal because we don't track if an `else numeric(0)`
 # was there originally or added by `transform_if_else`.  Additionally, we always
@@ -545,7 +549,7 @@ transform_ifelse <- function(x) {
 #
 # This is NOT recursive as `clean_call` does the recursion.
 
-recompose_ifelse <- function(x) {
+recompose_control <- function(x) {
   if(is.call_w_args(x)) {
     call.sym <- get_lang_name(x)
     if(call.sym == "{") {
