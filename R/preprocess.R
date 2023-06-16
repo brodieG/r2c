@@ -184,10 +184,13 @@ preprocess <- function(call, formals=character(), optimize=FALSE) {
 #   avoid recomputing it.
 # @param indent additional indentation to add to code, used to support controls
 #   with indented contents.  This is the total required indentation.
+# @param passive whether every parent call (in a dynamic, not lexical sense) is
+#   passive.  Used to ensure assignments are not made inside active calls.
+#   `vcopy` counts as passive for these purposes (even though it's not).
 
 pp_internal <- function(
   call, depth, x, argn="", assign=FALSE, call.parent=NULL,
-  call.parent.name="", indent=0L
+  call.parent.name="", indent=0L, passive=TRUE
 ) {
   if(depth == .Machine$integer.max)
     stop("Expression max depth exceeded.") # exceedingly unlikely
@@ -201,6 +204,7 @@ pp_internal <- function(
     args.types <- rep("other", length(args))
     args.types[names(args) %in% VALID_FUNS[[c(func, "ctrl")]]] <- "control"
     args.types[names(args) %in% VALID_FUNS[[c(func, "flag")]]] <- "flag"
+    passive <- passive && func %in% c(PASSIVE.SYM, 'vcopy')
 
     # Check if we're in assignment call
     name <- get_lang_name(call) # should this just be `func`?
@@ -208,13 +212,7 @@ pp_internal <- function(
     # Assignments only allowed at brace level or top level because we cannot
     # assure the order of evaluation so safer to just disallow.  We _could_
     # allow it but it just seems dangerous.
-    if(
-      next.assign &&
-      !call.parent.name %in% c(
-        ASSIGN.SYM, "{", IF.SUB.SYM, LOOP.SYM, "vcopy", "rec"
-      ) &&
-      !is.null(call.parent)
-    ) {
+    if(next.assign && !passive) {
       call.dep <- deparse(clean_call(call))
       msg <- sprintf(
         "r2c disallows assignments inside arguments. Found: %s",
@@ -236,7 +234,7 @@ pp_internal <- function(
           call=args[[i]], depth=depth + 1L, x=x, argn=names(args)[i],
           assign=i == 1L && next.assign,
           call.parent=call, call.parent.name=func,
-          indent=indent + (func %in% IF.SUB.SYM) * 2L
+          indent=indent + (func %in% IF.SUB.SYM) * 2L, passive=passive
     ) } }
     # Are we in a rec chain?  Needed for alloc to know which bindings are
     # from rec (see reconcile_control_flow).
