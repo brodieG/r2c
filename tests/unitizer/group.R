@@ -105,4 +105,9 @@ unitizer_sect("param mismatch error prettyfying", {
   group_exec(r2c_sum, list(y=n0), integer(), MoreArgs=list(x=1:3))
   group_exec(r2c_sum, list(y=n0, x=n0), integer(), MoreArgs=list(x=1:3))
 })
-
+unitizer_sect("vecrec sizing", {
+  # Vecrec with fixed size vs varying smaller and larger
+  x <- 1:6
+  g <- rep(1:3, 1:3)
+  group_exec(r2c_add, x, g, MoreArgs=list(y=c(5,10)))
+})

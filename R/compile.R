@@ -59,7 +59,9 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' code in the form of an "r2c_fun" function.  This function will carry out
 #' out numerical calculations with `r2c` native instructions instead of with the
 #' standard R routines. "r2c_fun" functions are intended to be run with the
-#' `r2c` [runners] for fast iterated calculations.
+#' `r2c` [runners] for fast iterated calculations.  It is the intention of `r2c`
+#' to adhere as closely as possible to R semantics for the subset of R that it
+#' supports when used with numeric vectors.
 #'
 #' @section r2c Generated Functions:
 #'
@@ -68,6 +70,17 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' optimized to be invoked invoked indirectly with [runners].  In many common
 #' cases it is likely that using an "r2c_fun" directly instead of with a runner
 #' will be slower than evaluating the corresponding R expression.
+#'
+#' The lifecycle of an `r2c` function has two stages.
+#'
+#' 1. Compilation with `r2cq` or similar.
+#' 2. Execution, either direct or via [runners].
+#'    a. One time memory allocation for current data / groups.
+#'    b. Iterative execution over groups.
+#'
+#' The second stage involves a single allocation step, followed by as many
+#' iterations as there are groups (or windows).  The same set of allocations is
+#' re-used for every iteration.
 #'
 #' Each of the `r2c*` functions addresses different types of input:
 #'
@@ -85,54 +98,92 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' reserved for use by `r2c` and thus disallowed in `call`.  You may also
 #' directly set the parameter list with the `formals` parameter, or with `r2cf`.
 #'
-#' As with regular functions, unbound symbols are resolved in the lexical
-#' environment of the function.  You can set a different environment on creation
-#' of the function with the `envir` parameter, but currently there is no way to
-#' change it afterwards (`environment(r2c_fun) <- x` will likely just break the
-#' function).
+#' As with regular R functions, unbound symbols (a.k.a. external references) are
+#' resolved in the lexical environment of the function.  You can set a different
+#' environment on creation of the function with the `envir` parameter, but
+#' currently there is no way to change it afterwards (`environment(r2c_fun) <-
+#' x` will likely just break the function).  External references are evaluated
+#' once at allocation time and re-used for each iteration.
+#'
+#' @section Parameter and Return Value:
 #'
 #' Parameters used with "r2c_fun" supported functions are categorized into data
 #' parameters and control parameters.  For example, in `sum(x, na.rm=TRUE)`, `x`
-#' is considered a data parameter and `na.rm` a control parameter.  Control
-#' parameters are evaluated the same as external references (see above).  All
-#' data parameters must be attribute-less atomic vectors.  Numeric, integer, and
-#' logical vectors are supported, but they are coerced to numeric (double), and
-#' thus logical and integer vectors are copied before use.  All internal
-#' operations are carried out on double precision floating point values.  In
+#' is considered a data parameter and `na.rm` a control parameter.
+#'
+#' All data parameters must be attribute-less atomic vectors.  Numeric, integer,
+#' and logical vectors are supported, but they are coerced to numeric (double),
+#' and thus logical and integer vectors are copied before use.  All internal
+#' operations are carried out on double precision floating point values, and for
+#' some functions on long doubles on architectures that supports them.  In
 #' cases where the output type is knowable to be either integer or logical,
 #' `r2c` will coerce the result to the corresponding type, again with a copy.
-#' To avoid copies provide all inputs as doubles.  There are no general type
-#' restrictions on control parameters, but each implemented function will only
-#' accept values for them that would make sense for the R counterparts.
+#' To avoid copies provide all inputs as doubles.
+#'
+#' Control parameters are evaluated once at allocation time, even when they
+#' reference symbols that are otherwise iteration varying. So in
+#' `sum(x, na.rm=x)` where `x` is part of the iteration varying data, the second
+#' `x` will be evaluated a single time as the entire `x` vector.  That value
+#' will be used for `na.rm` for every iteration.  On the other hand, the first
+#' `x` will change across iterations to that iteration's subset.  Control
+#' parameters will not respect re-bindings that are made within an "r2c"
+#' expression.  In `x <- y; sum(x, na.rm=x)` the second `x` will still
+#' reference whatever `x` was prior to being re-bound to `y`.  While the
+#' semantic inconsistency of control parameters is unfortunate, it allows the
+#' use of arbitrary objects for iteration constant parameters, and should not
+#' manifest in the common use cases.  Each `r2c` supported function has a fixed
+#' definition of which parameters are control parameters.  There are no general
+#' type restrictions on control parameters, but each implemented function will
+#' only accept values for them that would make sense for the R counterparts.
 #'
 #' @section Supported R Functions and Constraints:
 #'
-#' Currently the following functions are supported in `x` (or in the body of `x`
-#' for `r2cf`):
+#' The following functions are supported in `x` (or in the body of `x` for
+#' `r2cf`):
 #'
 #' * Arithmetic functions: `+`, `-`, `*`, `/`, and `^`.
 #' * Relational functions: `<`, `<=`, `>`, `>=`, `==`, `!=`.
 #' * Logical functions: `&`, `&&`, `|`, `||`, `!`, `ifelse`.
 #' * Statistics: `mean`, `sum`, `length`, `all`, `any`.
 #' * Assignment and braces: `<-`, `=`, and `{`.
+#' * Branches: `if/else`.
+#'
+#' In general these will behave as in R, with the following exceptions:
+#'
+#' * `ifelse` and `if` / `else` always return in a common type that can support
+#'   both `yes` and `no` values.
+#' * `if`/`else` returns `numeric(0)` instead of NULL if an empty branch is taken.
+#' * `&&` and `||` always evaluate all parameters.
+#' * `{` must contain at least one parameter (no empty braces).
+#' * Assignments may only be nested in braces (`{`) or in control structure
+#'   branches.  This is a recursive requirement, so `mean(if(a) x <- y)` is
+#'   disallowed.
+#' * Additional constraints detailed next.
 #'
 #' Calls must be in the form `fun(...)` (`a fun b` for operators)  where `fun`
 #' is the name of the function.  Functions must be bound to their original
 #' symbols for them to be recognized.  For `r2c` provided functions like
 #' [`mean1`] you may use the `::` form to compile expressions that contain them
-#' without attaching the `{r2c}` package.  Empty braces are disallowed, and
-#' assignments may only be done at the top level or at a brace level (see
-#' examples).  References to external variables (i.e. not in `data` or
-#' `MoreArgs`) that cause side effects (e.g. [active bindings][bindenv],
-#' promises the evaluation of which cause side effects) may cause unexpected
-#' results.  All external references are evaluated once before any other
-#' computations are carried out.
+#' without attaching the `{r2c}` package.  References to external variables
+#' (i.e. not in `data` or `MoreArgs`) that cause side effects (e.g. [active
+#' bindings][bindenv], promises the evaluation of which cause side effects)
+#' may cause unexpected results.  All external references and control
+#' parameter expressions (see "r2c Generated Functions") are evaluated once
+#' before any other computations are carried out.
 #'
-#' Outside of the aforementioned constraints, `r2c` attempts to mimic the
-#' corresponding R function semantics to the `identical` level, but there may be
-#' corner cases that differ, particularly those involving missing or infinite
-#' values.  One exception is `ifelse` which in its `r2c` form always returns in
-#' a common type that can support both `yes` and `no` values.
+#' Control structures include `if` / `else` statements and loops.  All of these
+#' have branches; the loop branches are loop not taken (0 iterations) vs loop
+#' taken (1+ iterations).  Control structures add additional constraints:
+#'
+#' * If used, control structure return values must be guaranteed to be the same
+#'   size irrespective of the branch taken.
+#' * If used after a control structure, assignments therein must be consistent
+#'   in size irrespective of branch taken.
+#'
+#' Outside of the aforementioned constraints and exceptions, `r2c` attempts to
+#' mimic the corresponding R function semantics to the `identical` level, but
+#' there may be corner cases that differ, particularly those involving missing
+#' or infinite values.
 #'
 #' @section Details:
 #'
@@ -344,7 +395,8 @@ r2c_core <- function(
     # Anything bad happen if we allow the below through?
     if(!length(sym.free))
       stop(
-        "Expression `", deparse(call), "` does not contain any parameter symbols."
+        "Expression does not contain any parameter symbols:\n",
+        deparseLines(call)
       )
     formals <- replicate(length(sym.free), alist(a=))
     names(formals) <- sym.free
@@ -473,6 +525,12 @@ r2c_core <- function(
 #' * `get_compile_out` the "stdout" produced during the compilation of the
 #'   shared object.
 #'
+#' Most calls seen in the raw version of what `get_r_code` returns will have a C
+#' level counterpart labeled with the R call in a comment.  This includes calls
+#' that are nested as arguments to other calls, which will appear before the
+#' outer call.  Due to how how control structures are implemented the R calls
+#' and the C level counterparts will not match up exactly.
+#'
 #' @name r2c-inspect
 #' @seealso [`r2c-compile`].
 #' @export
@@ -522,14 +580,24 @@ get_r_code <- function(fun, raw=FALSE) {
 }
 # Make the call a little friendlier
 #
-# Ideally would also drop defaults, and parameter matches that were originally
-# positional.
-clean_call <- function(x) {
-  if(is.call_w_args(x)) {
+# In theory we could drop names when input was wholly positionally matched, but
+# that's going to be annoying to trace back.  At some point we were planning on
+# having the indices into the original call available, but didn't follow through
+# because we would have to attach that as an attribute or somesuch (and
+# we can't do that for leaves anyway?).
+#
+# @param level how aggressively to clean, if 2L will also remove calls
+#   associated with reconciliation (e.g. vcopy/rec).
+
+clean_call <- function(x, level=1L) {
+  fun.name <- get_lang_name(x)
+  if(is.call(x) && fun.name %in% REC.FUNS && level == 2L) {
+    # drop e.g. vcopy/rec
+    x <- clean_call(x[[2L]], level=level)
+  } else if(is.call_w_args(x)) {
     # Drop dots from e.g. `sum(...=x, )`
     if(!is.null(names(x))) names(x)[names(x) == "..."] <- ""
     # Drop defaults that are set to default values
-    fun.name <- get_lang_name(x)
     fun.defn <- VALID_FUNS[[c(fun.name, 'defn')]]
     if(!is.null(fun.defn) && !is.null(names(x))) {
       defn.frm <- formals(fun.defn)
@@ -543,14 +611,14 @@ clean_call <- function(x) {
       )
       x[default.args.nm[act.def.equal]] <- NULL
     }
-    # Drop names when there is only one parameter.  In theory we could drop
-    # them when input was wholly positionally matched, but that's going to be
-    # annoying to traceback.  At some point we were planning on having the
-    # indices into the original call available, but didn't follow through.
+    # Drop names if only one param
     if(length(x) == 2L) names(x) <- NULL
 
+    # Undo the if decomposition
+    x <- recompose_control(x)
+
     # Recurse
-    for(i in seq(2L, length(x))) x[[i]] <- clean_call(x[[i]])
+    for(i in seq(2L, length(x))) x[[i]] <- clean_call(x[[i]], level=level)
   }
   x
 }

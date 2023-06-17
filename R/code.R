@@ -28,10 +28,16 @@ is.valid_arglen <- function(type)
   !is.na(type[[2L]]) &&
   (length(type) <= 2L || is.function(type[[3L]]))
 
-is.valid_vecrec <- function(type)
-  type[[1L]] == "vecrec" &&
+is.valid_n_arglen <- function(type)
+  length(type) == 2L &&
   (is.character(type[[2L]]) || is.integer(type[[2L]])) &&
   !anyNA(type[[2L]])
+
+is.valid_vecrec <- function(type)
+  is.valid_n_arglen(type) && type[[1L]] == "vecrec"
+
+is.valid_eqlen <- function(type)
+  is.valid_n_arglen(type) && type[[1L]] == "eqlen"
 
 is.valid_constant <- function(type)
   is.integer(type[[2L]]) &&
@@ -108,9 +114,9 @@ is.valid_constant <- function(type)
 #'     the result size (e.g. `probs` for [`quantile`]), also allows specifying a
 #'     function at position 3 to e.g. pick which of multiple arguments matching
 #'     `...` to use for the length.
-#'   * vecrec: character(n) the names of the arguments to use to compute result
-#'     size under assumption of recycling to longest, or zero if any argument is
-#'     zero length.
+#'   * vecrec: character(n) (or integer(n)) the names (or indices in the matched
+#'     call) of the arguments to use to compute result size under assumption of
+#'     recycling to longest, or zero if any argument is zero length.
 #'
 #' @param code.gen a function that generates the C code corresponding to an R
 #'   function, which accepts three parameters (see details for the expected
@@ -123,9 +129,13 @@ is.valid_constant <- function(type)
 #'
 #' @param ctrl.validate a function to validate both control and flag parameters,
 #'   should `stop`, or return the flag parameters encoded into an integer.
-#' @param res.type one of "double", "integer", "logical", or "preserve.int", the
-#'   latter equivalent to integer if all stack inputs are "integer" or
-#'   "logical", double otherwise.
+#' @param res.type one of "double", "integer", "logical", "preserve.int",
+#'   "preserve.last", or "preserve".  "preserve" will cause all output to be
+#'   "logical" if all inputs are "logical", "integer" if there is a mix of
+#'   "logical" and "integer" (including all "integer"), and "double" if any
+#'   doubles are present.  "preserve.int" is like "preserve", except the only
+#'   possible output types are "integer" and "double".  "preserve.last" is like
+#'   "preserve" except it only considers the last input (e.g. as for braces).
 #'
 #' @return a list containing the above information after validating it.
 
@@ -148,27 +158,35 @@ cgen <- function(
       is.null(defn) ||
       all(. %in% names(formals(defn))) && !"..." %in% . && length(.) < 32L
     ),
-    type=list() && length(.) %in% 2:3,
+    type=list() && length(.) %in% 1:3,
     code.gen=is.function(.),
     ctrl.validate=is.function(.),
     transform=is.function(.),
-    res.type=CHR.1 && . %in% c('logical', 'double', 'numeric', 'preserve.int')
+    res.type=CHR.1 &&
+      . %in% c(
+        'logical', 'double', 'preserve.int', 'preserve', 'preserve.last'
+      )
   )
   if(length(intersect(ctrl.params, flag.params)))
     stop("Control and Flag parameters may not overlap.")
   # Limitation in vetr prevents this being done directly above
   stopifnot(
     is.character(type[[1L]]) && length(type[[1L]]) == 1L && !is.na(type[[1L]]),
-    type[[1L]] %in% c("constant", "arglen", "vecrec"),
+    type[[1L]] %in% c("constant", "arglen", "vecrec", "eqlen"),
     (
       (type[[1L]] == "constant" && is.valid_constant(type)) ||
       (type[[1L]] == "arglen" && is.valid_arglen(type)) ||
-      (type[[1L]] == "vecrec" && is.valid_vecrec(type))
+      (type[[1L]] == "vecrec" && is.valid_vecrec(type)) ||
+      (type[[1L]] == "eqlen" && is.valid_eqlen(type))
     ),
     # positional matching or match.call?
-    type[[1L]] == "constant" ||
-      (is.null(defn) && is.integer(type[[2L]])) ||
-      (!is.null(defn) && is.character(type[[2L]]))
+    type[[1L]] %in% c("constant") ||
+    (
+      type[[1L]] %in% c('arglen', 'vecrec', 'eqlen') && (
+        (is.null(defn) && is.integer(type[[2L]])) ||
+        (!is.null(defn) && is.character(type[[2L]]))
+      )
+    )
   )
   list(
     name=name, fun=fun, defn=defn, ctrl=ctrl.params, flag=flag.params,
@@ -280,19 +298,49 @@ VALID_FUNS <- c(
     ),
     cgen(
       "ifelse", type=list("arglen", "test"), code.gen=code_gen_ifelse,
-      res.type="preserve.int" # not faithful to what R does
+      res.type="preserve" # not faithful to what R does
     )
   ),
   # - Assign / Control----------------------------------------------------------
 
   list(
-    cgen("<-", type=list("arglen", 2L), code.gen=code_gen_assign),
-    cgen("=", type=list("arglen", 2L), code.gen=code_gen_assign),
+    cgen(
+      "<-", type=list("arglen", 2L), code.gen=code_gen_assign,
+      res.type="preserve.last"
+    ),
+    cgen(
+      "=", type=list("arglen", 2L), code.gen=code_gen_assign,
+      res.type="preserve.last"
+    ),
     cgen(
       "{", defn=function(...) NULL,
       # arglen of last argument matching dots
       type=list("arglen", "...", function(x) x[length(x)]),
-      code.gen=code_gen_braces
+      code.gen=code_gen_braces, res.type="preserve.last"
+    ),
+    # result of this one is not used outside of the C code
+    cgen(
+      "if_test", type=list("constant", 1L), code.gen=code_gen_if_test,
+      res.type="logical", fun=if_test
+    ),
+    cgen(
+      "if_true", type=list("arglen", "expr"), code.gen=code_gen_if_true,
+      fun=if_true, res.type="preserve"
+    ),
+    cgen(
+      "if_false", type=list("arglen", "expr"), code.gen=code_gen_if_false,
+      fun=if_false, res.type="preserve"
+    ),
+    # `res.type` gets special handling in `reconcile_control_flow` for `r2c_if`.
+    cgen(
+      "r2c_if", type=list("eqlen", c("true", "false")),
+      code.gen=code_gen_r2c_if, fun=r2c_if, res.type="preserve"
+    ),
+    # This one can't actually generate code and needs to be first decomposed
+    # into the above if_test/r2c_if/if_true/if_false, but we need it here so the
+    # early parsing passes recognize it as an allowed function.
+    cgen(
+      "if", type=list("eqlen", 2:3), code.gen=code_gen_if, res.type="preserve"
     )
   ),
   # - r2c funs -----------------------------------------------------------------
@@ -313,7 +361,13 @@ VALID_FUNS <- c(
       "vcopy", fun=vcopy, defn=NULL,
       type=list("arglen", 1L),
       code.gen=code_gen_copy,
-      res.type="preserve.int"   # for uplus
+      res.type="preserve"   # for uplus
+    ),
+    cgen(
+      "rec", fun=rec, defn=NULL,
+      type=list("arglen", 1L),
+      code.gen=code_gen_rec,
+      res.type="preserve"
     )
   )
 )
@@ -328,7 +382,7 @@ stopifnot(
 code_blank <- function()
   list(
     defn="", name="", call="", narg=FALSE, flag=FALSE, ctrl=FALSE,
-    headers=character(), defines=character(), noop=FALSE
+    headers=character(), defines=character(), out.ctrl=CGEN.OUT.NONE
   )
 code_valid <- function(code, call) {
   isTRUE(check <- vet(CHR.1, code[['defn']])) &&
@@ -336,7 +390,9 @@ code_valid <- function(code, call) {
     isTRUE(check <- vet(CHR.1, code[['call']])) &&
     isTRUE(check <- vet(CHR || NULL, code[['headers']])) &&
     isTRUE(check <- vet(CHR || NULL, code[['defines']])) &&
-    isTRUE(check <- vet(LGL.1, code[['noop']]))
+    isTRUE(
+      check <- vet(INT.1 && all_bw(., 0, CGEN.OUT.DFLT), code[['out.ctrl']])
+    )
   if(!isTRUE(check))
     stop("Generated code format invalid for `", deparse1(call), "`:\n", check)
 
@@ -349,56 +405,108 @@ code_valid <- function(code, call) {
 # not implemented such, and the assumption simplifies things).
 
 call_valid <- function(call) {
-  fun <- call[[1L]]
-  if(is.call(fun)) {
-    if(is.dbl_colon_call(fun) && as.character(fun[[2L]]) %in% VALID.PKG) {
-      fun <- as.character(fun[[3L]])
-    } else {
-      stop("`", deparse1(call[[1L]]), "` is not a supported function.")
-    }
+  if(is.call(call)) {
+    fun.c <- get_lang_info(call)
+    pkg <- fun.c[['pkg']]
+    fun <- fun.c[['name']]
+
+    if(nzchar(pkg) && !pkg %in% VALID.PKG)
+      stop(
+        "Package `", pkg, "` not a supported package in ", deparse1(call)
+      )
+    else if (!nzchar(pkg) && !fun %in% names(VALID_FUNS))
+      stop("`", fun, "` is not a supported function.")
+
+    if(fun %in% INTERNAL.FUNS)
+      stop(
+        "`", fun,
+        "` is an internal r2c function and invalid as an input to compilation."
+      )
+    if(fun == "{" && length(call) < 2L)
+      stop("Empty braces {} disallowed in r2c expressions.")
+    fun
   }
-  if(!is.chr_or_sym(fun))
-    stop(
-      "only calls in form `symbol(<parameters>)` are supported (i.e. not ",
-      deparse1(call), ")."
-    )
-  func <- as.character(fun)
-  if(!func %in% names(VALID_FUNS))
-    stop("`", deparse1(call[[1L]]), "` is not a supported function.")
-  func
+
 }
-#' Organize Code Generation Output
+#' Default C Call Generation
 #'
-#' Additionally, generates the call to the function.
+#' Calls outside of controls follow a clear pattern that this function
+#' implements.  See `code_res` for parameter description.
 #'
 #' @noRd
-#' @param narg TRUE if function has variable number of arguments
-#' @param flag TRUE if function has flag parameters
-#' @param ctrl TRUE if function has control parameters
-#' @param noop TRUE if function is a noop, in which case will be commented out
-#' @param headers character vector with header names that need to be #included
-#' @param defines character with #define directives
 
-code_res <- function(
-  defn, name, narg=FALSE, flag=FALSE, ctrl=FALSE,
-  headers=character(), defines=character(), noop=FALSE
-) {
-  if(is.na(name)) stop("Internal Error: mismapped function name.")
-  if(noop && !name %in% FUN.NAMES[PASSIVE.SYM])
-    stop("Internal Error: noop declared for ", name, ", but not in PASSIVE.SYM")
-  call <- sprintf(
-    "%s%s(%s%s%s%s);",
-    if(noop) "// NO-OP: " else "",
+c_call_gen <- function(name, narg, flag, ctrl) {
+  sprintf(
+    "%s(%s%s%s%s);",
     name,
     toString(CALL.BASE),
     if(narg) paste0(", ", CALL.VAR) else "",
     if(flag) paste0(", ", CALL.FLAG) else "",
     if(ctrl) paste0(", ", CALL.CTRL) else ""
   )
+}
+#' Organize C Code Generation Output
+#'
+#' There are three types of C output:
+#'
+#' * Call to the C function
+#' * Definition of C function
+#' * Deparsing of R function as comment for context
+#'
+#' Different R level calls require outputting different mixes of the above,
+#' where the default standard call like `mean(x)` will output all three.
+#' Exceptions include so called NO-OP calls that don't actually require a C
+#' function call such as assignments or braces.  These don't compute anything
+#' directly.  Additionally, control functions don't map R calls directly to C
+#' calls, but still use proxy R calls as stand-ins for e.g. the braces, the
+#' `else`, etc.  So those have an associated output that is "executed" at
+#' run-time, but e.g. don't have corresponding definitions or deparsed R
+#' commentary.
+#'
+#' Every R call, including proxy R calls, maintains a spot in the data
+#' indexing, flag, and control arrays, even if they are not run at the C level.
+#' This simplifies the logic of the allocation code.  Additionally, every R call
+#' must generate a C function definition and a call, irrespective of whether the
+#' definition and/or call are emitted to the final C output file.  This
+#' requirement is due to some sanity checks that preceded the possibility of
+#' calls/definitions that might not get emitted.
+#'
+#' @noRd
+#' @seealso `cgen` for the actual C code generation, `preprocess` for the
+#'   assembly into the final C file.
+#' @param narg TRUE if function has variable number of arguments
+#' @param flag TRUE if function has flag parameters
+#' @param ctrl TRUE if function has control parameters
+#' @param headers character vector with header names that need to be #included
+#' @param defines character with #define directives
+#' @param out.ctrl scalar integer sum of various `CGEN.OUT.*` constants (see
+#'   constants.R) that control which parts of the C output are generated and
+#'   how.  The actual final C file is produced by `preprocess` (consulting these
+#'   values).
+#' @param c.call.gen function to generate the C call.  Primarily used to allow
+#'   generation of control flow code that follows different patterns than all
+#'   the others, including cases where there is no function call at all, only
+#'   e.g. braces or an else statement.
+
+code_res <- function(
+  defn, name, narg=FALSE, flag=FALSE, ctrl=FALSE,
+  headers=character(), defines=character(), out.ctrl=CGEN.OUT.DFLT,
+  c.call.gen=c_call_gen
+) {
+  if(is.na(name)) stop("Internal Error: mismapped function name.")
+  if(
+    bitwAnd(out.ctrl, CGEN.OUT.MUTE) && !name %in% FUN.NAMES[PASSIVE.SYM]
+  )
+    stop("Internal Error: cannot mute ", name, ", as not in PASSIVE.SYM")
+
+  c_call <- paste0(
+    c.call.gen(name, narg=narg, flag=flag, ctrl=ctrl), collapse="\n"
+  )
   list(
-    defn=defn, name=name, call=call,
+    defn=defn, name=name,
+    call=c_call,
     headers=if(is.null(headers)) character() else headers,
     defines=if(is.null(defines)) character() else defines,
-    narg=narg, flag=flag, ctrl=ctrl, noop=noop
+    narg=narg, flag=flag, ctrl=ctrl, out.ctrl=out.ctrl
   )
 }

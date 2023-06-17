@@ -21,7 +21,7 @@ r2c_group_obj <- function(sizes, order, group.o, sorted, mode) {
 }
 group_sizes <- function(go, levels=vector(mode='list', length(go))) {
   res <- .Call(R2C_group_sizes, go)
-  names(res) <- c('gsizes', 'glabs', 'gmax')
+  names(res) <- c('gsizes', 'glabs', 'gmax', 'gmin')
   res[['glevels']] <- levels  # won't work for list inputs
   res
 }
@@ -40,7 +40,10 @@ group_exec_int <- function(
   if(!length(d.len)) d.len <- 0L  # No data
   groups <- if(is.null(groups)) { # Direct call of "r2c_fun"?
     r2c_group_obj(
-      sizes=list(gsizes=as.numeric(d.len), glabs=0L, gmax=as.numeric(d.len)),
+      sizes=list(
+        gsizes=as.numeric(d.len), glabs=0L,
+        gmax=as.numeric(d.len), gmin=as.numeric(d.len)
+      ),
       order=seq_len(d.len),
       group.o=list(rep(1L, d.len)), # Not altrep as of 4.2.1, sadly
       sorted=TRUE, mode="ungrouped"
@@ -61,12 +64,13 @@ group_exec_int <- function(
   }
   group.sizes <- groups[['sizes']]
   gmax <- group.sizes[['gmax']]
+  gmin <- group.sizes[['gmin']]
 
   # - Match Data to Parameters and Allocate ------------------------------------
 
   alloc <- match_and_alloc(
     do=do, MoreArgs=MoreArgs, preproc=preproc, formals=formals,
-    enclos=enclos, gmax=gmax, call=call, runner=r2c::group_exec
+    enclos=enclos, gmax=gmax, gmin=gmin, call=call, runner=r2c::group_exec
   )
   stack <- alloc[['stack']]
 

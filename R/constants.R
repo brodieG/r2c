@@ -39,20 +39,15 @@ F.ARGS.CTRL <- R.ARGS.CTRL <- 'SEXP ctrl'
 F.ARGS.ALL <- c(F.ARGS.BASE, F.ARGS.VAR, F.ARGS.FLAG, F.ARGS.CTRL)
 R.ARGS.ALL <- c(R.ARGS.BASE, R.ARGS.VAR, R.ARGS.FLAG, R.ARGS.CTRL)
 
-INC.VAR <- paste0("++", ARGS.NM.VAR);
-INC.FLAG <- paste0("++", ARGS.NM.FLAG);
-INC.CTRL <- "++v";
-INC.DAT <- paste0("++", ARGS.NM.BASE[3L]) # also used by CALL.BASE
-
-CALL.BASE <- c(ARGS.NM.BASE[1L:2L], paste0("*", ARGS.NM.BASE[3L], "++"))
-CALL.VAR <- "*narg"
-CALL.CTRL <- "VECTOR_ELT(ctrl, v)"  # this should be length 1 (see checks)
-CALL.FLAG <- "*flag";
+CALL.BASE <- c(ARGS.NM.BASE[1L:2L], paste0(ARGS.NM.BASE[3L], "[%1$d]"))
+CALL.VAR <- paste0(ARGS.NM.VAR, "[%1$d]")
+# this should be length 1 (see checks)
+CALL.CTRL <- paste0("VECTOR_ELT(", ARGS.NM.CTRL, ", %1$d)")
+CALL.FLAG <- paste0(ARGS.NM.FLAG, "[%1$d]");
 CALL.ALL <- c(CALL.BASE, CALL.VAR, CALL.FLAG, CALL.CTRL)
 
-
 ## Sanity checks
-pat <- "\\bSEXP\\b|\\bdouble\\b|\\bint\\b|\\bR_xlen_t\\b|[ +*]"
+pat <- "\\[%1\\$d\\]|\\bSEXP\\b|\\bdouble\\b|\\bint\\b|\\bR_xlen_t\\b|[ +*]"
 stopifnot(
   identical(gsub(pat, "", F.ARGS.ALL), ARGS.NM.ALL),
   identical(gsub(pat, "", R.ARGS.ALL), ARGS.NM.ALL),
@@ -68,20 +63,41 @@ stopifnot(
 
 IX <- list()
 QDOTS <- quote(...)
+QBRACE <- as.name("{")
 # need to wrap in list because can't be a top level for R CMD check
 MISSING <- list(formals(base::identical)[[1L]])
 
 # `for` assigns to the counter variable.  `->` becomes `<-` on parsing.
 ASSIGN.SYM <- c("<-", "=", "for")
 LOOP.SYM <- c("for", "while", "repeat")
+IF.SUB.SYM <- c("if_true", "if_false")
+CTRL.SYM <- c("if", LOOP.SYM)
+BRANCH.TEST.SYM <- c("if_test")
+BRANCH.EXEC.SYM <- c("r2c_if")
+REC.FUNS <- c('vcopy', 'rec')
+
+INTERNAL.FUNS <- c(IF.SUB.SYM, BRANCH.TEST.SYM, BRANCH.EXEC.SYM, REC.FUNS)
+
+NUM.TYPES <- c('logical', 'integer', 'double')
 
 # Calls that don't actually do any computing themselves, rather rely on
 # computations that happen in their arguments `for` is a bit tricky as it does
-# "compute" the counter value.
-PASSIVE.SYM <- unique(c(ASSIGN.SYM, LOOP.SYM, "if", "{", "uplus"))
+# "compute" the counter value, and `r2c_if` also because it doesn't per-se
+# compute, but if the return value is used, it ensures that both of it's
+# branches either compute or `vcopy` that..
+PASSIVE.SYM <- unique(
+  c(ASSIGN.SYM, LOOP.SYM, "if", "{", "uplus", IF.SUB.SYM, BRANCH.EXEC.SYM, 'rec')
+)
+# In branches, some symbols are not considered passive even though they don't
+# strictly compute.
+PASSIVE.BRANCH.SYM <- setdiff(PASSIVE.SYM, BRANCH.EXEC.SYM)
 
-# For `record_call_dat`.
-CALL.DAT.VEC <- c('argn', 'depth', 'type', 'assign')
+# For `record_call_dat` and `alloc_dat`, fields that are supposed to be scalar
+# for each allocation/call
+CALL.DAT.VEC <- c('argn', 'depth', 'type', 'assign', 'indent', 'rec')
+ALLOC.DAT.VEC <- c(
+  'ids0', 'alloc', 'size', 'depth', 'type', 'typeof', 'group'
+)
 
 # To avoid typos
 CTRL.FLAG <- c("control", "flag")
@@ -110,10 +126,21 @@ FUN.NAMES <- c(
 
   mean1="mean1", square="square",
 
-  vcopy="vcopy"
+  vcopy="vcopy", rec="rec",
 
   # "for"="for", "while"="while", "repeat"="repeat", "if"="if"
+
+  if_test="if_test", if_true="if_true", if_false="if_false", r2c_if="r2c_if",
+  "if"="if"
 )
+# C Generator Output Types
+CGEN.OUT.CALL <- 1L   # output call to C fun e.g. `mean(data, lens, di[5])`
+CGEN.OUT.MUTE <- 2L   # prepend '// NOOP: ' to call, thus disabling it
+CGEN.OUT.RDEP <- 4L   # add the corresponding deparsed R call above C call
+CGEN.OUT.DEFN <- 8L   # output the c function definition
+CGEN.OUT.DFLT <- CGEN.OUT.CALL + CGEN.OUT.RDEP + CGEN.OUT.DEFN
+CGEN.OUT.NOOP <- CGEN.OUT.CALL + CGEN.OUT.MUTE + CGEN.OUT.RDEP
+CGEN.OUT.NONE <- 0L
 
 # - Internal Symbols -----------------------------------------------------------
 
@@ -134,4 +161,5 @@ RENAME.ARG.TPL <- sprintf("%s%%s_%%d", RENAME.ARG.BASE)
 REUSE.ARG.BASE <- sprintf("%s_SUB_", R2C.PRIV.BASE)
 REUSE.ARG.RX <- sprintf("^\\%s\\d+$", RENAME.ARG.BASE)
 REUSE.ARG.TPL <- sprintf("%s%%d", REUSE.ARG.BASE)
+
 

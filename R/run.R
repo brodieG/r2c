@@ -34,12 +34,13 @@ rename_dots <- function(call.matched, pattern) {
 ## @param formals the formals of the r2c fun
 ## @param enclos environment to use as enclosure for data
 ## @param gmax scalar largest group size
+## @param gmin scalar smallest group size
 ## @param call original call
 ## @param runner function this is being called by, e.g. `group_exec` (maybe
 ##   could extract from `call`, but don't bother to).
 
 match_and_alloc <- function(
-  do, MoreArgs, preproc, formals, enclos, gmax, call, runner
+  do, MoreArgs, preproc, formals, enclos, gmax, gmin, call, runner
 ) {
   # Trick here is data is split across `data` and `MoreArgs` so we have to merge
   # together to match, but then split the data back into the two parameters
@@ -133,7 +134,7 @@ match_and_alloc <- function(
 
   # Prepare temporary memory allocations
   alloc <- alloc(
-    x=preproc, data=do, gmax=gmax, par.env=enclos,
+    x=preproc, data=do, gmax=gmax, gmin=gmin, par.env=enclos,
     MoreArgs=MoreArgs, .CALL=call
   )
   alloc

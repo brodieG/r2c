@@ -1,3 +1,13 @@
+# Nested Functions
+
+Simplest implementation would be inlining with some kind of scope tracking for
+symbols, but that disallows recursion.
+
+Otherwise, it should be pretty straightforward to just generate multiple `run_x`
+functions than the outer `run` calls.
+
+Should probably try to implement tail recursion?
+
 # Interrupt
 
 See bench-interrupt for timings and related issues.
@@ -358,242 +368,12 @@ just need to record that it's an assign target.
 
 # If / Loop
 
-## Constraint Overview
+See `extra/notes-control.Rmd`.
 
-The over riding constraint is that every symbol must resolve to an unambiguous
-size.  `if` and `for` control structures can create ambiguity in sizes (e.g.
-different sizes in branches of if, different sizes within the loop / loop can
-act like a branch if not taken).
+# Renaming
 
-Disallow cases where a variable might not be created that is later used:
-
-* for:
-  * Zero iterations (maybe).
-  * `break` / `continue`
-* if:
-  * Brand new symbol.
-  * Not all branches contain it.
-  * What if the symbol exists from elsewhere?
-
-Additionally:
-
-* for:
-  * variables read and written from must be consistent size before and
-    after loop
-  * variables must remain constant size in the loop (e.g. cannot grow)
-  * variables written to in loop must be either unchanged in size, or the loop
-    must be guaranteed to have at least one iteration.
-* if:
-  * variables written to must be the same size across all branches; branches
-    that don't write ok so long as prior var same size.
-
-Need to think about what compatible allocations are.  Certainly different
-branches must produce the same size result.  Does the result need to end up in
-the same allocation id?
-
-## Loop C Implementation
-
-Probably the way a loop would work is:
-
-```
-void run(
-  double ** data, R_xlen_t * lens, int ** di, int * narg, int * flag, SEXP ctrl
-) {
-  (void) narg; // unused
-  (void) ctrl; // unused
-
-  dibase = *di;
-  flagbase= *flag;
-  for(i = 0; i < n; ++i) {
-    // - Loop Overhead ---------------------------------------------------------
-    // Do something to update the value of `i` in the data
-    ...
-
-    // Then reset index, flags, more args
-    di = dibase;
-    flag = flagbase;
-
-    // - Normal Code -----------------------------------------------------------
-    // mean(x)
-    mean(data, lens, *di++, *flag);
-    ++flag;
-
-    // x - mean(x)
-    subtract(data, lens, *di++);
-    ++flag;
-  }
-  // If there are no iterations at all, we need to skip ahead to what *di and
-  // *flag would have been.
-}
-```
-
-What about `if`? e.g.:
-
-```
-test <- mean(x)
-if(test > .5) {
-  y <- mean(x)
-} else if (test < .25) {
-  y <- sum(x)
-} else {
-  y <- sum(z)
-}
-```
-
-```
-void run(
-  double ** data, R_xlen_t * lens, int ** di, int * narg, int * flag, SEXP ctrl
-) {
-  (void) narg; // unused
-  (void) ctrl; // unused
-
-  // mean(x)
-  mean(data, lens, *di++, *flag);
-  ++flag;
-
-  // test <- mean(x) NO-OP
-  // NO-OP: assign(data, lens, *di++);
-  ++flag; ++di;
-
-  // test > 0.5
-  gt(data, lens, *di++);
-  ++flag;
-
-  r2c_if();
-  r2c_elseif();
-  r2c_else();
-
-  if(r2c_if(data, lens, *di, *flag)) {
-    ++flag; ++di;
-    // mean(x)
-    mean(data, lens, *di++, *flag);
-    ++flag;
-    // y <- mean(x) NO-OP
-    // NO-OP: assign(data, lens, *di++);
-    ++flag; ++di;
-  } else {
-    flag+=3; di+=3;
-    if(r2c_if(data, lens, *di, *flag)) {
-      ++flag; ++di;
-      // sum(x)
-      mean(data, lens, *di++, *flag);
-      ++flag;
-      // y <- sum(x) NO-OP
-      // NO-OP: assign(data, lens, *di++);
-      ++flag; ++di;
-    } else {
-      flag+=3; di+=3;
-      if(r2c_if(data, lens, *di, *flag)) {
-        ++flag; ++di;
-        // sum(z)
-        mean(data, lens, *di++, *flag);
-        ++flag;
-        // y <- sum(z) NO-OP
-        // NO-OP: assign(data, lens, *di++);
-        ++flag; ++di;
-    }
-  }
-}
-```
-
-Every `if` must always emit an `else`, even if it is only to advance the
-pointers for the next thing.
-
-A bit tricky to think about where the result of the `if/else` should be stored.
-
-How will code generation work?  Linearization would naturally:
-
-```
-// Input
-if(X, A, if(Y, B, C)
-
-// Becomes
-X
-A
-
-Y
-B
-C
-
-if(Y, B, C)
-
-if(X, A, if(Y, B, C))
-```
-
-This is good, except that everything but the last statement might not run.  So
-the code processor needs to add some special things?
-
-```
-
-__COND__
-X
-__YES__:1
-A
-__NO__:3
-  __COND__
-  Y
-  __YES__:1
-  B
-  __NO__:1
-  C
-
-if(X, A, if(Y, B, C))
-```
-
-So maybe what we really need is the code linearization to produce:
-
-```
-X
-list(
-  A,
-  list(
-    Y,
-    list(
-      B,
-      C
-) ) )
-```
-
-Should `Y` be on a different level?  Probably.  This would signal the allocator
-to fork itself at each level, and on exit of each fork evaluate the different
-branches to ensure they have self consistent sets of live symbols.  For this to
-work properly on exit need to reconcile all the allocations and make sure that
-the same symbols point to the same allocations, and that they are the same size.
-If they point to different allocations, how do we reconcile them?  We can't
-necessarily just swap them as each allocation creates a potential chain of
-re-uses (although we know that surviving symbols will still be using their
-allocation).  We could require that assignments use a fresh allocation?  This is
-hard to know ahead of time as the assignment first just evaluates it's
-expression, and only after locks up the memory.  The problem is that in one
-branch, an assignment might end up using an over-large allocation, and in
-another a just right one.
-
-A naive view is that we look at all the new allocations created by the two
-branches, and generate a new set of allocations that will fit both.  Then we
-remap all the allocations to the new set, ensuring that persistent symbols get
-assigned the same allocation.  This should work?  Need to think through the
-possibility that the order in which the allocations are used creates a problem,
-but it seems that so long as every allocation has a corresponding new allocation
-bigger than or equal to itself, it should work itself out?
-
-How does code generation fit in?  That happens before the allocation.
-
-## Interesting Example
-
-Pretty challenging dealing with loops.
-
-```
-x <- integer()
-for(i in 1:10) {
-  x <- c(x, i)
-}
-```
-
-Each loop iteration is going to have a different size for x. The best we can
-hope for is consistent size every iteration including the first.  This should
-handle the case where the loop doesn't even run.
-
-What about variables created in loops that are not taken?
+AFAIR most of what follows was written in the context of the store and re-use
+optimization.
 
 ## Tracking Implementation
 
@@ -635,7 +415,6 @@ have the same size.  More generally, any symbol written to in the `if` call with
 a lifetime outside the `if` call must obey that constraint.  This will not
 happen naturally if things are created in different order in different branches,
 so seems like we 
-
 
 `if` stack contains a count of how many `else` at any given `if` depth.  For
 each depth, for each variable, what symbol-nodes it has been bound to (a symbol
@@ -701,6 +480,7 @@ the original call as an attribute, but stops working with symbols.  Maybe we
 attach the original call to calls when there is a difference, and separately we
 return a list of the calls corresponding to the re-use symbols.  This should
 make it relatively straight-forward.
+
 
 # Assignments
 
@@ -1064,64 +844,6 @@ Are annoying.  This okay enough?
     with(iris, tcapply(l(Sepal.Width, Sepal.Length), Species, csum))
 
 
-# Loop implementation
-
-Loop variables can be created in a child frame to the data.
-
-Each loop body will generate a `run` statement, e.g.:
-
-```
-run(...) {
-
-}
-run_loop_1(...) {
-  for(intmax_t i = 0; i < len; ++i) {
-    run(...);
-  }
-}
-run_loop_0(...) {
-  for(intmax_t i = 0; i < len; ++i) {
-    statement_0(...);
-    statement_1(...);
-    run_loop_1(...);
-  }
-}
-```
-
-Probably want two types of loops, loops where we know the start and end as
-constants or other derivable data (`seq_along`), and others where we have an
-unknown vector?  Might not be able to allow the second type, because at that
-point we can't know how large a vector that is assigned to with e.g. `x[i] <- y`
-will get.
-
-```
-for(i in seq_along(x))
-  y[i] <- x[i] + 1
-```
-
-Is the latter:
-
-```
-for(i in x)
-  y[i] <- z[i] + 1
-```
-
-At the allocation stage we need to determine the size of `y`.  It's fine if
-we're just referring to an external symbol (or even a group symbol) as we can
-check the content sizes.  But things like:
-
-```
-for(i in rev(x))
-```
-
-Get messier.  Likely we just allow symbols, or `seq_along`, or constant
-expressions like `a:b` where `a` and `b` are known at allocation time (changing
-them inside loop is fine since):
-
-> The seq in a for loop is evaluated at the start of the loop; changing it
-> subsequently does not affect the loop.
-
-But they can't be computed within the `r2c` code.
 
 # Further Optimizations
 

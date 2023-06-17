@@ -44,7 +44,39 @@ flatten_call_rec <- function(x, calls, indices) {
   calls.i.res <- c(indices.res, list(indices))
   list(calls=calls.res, indices=calls.i.res)
 }
+# Collapse Braces
+#
+# Removes redundant braces such as those containing only one call or braces
+# nested immediately inside each other.
 
+collapse_braces <- function(x) {
+  if(is.brace_call(x)) {
+    if(length(x) == 2L) x <- collapse_braces(x[[2L]])
+    else if(length(x) > 2L) {
+      i <- 2L
+      while(i <= length(x)) {
+        if(is.brace_call(x[[i]])) {
+          # fold child call into parent if it is a nested brace
+          call.list <- as.list(x)
+          x <- as.call(
+            c(
+              call.list[seq(1L, i - 1L, 1L)],
+              as.list(x[[i]])[-1L],
+              call.list[seq(i + 1L, length.out=length(x) - i, by=1L)]
+          ) )
+          # in order to look match-called we need names on the call
+          names(x)[seq_along(x)[-1L]] <- "..."
+        } else {
+          x[[i]] <- collapse_braces(x[[i]])
+          i <- i + 1L
+        }
+      }
+    }
+  } else if(is.call_w_args(x)) {
+    for(i in seq(2L, length(x), 1L)) x[[i]] <- collapse_braces(x[[i]])
+  }
+  x
+}
 #' Identify Repeated Calls and Reuse First Instance
 #'
 #' Complex statistics often re-use a simpler statistic multiple times, providing
@@ -74,12 +106,13 @@ flatten_call_rec <- function(x, calls, indices) {
 #' been known to be valid with more sophisticated static analysis (e.g.
 #' `if(TRUE) ... else ...` will be treated as a branch even though it is not
 #' really).  Substitutions involving loop modified variables are also limited
-#' due to the possibility of their value changing during e.g.  the first and
+#' due to the possibility of their value changing during e.g. the first and
 #' nth loop iteration, or the possibility of the loop not running at all.
 #'
 #' `reuse_calls` relies on functions being bound to their original symbols, so
 #' do not expect it to work correctly if e.g. you rebind `<-` to some other
-#' function.  `r2c` checks this in its own use.
+#' function.  `r2c` checks this in its own use, but if you use `reuse_calls`
+#' directly you are responsible for this.
 #'
 #' @export
 #' @param x a call
@@ -109,6 +142,9 @@ reuse_calls <- function(x) reuse_calls_int(x)[['x']]
 
 reuse_calls_int <- function(x) {
   x.orig <- x
+  # Remove redundant braces so the hoisting isn't confused.
+  x <- collapse_braces(x)
+
   # Add braces if there are none
   no.braces <- FALSE
   if(!is.brace_call(x)) {
@@ -132,6 +168,7 @@ reuse_calls_int <- function(x) {
   calls.ix.mx <- vapply(
     calls.ix, function(x) {length(x) <- depth.max; x}, integer(depth.max)
   )
+  if(depth.max == 1L) dim(calls.ix.mx) <- c(1L, length(calls.ix.mx))
   # Find all calls with same call tree root
   root_calls <- function(ix)
     colSums(calls.ix.mx[seq_along(ix), ,drop=FALSE] == ix, na.rm=TRUE) ==
@@ -181,10 +218,20 @@ reuse_calls_int <- function(x) {
   # closeset enclosing brace.  Enclosing calls are listed after their leaves,
   # but at any given call depth the arguments are in the order they are in the
   # call.
+  #
+  # A brace immediately after a control structure does not stop hoisting as we
+  # want hoisting to affect all subsequent branches.  Primary reason for this is
+  # that it is easier to do this than to prevent substitutions across branches.
+  # This is only for the special case of a computation referencing symbols
+  # consistent within branches (as renames will change assigned symbols across
+  # branches).
   hoists <- list()
   hoist.last <- 0L
   braces <- which(is.call & calls.name == "{")
+  braces.par <- vapply(braces, par_call, 1L)
+  braces <- braces[!calls.name[braces.par] %in% CTRL.SYM]
   hoist.candidates <- calls.first
+
   while(length(hoist.candidates)) {
     i <- hoist.candidates[1L]
 

@@ -20,6 +20,7 @@ RoxygenNote: 7.2.3
 Roxygen: list(markdown = TRUE)
 Encoding: UTF-8
 Collate: 
+    'preproc-copy.R'
     'rename.R'
     'optim.R'
     'constants.R'

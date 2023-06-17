@@ -132,11 +132,12 @@ unitizer_sect("brackets/assign", {
   r2cq({})
   r2cq({a;{}})
 
-  # Symbol return gains a r2c_copy
+  # Sym return does not need copy if computed
   sym_return <- r2cq({a <- x + y; a})
   get_r_code(sym_return)
   sym_return(x, y)
 
+  # Symbol return gains an r2c_copy
   sym_return2 <- r2cq(test)
   get_r_code(sym_return2)
   sym_return2(1)

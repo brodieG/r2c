@@ -7,23 +7,104 @@
   name is not `.`.
 * Do we need to document that the `&&` and `||` tokens are lazy?
 
+## Unitizer
+
+* Annoying that after a re-install, there is no way to rerun the top level
+  summary from multiple unitizer runs.  Basically, need a "re-run all requiring
+  review" in addition to re-run all updated.
+* Dig into git repository sizes and see if `unitizer` has anything to do with
+  seemingly large ones.
+
 ## Things to test
 
-* `function(a) if(a) x else y`
 * That it is impossible to try to use an allocation before it would be created
   in the code.  Tricky with loops.
 * Loops with no iterations.
-* `if` without `else`:
-  * Also cases where all `if` written symbols pre-exist, and where some don't.
 
 * Unary plus:
   * Executes vcopy correctly when needed
   * Coerces logical to integer
 
+## Error Messages
+
+* Error for size mismatch in `reconcile_cf` need to handle NA size. 
+
+* Fix error for invalid literal (not a symbol):
+
+Error in r2cq(x + "a")(5) : 
+  External argument `a` for `x + "a"` is not unclassed numeric (type: character).
+
+* Need better error messaging that provides overall context for the error (i.e.
+  from top level r2c call / runner, as well as local context for the specific
+  problematic part of code).  Need to review all `stop` and `Rf_error` in the
+  code.
+
+* Move the disallowed assignment error to somewhere that does not use the
+  renamed expression as that is then incomprehensible.
+
+* Test error handling around missing symbols that are `vcopy`ed.  In particular
+  whether error messages around them when they are part of the iteration data vs
+  external makes sense.
+
 ## Current
 
-* Check that the interrupts work when there are more than 1e7 elements in a
-  group / window.
+* `mean(x) * mean(x)` should re-use `mean(x)` but doesn't?
+
+* Should we drop everything in `alloc$names` matrix and stack) that can be
+  recovered from `alloc` via `id0` to mitigate potential synchronization issues?
+  The stack is probably the bigger issue, where potentially a named vector would
+  work as right now all the fields there are in `alloc`.  `names` actually
+  doesn't seem to have any of those.
+
+* Add a finalizer to unload and dump dlls:
+
+    qz1ylj3zna.so':
+      `maximal number of DLLs reached...
+
+* Add `get_r_function` to recover an R function with formals, etc.
+* `clean_call` should have additional levels to remove `vcopy` / `rec` (Done).
+  Decide what `get_r_code` does.
+
+
+* Empty braces can't just be merged into parent braces, so we need to check the
+  empty condition before we simplify them away (`{5;{}}` is not equal to `{5}`).
+  Empty braces should be disallowed anyway.
+
+* Defer creation of temporary vectors until end (just record their size) so that
+  we don't allocate vectors we don't use.  We should also identify unused
+  vectors and not allocate them (e.g. because branch reconciliation made a
+  vector unused - does this actually happen)?
+
+* Do `for` and `while` need to be decomposed?  Yes.
+
+* Ideas to improve preprocessing:
+  * Try to simplify `copy_symdat` by removing unused bindings.  Then being used
+    out of context can be simplified to being return value of braces or a being
+    used outside of context?  See dead code removal in control notes.
+  * Dead code optimization.
+  * What are the cost/benefits of doing all operations on renamed names?  One
+    big issue to resolve if we want to go this way is that reconciliation will
+    have a harder time recognizing what symbols correspond to each other.  One
+    benefit is that symbol expiration can be tracked much better.  Presumably
+    some other code simplifies too.
+
+* Are we appropriately checking that we don't assign to a symbol that is then
+  used as the function name in a call?
+* Handle assignment to function symbols, etc?  There shouldn't be confusion with
+  invocation, but if we ever implement `lapply`, etc?
+
+* `code_gen_*` functions should be in a list instead of floating around as
+  objects.  This would ensure we don't accidentally use the wrong code gen as we
+  can select it by name.
+
+* Switch `PASSIVE.SYM` to be `!x %in% ACTIVE.SYM` to reduce the odds of
+  accidentally forgetting to designate.  Since we must implement a handling of
+  the passive symbols, it is a lot harder to accidentally forget to include
+  something in `ACTIVE.SYM`.
+
+* `call_valid` should have an option to check that a call has been matched to
+  avoid problems where we introduce a new call via manipulation and it isn't
+  matched.  But `call_valid` is used in the matching step too.
 
 * Change default for `show_c_code` to be `all`.
 
@@ -35,15 +116,8 @@
 * Should we be using `islessgreater` and similar?  Probably since the R NaN is
   not quiet by default.
 
-* If we implement unary `+` as a noop, do we do it at the function level, or at
-  the "parsing" level?  If we do it at the function level we need to check
-  carefully that the addition of a noop beyond braces and assignments doesn't
-  mess things up.
-
 * Be more aggressive about specifying lengths in args.reg (e.g. binops don't
   right now)?
-
-* Make sure braces are only nested in braces.
 
 * ISNAN vs isnan? (R_ext/Arith.h).  Return R NAN not just NAN?  For logicals
   doesn't matter as much if they get coerced eventually to NA_LOGICAL, but if we
@@ -59,7 +133,6 @@
 * Do we offer a no-lies mode where we don't coerce results back to
   integer/logical?  Yes, should be easy to implement, we just need a parameter
   name that makes sense.
-
 * Add warning for any/all coercion of doubles?
 
 * Can we improve the stand-alone execution so it doesn't suffer the penalty of
@@ -100,12 +173,6 @@
   (although maybe that's not the best example given 0-len behavior).  Test would
   be to implement `pmax`.
 
-* For `if` and similar, how do we rationalize the same symbols being assigned to
-  in different branches?  We need to ensure they are the same size, but also
-  that they both use the same memory slot.
-* Handle assignment to function symbols, etc?  There shouldn't be confusion with
-  invocation, but if we ever implement `lapply`, etc?
-
 * Add post-processing of function result (e.g. to attach names, etc, as in
   `quantile`).
 
@@ -131,7 +198,7 @@
   unused expressions, which could potentially be eliminated (possibly
   iteratively for e.g. `x <- y; z <- x` where then `z` is unused).
 
-### Features
+### Error Messages
 
 * `reuse_call` needs to track what the original call was so we can provide
   better error messages if something goes wrong at some point.
@@ -139,6 +206,8 @@
 * Semi-internal error should issue conditions that can be caught by the
   compilers or runners to return as errors with a meaningful calling function
   instead of an internal function.
+
+### Other
 
 * Should we have safety tests in the code to be controlled by a debug mode flag?
 
@@ -156,10 +225,6 @@
 
 ## Other
 
-* Make sure there are interrupts.  Can we use "R_ext/Intermacros.h".  It seems
-  yes generally, but they are not explicitly part of the API, and then there is
-  the question of whether it makes sense to do so, or if we should just be doing
-  this at the group level?
 * share `lcurry` with klutometis
   https://github.com/klutometis/R-functional/issues
 * Make overflow testable.

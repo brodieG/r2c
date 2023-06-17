@@ -138,9 +138,10 @@ is.chr_or_sym <- function(x) is.symbol(x) || is.character(x) && length(x) == 1L
 is.call_w_args <- function(x) is.call(x) && length(x) > 1L
 
 is.assign_call <- function(x)
-  is.call(x) && isTRUE(get_lang_name(x) %in% ASSIGN.SYM)
+  is.call(x) && isTRUE(get_lang_name(x) %in% ASSIGN.SYM) &&
+  length(x) %in% 3:4 # (`for` has four parameters, and it assigns to its second)
 is.brace_call <- function(x)
-  is.call(x) && get_lang_name(x) == "{"
+  is.call(x) && identical(x[[1L]], QBRACE)
 
 ## Specifically tests for pkg::name, not pkg::name(...) (for the latter you can
 ## use e.g. `nzchar(get_lang_info(x)[['pkg']])`
@@ -244,20 +245,25 @@ get_lang_info <- function(call) {
         as.character(call[[1L]][[3L]])
       }
       else if (is.chr_or_sym(call[[1L]])) as.character(call[[1L]])
-      else stop("Internal Error: unexpected call format ", dep1(call))
+      else stop(
+        "Only calls in form `fun(...)` and `pkg::fun(...)` where `fun` is a ",
+        "symbol or character are supported (i.e. not `", deparse1(call), "`)."
+      )
     }
     else ""
   list(name=name, pkg=pkg)
 }
 get_lang_name <- function(call) {
-  if (is.chr_or_sym(call)) as.character(call)
-  else if (is.call(call)) {
-    if(is.dbl_colon_call(call[[1L]])) as.character(call[[1L]][[3L]])
-    else if (is.chr_or_sym(call[[1L]])) as.character(call[[1L]])
-    else stop("Internal Error: unexpected call format ", dep1(call))
-  }
+  if(is.language(call)) get_lang_info(call)[['name']]
   else ""
 }
 
+# deparse but concatenate multi-element results with newlines
 
+deparseLines <- function(x, ...) paste0(deparse(x, ...), collapse="\n")
 
+# helper fun for tests looking at the cleaned up call resulting from
+# preprocessing
+pp_clean <- function(x, optimize=TRUE) {
+  clean_call(preprocess(x, optimize=TRUE)[['call.processed']])
+}

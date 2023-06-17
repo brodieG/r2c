@@ -10,8 +10,109 @@
 
 ## Done
 
+### v0.4.0
+
+* Double check that the re-use optimization doesn't attempt to re-use an
+  expression computed only in one branch.  Or maybe if there are two if/else's,
+  each with the expression in one branch, how does it treat that?  I think we
+  fixed this by hoisting?
+
+* Reconcile needs to functionalize all the code that is running on the `T` and
+  `F` in "parallel".  So long as the intermediate results aren't used later we
+  should be able to do it.
+
+* Do we allow if's nested inside arguments (probably yes)?  If we do, what
+  happens to assignments within the if branches (probably disallow these)?  We
+  disallow these.
+
+* Prevent users from using `r2c::if_test` and related functions directly.  They
+  may only appear in a very specific order.  How do we disallow them?  Not sure
+  if we want to disallow them.
+* Check that user doesn't introduce their own `vcopy`'s.
+
+* Make sure braces are only nested in braces (except for the special case of the
+  `if/else` / `loop` functions).  This is to prevent people bypassing the
+  prohibition against assigning within arguments by throwing a brace expression
+  in an argument.
+
+* Are `A && B` and `A || B` actually lazy?  Probably not given the linearization
+  that evaluates each argument before the result?  We could consider translating
+  the above into `if(A) B else FALSE` and `if(A) TRUE else B` once `if` is
+  implemented (need to think about preserve logical for these cases).  We just
+  documented these as not lazy.
+
+
+* Symbol expiration logic in `alloc` might not work well with branches.  Eh, no,
+  it's okay because it is conservative and looks for the very last instance of
+  the symbol used as a leaf.
+
+* Could reconciliation use a previously allocated but freed vector as the target
+  to put reconciliation in?  Need to make absolutely sure it e.g. is not used in
+  the TRUE branch, so maybe not?  Feels a bit dangerous.  No, let's not to this.
+
+* `if` without `else`:
+  * Also cases where all `if` written symbols pre-exist, and where some don't.
+
+* Check that a non-local symbol inside an active expression doesn't get copied
+  just by virtue of being last in a computing function that takes such symbol
+  last (e.g. `mean` doesn't because of `na.rm`, etc., can use `-`).
+
+* Add multi-assign test for branch result.
+
+* See if it is easy to implement that returning a computed global symbol from a
+  branch doesn't require copy if the symbol isn't used again elsewhere.  See
+  `call3b`.
+
+* is `r2c_if` really passive?  No, the result will be computed if it is used.
+
+* New return value cases to handle in branches:
+  * If it is a local binding from a computation, do we need to vcopy?  Maybe
+    not?  No, we don't need to copy it.  The problem is when the binding is
+    non-local.  So we make a candidate on that binding.  If that binding is
+    used, then it will be vcopied.  Otherwise we can just use it directly as the
+    return value.
+  * If it is a non-local biding it needs to be copied if the return value is
+    used (last part could potentially be handled by dead code removal).
+  * It is a computing expression.
+    * Nothing, we can reconcile directly.
+  * A binding expression?
+    * Same as a local binding, but for the whole expression.  So we add
+      candidates for the entire `assign.to` in the binding chain?  Basically,
+      same behavior as normal, except that we require candidacy even when the
+      thing being bound is a computing expression.  So we need a modification on
+      the `last` flag which is when the expression is returned.
+  * A passive expression, presumably depends on what it contains.
+
+  * It is a maybe non-local binding, an assignment expression, or a passive
+    expression returning .
+    * If `if` inside a computing call, assignment, or if it is returned, vcopy
+      it (possibly again).
+  * It is a binding expression.
+    * `vcopy` the whole thing.
+  * It is a passive expression.
+
+* Make sure branches work well with multiple symbol assigned to same slot (`x <-
+  y <- z`).
+
+* Implement "eqlen" r2c token type (for e.g. `r2c_if`).
+
+* Undo the `if/else` conversion for display in `get_r_code`.
+
+
+
 ### v0.3.0
 
+* Switch `noop` to be flags the control whether the call is issued, whether the
+  deparsed R call is issued, and whether the definition is issued.  And document
+  it all. Probably should be done through code_res.
+* Does `record_call_dat` really need to record terminals?  Main thing that is
+  done is dealing with `..1` etc, but where do we use that?  Update: of course
+  we do, as we still have to evaluate them / match them to an allocation in the
+  allocation step.
+* Remember why we don't increment `*flag` inside the function call?  Is it just
+  because it's not always used and easier to do it outside?
+* Check that the interrupts work when there are more than 1e7 elements in a
+  group / window.
 * Test that unary plus:
   * Executes vcopy correctly when needed
   * Coerces logical to integer
