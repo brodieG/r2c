@@ -245,18 +245,16 @@ get_lang_info <- function(call) {
         as.character(call[[1L]][[3L]])
       }
       else if (is.chr_or_sym(call[[1L]])) as.character(call[[1L]])
-      else stop("Internal Error: unexpected call format ", dep1(call))
+      else stop(
+        "Only calls in form `fun(...)` and `pkg::fun(...)` where `fun` is a ",
+        "symbol or character are supported (i.e. not `", deparse1(call), "`)."
+      )
     }
     else ""
   list(name=name, pkg=pkg)
 }
 get_lang_name <- function(call) {
-  if (is.chr_or_sym(call)) as.character(call)
-  else if (is.call(call)) {
-    if(is.dbl_colon_call(call[[1L]])) as.character(call[[1L]][[3L]])
-    else if (is.chr_or_sym(call[[1L]])) as.character(call[[1L]])
-    else stop("Internal Error: unexpected call format ", dep1(call))
-  }
+  if(is.language(call)) get_lang_info(call)[['name']]
   else ""
 }
 

@@ -398,23 +398,6 @@ code_valid <- function(code, call) {
 
   TRUE
 }
-# Extract function / package name from function call
-
-fun_name <- function(x) {
-  x.c <- fun_components(x)
-  if(is.null(x.c))
-    stop("Internal error: `", deparse1(x.c), "` not a valid function name.")
-  x.c[[length(x.c)]]
-}
-fun_components <- function(x) {
-  if(is.symbol(x) || is.character(x)) list(as.character(x))
-  else if(
-    is.call(x) && is.dbl_colon_call(x) &&
-    (is.symbol(x[[3L]]) || is.character(x[[3L]])) &&
-    (is.symbol(x[[2L]]) || is.character(x[[2L]]))
-  ) list(as.character(x[[2L]]), as.character(x[[3L]]))
-}
-
 # Check whether a call is in valid format
 #
 # We allow pkg::fun for a select set of packages that r2c implements functions
@@ -423,29 +406,25 @@ fun_components <- function(x) {
 
 call_valid <- function(call) {
   if(is.call(call)) {
-    fun.c <- fun_components(call[[1L]])
-    if(is.null(fun.c)) {
-      stop(
-        "Only calls in form `fun(...)` and `pkg::fun(...)` where `fun` is a ",
-        "symbol or character are supported (i.e. not `", deparse1(call), "`)."
-      )
-    }
-    if(length(fun.c) == 2L && !fun.c[[1L]] %in% VALID.PKG)
-      stop("Package `", fun.c[[1L]], "` not a supported package in ", deparse1(call))
-    else if (length(fun.c) == 1 && !fun.c[[1L]] %in% names(VALID_FUNS))
-      stop("`", fun.c[[1L]], "` is not a supported function.")
-    else if (!length(fun.c) %in% 1:2)
-      stop("Internal Error: bad function name decomposition.")
+    fun.c <- get_lang_info(call)
+    pkg <- fun.c[['pkg']]
+    fun <- fun.c[['name']]
 
-    fun.name <- fun.c[[length(fun.c)]]
-    if(fun.name %in% INTERNAL.FUNS)
+    if(nzchar(pkg) && !pkg %in% VALID.PKG)
       stop(
-        "`", fun.name,
+        "Package `", pkg, "` not a supported package in ", deparse1(call)
+      )
+    else if (!nzchar(pkg) && !fun %in% names(VALID_FUNS))
+      stop("`", fun, "` is not a supported function.")
+
+    if(fun %in% INTERNAL.FUNS)
+      stop(
+        "`", fun,
         "` is an internal r2c function and invalid as an input to compilation."
       )
-    if(fun.name == "{" && length(call) < 2L)
+    if(fun == "{" && length(call) < 2L)
       stop("Empty braces {} disallowed in r2c expressions.")
-    fun.name
+    fun
   }
 
 }
