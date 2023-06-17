@@ -7,6 +7,14 @@
   name is not `.`.
 * Do we need to document that the `&&` and `||` tokens are lazy?
 
+## Unitizer
+
+* Annoying that after a re-install, there is no way to rerun the top level
+  summary from multiple unitizer runs.  Basically, need a "re-run all requiring
+  review" in addition to re-run all updated.
+* Dig into git repository sizes and see if `unitizer` has anything to do with
+  seemingly large ones.
+
 ## Things to test
 
 * That it is impossible to try to use an allocation before it would be created
@@ -40,32 +48,13 @@ Error in r2cq(x + "a")(5) :
 
 ## Current
 
-* Symbol expiration logic in `alloc` might not work well with branches.
+* `mean(x) * mean(x)` should re-use `mean(x)` but doesn't?
 
-* Reconcile needs to functionalize all the code that is running on the `T` and
-  `F` in "parallel".  So long as the intermediate results aren't used later we
-  should be able to do it.
-
-* Should we drop everything in `alloc$names` matrix (and maybe the stack) that
-  can be recovered from `alloc` via `id0` to mitigate potential synchronization
-  issues?
-
-* `clean_call` should have additional levels to remove `vcopy` / `rec`.
-
-* Do we allow if's nested inside arguments (probably yes)?  If we do, what
-  happens to assignments within the if branches (probably disallow these)?
-
-* Double check that the re-use optimization doesn't attempt to re-use an
-  expression computed only in one branch.  Or maybe if there are two if/else's,
-  each with the expression in one branch, how does it treat that?
-
-* Prevent users from using `r2c::if_test` and related functions directly.  They
-  may only appear in a very specific order.  How do we disallow them?  Not sure
-  if we want to disallow them.
-* Check that user doesn't introduce their own `vcopy`'s.
-
-
-
+* Should we drop everything in `alloc$names` matrix and stack) that can be
+  recovered from `alloc` via `id0` to mitigate potential synchronization issues?
+  The stack is probably the bigger issue, where potentially a named vector would
+  work as right now all the fields there are in `alloc`.  `names` actually
+  doesn't seem to have any of those.
 
 * Add a finalizer to unload and dump dlls:
 
@@ -73,24 +62,31 @@ Error in r2cq(x + "a")(5) :
       `maximal number of DLLs reached...
 
 * Add `get_r_function` to recover an R function with formals, etc.
+* `clean_call` should have additional levels to remove `vcopy` / `rec` (Done).
+  Decide what `get_r_code` does.
+
 
 * Empty braces can't just be merged into parent braces, so we need to check the
   empty condition before we simplify them away (`{5;{}}` is not equal to `{5}`).
-
-* `mean(x) * mean(x)` should re-use `mean(x)` but doesn't?
+  Empty braces should be disallowed anyway.
 
 * Defer creation of temporary vectors until end (just record their size) so that
   we don't allocate vectors we don't use.  We should also identify unused
   vectors and not allocate them (e.g. because branch reconciliation made a
   vector unused - does this actually happen)?
 
-* Do `for` and `while` need to be decomposed?  Probably.
+* Do `for` and `while` need to be decomposed?  Yes.
 
-* Try to simplify `copy_symdat` by removing unused bindings.  Then being used
-  out of context can be simplified to being return value of braces or a being
-  used outside of context?  See dead code removal in control notes.
-* Dead code optimization.
-
+* Ideas to improve preprocessing:
+  * Try to simplify `copy_symdat` by removing unused bindings.  Then being used
+    out of context can be simplified to being return value of braces or a being
+    used outside of context?  See dead code removal in control notes.
+  * Dead code optimization.
+  * What are the cost/benefits of doing all operations on renamed names?  One
+    big issue to resolve if we want to go this way is that reconciliation will
+    have a harder time recognizing what symbols correspond to each other.  One
+    benefit is that symbol expiration can be tracked much better.  Presumably
+    some other code simplifies too.
 
 * Are we appropriately checking that we don't assign to a symbol that is then
   used as the function name in a call?
@@ -110,11 +106,6 @@ Error in r2cq(x + "a")(5) :
   avoid problems where we introduce a new call via manipulation and it isn't
   matched.  But `call_valid` is used in the matching step too.
 
-* Are `A && B` and `A || B` actually lazy?  Probably not given the linearization
-  that evaluates each argument before the result?  We could consider translating
-  the above into `if(A) B else FALSE` and `if(A) TRUE else B` once `if` is
-  implemented (need to think about preserve logical for these cases).
-
 * Change default for `show_c_code` to be `all`.
 
 * Cleanup `code_gen_x`.  A lot of things should be parametrized so that we're
@@ -127,11 +118,6 @@ Error in r2cq(x + "a")(5) :
 
 * Be more aggressive about specifying lengths in args.reg (e.g. binops don't
   right now)?
-
-* Make sure braces are only nested in braces (except for the special case of the
-  `if/else` / `loop` functions).  This is to prevent people bypassing the
-  prohibition against assigning within arguments by throwing a brace expression
-  in an argument.
 
 * ISNAN vs isnan? (R_ext/Arith.h).  Return R NAN not just NAN?  For logicals
   doesn't matter as much if they get coerced eventually to NA_LOGICAL, but if we
@@ -147,7 +133,6 @@ Error in r2cq(x + "a")(5) :
 * Do we offer a no-lies mode where we don't coerce results back to
   integer/logical?  Yes, should be easy to implement, we just need a parameter
   name that makes sense.
-
 * Add warning for any/all coercion of doubles?
 
 * Can we improve the stand-alone execution so it doesn't suffer the penalty of

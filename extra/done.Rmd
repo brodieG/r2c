@@ -12,6 +12,40 @@
 
 ### v0.4.0
 
+* Double check that the re-use optimization doesn't attempt to re-use an
+  expression computed only in one branch.  Or maybe if there are two if/else's,
+  each with the expression in one branch, how does it treat that?  I think we
+  fixed this by hoisting?
+
+* Reconcile needs to functionalize all the code that is running on the `T` and
+  `F` in "parallel".  So long as the intermediate results aren't used later we
+  should be able to do it.
+
+* Do we allow if's nested inside arguments (probably yes)?  If we do, what
+  happens to assignments within the if branches (probably disallow these)?  We
+  disallow these.
+
+* Prevent users from using `r2c::if_test` and related functions directly.  They
+  may only appear in a very specific order.  How do we disallow them?  Not sure
+  if we want to disallow them.
+* Check that user doesn't introduce their own `vcopy`'s.
+
+* Make sure braces are only nested in braces (except for the special case of the
+  `if/else` / `loop` functions).  This is to prevent people bypassing the
+  prohibition against assigning within arguments by throwing a brace expression
+  in an argument.
+
+* Are `A && B` and `A || B` actually lazy?  Probably not given the linearization
+  that evaluates each argument before the result?  We could consider translating
+  the above into `if(A) B else FALSE` and `if(A) TRUE else B` once `if` is
+  implemented (need to think about preserve logical for these cases).  We just
+  documented these as not lazy.
+
+
+* Symbol expiration logic in `alloc` might not work well with branches.  Eh, no,
+  it's okay because it is conservative and looks for the very last instance of
+  the symbol used as a leaf.
+
 * Could reconciliation use a previously allocated but freed vector as the target
   to put reconciliation in?  Need to make absolutely sure it e.g. is not used in
   the TRUE branch, so maybe not?  Feels a bit dangerous.  No, let's not to this.
