@@ -269,7 +269,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
           stop(
             "Potentially unequal sizes for parameters ",
             toString(ftype[[2L]]), " in a function that requires them ",
-            "to be equal sized:\n", deparseLines(clean_call(call))
+            "to be equal sized:\n", deparseLines(clean_call(call, level=2L))
           )
         }
         asize  <- if(anyNA(s.tmp)) NA_real_ else s.tmp[1L]
@@ -797,7 +797,7 @@ reconcile_control_flow <- function(
   )
   if(!all(size.eq)) {
     # Reconstitute the call
-    call.rec <- clean_call(call("{", call[[1L]], call[[2L]]))
+    call.rec <- clean_call(call("{", call[[1L]], call[[2L]]), level=2L)
     stop(
       "Assigned variables and return value must be same size across branches; ",
       "potential size discrepancy for ",

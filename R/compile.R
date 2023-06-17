@@ -580,14 +580,24 @@ get_r_code <- function(fun, raw=FALSE) {
 }
 # Make the call a little friendlier
 #
-# Ideally would also drop defaults, and parameter matches that were originally
-# positional.
-clean_call <- function(x) {
-  if(is.call_w_args(x)) {
+# In theory we could drop names when input was wholly positionally matched, but
+# that's going to be annoying to trace back.  At some point we were planning on
+# having the indices into the original call available, but didn't follow through
+# because we would have to attach that as an attribute or somesuch (and
+# we can't do that for leaves anyway?).
+#
+# @param level how aggressively to clean, if 2L will also remove calls
+#   associated with reconciliation (e.g. vcopy/rec).
+
+clean_call <- function(x, level=1L) {
+  fun.name <- get_lang_name(x)
+  if(is.call(x) && fun.name %in% REC.FUNS && level == 2L) {
+    # drop e.g. vcopy/rec
+    x <- clean_call(x[[2L]], level=level)
+  } else if(is.call_w_args(x)) {
     # Drop dots from e.g. `sum(...=x, )`
     if(!is.null(names(x))) names(x)[names(x) == "..."] <- ""
     # Drop defaults that are set to default values
-    fun.name <- get_lang_name(x)
     fun.defn <- VALID_FUNS[[c(fun.name, 'defn')]]
     if(!is.null(fun.defn) && !is.null(names(x))) {
       defn.frm <- formals(fun.defn)
@@ -601,17 +611,14 @@ clean_call <- function(x) {
       )
       x[default.args.nm[act.def.equal]] <- NULL
     }
-    # Drop names when there is only one parameter.  In theory we could drop
-    # them when input was wholly positionally matched, but that's going to be
-    # annoying to traceback.  At some point we were planning on having the
-    # indices into the original call available, but didn't follow through.
+    # Drop names if only one param
     if(length(x) == 2L) names(x) <- NULL
 
     # Undo the if decomposition
     x <- recompose_control(x)
 
     # Recurse
-    for(i in seq(2L, length(x))) x[[i]] <- clean_call(x[[i]])
+    for(i in seq(2L, length(x))) x[[i]] <- clean_call(x[[i]], level=level)
   }
   x
 }

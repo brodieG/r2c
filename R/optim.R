@@ -111,7 +111,8 @@ collapse_braces <- function(x) {
 #'
 #' `reuse_calls` relies on functions being bound to their original symbols, so
 #' do not expect it to work correctly if e.g. you rebind `<-` to some other
-#' function.  `r2c` checks this in its own use.
+#' function.  `r2c` checks this in its own use, but if you use `reuse_calls`
+#' directly you are responsible for this.
 #'
 #' @export
 #' @param x a call

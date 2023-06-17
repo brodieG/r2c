@@ -58,6 +58,9 @@ preprocess <- function(call, formals=character(), optimize=FALSE) {
     callr <- reuse_calls_int(call)
     call <- callr[['x']]  # also contains renames
   }
+  # What follows are more aggressive tranformations that are not usually shown
+  # to the user because they start to make the call unrecognizable.
+
   # Restructure if/else and loops.  Not done as a transformation as
   # `reuse_calls_int` needs to be able to recognize the original control flow
   call <- transform_control(call)
@@ -213,11 +216,9 @@ pp_internal <- function(
     # assure the order of evaluation so safer to just disallow.  We _could_
     # allow it but it just seems dangerous.
     if(next.assign && !passive) {
-      call.dep <- deparse(clean_call(call))
+      call.dep <- deparseLines(clean_call(call, level=2L))
       msg <- sprintf(
-        "r2c disallows assignments inside arguments. Found: %s",
-        if(length(call.dep) == 1) call.dep
-        else paste0(c("", call.dep), collapse="\n")
+        "r2c disallows assignments inside arguments. Found: %s", call.dep
       )
       stop(simpleError(msg, call.parent))
     }
