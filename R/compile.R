@@ -147,6 +147,7 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' * Statistics: `mean`, `sum`, `length`, `all`, `any`.
 #' * Assignment and braces: `<-`, `=`, and `{`.
 #' * Branches: `if/else`.
+#' * Sequences: `seq_along`.
 #'
 #' In general these will behave as in R, with the following exceptions:
 #'
@@ -155,6 +156,7 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' * `if`/`else` returns `numeric(0)` instead of NULL if an empty branch is taken.
 #' * `&&` and `||` always evaluate all parameters.
 #' * `{` must contain at least one parameter (no empty braces).
+#' * `seq_along` always returns a double vector, never integer.
 #' * Assignments may only be nested in braces (`{`) or in control structure
 #'   branches.  This is a recursive requirement, so `mean(if(a) x <- y)` is
 #'   disallowed.

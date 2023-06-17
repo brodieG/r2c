@@ -131,7 +131,9 @@ FUN.NAMES <- c(
   # "for"="for", "while"="while", "repeat"="repeat", "if"="if"
 
   if_test="if_test", if_true="if_true", if_false="if_false", r2c_if="r2c_if",
-  "if"="if"
+  "if"="if",
+
+  seq_along="seq_along"
 )
 # C Generator Output Types
 CGEN.OUT.CALL <- 1L   # output call to C fun e.g. `mean(data, lens, di[5])`
