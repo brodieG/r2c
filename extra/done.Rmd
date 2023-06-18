@@ -12,6 +12,10 @@
 
 ### v0.4.0
 
+* Unary plus:
+  * Executes vcopy correctly when needed
+  * Coerces logical to integer
+
 * Double check that the re-use optimization doesn't attempt to re-use an
   expression computed only in one branch.  Or maybe if there are two if/else's,
   each with the expression in one branch, how does it treat that?  I think we

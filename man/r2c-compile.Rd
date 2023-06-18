@@ -99,7 +99,9 @@ native instructions using \verb{R CMD SHLIB}, and return an interface to that
 code in the form of an "r2c_fun" function.  This function will carry out
 out numerical calculations with \code{r2c} native instructions instead of with the
 standard R routines. "r2c_fun" functions are intended to be run with the
-\code{r2c} \link{runners} for fast iterated calculations.
+\code{r2c} \link{runners} for fast iterated calculations.  It is the intention of \code{r2c}
+to adhere as closely as possible to R semantics for the subset of R that it
+supports when used with numeric vectors.
 }
 \section{r2c Generated Functions}{
 
@@ -109,6 +111,18 @@ functions, there is limited value in doing so.  "r2c_fun" functions are
 optimized to be invoked invoked indirectly with \link{runners}.  In many common
 cases it is likely that using an "r2c_fun" directly instead of with a runner
 will be slower than evaluating the corresponding R expression.
+
+The lifecycle of an \code{r2c} function has two stages.
+\enumerate{
+\item Compilation with \code{r2cq} or similar.
+\item Execution, either direct or via \link{runners}.
+a. One time memory allocation for current data / groups.
+b. Iterative execution over groups.
+}
+
+The second stage involves a single allocation step, followed by as many
+iterations as there are groups (or windows).  The same set of allocations is
+re-used for every iteration.
 
 Each of the \verb{r2c*} functions addresses different types of input:
 \itemize{
@@ -127,57 +141,99 @@ tree after everything is \code{\link{match.call}}ed.  Symbols beginning with \co
 reserved for use by \code{r2c} and thus disallowed in \code{call}.  You may also
 directly set the parameter list with the \code{formals} parameter, or with \code{r2cf}.
 
-As with regular functions, unbound symbols are resolved in the lexical
-environment of the function.  You can set a different environment on creation
-of the function with the \code{envir} parameter, but currently there is no way to
-change it afterwards (\code{environment(r2c_fun) <- x} will likely just break the
-function).
+As with regular R functions, unbound symbols (a.k.a. external references) are
+resolved in the lexical environment of the function.  You can set a different
+environment on creation of the function with the \code{envir} parameter, but
+currently there is no way to change it afterwards (\code{environment(r2c_fun) <- x} will likely just break the function).  External references are evaluated
+once at allocation time and re-used for each iteration.
+}
+
+\section{Parameter and Return Value}{
+
 
 Parameters used with "r2c_fun" supported functions are categorized into data
 parameters and control parameters.  For example, in \code{sum(x, na.rm=TRUE)}, \code{x}
-is considered a data parameter and \code{na.rm} a control parameter.  Control
-parameters are evaluated the same as external references (see above).  All
-data parameters must be attribute-less atomic vectors.  Numeric, integer, and
-logical vectors are supported, but they are coerced to numeric (double), and
-thus logical and integer vectors are copied before use.  All internal
-operations are carried out on double precision floating point values.  In
+is considered a data parameter and \code{na.rm} a control parameter.
+
+All data parameters must be attribute-less atomic vectors.  Numeric, integer,
+and logical vectors are supported, but they are coerced to numeric (double),
+and thus logical and integer vectors are copied before use.  All internal
+operations are carried out on double precision floating point values, and for
+some functions on long doubles on architectures that supports them.  In
 cases where the output type is knowable to be either integer or logical,
 \code{r2c} will coerce the result to the corresponding type, again with a copy.
-To avoid copies provide all inputs as doubles.  There are no general type
-restrictions on control parameters, but each implemented function will only
-accept values for them that would make sense for the R counterparts.
+To avoid copies provide all inputs as doubles.
+
+Control parameters are evaluated once at allocation time, even when they
+reference symbols that are otherwise iteration varying. So in
+\code{sum(x, na.rm=x)} where \code{x} is part of the iteration varying data, the second
+\code{x} will be evaluated a single time as the entire \code{x} vector.  That value
+will be used for \code{na.rm} for every iteration.  On the other hand, the first
+\code{x} will change across iterations to that iteration's subset.  Control
+parameters will not respect re-bindings that are made within an "r2c"
+expression.  In \verb{x <- y; sum(x, na.rm=x)} the second \code{x} will still
+reference whatever \code{x} was prior to being re-bound to \code{y}.  While the
+semantic inconsistency of control parameters is unfortunate, it allows the
+use of arbitrary objects for iteration constant parameters, and should not
+manifest in the common use cases.  Each \code{r2c} supported function has a fixed
+definition of which parameters are control parameters.  There are no general
+type restrictions on control parameters, but each implemented function will
+only accept values for them that would make sense for the R counterparts.
 }
 
 \section{Supported R Functions and Constraints}{
 
 
-Currently the following functions are supported in \code{x} (or in the body of \code{x}
-for \code{r2cf}):
+The following functions are supported in \code{x} (or in the body of \code{x} for
+\code{r2cf}):
 \itemize{
 \item Arithmetic functions: \code{+}, \code{-}, \code{*}, \code{/}, and \code{^}.
 \item Relational functions: \code{<}, \code{<=}, \code{>}, \code{>=}, \code{==}, \code{!=}.
 \item Logical functions: \code{&}, \code{&&}, \code{|}, \code{||}, \code{!}, \code{ifelse}.
 \item Statistics: \code{mean}, \code{sum}, \code{length}, \code{all}, \code{any}.
 \item Assignment and braces: \verb{<-}, \code{=}, and \verb{\{}.
+\item Branches: \verb{if/else}.
+\item Sequences: \code{seq_along}.
+}
+
+In general these will behave as in R, with the following exceptions:
+\itemize{
+\item \code{ifelse} and \code{if} / \verb{else} always return in a common type that can support
+both \code{yes} and \code{no} values.
+\item \code{if}/\verb{else} returns \code{numeric(0)} instead of NULL if an empty branch is taken.
+\item \code{&&} and \code{||} always evaluate all parameters.
+\item \verb{\{} must contain at least one parameter (no empty braces).
+\item \code{seq_along} always returns a double vector, never integer.
+\item Assignments may only be nested in braces (\verb{\{}) or in control structure
+branches.  This is a recursive requirement, so \code{mean(if(a) x <- y)} is
+disallowed.
+\item Additional constraints detailed next.
 }
 
 Calls must be in the form \code{fun(...)} (\verb{a fun b} for operators)  where \code{fun}
 is the name of the function.  Functions must be bound to their original
 symbols for them to be recognized.  For \code{r2c} provided functions like
 \code{\link{mean1}} you may use the \code{::} form to compile expressions that contain them
-without attaching the \code{{r2c}} package.  Empty braces are disallowed, and
-assignments may only be done at the top level or at a brace level (see
-examples).  References to external variables (i.e. not in \code{data} or
-\code{MoreArgs}) that cause side effects (e.g. \link[=bindenv]{active bindings},
-promises the evaluation of which cause side effects) may cause unexpected
-results.  All external references are evaluated once before any other
-computations are carried out.
+without attaching the \code{{r2c}} package.  References to external variables
+(i.e. not in \code{data} or \code{MoreArgs}) that cause side effects (e.g. \link[=bindenv]{active bindings}, promises the evaluation of which cause side effects)
+may cause unexpected results.  All external references and control
+parameter expressions (see "r2c Generated Functions") are evaluated once
+before any other computations are carried out.
 
-Outside of the aforementioned constraints, \code{r2c} attempts to mimic the
-corresponding R function semantics to the \code{identical} level, but there may be
-corner cases that differ, particularly those involving missing or infinite
-values.  One exception is \code{ifelse} which in its \code{r2c} form always returns in
-a common type that can support both \code{yes} and \code{no} values.
+Control structures include \code{if} / \verb{else} statements and loops.  All of these
+have branches; the loop branches are loop not taken (0 iterations) vs loop
+taken (1+ iterations).  Control structures add additional constraints:
+\itemize{
+\item If used, control structure return values must be guaranteed to be the same
+size irrespective of the branch taken.
+\item If used after a control structure, assignments therein must be consistent
+in size irrespective of branch taken.
+}
+
+Outside of the aforementioned constraints and exceptions, \code{r2c} attempts to
+mimic the corresponding R function semantics to the \code{identical} level, but
+there may be corner cases that differ, particularly those involving missing
+or infinite values.
 }
 
 \section{Details}{
