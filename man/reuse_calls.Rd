@@ -51,7 +51,8 @@ nth loop iteration, or the possibility of the loop not running at all.
 
 \code{reuse_calls} relies on functions being bound to their original symbols, so
 do not expect it to work correctly if e.g. you rebind \verb{<-} to some other
-function.  \code{r2c} checks this in its own use.
+function.  \code{r2c} checks this in its own use, but if you use \code{reuse_calls}
+directly you are responsible for this.
 }
 \examples{
 x <- runif(100)

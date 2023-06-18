@@ -8,6 +8,12 @@ functions than the outer `run` calls.
 
 Should probably try to implement tail recursion?
 
+Do we allow full recursion?  Each level of recursion will require re-allocation,
+which we likely cannot do ex-ante?  Is it the case that after the first level of
+recursion we can classify the parameter types?  Probably not since it's possible
+that through the recursion they change, not to mention there could be multiple
+entry points to recursion within a single function in e.g. branches.
+
 # Interrupt
 
 See bench-interrupt for timings and related issues.

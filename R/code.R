@@ -15,6 +15,7 @@
 
 #' @include code-assign-control.R
 #' @include code-summary.R
+#' @include code-seq.R
 #' @include code-bin.R
 #' @include code-pow.R
 #' @include code-logical.R
@@ -284,7 +285,14 @@ VALID_FUNS <- c(
       res.type="logical"
     )
   ),
+  # - Sequence -----------------------------------------------------------------
 
+  list(
+    cgen(
+      "seq_along", fun=seq_along, defn=function(along.with) NULL,
+      type=list("arglen", "along.with"), code.gen=code_gen_seq_along
+    )
+  ),
   # - Other Logical ------------------------------------------------------------
 
   list(
