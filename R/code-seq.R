@@ -14,7 +14,6 @@
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
 f_seq_along <- '
-// Copy a vector, intended to be copied to result
 static void %s(%s) {
   double * res = data[di[1]];
   double * input = data[di[0]];
