@@ -17,9 +17,13 @@
 
 ## Things to test
 
+* Big `group_exec` involving branches.
+
 * That it is impossible to try to use an allocation before it would be created
   in the code.  Tricky with loops.
 * Loops with no iterations.
+
+* Size computed correctly with concatenations of things produced in branches.
 
 ## Current
 
