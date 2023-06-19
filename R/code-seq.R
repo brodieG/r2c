@@ -33,7 +33,7 @@ code_gen_seq_along <- function(fun, args.reg, args.ctrl, args.flags) {
     args.ctrl=list() && length(.) == 0L,
     args.flags=list() && length(.) == 0L
   )
-  name <- fun
+  name <- FUN.NAMES[fun]
   defn <- sprintf(f_seq_along, name, toString(F.ARGS.BASE))
   code_res(defn=defn, name=name)
 }

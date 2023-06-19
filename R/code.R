@@ -20,6 +20,7 @@
 #' @include code-pow.R
 #' @include code-logical.R
 #' @include code-unary.R
+#' @include code-subset.R
 
 NULL
 
@@ -289,10 +290,19 @@ VALID_FUNS <- c(
 
   list(
     cgen(
-      "seq_along", fun=seq_along, defn=function(along.with) NULL,
+      "seq_along", defn=function(along.with) NULL,
       type=list("arglen", "along.with"), code.gen=code_gen_seq_along
     )
   ),
+  # - Subset -----------------------------------------------------------------
+
+  list(
+    cgen(
+      "[", defn=function(x, i) NULL,
+      type=list("arglen", "i"), code.gen=code_gen_subset
+    )
+  ),
+
   # - Other Logical ------------------------------------------------------------
 
   list(
