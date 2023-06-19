@@ -1,0 +1,17 @@
+# Subset
+
+## Types of Indices
+
+Do we only allow strictly positive?  Maybe we can get away with zeroes b/c the
+result is smaller, but the mismatch between the pre-computed size and the
+runtime size is a little concerning.
+
+Negative indices seem out of the question since we cannot know what the size of
+the result will be before run time.  We can know it will be no larger than the
+larger of the index or the data vector.  Since we set the size of the result,
+maybe this is okay so long as the actual result is smaller than the pre-computed
+one?  One way this goes wrong is for the final return vector
+
+## Subset assign
+
+
