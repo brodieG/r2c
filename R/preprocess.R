@@ -377,8 +377,8 @@ names2 <- function(x)
 
 #' Recursively match.call Call and Sub-Calls
 #'
-#' Additionally fills in default values, and guarantees (possibly zero length)
-#' names.
+#' Additionally fills in default values, guarantees (possibly zero length)
+#' names, and does basic validation.
 #'
 #' @noRd
 
