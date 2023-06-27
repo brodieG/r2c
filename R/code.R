@@ -138,6 +138,9 @@ is.valid_constant <- function(type)
 #'   doubles are present.  "preserve.int" is like "preserve", except the only
 #'   possible output types are "integer" and "double".  "preserve.last" is like
 #'   "preserve" except it only considers the last input (e.g. as for braces).
+#'   "preserve.which" is like "preserve", but applies to the parameters
+#'   designated by `res.type.which`.
+#' @param res.type.which for use when `res.type == "preserve.which"`.
 #'
 #' @return a list containing the above information after validating it.
 
@@ -146,7 +149,7 @@ cgen <- function(
   defn=if(typeof(fun) == 'closure') fun,
   ctrl.params=character(), flag.params=character(),
   type, code.gen, ctrl.validate=function(...) 0L, transform=identity,
-  res.type="double"
+  res.type="double", res.type.which=1L
 ) {
   vetr(
     name=CHR.1,
@@ -166,8 +169,10 @@ cgen <- function(
     transform=is.function(.),
     res.type=CHR.1 &&
       . %in% c(
-        'logical', 'double', 'preserve.int', 'preserve', 'preserve.last'
-      )
+        'logical', 'double', 'preserve.int', 'preserve',
+        'preserve.last', 'preserve.which'
+      ),
+    res.type.which=INT.POS.STR
   )
   if(length(intersect(ctrl.params, flag.params)))
     stop("Control and Flag parameters may not overlap.")
@@ -300,6 +305,11 @@ VALID_FUNS <- c(
     cgen(
       "[", defn=function(x, i) NULL,
       type=list("arglen", "i"), code.gen=code_gen_subset
+    ),
+    cgen(
+      "subassign", fun=subassign,
+      type=list("arglen", "x"), code.gen=code_gen_subassign,
+      res.type="preserve.which", res.type.which=c(1L,3L)
     )
   ),
 
@@ -322,6 +332,7 @@ VALID_FUNS <- c(
   # - Assign / Control----------------------------------------------------------
 
   list(
+    # see subset for [<-
     cgen(
       "<-", type=list("arglen", 2L), code.gen=code_gen_assign,
       res.type="preserve.last"

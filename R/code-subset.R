@@ -48,6 +48,9 @@ code_gen_subset <- function(fun, args.reg, args.ctrl, args.flags) {
   defn <- sprintf(f_subset, name, toString(F.ARGS.BASE))
   code_res(defn=defn, name=name)
 }
+# Does *NOT* return the sub-assignment values, so can only be used incontext
+# where the return value is not used.  This should be checked for in the
+# preprocessing, allocation, etc.
 
 f_subset_assign <- '
 static void %s(%s) {
@@ -72,6 +75,38 @@ static void %s(%s) {
   }
   lens[2] = len;
 }'
+code_gen_subassign <- function(fun, args.reg, args.ctrl, args.flags) {
+  vetr(
+    identical(., "["),
+    args.reg=list(NULL, NULL),
+    args.ctrl=list() && length(.) == 0L,
+    args.flags=list() && length(.) == 0L
+  )
+  name <- FUN.NAMES[fun]
+  defn <- sprintf(f_subset_assign, name, toString(F.ARGS.BASE))
+  code_res(defn=defn, name=name)
+}
+
+#' Assign to a Subset of a Vector
+#'
+#' "Internal" function that implement subassignment (e.g. `x[s] <- y`) for
+#' `r2c`.  Standard R subassignments are converted to `subassign` so that the
+#' `r2c` code processor can identify them as a sub-assignment instead of an
+#' a subset nested in an assignment.
+#'
+#' Unlike the R counterpart, or the `r2c` usage of this function,
+#' regular R usage of this function does not modify `x` outside of the internal
+#' scope of the function.  This function is an implementation detail and is
+#' documented only for the rare cases where it becomes visible to the user.
+#'
+#' @param x a numeric vector
+#' @export
+#' @return `x`, squared
+
+subassign <- function(x, s, y) x[s] <- y
+
+
+
 
 
 

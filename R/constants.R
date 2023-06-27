@@ -107,6 +107,8 @@ CTRL.FLAG <- c("control", "flag")
 # Packages allowable in `::`
 VALID.PKG <- c('base', 'r2c')
 
+# names(FUN.NAMES) are R names, values are C names.  R names are after
+# preprocessing so will include r2c internal names.
 FUN.NAMES <- c(
   "+"="add", "-"="subtract", "*"="multiply", "/"="divide",
 
@@ -137,7 +139,8 @@ FUN.NAMES <- c(
 
   seq_along="seq_along",
 
-  "["="subset"
+  "["="subset",
+  subassign="subassign"   # this is [<-
 )
 # C Generator Output Types
 CGEN.OUT.CALL <- 1L   # output call to C fun e.g. `mean(data, lens, di[5])`

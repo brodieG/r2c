@@ -237,6 +237,9 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
         input.type <- alloc[['typeof']][stack.input['id', ]]
         if(res.type.mode == "preserve.last") {
           input.type[length(input.type)]
+        } else if (res.type.mode == "preserve.which") {
+          type.which <- VALID_FUNS[[c(name, "res.type.which")]]
+          NUM.TYPES[max(match(input.type[type.which], NUM.TYPES))]
         } else {
           min.type <- if(res.type.mode == 'preserve') 1L else 2L
           NUM.TYPES[max(c(match(input.type, NUM.TYPES), min.type))]
