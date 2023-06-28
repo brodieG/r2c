@@ -68,8 +68,10 @@ QBRACE <- as.name("{")
 MISSING <- list(formals(base::identical)[[1L]])
 
 # `for` assigns to the counter variable.  `->` becomes `<-` on parsing.
-ASSIGN.SYM <- c("<-", "=", "for")
-MODIFY.SYM <- c(ASSIGN.SYM, "[<-")
+
+ASSIGN.SYM.BASE <- c("<-", "=")
+ASSIGN.SYM <- c(ASSIGN.SYM.BASE, "for")
+MODIFY.SYM <- c(ASSIGN.SYM, "subassign")
 LOOP.SYM <- c("for", "while", "repeat")
 IF.SUB.SYM <- c("if_true", "if_false")
 CTRL.SYM <- c("if", LOOP.SYM)

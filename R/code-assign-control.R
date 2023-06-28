@@ -127,6 +127,35 @@ code_gen_assign <- function(fun, args.reg, args.ctrl, args.flags) {
   defn <- sprintf(f_assign, name, toString(F.ARGS.BASE))
   code_res(defn=defn, name=name, out.ctrl=CGEN.OUT.NOOP)
 }
+# Transform for Complex Assignments
+#
+# E.g. turn things like `x[s] <- y` into `subassign(x, s, y)`.
+#
+# See code-subset.R
+
+assign_transform <- function(call) {
+  if(!is.call(call))
+    stop("Internal Error: expected call but got ", typeof(call))
+  if(length(call) != 3L)
+    stop(
+      "Internal Error: expected length 3 assign call but got:\n",
+      deparseLines(call)
+    )
+
+  call.sym <- get_lang_name(call)
+  if(call.sym %in% ASSIGN.SYM.BASE) {
+    if(is.call(call[[2L]]) && get_lang_name(call[[2L]]) == "[") {
+      if(length(call[[2L]]) == 3L && is.symbol(call[[c(2L,2L)]])) {
+        call <-
+          call("subassign", call[[c(2L,2L)]], call[[c(2L,3L)]], call[[3L]])
+        names(call) <- c('', 'x', 's', 'y')
+      } else {
+        stop("Unsupported sub-assignment form:\n", deparseLines(call))
+      }
+    }
+  }
+  call
+}
 # - If / Else ------------------------------------------------------------------
 
 f_iftest <- '

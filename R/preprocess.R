@@ -50,7 +50,8 @@ preprocess <- function(call, formals=character(), optimize=FALSE) {
   # Match calls
   call <- match_call_rec(call)
 
-  # Transform call. Should be an "optimization"?  Some transforms might not be.
+  # Transform call. Should be an "optimization"?  Some transforms definitely are
+  # not (e.g. subassign).
   call <- transform_call_rec(call)
 
   # Apply optimizations

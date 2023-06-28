@@ -306,6 +306,7 @@ VALID_FUNS <- c(
       "[", defn=function(x, i) NULL,
       type=list("arglen", "i"), code.gen=code_gen_subset
     ),
+    # assign uses transform to generate subassign calls
     cgen(
       "subassign", fun=subassign,
       type=list("arglen", "x"), code.gen=code_gen_subassign,
@@ -332,10 +333,10 @@ VALID_FUNS <- c(
   # - Assign / Control----------------------------------------------------------
 
   list(
-    # see subset for [<-
+    # see subset for [<-, although transform to subassign done here
     cgen(
       "<-", type=list("arglen", 2L), code.gen=code_gen_assign,
-      res.type="preserve.last"
+      res.type="preserve.last", transform=assign_transform
     ),
     cgen(
       "=", type=list("arglen", 2L), code.gen=code_gen_assign,

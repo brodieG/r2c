@@ -325,7 +325,7 @@ copy_branchdat <- function(x) {
 # @return an updated `data` object.
 
 copy_branchdat_rec <- function(
-  x, index=integer(), assign.to=character(), sub.assign.to="",
+  x, index=integer(), assign.to=character(),
   in.compute=FALSE, in.branch=FALSE, branch.res=FALSE, last=TRUE,
   prev.call="",
   data=list(
@@ -336,6 +336,7 @@ copy_branchdat_rec <- function(
 ) {
   sym.name <- get_lang_name(x)
   call.assign <- first.assign <- leaf <- FALSE
+  sub.assign.to <- ""
 
   if (is.symbol(x)) {
     sym.local.cmp <- sym.name %in% data[[B.LOC.CMP]]
@@ -369,6 +370,7 @@ copy_branchdat_rec <- function(
   } else if(is.call(x)) {
     # Recursion, except special handling for if/else and for assignments
     call.assign <- sym.name %in% ASSIGN.SYM
+    call.modify <- sym.name %in% MODIFY.SYM
     # `passive` is whether this single call is passive, `data[['passive']]`
     # is whether all its sub-calls also return passively (and is only knowable
     # after we've recursed through the expression).  For this function purposes
@@ -378,7 +380,8 @@ copy_branchdat_rec <- function(
     passive <- sym.name %in% PASSIVE.BRANCH.SYM
     leaf <- !passive # for candidacy purposes, computing calls are leaves
 
-    if(sym.name == "[<-") {
+    tar.sym <- if(call.modify) get_target_symbol(x, sym.name)
+    if(sym.name == "subassign") {
       # If we ever change to allow this, we then need to prevent this happening
       # in a call parameter (this disallows that as well).
       if(
@@ -386,7 +389,7 @@ copy_branchdat_rec <- function(
         !prev.call %in% c("{", CTRL.SUB.SYM)
       )
         stop("Result of `[<-` may not be used.")
-      sub.assign.to <- get_target_symbol(x, sym.name)
+      sub.assign.to <- tar.sym
     }
     if(sym.name %in% BRANCH.EXEC.SYM) {
       if(sym.name != 'r2c_if')
@@ -416,9 +419,8 @@ copy_branchdat_rec <- function(
     } else {
       passive.now <- data[['passive']] # pre-recursion passive status
       rec.skip <- 1L
-      if(call.assign) {
-        tar.sym <- get_target_symbol(x, sym.name)
-        assign.to <- union(assign.to, tar.sym)
+      if(call.modify) {
+        if(call.assign) assign.to <- union(assign.to, tar.sym)
         rec.skip <- 1:2
       }
       # Recurse on language subcomponents
@@ -430,7 +432,7 @@ copy_branchdat_rec <- function(
           data[['passive']] <- passive.now
           data <- copy_branchdat_rec(
             x[[i]], index=c(index, i),
-            assign.to=assign.to.next, sub.assign.to=sub.assign.to,
+            assign.to=assign.to.next,
             last=last && next.last,
             branch.res=branch.res && next.last,
             in.compute=in.compute || !passive,
@@ -440,7 +442,7 @@ copy_branchdat_rec <- function(
       } }
       data[['passive']] <- passive && data[['passive']]
 
-      if(call.assign) {
+      if(call.modify) {
         # Any prior candidates bound to this symbol are voided by the new
         # assignment.  We need to clear them, except:
         #
@@ -589,7 +591,7 @@ generate_candidate <- function(
   }
   # sub assignment to an external symbol requires that a copy of the external
   # symbol be made first.
-  if(sym.name == "[<-" && !tar.sym %in% computed.sym) {
+  if(sym.name == "subassign" && !tar.sym %in% computed.sym) {
     data <- add_actual_sub_callptr(data, index, name=tar.sym)
   }
   if(in.branch) {

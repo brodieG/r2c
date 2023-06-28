@@ -77,8 +77,8 @@ static void %s(%s) {
 }'
 code_gen_subassign <- function(fun, args.reg, args.ctrl, args.flags) {
   vetr(
-    identical(., "["),
-    args.reg=list(NULL, NULL),
+    identical(., "subassign"),
+    args.reg=list(NULL, NULL, NULL),
     args.ctrl=list() && length(.) == 0L,
     args.flags=list() && length(.) == 0L
   )

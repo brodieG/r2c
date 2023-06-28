@@ -159,7 +159,7 @@ is.passive_call <- function(x)
 # For `<symbol> <- y`, retrieve the symbol.  Obviously assumes `x` has been
 # checked previously to be an assignment.  Recall `for` includes an assignment.
 get_target_symbol <- function(x, fun.name) {
-  if(!fun.name %in% c(ASSIGN.SYM, "[<-"))
+  if(!fun.name %in% MODIFY.SYM)
     stop("Internal Error: ", fun.name, " is not an assignment function.")
   target.symbol <- x[[2L]]
   target.type <- typeof(target.symbol)
