@@ -335,7 +335,7 @@ copy_branchdat_rec <- function(
   )
 ) {
   sym.name <- get_lang_name(x)
-  call.assign <- first.assign <- leaf <- FALSE
+  call.assign <- call.modify <- first.assign <- leaf <- FALSE
   sub.assign.to <- ""
 
   if (is.symbol(x)) {
@@ -457,18 +457,6 @@ copy_branchdat_rec <- function(
         data[[CAND]] <-
           data[[CAND]][names(data[[CAND]]) != tar.sym | indices.gt]
 
-        # Update bindings
-        if(!data[['passive']]) {
-          data[[B.LOC]] <- union(data[[B.LOC]], tar.sym)
-          data[[B.LOC.CMP]] <- union(data[[B.LOC.CMP]], tar.sym)
-          data[[B.ALL]] <- union(data[[B.ALL]], tar.sym)
-        } else {
-          data[[B.LOC]] <- union(data[[B.LOC]], tar.sym)
-          if(in.branch) {
-            # non-computing local expressions make global bindings non-global
-            data[[B.ALL]] <- setdiff(data[[B.ALL]], tar.sym)
-          }
-        }
       }
     }
   } else stop("Internal Error: disallowed token type ", typeof(x))
@@ -478,6 +466,20 @@ copy_branchdat_rec <- function(
     passive=passive, call.assign=call.assign, assign.to=assign.to,
     sub.assign.to=sub.assign.to, leaf=leaf, sym.name=sym.name
   )
+  if(call.modify) {
+    # Update bindings
+    if(!data[['passive']]) {
+      data[[B.LOC]] <- union(data[[B.LOC]], tar.sym)
+      data[[B.LOC.CMP]] <- union(data[[B.LOC.CMP]], tar.sym)
+      data[[B.ALL]] <- union(data[[B.ALL]], tar.sym)
+    } else {
+      data[[B.LOC]] <- union(data[[B.LOC]], tar.sym)
+      if(in.branch) {
+        # non-computing local expressions make global bindings non-global
+        data[[B.ALL]] <- setdiff(data[[B.ALL]], tar.sym)
+      }
+    }
+  }
   data[['assigned.to']] <- assign.to
   data
 }
