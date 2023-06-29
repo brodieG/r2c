@@ -574,7 +574,7 @@ generate_candidate <- function(
   # considered non-passive.
   # add_actual sets data[['passive']], so save current value.
   passive.now <- data[['passive']]
-  computed.sym <- c(data[[B.ALL]], data[[B.LOC.CMP]])
+  computed.sym <- union(data[[B.ALL]], data[[B.LOC.CMP]])
 
   first.assign <- call.assign && length(assign.to) == 1L
   tar.sym <-
@@ -882,37 +882,53 @@ en_rec <- function(x, clean=FALSE) {
 # need to inject just before the index.  So we need to set the correct value
 # for index, which is to change the 0L to 2L.
 
+# options are:
+#
+# * subassign(x, ...)
+# * if_true(numeric(0))
+# * if_true({...})
+
 inject_copy_in_brace_at <- function(x, ptr) {
   index <- ptr[['index']]
   if(!index[length(index)]) par.idx <- c(index[-length(index)], 2L)
   else par.idx <- index
+  par.call <- x[[par.idx]]
 
-  # Recover parent call and wrap in braces (we'll remove redundant ones later)
-  par.call <- call("{", x[[par.idx]])
+  # Add braces to call if not present
+  if(!is.call(par.call) || get_lang_name(par.call) != "{")
+    par.call <- call("{", par.call)
 
   # generate e.g. `x <- vcopy(x)`
   sym.miss <- as.symbol(ptr[["name"]])
   sym.vcopy <- call("<-", sym.miss, en_vcopy(sym.miss))
   call.list <- as.list(par.call)
-  new.call.list <- c(call.list[1L], list(sym.vcopy), call.list[-1L])
+  new.call <- as.call(c(call.list[1L], list(sym.vcopy), call.list[-1L]))
+
+  # Inject call back
+  x[[par.idx]] <- new.call
 
   # Remove possibly redundant nested braces (only one level since at most we
   # added one level).  This is not an exact reversal so we might end up removing
   # a brace that we did not add.  Need to `rev` because we're going to grow
-  # `par.call` by merging in braces.
-  for(i in rev(seq_along(new.call.list)[-1L])) {
-    if(get_lang_name(new.call.list[[i]]) == "{") {
-      new.call.list <- c(
-        new.call.list[1L:(i - 1L)],
-        as.list(new.call.list[[i]])[-1L],
-        if(i < length(new.call.list))
-          new.call.list[(i + 1L):length(new.call.list)]
-      )
-  } }
-  # in order to look match-called we need names on the call
-  call <- as.call(new.call.list)
-  names(call)[seq(2L, length(call), 1L)] <- "..."
-  x[[par.idx]] <- call
+  # the call by merging in braces.
+  gpar.idx <- par.idx[-length(par.idx)]
+  gpar.call <- if(!length(gpar.idx)) x else x[[gpar.idx]]
+
+  if(get_lang_name(gpar.call) == "{") {
+    gpar.list <- as.list(gpar.call)
+    for(i in rev(seq_along(gpar.list)[-1L])) {
+      if(get_lang_name(gpar.list[[i]]) == "{") {
+        gpar.list <- c(
+          gpar.list[1L:(i - 1L)],
+          as.list(gpar.list[[i]])[-1L],
+          if(i < length(gpar.list)) gpar.list[(i + 1L):length(gpar.list)]
+        )
+    } }
+    # in order to look match-called we need names on the call
+    gpar.call <- as.call(gpar.list)
+    names(gpar.call)[seq(2L, length(gpar.call), 1L)] <- "..."
+    if(!length(gpar.idx)) x <- gpar.call else x[[gpar.idx]] <- gpar.call
+  }
   x
 }
 
@@ -948,7 +964,7 @@ inject_rec_and_copy <- function(x, branch.dat) {
       i.type <- indices.type[ii]
       if(i.type) {
         # Sub-assign to an external symbol requires a vcopy of the symbol.
-        if(get_lang_name(x[[i[['index']]]]) != "[<-")
+        if(get_lang_name(x[[i[['index']]]]) != "subassign")
           stop("Internal error: expected sub-assign.")
         x <- inject_copy_in_brace_at(x, i)
       } else if(identical(i[["index"]], 0L)) {
