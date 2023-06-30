@@ -393,7 +393,8 @@ copy_branchdat_rec <- function(
       # We write directly to the memory of the first arg, so:
       if(is.symbol(x[[4L]]) && tar.sym == as.character(x[[4L]]))
         stop(
-          "Cannot sub-assign into self: ", deparseLines(clean_all(x, level=2L))
+          "Cannot sub-assign into self: ",
+          deparseLines(clean_call(x, level=2L))
         )
 
       sub.assign.to <- tar.sym
