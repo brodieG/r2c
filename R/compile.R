@@ -148,7 +148,7 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' * Assignment and braces: `<-`, `=`, and `{`.
 #' * Branches: `if/else`.
 #' * Sequences: `seq_along`.
-#' * Subsetting: `[`.
+#' * Subsetting: `[`, `x[s] <- expr`
 #'
 #' In general these will behave as in R, with the following exceptions:
 #'
@@ -159,6 +159,8 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' * `{` must contain at least one parameter (no empty braces).
 #' * `seq_along` always returns a double vector, never integer.
 #' * `[` only supports strictly positive indices.
+#' * `x[s] <- expr` may not have `expr` be `x`, and the return value of the
+#'   sub-assignment cannot be used directly.
 #' * Assignments may only be nested in braces (`{`) or in control structure
 #'   branches.  This is a recursive requirement, so `mean(if(a) x <- y)` is
 #'   disallowed.

@@ -383,12 +383,19 @@ copy_branchdat_rec <- function(
     tar.sym <- if(call.modify) get_target_symbol(x, sym.name)
     if(sym.name == "subassign") {
       # If we ever change to allow this, we then need to prevent this happening
-      # in a call parameter (this disallows that as well).
+      # in a call parameter(i.e. `fun(x[a] <- y)`). This disallows that as well.
       if(
         branch.res || last || length(assign.to) ||
         !prev.call %in% c("{", CTRL.SUB.SYM)
       )
-        stop("Result of `[<-` may not be used.")
+        stop("Result of `[<-` may not be used directly.")
+
+      # We write directly to the memory of the first arg, so:
+      if(is.symbol(x[[4L]]) && tar.sym == as.character(x[[4L]]))
+        stop(
+          "Cannot sub-assign into self: ", deparseLines(clean_all(x, level=2L))
+        )
+
       sub.assign.to <- tar.sym
     }
     if(sym.name %in% BRANCH.EXEC.SYM) {
@@ -903,6 +910,8 @@ inject_copy_in_brace_at <- function(x, ptr) {
   sym.vcopy <- call("<-", sym.miss, en_vcopy(sym.miss))
   call.list <- as.list(par.call)
   new.call <- as.call(c(call.list[1L], list(sym.vcopy), call.list[-1L]))
+  # in order to look match-called we need names on the call
+  names(new.call) <- c("", rep("...", length(new.call) - 1L))
 
   # Inject call back
   x[[par.idx]] <- new.call
@@ -926,7 +935,7 @@ inject_copy_in_brace_at <- function(x, ptr) {
     } }
     # in order to look match-called we need names on the call
     gpar.call <- as.call(gpar.list)
-    names(gpar.call)[seq(2L, length(gpar.call), 1L)] <- "..."
+    names(gpar.call) <- c("", rep("...", length(gpar.call) - 1L))
     if(!length(gpar.idx)) x <- gpar.call else x[[gpar.idx]] <- gpar.call
   }
   x
