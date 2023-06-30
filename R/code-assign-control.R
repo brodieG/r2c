@@ -146,8 +146,8 @@ assign_transform <- function(call) {
   if(call.sym %in% ASSIGN.SYM.BASE) {
     if(is.call(call[[2L]]) && get_lang_name(call[[2L]]) == "[") {
       if(length(call[[2L]]) == 3L && is.symbol(call[[c(2L,2L)]])) {
-        call <-
-          call("subassign", call[[c(2L,2L)]], call[[c(2L,3L)]], call[[3L]])
+        call <- call("x", call[[c(2L,2L)]], call[[c(2L,3L)]], call[[3L]])
+        call[[1L]] <- call("::", quote(r2c), quote(subassign))
         names(call) <- c('', 'x', 's', 'y')
       } else {
         stop("Unsupported sub-assignment form:\n", deparseLines(call))
