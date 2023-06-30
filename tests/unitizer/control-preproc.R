@@ -166,7 +166,6 @@ unitizer_sect("Basic if/else", {
   })
   r2c:::pp_clean(call3c3)
 
-
   # Triggering candidate should obviate need to copy return value
   call3d0 <- quote({
     if(a) y <- x
@@ -517,6 +516,7 @@ unitizer_sect('multi-assign', {
   })
   r2c:::pp_clean(call6b1)
 })
+
 unitizer_sect('errors', {
   call7a <- quote({
       x0 <- x + y
