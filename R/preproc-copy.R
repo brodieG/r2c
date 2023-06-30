@@ -964,12 +964,11 @@ inject_rec_and_copy <- function(x, branch.dat) {
       order, c(split(indices.mx, row(indices.mx)), list(na.last=FALSE))
     )
     indices.type <- rep(c(0:1), c(length(promoted), length(sub.assign)))
-    indices.type <- indices.type[indices.order]
 
     # Inject the vcopies in reverse order so that indices are not made invalid
     # by tree modifications ahead of them (which could happen if we have nested
     # vcopies such as `vcopy(y <- vcopy(x))` at end of branch).
-    for(ii in seq_along(all.inj)[rev(indices.order)]) {
+    for(ii in rev(seq_along(all.inj)[indices.order])) {
       i <- all.inj[[ii]]
       i.type <- indices.type[ii]
       if(i.type) {
