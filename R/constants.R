@@ -90,7 +90,7 @@ NUM.TYPES <- c('logical', 'integer', 'double')
 # compute, but if the return value is used, it ensures that both of it's
 # branches either compute or `vcopy` that..
 PASSIVE.SYM <- unique(
-  c(ASSIGN.SYM, LOOP.SYM, "if", "{", "uplus", IF.SUB.SYM, BRANCH.EXEC.SYM, 'rec')
+  c(MODIFY.SYM, LOOP.SYM, "if", "{", "uplus", IF.SUB.SYM, BRANCH.EXEC.SYM, 'rec')
 )
 # In branches, some symbols are not considered passive even though they don't
 # strictly compute.

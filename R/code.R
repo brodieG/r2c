@@ -198,7 +198,7 @@ cgen <- function(
   list(
     name=name, fun=fun, defn=defn, ctrl=ctrl.params, flag=flag.params,
     type=type, code.gen=code.gen, ctrl.validate=ctrl.validate,
-    transform=transform, res.type=res.type
+    transform=transform, res.type=res.type, res.type.which=res.type.which
   )
 }
 ## Specialized for binops

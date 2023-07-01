@@ -150,9 +150,6 @@ is.dbl_colon_call <- function(x)
   is.chr_or_sym(x[[1L]]) && is.chr_or_sym(x[[2L]]) && is.chr_or_sym(x[[3L]]) &&
   as.character(x[[1L]]) == "::"
 
-## These next two are currently equivalent
-is.brace_or_assign_call <- function(x)
-  is.call(x) && get_lang_name(x) %in% c("{", ASSIGN.SYM)
 is.passive_call <- function(x)
   is.call(x) && get_lang_name(x) %in% c(PASSIVE.SYM, ASSIGN.SYM)
 

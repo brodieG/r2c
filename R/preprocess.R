@@ -212,7 +212,7 @@ pp_internal <- function(
 
     # Check if we're in assignment call
     name <- get_lang_name(call) # should this just be `func`?
-    next.assign <- name %in% ASSIGN.SYM
+    next.assign <- name %in% ASSIGN.SYM  # not MODIFY.SYM
     # Assignments only allowed at brace level or top level because we cannot
     # assure the order of evaluation so safer to just disallow.  We _could_
     # allow it but it just seems dangerous.

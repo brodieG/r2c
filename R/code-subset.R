@@ -54,26 +54,30 @@ code_gen_subset <- function(fun, args.reg, args.ctrl, args.flags) {
 
 f_subset_assign <- '
 static void %s(%s) {
-  double * res = data[di[2]];
-  double * dat = data[di[0]];
+  double * res = data[di[0]];  // assigns to first input
+  double * dat = data[di[2]];
   double * index = data[di[1]];
 
-  R_xlen_t len = lens[di[1]];
+  R_xlen_t leni = lens[di[1]];
+  R_xlen_t lenv = lens[di[2]];
+  R_xlen_t v = 0;
 
-  for(R_xlen_t i = 0; i < len; ++i) {
+  for(R_xlen_t i = 0; i < leni; ++i, ++v) {
+    if(v >= lenv) v = 0;
     double ival = index[i];
     int isna = ISNAN(ival);
     if(!isna && ival > 0) {
-      res[i] = dat[(R_xlen_t)ival - 1];
+      R_xlen_t ival0 = ival - 1;
+      res[ival0] = dat[v];
     } else if (isna) {
-      res[i] = NA_REAL;
+      Rf_error("NAs are not allowed in subscripted assignments.");
     } else
       Rf_error(
         "Only strictly positive index values allowed, found: %%jd",
         (intmax_t) ival
       );
   }
-  lens[2] = len;
+  if(v != lenv) data[%s][%s] = 1.;   // bad recycle
 }'
 code_gen_subassign <- function(fun, args.reg, args.ctrl, args.flags) {
   vetr(
@@ -83,7 +87,10 @@ code_gen_subassign <- function(fun, args.reg, args.ctrl, args.flags) {
     args.flags=list() && length(.) == 0L
   )
   name <- FUN.NAMES[fun]
-  defn <- sprintf(f_subset_assign, name, toString(F.ARGS.BASE))
+  defn <- sprintf(
+    f_subset_assign, name, toString(F.ARGS.BASE),
+    IX[['I.STAT']], IX[['STAT.RECYCLE']] # these are now available as defines
+  )
   code_res(defn=defn, name=name)
 }
 
@@ -104,10 +111,4 @@ code_gen_subassign <- function(fun, args.reg, args.ctrl, args.flags) {
 #' @return `x`, squared
 
 subassign <- function(x, s, y) x[s] <- y
-
-
-
-
-
-
 
