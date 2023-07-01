@@ -25,7 +25,32 @@
 
 * Size computed correctly with concatenations of things produced in branches.
 
+* Subassign inside if/else.
+
+* Subassign assign to self `x[a] <- x` (we do need to pass through the
+  subassign as `prev.call`?).
+
+* Attempt to use `subassign` directly.
+
 ## Current
+
+* Move subassign to assign/control?
+
+* `clean_call` should deal with `subassign`.
+
+* Subset with logicals.  AFAIK there is no way to pass the type of the input to
+  make this decision.  We would need to change the interface to add support.
+
+* Rationalize documentation of "implementation detail" functions like `r2c_if`
+  and `subassign`.  Maybe hide them from the index with `@keywords internal` and
+  add a family that connects them.
+
+* Make sure that we deduplicate `rec` and `vcopy` requirements e.g. for the case
+  of sub-assignment (maybe this is untestable because we don't allow the result
+  of a sub-assignment to be used?).
+
+* Check it's okay to add curly braces for the sub-assign to ext copy.  Do we
+  need to collapse nested `{` later?
 
 ## Next
 

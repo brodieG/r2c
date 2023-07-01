@@ -194,6 +194,7 @@ The following functions are supported in \code{x} (or in the body of \code{x} fo
 \item Assignment and braces: \verb{<-}, \code{=}, and \verb{\{}.
 \item Branches: \verb{if/else}.
 \item Sequences: \code{seq_along}.
+\item Subsetting: \code{[}, \code{x[s] <- expr}
 }
 
 In general these will behave as in R, with the following exceptions:
@@ -204,6 +205,9 @@ both \code{yes} and \code{no} values.
 \item \code{&&} and \code{||} always evaluate all parameters.
 \item \verb{\{} must contain at least one parameter (no empty braces).
 \item \code{seq_along} always returns a double vector, never integer.
+\item \code{[} only supports strictly positive indices.
+\item \code{x[s] <- expr} may not have \code{expr} be \code{x}, and the return value of the
+sub-assignment cannot be used directly.
 \item Assignments may only be nested in braces (\verb{\{}) or in control structure
 branches.  This is a recursive requirement, so \code{mean(if(a) x <- y)} is
 disallowed.
