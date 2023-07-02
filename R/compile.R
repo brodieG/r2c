@@ -367,7 +367,7 @@ r2c_core <- function(
     names(formals) <- character()
   }
   # Parse R expression and Generate the C code
-  preproc <- preprocess(call, formals=names(formals), optimize=optimize)
+  preproc <- preprocess(call, optimize=optimize)
   optimized <- optimize && !identical(call, preproc[['call.processed']])
 
   # Generate directory, use dirname/basename to normalize it to same format as

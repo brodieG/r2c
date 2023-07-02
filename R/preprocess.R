@@ -35,10 +35,9 @@ NULL
 #' @noRd
 #' @param call an unevaluated R call
 #' @param optimize logical or integer, level of optimization to apply
-#' @param formals character vector of defined parameter names
 #' @return a call dat list as described in `init_call_dat`.
 
-preprocess <- function(call, formals=character(), optimize=FALSE) {
+preprocess <- function(call, optimize=FALSE) {
   call0 <- call
   # - Call Manipulations -------------------------------------------------------
 
