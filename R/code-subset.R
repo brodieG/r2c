@@ -34,7 +34,7 @@ static void %s(%s) {
         (intmax_t) ival
       );
   }
-  lens[2] = len;
+  lens[di[2]] = len;
 }'
 
 code_gen_subset <- function(fun, args.reg, args.ctrl, args.flags) {
