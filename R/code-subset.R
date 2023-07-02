@@ -20,17 +20,18 @@ static void %s(%s) {
   double * index = data[di[1]];
 
   R_xlen_t len = lens[di[1]];
+  R_xlen_t lend = lens[di[0]];
 
   for(R_xlen_t i = 0; i < len; ++i) {
     double ival = index[i];
     int isna = ISNAN(ival);
-    if(!isna && ival > 0) {
+    if(!isna && ival > 0 && ival <= lend) {
       res[i] = dat[(R_xlen_t)ival - 1];
-    } else if (isna) {
+    } else if (isna || ival > 0) {
       res[i] = NA_REAL;
     } else
       Rf_error(
-        "Only strictly positive index values allowed, found: %%jd",
+        "Only strictly positive index values allowed, found: [%%jd].",
         (intmax_t) ival
       );
   }
@@ -60,24 +61,31 @@ static void %s(%s) {
 
   R_xlen_t leni = lens[di[1]];
   R_xlen_t lenv = lens[di[2]];
+  R_xlen_t lenr = lens[di[0]];
   R_xlen_t v = 0;
 
   for(R_xlen_t i = 0; i < leni; ++i, ++v) {
     if(v >= lenv) v = 0;
     double ival = index[i];
     int isna = ISNAN(ival);
-    if(!isna && ival > 0) {
+    if(!isna && ival > 0 && ival <= lenr) {
       R_xlen_t ival0 = ival - 1;
       res[ival0] = dat[v];
     } else if (isna) {
       Rf_error("NAs are not allowed in subscripted assignments.");
-    } else
+    } else if (ival <= R_XLEN_T_MAX) {
       Rf_error(
-        "Only strictly positive index values allowed, found: %%jd",
+        "Subassignments must be in bounds of target vector; oob index: [%%jd].",
         (intmax_t) ival
       );
+    } else {
+      Rf_error(
+        "Subassignments must be in bounds of target vector; oob index: "
+        "[>R_XLEN_T_MAX]."
+      );
+    }
   }
-  if(v != lenv) data[%s][%s] = 1.;   // bad recycle
+  if(leni && v != lenv) data[%s][%s] = 1.;   // bad recycle
 }'
 
 # Validator for Subset/Subassign
@@ -92,7 +100,7 @@ subset_input_val <- function(types) {
   if(!types[[2L]] %in% c('integer', 'double'))
     stop(
       "Subset and sub-assign require numeric index vectors (got ", types[[2L]],
-    ")")
+    ").")
   TRUE
 }
 
