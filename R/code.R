@@ -314,6 +314,7 @@ VALID_FUNS <- c(
     cgen(
       "[", defn=function(x, i) NULL,
       type=list("arglen", "i"), code.gen=code_gen_subset,
+      res.type="preserve.which", res.type.which=1L,
       input.validate=subset_input_val
     ),
     # assign uses transform to generate subassign calls when child is `[`
