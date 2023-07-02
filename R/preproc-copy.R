@@ -292,8 +292,7 @@ copy_branchdat <- function(x) {
 #   gets to `c` it will be `c("a", "b")` because both `a` and `b` will be
 #   assigned to what `c` points to..
 # @param sub.assign.to scalar character of any symbol being sub assigned to
-#   (e.g. in `x[a] <- y`, "x").  These cannot be chained so there can only be
-#   one.
+#   (e.g. in `x[a] <- y`, "x").  These are unchainable so there can only be one.
 # @param last whether the current call being processed was the last sub-call of
 #   the parent call.  This is only ultimately relevant for passive calls like
 #   assignment and braces which could pass on an external allocation as the
@@ -325,7 +324,7 @@ copy_branchdat <- function(x) {
 # @return an updated `data` object.
 
 copy_branchdat_rec <- function(
-  x, index=integer(), assign.to=character(),
+  x, index=integer(), assign.to=character(), sub.assign.to="",
   in.compute=FALSE, in.branch=FALSE, branch.res=FALSE, last=TRUE,
   prev.call="",
   data=list(
@@ -336,7 +335,6 @@ copy_branchdat_rec <- function(
 ) {
   sym.name <- get_lang_name(x)
   call.assign <- call.modify <- first.assign <- leaf <- FALSE
-  sub.assign.to <- ""
 
   if (is.symbol(x)) {
     sym.local.cmp <- sym.name %in% data[[B.LOC.CMP]]
@@ -381,7 +379,7 @@ copy_branchdat_rec <- function(
     leaf <- !passive # for candidacy purposes, computing calls are leaves
 
     tar.sym <- if(call.modify) get_target_symbol(x, sym.name)
-    if(sym.name == "subassign") {
+    sub.assign.to <- if(sym.name == "subassign") {
       # If we ever change to allow this, we then need to prevent this happening
       # in a call parameter(i.e. `fun(x[a] <- y)`). This disallows that as well.
       if(
@@ -390,15 +388,9 @@ copy_branchdat_rec <- function(
       )
         stop("Result of `[<-` may not be used directly.")
 
-      # We write directly to the memory of the first arg, so:
-      if(is.symbol(x[[4L]]) && tar.sym == as.character(x[[4L]]))
-        stop(
-          "Cannot sub-assign into self: ",
-          deparseLines(clean_call(x, level=2L))
-        )
+      tar.sym
+    } else ""  # We want sub-assign symbol to spread to its children only
 
-      sub.assign.to <- tar.sym
-    }
     if(sym.name %in% BRANCH.EXEC.SYM) {
       if(sym.name != 'r2c_if')
         stop("Internal Error: add support for loop branch")
@@ -427,8 +419,8 @@ copy_branchdat_rec <- function(
     } else {
       passive.now <- data[['passive']] # pre-recursion passive status
       rec.skip <- 1L
-      if(call.modify) {
-        if(call.assign) assign.to <- union(assign.to, tar.sym)
+      if(call.assign) {
+        assign.to <- union(assign.to, tar.sym)
         rec.skip <- 1:2
       }
       # Recurse on language subcomponents
@@ -437,10 +429,11 @@ copy_branchdat_rec <- function(
           # assign.to is forwarded by passive calls
           next.last <- i == length(x) && passive
           assign.to.next <- if(!next.last) character() else assign.to
+          sub.assign.to.next <- if(i != length(x)) "" else sub.assign.to
           data[['passive']] <- passive.now
           data <- copy_branchdat_rec(
             x[[i]], index=c(index, i),
-            assign.to=assign.to.next,
+            assign.to=assign.to.next, sub.assign.to=sub.assign.to.next,
             last=last && next.last,
             branch.res=branch.res && next.last,
             in.compute=in.compute || !passive,
@@ -589,7 +582,8 @@ generate_candidate <- function(
     if(sym.name %in% MODIFY.SYM) get_target_symbol(x, sym.name)
     else ""
 
-  # sub.assignment from same symbol must always be vcopy'ed.  Since their output
+  # sub.assignment from same symbol must always be vcopy'ed, because otherwise
+  # we're overwriting what we're reading from.  Since their output
   # is not allowed to be used anywhere it does not need to be reconciled.
   if(
     nzchar(sub.assign.to) &&
