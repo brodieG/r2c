@@ -12,6 +12,9 @@
 
 ### v0.4.0
 
+* Zero length return value does not retain correct type (this was specific to
+  subset bug).
+
 * Subassign inside if/else.
 * Subassign assign to self `x[a] <- x` (we do need to pass through the
   subassign as `prev.call`?).

@@ -159,8 +159,10 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' * `{` must contain at least one parameter (no empty braces).
 #' * `seq_along` always returns a double vector, never integer.
 #' * `[` only supports strictly positive indices.
-#' * `x[s] <- expr` may not have `expr` be `x`, and the return value of the
-#'   sub-assignment cannot be used directly.
+#' * `x[s] <- y`
+#'     * May only be used for the side effect of changing `x` (i.e. the return
+#'       value of the sub-assignment expression may not be used).
+#'     * `s` may only contain values in `seq_along(x)`.
 #' * Assignments may only be nested in braces (`{`) or in control structure
 #'   branches.  This is a recursive requirement, so `mean(if(a) x <- y)` is
 #'   disallowed.

@@ -25,12 +25,7 @@
 
 * Size computed correctly with concatenations of things produced in branches.
 
-* Subassign inside if/else.
-
-* Subassign assign to self `x[a] <- x` (we do need to pass through the
-  subassign as `prev.call`?).
-
-* Attempt to use `subassign` directly.
+* Actual run time sub-assignments.
 
 ## Current
 
@@ -40,6 +35,8 @@
 
 * Subset with logicals.  AFAIK there is no way to pass the type of the input to
   make this decision.  We would need to change the interface to add support.
+  Major issue is result size, which is not knowable ex-ante.  Subassign would be
+  okay since size isn't changed.  Do we allow at all?
 
 * Rationalize documentation of "implementation detail" functions like `r2c_if`
   and `subassign`.  Maybe hide them from the index with `@keywords internal` and
