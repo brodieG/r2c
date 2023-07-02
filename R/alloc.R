@@ -230,11 +230,15 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
       check_fun(name, pkg, env)
       ftype <- VALID_FUNS[[c(name, "type")]] # see cgen() docs
 
+      # Check inputs are valid types (subset/subassign with logical not valid)
+      stack.input <- stack_inputs(stack, depth)
+      input.type <- alloc[['typeof']][stack.input['id', ]]
+      names(input.type) <- colnames(stack.input)
+      VALID_FUNS[[c(name, "input.validate")]](input.type)
+
       # Preserve input type of logical/integer if inputs and function allow it
       res.type.mode <- VALID_FUNS[[c(name, "res.type")]]
       res.typeof <- if(grepl('^preserve', res.type.mode)) {
-        stack.input <- stack_inputs(stack, depth)
-        input.type <- alloc[['typeof']][stack.input['id', ]]
         if(res.type.mode == "preserve.last") {
           input.type[length(input.type)]
         } else if (res.type.mode == "preserve.which") {

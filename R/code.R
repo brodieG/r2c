@@ -131,6 +131,10 @@ is.valid_constant <- function(type)
 #'
 #' @param ctrl.validate a function to validate both control and flag parameters,
 #'   should `stop`, or return the flag parameters encoded into an integer.
+#' @param input.validate a function to validate input types.  Will be given a
+#'   named character vector with the values the possible types (e.g. "double",
+#'   "logical") and the names the parameter names they were matched to.
+#'   It's possible to have duplicate names with "...".
 #' @param res.type one of "double", "integer", "logical", "preserve.int",
 #'   "preserve.last", or "preserve".  "preserve" will cause all output to be
 #'   "logical" if all inputs are "logical", "integer" if there is a mix of
@@ -148,7 +152,10 @@ cgen <- function(
   name, fun=get(name, baseenv(), mode="function"),
   defn=if(typeof(fun) == 'closure') fun,
   ctrl.params=character(), flag.params=character(),
-  type, code.gen, ctrl.validate=function(...) 0L, transform=identity,
+  type, code.gen,
+  ctrl.validate=function(...) 0L,
+  input.validate=function(types) TRUE,
+  transform=identity,
   res.type="double", res.type.which=1L
 ) {
   vetr(
@@ -166,6 +173,7 @@ cgen <- function(
     type=list() && length(.) %in% 1:3,
     code.gen=is.function(.),
     ctrl.validate=is.function(.),
+    input.validate=is.function(.),
     transform=is.function(.),
     res.type=CHR.1 &&
       . %in% c(
@@ -197,8 +205,9 @@ cgen <- function(
   )
   list(
     name=name, fun=fun, defn=defn, ctrl=ctrl.params, flag=flag.params,
-    type=type, code.gen=code.gen, ctrl.validate=ctrl.validate,
-    transform=transform, res.type=res.type, res.type.which=res.type.which
+    type=type, code.gen=code.gen,
+    transform=transform, res.type=res.type, res.type.which=res.type.which,
+    ctrl.validate=ctrl.validate, input.validate=input.validate
   )
 }
 ## Specialized for binops
