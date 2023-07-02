@@ -12,6 +12,14 @@
 
 ### v0.4.0
 
+* Subassign inside if/else.
+* Subassign assign to self `x[a] <- x` (we do need to pass through the
+  subassign as `prev.call`?).
+* Attempt to use `subassign` directly.
+* Subassign on a symbol that has a candidate bound, should trigger.
+* Subassign on an external symbol in one branch creates a candidate in the
+  other (because it needs to be reconciled).
+
 * Unary plus:
   * Executes vcopy correctly when needed
   * Coerces logical to integer

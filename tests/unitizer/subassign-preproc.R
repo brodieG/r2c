@@ -43,14 +43,37 @@ unitizer_sect('subassign', {
   call8c0 <- quote(x[a] <- y)
   r2c:::pp_clean(call8c0)
 
-  call8c1 <- quote(if(b) x[a] <- y)
-  r2c:::pp_clean(call8c1)
-
   call8c2 <- quote({
     y <- (x[a] <- y)
     y
   })
   r2c:::pp_clean(call8c2)
-
 })
+unitizer_sect('in branch', {
+  # Can't use sub-assign result
+  call9a <- quote(if(b) x[a] <- y)
+  r2c:::pp_clean(call9a)
+
+  call9a1 <- quote({
+    if(b) x[a] <- y
+    x
+  })
+  r2c:::pp_clean(call9a1)
+
+  # Should trigger a reconcile in the alternate branch
+  call9b <- quote({
+    if(b) {x[a] <- y; x}
+    x
+  })
+  r2c:::pp_clean(call9b)
+
+  # Should trigger prior branch (but no longer if we ever remove dead code)
+  call9c <- quote({
+    if(b) x <- y + 1 else x <- y
+    if(c) x[a] <- z else x[a] <- y
+    y
+  })
+  r2c:::pp_clean(call9c)
+})
+
 

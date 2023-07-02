@@ -383,7 +383,8 @@ copy_branchdat_rec <- function(
       # If we ever change to allow this, we then need to prevent this happening
       # in a call parameter(i.e. `fun(x[a] <- y)`). This disallows that as well.
       if(
-        branch.res || last || length(assign.to) ||
+        branch.res && (last || length(assign.to)) ||
+        last || length(assign.to) ||
         !prev.call %in% c("{", CTRL.SUB.SYM)
       )
         stop("Result of `[<-` may not be used directly.")
@@ -405,11 +406,11 @@ copy_branchdat_rec <- function(
       # with respect to call order (either could be last too).
       data.T <- copy_branchdat_rec(
         x[[c(2L,2L)]], index=c(index, c(2L,2L)), data=data.next, last=last,
-        in.branch=TRUE, branch.res=branch.res.next, prev.call='r2c_if'
+        in.branch=TRUE, branch.res=branch.res.next, prev.call='if_true'
       )
       data.F <- copy_branchdat_rec(
         x[[c(3L,2L)]], index=c(index, c(3L,2L)), data=data.next, last=last,
-        in.branch=TRUE, branch.res=branch.res.next, prev.call='r2c_if'
+        in.branch=TRUE, branch.res=branch.res.next, prev.call='if_false'
       )
       # Recombine branch data and the pre-branch data
       data <- merge_copy_dat(data, data.T, data.F, index)
