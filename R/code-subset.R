@@ -79,6 +79,23 @@ static void %s(%s) {
   }
   if(v != lenv) data[%s][%s] = 1.;   // bad recycle
 }'
+
+# Validator for Subset/Subassign
+#
+# Verifies that second argument is numeric (specifically not logical, which is a
+# problem for subset in particular, but for now blocking it for subassign too)
+
+type.tpl <- character()
+names(type.tpl) <- character()
+subset_input_val <- function(types) {
+  vetr(type.tpl && all(. %in% NUM.TYPES) && length(.) %in% 2:3)
+  if(!types[[2L]] %in% c('integer', 'double'))
+    stop(
+      "Subset and sub-assign require numeric index vectors (got ", types[[2L]],
+    ")")
+  TRUE
+}
+
 code_gen_subassign <- function(fun, args.reg, args.ctrl, args.flags) {
   vetr(
     identical(., "subassign"),

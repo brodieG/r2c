@@ -313,13 +313,15 @@ VALID_FUNS <- c(
   list(
     cgen(
       "[", defn=function(x, i) NULL,
-      type=list("arglen", "i"), code.gen=code_gen_subset
+      type=list("arglen", "i"), code.gen=code_gen_subset,
+      input.validate=subset_input_val
     ),
-    # assign uses transform to generate subassign calls
+    # assign uses transform to generate subassign calls when child is `[`
     cgen(
       "subassign", fun=subassign,
       type=list("arglen", "x"), code.gen=code_gen_subassign,
-      res.type="preserve.which", res.type.which=c(1L,3L)
+      res.type="preserve.which", res.type.which=c(1L,3L),
+      input.validate=subset_input_val
     )
   ),
 
