@@ -393,9 +393,7 @@ copy_branchdat_rec <- function(
     } else ""  # We want sub-assign symbol to spread to its children only
 
     if(sym.name %in% BRANCH.EXEC.SYM) {
-      if(sym.name != 'r2c_if')
-        stop("Internal Error: add support for loop branch")
-      # New if/else context resets all local bindings
+      # New branch context resets all local bindings
       data.next <- data
       data.next[[B.LOC]] <- data.next[[B.LOC.CMP]] <- character()
 
@@ -403,14 +401,17 @@ copy_branchdat_rec <- function(
       branch.res.next <- branch.res || last || length(assign.to) || in.compute
 
       # Recurse through each branch independently since they are "simultaneous"
-      # with respect to call order (either could be last too).
+      # with respect to call order (either could be last too).  In loops, the
+      # not-taken branch is the FALSE branch (see code-ifelse.R, code-loop.R).
+      prev.T <- get_lang_name(x[[2L]])
       data.T <- copy_branchdat_rec(
         x[[c(2L,2L)]], index=c(index, c(2L,2L)), data=data.next, last=last,
-        in.branch=TRUE, branch.res=branch.res.next, prev.call='if_true'
+        in.branch=TRUE, branch.res=branch.res.next, prev.call=prev.T
       )
+      prev.F <- get_lang_name(x[[3L]])
       data.F <- copy_branchdat_rec(
         x[[c(3L,2L)]], index=c(index, c(3L,2L)), data=data.next, last=last,
-        in.branch=TRUE, branch.res=branch.res.next, prev.call='if_false'
+        in.branch=TRUE, branch.res=branch.res.next, prev.call=prev.F
       )
       # Recombine branch data and the pre-branch data
       data <- merge_copy_dat(data, data.T, data.F, index)
