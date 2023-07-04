@@ -14,14 +14,29 @@
   review" in addition to re-run all updated.
 * Dig into git repository sizes and see if `unitizer` has anything to do with
   seemingly large ones.
+* Need semi-colons when collapsing calls for display in the browser view, e.g.
+  seeing `call9b2 <- quote({x <- x + 1if (b) {x[a] <- yx}x})`.
+* Maybe call numbers should be displayed on right, or status on left by number.
 
 ## Things to test
+
+* Big `group_exec` involving branches.
 
 * That it is impossible to try to use an allocation before it would be created
   in the code.  Tricky with loops.
 * Loops with no iterations.
 
+* Size computed correctly with concatenations of things produced in branches.
+
 ## Current
+
+* Move subassign to assign/control?
+
+* Rationalize documentation of "implementation detail" functions like `r2c_if`
+  and `subassign`.  Maybe hide them from the index with `@keywords internal` and
+  add a family that connects them.
+
+* Make sure that all loops have interrupts (subset/assign don't).
 
 ## Next
 
@@ -50,9 +65,25 @@ Error in r2cq(x + "a")(5) :
 
 ### Other
 
-* `:`, `seq`, etc?
+* Add a finalizer to unload and dump dlls:
 
-* Identify external only expressions and eval them just once?
+    qz1ylj3zna.so':
+      `maximal number of DLLs reached...
+
+* Defer creation of temporary vectors until end (just record their size) so that
+  we don't allocate vectors we don't use.  We should also identify unused
+  vectors and not allocate them (e.g. because branch reconciliation made a
+  vector unused - does this actually happen)?
+
+* Subset with logicals.  AFAIK there is no way to pass the type of the input to
+  C to make this decision.  We would need to change the interface to add
+  support (we could add one more "status" vector to encode the type of each
+  parameter, probably needs to be a separate vector since we won't know the
+  size).  For subset major issue is result size, which is not knowable
+  ex-ante.  Subassign would be okay since size isn't changed.  Do we allow at
+  all?
+
+* `:`, `seq`, etc?
 
 * `mean(x) * mean(x)` should re-use `mean(x)` but doesn't?
 
@@ -62,24 +93,13 @@ Error in r2cq(x + "a")(5) :
   work as right now all the fields there are in `alloc`.  `names` actually
   doesn't seem to have any of those.
 
-* Add a finalizer to unload and dump dlls:
-
-    qz1ylj3zna.so':
-      `maximal number of DLLs reached...
-
 * Add `get_r_function` to recover an R function with formals, etc.
 * `clean_call` should have additional levels to remove `vcopy` / `rec` (Done).
   Decide what `get_r_code` does.
 
-
 * Empty braces can't just be merged into parent braces, so we need to check the
   empty condition before we simplify them away (`{5;{}}` is not equal to `{5}`).
   Empty braces should be disallowed anyway.
-
-* Defer creation of temporary vectors until end (just record their size) so that
-  we don't allocate vectors we don't use.  We should also identify unused
-  vectors and not allocate them (e.g. because branch reconciliation made a
-  vector unused - does this actually happen)?
 
 * Do `for` and `while` need to be decomposed?  Yes.
 
@@ -129,6 +149,7 @@ Error in r2cq(x + "a")(5) :
   doesn't matter as much if they get coerced eventually to NA_LOGICAL, but if we
   add a no-lines mode then it might matter.
 
+* Identify external only expressions and eval them just once?
 * What do we do about repeated external symbols getting added to the allocation
   table?  We need to deal with it because for non-numeric the coercion to
   numeric will force a full copy every time.  See notes "External Symbols".

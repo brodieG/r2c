@@ -150,16 +150,13 @@ is.dbl_colon_call <- function(x)
   is.chr_or_sym(x[[1L]]) && is.chr_or_sym(x[[2L]]) && is.chr_or_sym(x[[3L]]) &&
   as.character(x[[1L]]) == "::"
 
-## These next two are currently equivalent
-is.brace_or_assign_call <- function(x)
-  is.call(x) && get_lang_name(x) %in% c("{", ASSIGN.SYM)
 is.passive_call <- function(x)
   is.call(x) && get_lang_name(x) %in% c(PASSIVE.SYM, ASSIGN.SYM)
 
 # For `<symbol> <- y`, retrieve the symbol.  Obviously assumes `x` has been
 # checked previously to be an assignment.  Recall `for` includes an assignment.
 get_target_symbol <- function(x, fun.name) {
-  if(!fun.name %in% ASSIGN.SYM)
+  if(!fun.name %in% MODIFY.SYM)
     stop("Internal Error: ", fun.name, " is not an assignment function.")
   target.symbol <- x[[2L]]
   target.type <- typeof(target.symbol)

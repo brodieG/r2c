@@ -35,10 +35,9 @@ NULL
 #' @noRd
 #' @param call an unevaluated R call
 #' @param optimize logical or integer, level of optimization to apply
-#' @param formals character vector of defined parameter names
 #' @return a call dat list as described in `init_call_dat`.
 
-preprocess <- function(call, formals=character(), optimize=FALSE) {
+preprocess <- function(call, optimize=FALSE) {
   call0 <- call
   # - Call Manipulations -------------------------------------------------------
 
@@ -50,7 +49,8 @@ preprocess <- function(call, formals=character(), optimize=FALSE) {
   # Match calls
   call <- match_call_rec(call)
 
-  # Transform call. Should be an "optimization"?  Some transforms might not be.
+  # Transform call. Should be an "optimization"?  Some transforms definitely are
+  # not (e.g. subassign).
   call <- transform_call_rec(call)
 
   # Apply optimizations
@@ -211,7 +211,7 @@ pp_internal <- function(
 
     # Check if we're in assignment call
     name <- get_lang_name(call) # should this just be `func`?
-    next.assign <- name %in% ASSIGN.SYM
+    next.assign <- name %in% ASSIGN.SYM  # not MODIFY.SYM
     # Assignments only allowed at brace level or top level because we cannot
     # assure the order of evaluation so safer to just disallow.  We _could_
     # allow it but it just seems dangerous.
@@ -377,8 +377,8 @@ names2 <- function(x)
 
 #' Recursively match.call Call and Sub-Calls
 #'
-#' Additionally fills in default values, and guarantees (possibly zero length)
-#' names.
+#' Additionally fills in default values, guarantees (possibly zero length)
+#' names, and does basic validation.
 #'
 #' @noRd
 

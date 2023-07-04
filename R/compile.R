@@ -148,6 +148,7 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' * Assignment and braces: `<-`, `=`, and `{`.
 #' * Branches: `if/else`.
 #' * Sequences: `seq_along`.
+#' * Subsetting: `[`, `x[s] <- expr`
 #'
 #' In general these will behave as in R, with the following exceptions:
 #'
@@ -157,6 +158,11 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' * `&&` and `||` always evaluate all parameters.
 #' * `{` must contain at least one parameter (no empty braces).
 #' * `seq_along` always returns a double vector, never integer.
+#' * `[` only supports strictly positive indices.
+#' * `x[s] <- y`
+#'     * May only be used for the side effect of changing `x` (i.e. the return
+#'       value of the sub-assignment expression may not be used).
+#'     * `s` may only contain values in `seq_along(x)`.
 #' * Assignments may only be nested in braces (`{`) or in control structure
 #'   branches.  This is a recursive requirement, so `mean(if(a) x <- y)` is
 #'   disallowed.
@@ -363,7 +369,7 @@ r2c_core <- function(
     names(formals) <- character()
   }
   # Parse R expression and Generate the C code
-  preproc <- preprocess(call, formals=names(formals), optimize=optimize)
+  preproc <- preprocess(call, optimize=optimize)
   optimized <- optimize && !identical(call, preproc[['call.processed']])
 
   # Generate directory, use dirname/basename to normalize it to same format as
@@ -597,6 +603,9 @@ clean_call <- function(x, level=1L) {
     # drop e.g. vcopy/rec
     x <- clean_call(x[[2L]], level=level)
   } else if(is.call_w_args(x)) {
+    if(get_lang_name(x) == "subassign") {
+      x <- call("<-", call("[", x[[2L]], x[[3L]]), x[[4L]])
+    }
     # Drop dots from e.g. `sum(...=x, )`
     if(!is.null(names(x))) names(x)[names(x) == "..."] <- ""
     # Drop defaults that are set to default values

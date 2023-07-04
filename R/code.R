@@ -20,6 +20,7 @@
 #' @include code-pow.R
 #' @include code-logical.R
 #' @include code-unary.R
+#' @include code-subset.R
 
 NULL
 
@@ -130,6 +131,10 @@ is.valid_constant <- function(type)
 #'
 #' @param ctrl.validate a function to validate both control and flag parameters,
 #'   should `stop`, or return the flag parameters encoded into an integer.
+#' @param input.validate a function to validate input types.  Will be given a
+#'   named character vector with the values the possible types (e.g. "double",
+#'   "logical") and the names the parameter names they were matched to.
+#'   It's possible to have duplicate names with "...".
 #' @param res.type one of "double", "integer", "logical", "preserve.int",
 #'   "preserve.last", or "preserve".  "preserve" will cause all output to be
 #'   "logical" if all inputs are "logical", "integer" if there is a mix of
@@ -137,6 +142,9 @@ is.valid_constant <- function(type)
 #'   doubles are present.  "preserve.int" is like "preserve", except the only
 #'   possible output types are "integer" and "double".  "preserve.last" is like
 #'   "preserve" except it only considers the last input (e.g. as for braces).
+#'   "preserve.which" is like "preserve", but applies to the parameters
+#'   designated by `res.type.which`.
+#' @param res.type.which for use when `res.type == "preserve.which"`.
 #'
 #' @return a list containing the above information after validating it.
 
@@ -144,8 +152,11 @@ cgen <- function(
   name, fun=get(name, baseenv(), mode="function"),
   defn=if(typeof(fun) == 'closure') fun,
   ctrl.params=character(), flag.params=character(),
-  type, code.gen, ctrl.validate=function(...) 0L, transform=identity,
-  res.type="double"
+  type, code.gen,
+  ctrl.validate=function(...) 0L,
+  input.validate=function(types) TRUE,
+  transform=identity,
+  res.type="double", res.type.which=1L
 ) {
   vetr(
     name=CHR.1,
@@ -162,11 +173,14 @@ cgen <- function(
     type=list() && length(.) %in% 1:3,
     code.gen=is.function(.),
     ctrl.validate=is.function(.),
+    input.validate=is.function(.),
     transform=is.function(.),
     res.type=CHR.1 &&
       . %in% c(
-        'logical', 'double', 'preserve.int', 'preserve', 'preserve.last'
-      )
+        'logical', 'double', 'preserve.int', 'preserve',
+        'preserve.last', 'preserve.which'
+      ),
+    res.type.which=INT.POS.STR
   )
   if(length(intersect(ctrl.params, flag.params)))
     stop("Control and Flag parameters may not overlap.")
@@ -191,8 +205,9 @@ cgen <- function(
   )
   list(
     name=name, fun=fun, defn=defn, ctrl=ctrl.params, flag=flag.params,
-    type=type, code.gen=code.gen, ctrl.validate=ctrl.validate,
-    transform=transform, res.type=res.type
+    type=type, code.gen=code.gen,
+    transform=transform, res.type=res.type, res.type.which=res.type.which,
+    ctrl.validate=ctrl.validate, input.validate=input.validate
   )
 }
 ## Specialized for binops
@@ -289,10 +304,28 @@ VALID_FUNS <- c(
 
   list(
     cgen(
-      "seq_along", fun=seq_along, defn=function(along.with) NULL,
+      "seq_along", defn=function(along.with) NULL,
       type=list("arglen", "along.with"), code.gen=code_gen_seq_along
     )
   ),
+  # - Subset -----------------------------------------------------------------
+
+  list(
+    cgen(
+      "[", defn=function(x, i) NULL,
+      type=list("arglen", "i"), code.gen=code_gen_subset,
+      res.type="preserve.which", res.type.which=1L,
+      input.validate=subset_input_val
+    ),
+    # assign uses transform to generate subassign calls when child is `[`
+    cgen(
+      "subassign", fun=subassign,
+      type=list("arglen", "x"), code.gen=code_gen_subassign,
+      res.type="preserve.which", res.type.which=c(1L,3L),
+      input.validate=subset_input_val
+    )
+  ),
+
   # - Other Logical ------------------------------------------------------------
 
   list(
@@ -312,9 +345,10 @@ VALID_FUNS <- c(
   # - Assign / Control----------------------------------------------------------
 
   list(
+    # see subset for [<-, although transform to subassign done here
     cgen(
       "<-", type=list("arglen", 2L), code.gen=code_gen_assign,
-      res.type="preserve.last"
+      res.type="preserve.last", transform=assign_transform
     ),
     cgen(
       "=", type=list("arglen", 2L), code.gen=code_gen_assign,

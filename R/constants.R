@@ -68,10 +68,14 @@ QBRACE <- as.name("{")
 MISSING <- list(formals(base::identical)[[1L]])
 
 # `for` assigns to the counter variable.  `->` becomes `<-` on parsing.
-ASSIGN.SYM <- c("<-", "=", "for")
+
+ASSIGN.SYM.BASE <- c("<-", "=")
+ASSIGN.SYM <- c(ASSIGN.SYM.BASE, "for")
+MODIFY.SYM <- c(ASSIGN.SYM, "subassign")
 LOOP.SYM <- c("for", "while", "repeat")
 IF.SUB.SYM <- c("if_true", "if_false")
 CTRL.SYM <- c("if", LOOP.SYM)
+CTRL.SUB.SYM <- c(IF.SUB.SYM)
 BRANCH.TEST.SYM <- c("if_test")
 BRANCH.EXEC.SYM <- c("r2c_if")
 REC.FUNS <- c('vcopy', 'rec')
@@ -86,7 +90,7 @@ NUM.TYPES <- c('logical', 'integer', 'double')
 # compute, but if the return value is used, it ensures that both of it's
 # branches either compute or `vcopy` that..
 PASSIVE.SYM <- unique(
-  c(ASSIGN.SYM, LOOP.SYM, "if", "{", "uplus", IF.SUB.SYM, BRANCH.EXEC.SYM, 'rec')
+  c(MODIFY.SYM, LOOP.SYM, "if", "{", "uplus", IF.SUB.SYM, BRANCH.EXEC.SYM, 'rec')
 )
 # In branches, some symbols are not considered passive even though they don't
 # strictly compute.
@@ -105,6 +109,8 @@ CTRL.FLAG <- c("control", "flag")
 # Packages allowable in `::`
 VALID.PKG <- c('base', 'r2c')
 
+# names(FUN.NAMES) are R names, values are C names.  R names are after
+# preprocessing so will include r2c internal names.
 FUN.NAMES <- c(
   "+"="add", "-"="subtract", "*"="multiply", "/"="divide",
 
@@ -133,7 +139,10 @@ FUN.NAMES <- c(
   if_test="if_test", if_true="if_true", if_false="if_false", r2c_if="r2c_if",
   "if"="if",
 
-  seq_along="seq_along"
+  seq_along="seq_along",
+
+  "["="subset",
+  subassign="subassign"   # this is [<-
 )
 # C Generator Output Types
 CGEN.OUT.CALL <- 1L   # output call to C fun e.g. `mean(data, lens, di[5])`

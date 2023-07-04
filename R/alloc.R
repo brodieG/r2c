@@ -230,13 +230,20 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
       check_fun(name, pkg, env)
       ftype <- VALID_FUNS[[c(name, "type")]] # see cgen() docs
 
+      # Check inputs are valid types (subset/subassign with logical not valid)
+      stack.input <- stack_inputs(stack, depth)
+      input.type <- alloc[['typeof']][stack.input['id', ]]
+      names(input.type) <- colnames(stack.input)
+      VALID_FUNS[[c(name, "input.validate")]](input.type)
+
       # Preserve input type of logical/integer if inputs and function allow it
       res.type.mode <- VALID_FUNS[[c(name, "res.type")]]
       res.typeof <- if(grepl('^preserve', res.type.mode)) {
-        stack.input <- stack_inputs(stack, depth)
-        input.type <- alloc[['typeof']][stack.input['id', ]]
         if(res.type.mode == "preserve.last") {
           input.type[length(input.type)]
+        } else if (res.type.mode == "preserve.which") {
+          type.which <- VALID_FUNS[[c(name, "res.type.which")]]
+          NUM.TYPES[max(match(input.type[type.which], NUM.TYPES))]
         } else {
           min.type <- if(res.type.mode == 'preserve') 1L else 2L
           NUM.TYPES[max(c(match(input.type, NUM.TYPES), min.type))]
@@ -282,7 +289,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
       # Prepare new vec data (if any), and tweak objet depending on situation.
       # Alloc is made later, but only if vec.dat[['new']] is not null.
       vec.dat <- vec_dat(NULL, "tmp", typeof=res.typeof, group=group, size=size)
-      if(!name %in% c(PASSIVE.SYM, ASSIGN.SYM)) {
+      if(!name %in% c(PASSIVE.SYM, MODIFY.SYM)) {
         # We have a computing expression in need of a free slots.
         # (NB: PASSIVE includes ASSIGN, but use both in case that changes).
         free <-
@@ -295,7 +302,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
       } else if (name %in% PASSIVE.SYM) {
         # Don't do anything for these, effectively causing `dat[[i]]` to remain
         # unchanged for use by the next call, except we do update the `typeof`
-        # for when logical gets turned to numeric by uplus
+        # for e.g. when logical gets turned to numeric by uplus
         alloc[['typeof']][alloc[['i']]] <- res.typeof
       } else stop("Internal Error: unexpected call allocation state.")
 
@@ -410,7 +417,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
   }
   # - Finalize -----------------------------------------------------------------
 
-  # Last allocation should be redirected to the result.
+  # Return value should be redirected to result
   last.call <- call.dat[[length(call.dat)]]
   last.alloc <- last.call[['ids']][length(last.call[['ids']])]
   res.alloc <- which(alloc[['type']] == "res")
@@ -925,7 +932,7 @@ is.rec_ret <- function(x) {
   if(is.call(x)) {
     call.sym <- get_lang_name(x)
     if(call.sym == "rec") TRUE
-    else if(call.sym %in% PASSIVE.SYM && !call.sym %in% ASSIGN.SYM)
+    else if(call.sym %in% PASSIVE.SYM && !call.sym %in% MODIFY.SYM)
       is.rec_ret(x[[length(x)]])
     else FALSE
   } else FALSE
@@ -1201,7 +1208,7 @@ names_bind <- function(alloc, new.name, call.i, rec) {
 }
 names_update <- function(alloc, i, call, call.name, call.i, rec) {
   alloc <- names_clean(alloc, i)
-  if(call.name %in% ASSIGN.SYM) {
+  if(call.name %in% ASSIGN.SYM) { # not MODIFY.SYM
     # Remove protection from prev assignment to same name, and bind previous
     # computation (`alloc[[i]]`) to it.
     sym <- get_target_symbol(call, call.name)
