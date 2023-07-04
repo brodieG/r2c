@@ -4,13 +4,16 @@
 
 ### New Features
 
+* Control structures:
+  * `if`/`else`/`else if`.
+* Subset (`[`) and subassign (`x[s] <- y`) with strictly positive indices.
 * Relational (`>`, `>=`, `<`, `<=`) and equality operators (`==`, `!=`).
 * Logical functions:
   * Operators (`&`, `|`, `&&`, `||`).
   * `all` and `any`.
-  * `ifelse`, with the caveat the return value type is based on the combination of
-      `yes` and `no` irrespective of whether one or both of them are used.
-* Unary opertors (`-`, `+`, and `!`).
+  * `ifelse`, with the caveat the return value type is based on the combination
+    of `yes` and `no` irrespective of whether one or both of them are used.
+* Unary operators (`-`, `+`, and `!`).
 * Iteration level interrupts (e.g. between groups, windows).
 
 ## 0.2.0

@@ -15,6 +15,33 @@
 * Zero length return value does not retain correct type (this was specific to
   subset bug).
 
+* Sub-assignment from a complex expressions that strains eval order.  How do we
+  recognize that `x` is not external because we'll be vcopying it?  Is this even
+  allowed (assign inside arg)?  Do we need to vcopy `x` in this case (no).  We
+  should see this because we process the arg first.
+
+    x[a] <- {
+      x <- y + 1
+      y
+    }
+
+  Maybe more relevant:
+
+    if(b) {
+      x[a] <- x
+      x
+    }
+
+  Seems like we can't get in a situation where we don't recognize the symbol is
+  local.
+
+* Make sure that we deduplicate `rec` and `vcopy` requirements e.g. for the case
+  of sub-assignment (maybe this is untestable because we don't allow the result
+  of a sub-assignment to be used?).  Does't seem an issue now?
+* Check it's okay to add curly braces for the sub-assign to ext copy.  Do we
+  need to collapse nested `{` later?  We do collapse the braces.
+* `clean_call` should deal with `subassign`.
+* Actual run time sub-assignments.
 * Subassign inside if/else.
 * Subassign assign to self `x[a] <- x` (we do need to pass through the
   subassign as `prev.call`?).
