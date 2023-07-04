@@ -66,6 +66,13 @@ unitizer_sect('in branch', {
     x
   })
   r2c:::pp_clean(call9b)
+  # In this case reconciliation is not required.
+  call9b2 <- quote({
+    x <- x + 1
+    if(b) {x[a] <- y; x}
+    x
+  })
+  r2c:::pp_clean(call9b2)
 
   # Should trigger prior branch (but no longer if we ever remove dead code)
   call9c <- quote({

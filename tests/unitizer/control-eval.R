@@ -78,7 +78,7 @@ unitizer_sect("nesting", {
   f4a(1:3, 3)
 
   # simple nesting with internal assign (x2/x3 always same so boring?)
-  f4b.r <-function(x, a) {
+  f4b.r <- function(x, a) {
     x2 <- if(a == 1) x3 <- mean(x)
     else if (a == 2) x3 <- sum(x)
     else x3 <- a
