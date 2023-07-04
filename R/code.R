@@ -15,6 +15,7 @@
 
 #' @include code-assign-braces.R
 #' @include code-ifelse.R
+#' @include code-loop.R
 #' @include code-summary.R
 #' @include code-seq.R
 #' @include code-bin.R
@@ -384,7 +385,7 @@ VALID_FUNS <- c(
     # early parsing passes recognize it as an allowed function.
     cgen(
       "if", type=list("eqlen", 2:3), code.gen=code_gen_if, res.type="preserve"
-    )
+    ),
 
     # result of this one is not used outside of the C code
     cgen(

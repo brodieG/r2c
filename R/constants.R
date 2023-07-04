@@ -135,10 +135,13 @@ FUN.NAMES <- c(
 
   vcopy="vcopy", rec="rec",
 
-  # "for"="for", "while"="while", "repeat"="repeat", "if"="if"
+  # "while"="while", "repeat"="repeat", "if"="if"
 
   if_test="if_test", if_true="if_true", if_false="if_false", r2c_if="r2c_if",
   "if"="if",
+
+  for_init="for_init", for_iter="for_iter", for_n="for_n", for_0="for_0",
+  r2c_for="r2c_for", "for"="for",
 
   seq_along="seq_along",
 
