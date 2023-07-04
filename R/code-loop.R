@@ -13,12 +13,121 @@
 ##
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
-# - For ------------------------------------------------------------------------
+# See code-ifelse.R for an explanation of how this works.
 
-for_init <- function() NULL
-for_skip <- function() NULL
-for_n <- function() NULL
-r2c_for(zero, n) NULL
+f_for_init <- '
+// Check whether a loop has any iterations
+static int %s(%s) {
+  return (int) lens[di[0]] > 0;
+}'
+f_for_iter <- '
+// Check whether a loop has any iterations
+static int %s(%s) {
+  return (int) lens[di[0]] > 0;
+}'
+
+code_gen_for_init <- function(fun, args.reg, args.ctrl, args.flags) {
+  vetr(
+    identical(., "for_init"),
+    args.reg=list(NULL, NULL),
+    args.ctrl=list() && length(.) == 0L,
+    args.flags=list() && length(.) == 0L
+  )
+  name <- FUN.NAMES[fun]
+  defn <- sprintf(f_for_init, name, toString(F.ARGS.BASE))
+  code_res(
+    defn=defn, name=name,
+    c.call.gen=function(...)
+      paste0("if(", sub(";$", "", c_call_gen(...)), ") {")
+  )
+}
+code_gen_for_iter <- function(fun, args.reg, args.ctrl, args.flags) {
+  vetr(
+    identical(., "for_iter"),
+    args.reg=list(NULL, NULL, NULL),
+    args.ctrl=list() && length(.) == 0L,
+    args.flags=list() && length(.) == 0L
+  )
+  name <- FUN.NAMES[fun]
+  defn <- sprintf(f_for_iter, name, toString(F.ARGS.BASE))
+  code_res(
+    defn=defn, name=name,
+    c.call.gen=function(...)
+      paste0("while(f_for_iter(", sub(";$", "", c_call_gen(...)), ") {")
+  )
+}
+code_gen_for_n <- function(fun, args.reg, args.ctrl, args.flags) {
+  vetr(
+    identical(., "for_n"),
+    args.reg=list(NULL),
+    args.ctrl=list() && length(.) == 0L,
+    args.flags=list() && length(.) == 0L
+  )
+  name <- FUN.NAMES[fun]
+  defn <- "" # not output
+  code_res(
+    defn=defn, name=name, c.call.gen=function(...) "} } else {",
+    out.ctrl=CGEN.OUT.CALL
+  )
+}
+code_gen_for_0 <- function(fun, args.reg, args.ctrl, args.flags) {
+  vetr(
+    identical(., "for_0"),
+    args.reg=list(NULL),
+    args.ctrl=list() && length(.) == 0L,
+    args.flags=list() && length(.) == 0L
+  )
+  name <- FUN.NAMES[fun]
+  defn <- "" # not output
+  code_res(
+    defn=defn, name=name, c.call.gen=function(...) "}",
+    out.ctrl=CGEN.OUT.CALL
+  )
+}
+code_gen_r2c_for <-function(fun, args.reg, args.ctrl, args.flags) {
+  vetr(
+    identical(., "r2c_for"),
+    args.reg=list(NULL, NULL),
+    args.ctrl=list() && length(.) == 0L,
+    args.flags=list() && length(.) == 0L
+  )
+  name <- FUN.NAMES[fun]
+  defn <- "" # not output
+  code_res(defn=defn, name=name, out.ctrl=CGEN.OUT.NONE)
+}
+code_gen_for <- function(...) {
+  stop(
+    "Internal Error: attempting to generate code for raw `for` ",
+    "instead of decomposed one."
+  )
+}
+
+#' Loop Stub Functions
+#'
+#' @keywords internal
+#' @export
+
+r2c_for <- function() NULL
+
+#' @rdname r2c_for
+#' @export
+
+for_init <- function(seq, seq.i) NULL
+#'
+#' @rdname r2c_for
+#' @export
+
+for_iter <- function(var, seq, seq.i) NULL
+
+#' @rdname r2c_for
+#' @export
+
+for_n <- function(expr.n) NULL
+
+#' @rdname r2c_for
+#' @export
+
+for_0 <- function(expr.0) NULL
 
 
 

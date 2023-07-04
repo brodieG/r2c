@@ -385,6 +385,33 @@ VALID_FUNS <- c(
     cgen(
       "if", type=list("eqlen", 2:3), code.gen=code_gen_if, res.type="preserve"
     )
+
+    # result of this one is not used outside of the C code
+    cgen(
+      "for_init", type=list("constant", 1L), code.gen=code_gen_for_init,
+      res.type="logical", fun=for_init
+    ),
+    cgen(
+      "for_iter", type=list("constant", 1L), code.gen=code_gen_for_iter,
+      res.type="logical", fun=for_iter
+    ),
+    cgen(
+      "for_n", type=list("arglen", "expr"), code.gen=code_gen_for_n,
+      fun=for_n, res.type="preserve"
+    ),
+    cgen(
+      "for_0", type=list("arglen", "expr"), code.gen=code_gen_for_0,
+      fun=for_0, res.type="preserve"
+    ),
+    # `res.type` gets special handling in `reconcile_control_flow` for `r2c_if`.
+    cgen(
+      "r2c_for", type=list("eqlen", c("true", "false")),
+      code.gen=code_gen_r2c_for, fun=r2c_for, res.type="preserve"
+    ),
+    # This is a stub function like `if`.
+    cgen(
+      "for", type=list("arglen", 4L), code.gen=code_gen_for, res.type="preserve"
+    )
   ),
   # - r2c funs -----------------------------------------------------------------
   list(

@@ -235,7 +235,7 @@ pp_internal <- function(
           call=args[[i]], depth=depth + 1L, x=x, argn=names(args)[i],
           assign=i == 1L && next.assign,
           call.parent=call, call.parent.name=func,
-          indent=indent + (func %in% IF.SUB.SYM) * 2L, passive=passive
+          indent=indent + (func %in% CTRL.SUB.SYM) * 2L, passive=passive
     ) } }
     # Are we in a rec chain?  Needed for alloc to know which bindings are
     # from rec (see reconcile_control_flow).
@@ -509,10 +509,14 @@ transform_call_rec <- function(call) {
 # to help deal with the limitation of linearized calls.  For example, we know
 # that the TRUE branch contents will be between the `if_test` and `if_true`
 # call.
+#
+# @param i scalar integer used to track loop number
 
-transform_control <- function(x) {
+transform_control <- function(x, i=0L) {
+  if(i > 999L)
+    stop("Exceeded maximum allowable control structure count (", i - 1L,")")
   if(is.call(x)) {
-    x[-1L] <- lapply(x[-1L], transform_control)
+    x[-1L] <- lapply(x[-1L], transform_control, i=i + 1L)
     call.sym <- get_lang_name(x)
     if(call.sym == "if") {
       if(!length(x) %in% 3:4)
@@ -530,6 +534,22 @@ transform_control <- function(x) {
         }
       )
       names(x)[2:3] <- "..."  # needed for alloc logic
+    } else if (call.sym == "for") {
+      # A copy (candidate) of the result of evaluating the exp in for(i in exp)
+      seq.name <- as.name(sprintf("R2C_for_seq_%d", i))
+      # The index into `seq.name` that we're at
+      seq.i.name <- as.name(sprintf("R2C_for_seqi_%d", i))
+      x <- bquote(
+        {
+          r2c::for_init(
+            seq=.(call("<-", seq.name, x[[3L]])),
+            seq.i=.(call("<-", seq.i.name, 0))
+          )
+          r2c::for_iter(var=.(x[[2L]]), seq=.(seq.name), seq.i=.(seq.i.name))
+          r2c::r2c_for(r2c::for_n(.(x[[4L]])), r2c::for_0(.(numeric(0))))
+        }
+      )
+      names(x)[2:4] <- "..."  # needed for alloc logic
     } else if (call.sym == "{" && length(x) == 2L) {
       # remove redundant nested braces as could be introduced above.  This could
       # remove other redundant nested braces.
