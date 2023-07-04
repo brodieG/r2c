@@ -458,7 +458,6 @@ copy_branchdat_rec <- function(
         # Clear those candidates
         data[[CAND]] <-
           data[[CAND]][names(data[[CAND]]) != tar.sym | indices.gt]
-
       }
     }
   } else stop("Internal Error: disallowed token type ", typeof(x))
@@ -547,8 +546,8 @@ copy_branchdat_rec <- function(
 # actual `callptr`s instead of candidates, e.g. if an `r2c` expression returns
 # an external symbol:
 #
-#     if(a) rec(copy(x))  # this is branch result and r2c result
-#     else -y
+#     if(a) rec(vcopy(x))  # this is branch result and r2c result
+#     else rec(-y)
 #
 # We can tell if an sub-expression is part of the return value of an expression
 # without having to process the whole expression, so we know that `x` needs to
