@@ -37,9 +37,13 @@
 
 * Rationalize documentation of "implementation detail" functions like `r2c_if`
   and `subassign`.  Maybe hide them from the index with `@keywords internal` and
-  add a family that connects them.
+  add a family that connects them. Make sure to explain how we generate the C
+  code for control structures as that is not at all obvious.
+* Document for:
+  * Limit to number of for loops.
 
 * Make sure that all loops have interrupts (subset/assign don't).
+
 
 ## Next
 

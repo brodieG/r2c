@@ -108,8 +108,8 @@ In C:
                                  |  <for_0_exp>
                                  | }
 
-    for_init(.R2C_for_v_0, modify_candidate(i.exp))
-    for_inc(i.var, .R2C_for_v_0, .R2C_for_i_0 <- 0)
+    for_init(.R2C_for_seq_0 <- modify_candidate(i.exp), .R2C_for_seqi_0 <- 0)
+    for_iter(i.var, .R2C_for_v_0, .R2C_for_i_0 <- 0)
     r2c_for(
       for_n({
         y <- z[i]^2
