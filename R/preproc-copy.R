@@ -444,7 +444,7 @@ copy_branchdat_rec <- function(
       } }
       data[['passive']] <- passive && data[['passive']]
 
-      if(call.modify) {
+      if(call.assign) {  # not call.modify
         # Any prior candidates bound to this symbol are voided by the new
         # assignment.  We need to clear them, except:
         #
@@ -474,7 +474,9 @@ copy_branchdat_rec <- function(
       data[[B.LOC]] <- union(data[[B.LOC]], tar.sym)
       data[[B.LOC.CMP]] <- union(data[[B.LOC.CMP]], tar.sym)
       data[[B.ALL]] <- union(data[[B.ALL]], tar.sym)
-    } else {
+    } else if (call.assign) {
+      # call.modify only updates bindings for the case where it causes a
+      # `add_actual_sub_callptr` (then data[['passive']] is FALSE).
       data[[B.LOC]] <- union(data[[B.LOC]], tar.sym)
       if(in.branch) {
         # non-computing local expressions make global bindings non-global
@@ -726,14 +728,26 @@ add_candidate_callptr <- function(data, index, triggers, rec=TRUE, copy=TRUE) {
   data
 }
 # We're shoe-horning existing structure to add support for sub-assignment.
+#
+# This is used for the case where we need to add an `x <- vcopy(x)` prior to
+# subassignment.  Dirtyb/c we implicitily encode that there is a created
+# assignment via the passive flag, and rely on the logic in the assignments
+# section in `copy_branchdat_rec` right after `generate_candidate` to record the
+# effect on the bindings.
+#
+# All the worse because the assignment that is affecting the bindings is not
+# actually created until much later during the inejection phase, so if you look
+# at the code while it's being processed it's less than obvious what's going on.
+
 add_actual_sub_callptr <- function(data, index, name) {
   new.act.sub <- callptr(name, index, copy=TRUE, rec=FALSE)
   data[[ACT.SUB]] <- c(data[[ACT.SUB]], list(new.act.sub))
   # Return value of sub assignment should not be used anywhere...
+  # But we mark as non-passive so the assignment code will record the
+  # assignment that will be added once the injection happens.
   data[['passive']] <- FALSE
   data
 }
-
 gen_callptrs <- function(names, index, rec, copy)
   sapply(names, callptr, copy=copy, rec=rec, index=index, simplify=FALSE)
 
