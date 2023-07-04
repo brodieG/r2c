@@ -13,7 +13,8 @@
 ##
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
-#' @include code-assign-control.R
+#' @include code-assign-braces.R
+#' @include code-ifelse.R
 #' @include code-summary.R
 #' @include code-seq.R
 #' @include code-bin.R
