@@ -1,5 +1,228 @@
 # Current
 
+# Loop Decomposition
+
+    for(i in seq_long(x)) {
+      y[i] <- x[i]
+      y
+    }
+
+Should become:
+
+    for_init(i_exp)
+    r2c_for(for_n(n_exp), for_zero(x_exp))
+
+Which in C land becomes
+
+    if(for_init()) {
+      while(for_inc(data, lens, di[1])) {
+        ...
+      }
+    } else {
+      ...
+    }
+
+So the calls we see are going to be:
+
+    i_exp       >
+    for_init()  >  if(for_init(...)) while(for_inc(...)) {
+    n_exp       >
+    for_n()     >  } else {
+    z_exp       >
+    for_zero()  >  }
+    r2c_for()   >
+
+Can we have a single function generate two function calls?  No, that's really
+not going to work, we need something like:
+
+    i_exp       >
+    for_init()  >  if(for_init(...))  {  // compute vector
+    for_inc()   >    while(for_inc(...)) {
+    n_exp       >
+    for_n()     >  } } else {  // not great, but otherwise alignment breaks
+    z_exp       >
+    for_zero()  >  }
+    r2c_for()   >
+
+`for_init` checks the length of the iteration vector.  I can't think of an
+obvious way to get around the extra layers.
+
+    i.exp
+    for_inc(i.exp, i, i.val)
+
+    r2c_for(
+      for_n({
+        v <- x[i]
+        ...
+        i <- i + 1L   // but this overwrites existing i
+      }),
+      for_0({
+        ...
+      })
+    )
+
+There is a hidden vector.  We need hidden loop counters.  That can't be modified
+by a sub-assign.  So then:
+
+    .R2C_for_i_0 <- vcopy(i.exp)
+
+Do we always copy `i.exp`, or only if it is a symbol and modified.  This means
+we need a new place to trigger vcopy.
+
+    for(i in i.exp) {
+      y <- z[i]^2
+      x[i] <- y
+    }
+
+Needs to become:
+
+    for_init_vec(.R2C_for_v_0 <- vcopy(i.exp))
+    for_begin()
+    x <- vcopy(x)  // so i.exp doesn't intefere if we were to allow sideffects
+    for_init_i(.R2C_for_i_0 <- 0)
+    r2c_for(
+      for_n(
+        {
+          .R2C_for_i_0 <- .R2C_for_i_0 + 1
+          i <- .R2C_for_v_0[.R2C_for_i_0]
+          y <- z[i]^2
+          x[i] <- y
+        },
+        length(.R2C_for_v_0)
+      ),
+      for_0({
+        ...
+      })
+    )
+
+In C:
+
+    .R2C_for_v_0 <- vcopy(i.exp) |
+    for_init_vec(...)            |
+    x <- vcopy(x)                |
+    for_begin()                  | if(for_init_v(data, lens, di[1])) {
+    .R2C_for_i_0 <- 0            |    <.R2C_for_i_0 <- 0>
+    for_inc_i()                  |    while(for_inc_i(data, lens, di[3])) {
+                                 |      <for_n_exp>
+                                 | } } else {
+                                 |  <for_0_exp>
+                                 | }
+
+    for_init(.R2C_for_v_0, modify_candidate(i.exp))
+    for_inc(i.var, .R2C_for_v_0, .R2C_for_i_0 <- 0)
+    r2c_for(
+      for_n({
+        y <- z[i]^2
+        x[i] <- y
+      }),
+      for_0({
+        ...
+      })
+    )
+
+Issues to resolve:
+
+* Preprocess into above.
+  * Figure out how we'll set the target for `x <- vcopy(x)`.
+* Figure out the corresponding C code?
+
+Major issue is placing the vcopy in the right spot.  We might need to generate a
+placeholder so that any sub-assign vcopies go therein.  What about vcopies from
+nested if/else statements?  Presumably those need to stay inside the `if/else`.
+What about nested for loops?  These can probably seek to find the outermost
+`for`.  We only every need to copy these once.  In fact, we can just put them at
+the very beginning of the code and it should be fine.  What about interaction
+with the iterator expression?  That's probably fine; we just need to make sure
+that the vector is not external.  We don't care if the iterator modifies it.
+
+Do we convert into a subset
+
+So different for the simple branch because we need the `for_inc` to iterate the
+values.  What does `for_inc` do?  Could it accept a counter variable directly
+from C?  It would be convenient.  The alternative would be to have an explicit
+increment of a pointer to a vector, but that gets kind of wacky b/c we don't do
+that anywhere else (we'd have a scalar aliased as some offset into a vector).
+
+The most natural thing would be to have a `for_inc` function that copies from
+the looped vector into the counter variable.  That is annoyingly inefficient but
+maybe something we accept for now given that the whole loop implementation is
+not going to be particularly efficient.
+
+# Loop in relation to if
+
+Same concept of prelude/epilogue.  Same concept of an empty else branch to
+handle the allocation.  Main difference is going to be that the prelude needs to
+update the `i` variable somehow, and reset all the offsets.
+
+Also, unlike in `if` where we evaluate the condition as a stand-alone statement,
+we probably don't want to do that with a `for` loop (what about a while loop?).
+The "probably don't want" to is in consideration of the possibility of a smarter
+way of generating the sequence (or maybe we start looking into altrep?).
+
+Separately, does it matter if there are break/continues in the loop?  I guess we
+disallowed them for expression re-use?
+
+# Loop implementation
+
+Loop variables can be created in a child frame to the data.
+
+Each loop body will generate a `run` statement, e.g.:
+
+```
+run(...) {
+
+}
+run_loop_1(...) {
+  for(intmax_t i = 0; i < len; ++i) {
+    run(...);
+  }
+}
+run_loop_0(...) {
+  for(intmax_t i = 0; i < len; ++i) {
+    statement_0(...);
+    statement_1(...);
+    run_loop_1(...);
+  }
+}
+```
+
+Probably want two types of loops, loops where we know the start and end as
+constants or other derivable data (`seq_along`), and others where we have an
+unknown vector?  Might not be able to allow the second type, because at that
+point we can't know how large a vector that is assigned to with e.g. `x[i] <- y`
+will get.
+
+```
+for(i in seq_along(x))
+  y[i] <- x[i] + 1
+```
+
+Is the latter:
+
+```
+for(i in x)
+  y[i] <- z[i] + 1
+```
+
+At the allocation stage we need to determine the size of `y`.  It's fine if
+we're just referring to an external symbol (or even a group symbol) as we can
+check the content sizes.  But things like:
+
+```
+for(i in rev(x))
+```
+
+Get messier.  Likely we just allow symbols, or `seq_along`, or constant
+expressions like `a:b` where `a` and `b` are known at allocation time (changing
+them inside loop is fine since):
+
+> The seq in a for loop is evaluated at the start of the loop; changing it
+> subsequently does not affect the loop.
+
+But they can't be computed within the `r2c` code.
+
+# Sizing
+
 Is there a problem with situations like `a + b` where `length(a)` is NA (group
 size) and `length(b)` is either larger than any group, or larger than some
 groups?  Specifically, how do we deal with:
@@ -83,7 +306,6 @@ equal (size group)?
 * 0, 1   vs   NA, 1  Can't be equal unless gma
 
 Basically vecrec with a known element sets a minimum size?
-
 
 # Names in Branches
 
@@ -1323,20 +1545,6 @@ But then there are things like:
 
 
 
-# Loop in relation to if
-
-Same concept of prelude/epilogue.  Same concept of an empty else branch to
-handle the allocation.  Main difference is going to be that the prelude needs to
-update the `i` variable somehow, and reset all the offsets.
-
-Also, unlike in `if` where we evaluate the condition as a stand-alone statement,
-we probably don't want to do that with a `for` loop (what about a while loop?).
-The "probably don't want" to is in consideration of the possibility of a smarter
-way of generating the sequence (or maybe we start looking into altrep?).
-
-Separately, does it matter if there are break/continues in the loop?  I guess we
-disallowed them for expression re-use?
-
 # Interesting Example
 
 Pretty challenging dealing with loops.
@@ -1353,63 +1561,4 @@ hope for is consistent size every iteration including the first.  This should
 handle the case where the loop doesn't even run.
 
 What about variables created in loops that are not taken?
-
-# Loop implementation
-
-Loop variables can be created in a child frame to the data.
-
-Each loop body will generate a `run` statement, e.g.:
-
-```
-run(...) {
-
-}
-run_loop_1(...) {
-  for(intmax_t i = 0; i < len; ++i) {
-    run(...);
-  }
-}
-run_loop_0(...) {
-  for(intmax_t i = 0; i < len; ++i) {
-    statement_0(...);
-    statement_1(...);
-    run_loop_1(...);
-  }
-}
-```
-
-Probably want two types of loops, loops where we know the start and end as
-constants or other derivable data (`seq_along`), and others where we have an
-unknown vector?  Might not be able to allow the second type, because at that
-point we can't know how large a vector that is assigned to with e.g. `x[i] <- y`
-will get.
-
-```
-for(i in seq_along(x))
-  y[i] <- x[i] + 1
-```
-
-Is the latter:
-
-```
-for(i in x)
-  y[i] <- z[i] + 1
-```
-
-At the allocation stage we need to determine the size of `y`.  It's fine if
-we're just referring to an external symbol (or even a group symbol) as we can
-check the content sizes.  But things like:
-
-```
-for(i in rev(x))
-```
-
-Get messier.  Likely we just allow symbols, or `seq_along`, or constant
-expressions like `a:b` where `a` and `b` are known at allocation time (changing
-them inside loop is fine since):
-
-> The seq in a for loop is evaluated at the start of the loop; changing it
-> subsequently does not affect the loop.
-
-But they can't be computed within the `r2c` code.
 
