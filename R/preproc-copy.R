@@ -335,6 +335,7 @@ copy_branchdat_rec <- function(
 ) {
   sym.name <- get_lang_name(x)
   call.assign <- call.modify <- first.assign <- leaf <- FALSE
+  tar.sym <- ""
 
   if (is.symbol(x)) {
     sym.local.cmp <- sym.name %in% data[[B.LOC.CMP]]
@@ -378,7 +379,7 @@ copy_branchdat_rec <- function(
     passive <- sym.name %in% PASSIVE.BRANCH.SYM
     leaf <- !passive # for candidacy purposes, computing calls are leaves
 
-    tar.sym <- if(call.modify) get_target_symbol(x, sym.name)
+    if(call.modify) tar.sym <- get_target_symbol(x, sym.name)
     sub.assign.to <- if(sym.name == "subassign") {
       # If we ever change to allow this, we then need to prevent this happening
       # in a call parameter(i.e. `fun(x[a] <- y)`). This disallows that as well.
@@ -597,9 +598,10 @@ generate_candidate <- function(
     data <- add_actual_callptr(data, index, rec=FALSE, copy=TRUE)
   }
   # sub assignment to an external symbol requires that a copy of the external
-  # symbol be made first.
+  # symbol be made first.  We put that copy at the very beginning of the code
+  # hence 1L for the index value instead of the index value.
   if(sym.name == "subassign" && !tar.sym %in% computed.sym) {
-    data <- add_actual_sub_callptr(data, index, name=tar.sym)
+    data <- add_actual_sub_callptr(data, 1L, name=tar.sym)
   }
   if(in.branch) {
     # Symbols bound in branches will require rec and/or vcopy of their payload
@@ -898,7 +900,7 @@ en_rec <- function(x, clean=FALSE) {
 # to if_true/if_false and we need to inject first.  If it is not zero, then we
 # need to inject just before the index.  So we need to set the correct value
 # for index, which is to change the 0L to 2L.
-
+#
 # options are:
 #
 # * subassign(x, ...)
@@ -973,6 +975,10 @@ inject_rec_and_copy <- function(x, branch.dat) {
       order, c(split(indices.mx, row(indices.mx)), list(na.last=FALSE))
     )
     indices.type <- rep(c(0:1), c(length(promoted), length(sub.assign)))
+    # Re-order to make sure all sub.assign indices are very last b/c they will
+    # be injected at the very beginning of the code (logic a bit convoluted b/c
+    # we decided to do this after the fact).
+    indices.order <- indices.order[order(-indices.type[indices.order])]
 
     # Inject the vcopies in reverse order so that indices are not made invalid
     # by tree modifications ahead of them (which could happen if we have nested
@@ -981,9 +987,9 @@ inject_rec_and_copy <- function(x, branch.dat) {
       i <- all.inj[[ii]]
       i.type <- indices.type[ii]
       if(i.type) {
-        # Sub-assign to an external symbol requires a vcopy of the symbol.
         if(get_lang_name(x[[i[['index']]]]) != "subassign")
           stop("Internal error: expected sub-assign.")
+        # Sub-assign to an external symbol requires a vcopy of the symbol.
         x <- inject_copy_in_brace_at(x, i)
       } else if(identical(i[["index"]], 0L)) {
         # Special case, wrap entire expression in vcopy
