@@ -85,7 +85,7 @@ code_gen_r2c_if <-function(fun, args.reg, args.ctrl, args.flags) {
 code_gen_if <- function(...) {
   stop(
     "Internal Error: attempting to generate code for raw `if/else` ",
-    "instead of decomponsed one."
+    "instead of decomposed one."
   )
 }
 #' If / Else Counterparts
