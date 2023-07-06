@@ -536,9 +536,9 @@ transform_control <- function(x, i=0L) {
       names(x)[2:3] <- "..."  # needed for alloc logic
     } else if (call.sym == "for") {
       # A copy (candidate) of the result of evaluating the exp in for(i in exp)
-      seq.name <- as.name(sprintf("R2C_for_seq_%d", i))
+      seq.name <- as.name(sprintf(".R2C_for_seq_%d", i))
       # The index into `seq.name` that we're at
-      seq.i.name <- as.name(sprintf("R2C_for_seqi_%d", i))
+      seq.i.name <- as.name(sprintf(".R2C_for_seqi_%d", i))
       x <- bquote(
         {
           r2c::for_init(
