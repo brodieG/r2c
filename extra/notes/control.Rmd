@@ -148,6 +148,18 @@ the looped vector into the counter variable.  That is annoyingly inefficient but
 maybe something we accept for now given that the whole loop implementation is
 not going to be particularly efficient.
 
+simple test:
+
+```
+f <- r2cq({
+  for(i in seq_along(x)) {
+    x[i] <- x[i] + i
+  }
+  x
+})
+```
+
+
 # Loop in relation to if
 
 Same concept of prelude/epilogue.  Same concept of an empty else branch to

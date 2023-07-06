@@ -30,6 +30,9 @@
 
 ## Current
 
+* Can we collapse the subassign into regular promotes now that we're
+  rationalizing the 0?
+
 * Do we need `if_true` / `if_false`?  Effectively implicit in position, but
   might simplify finding boundaries (actually, definitely does).
 
