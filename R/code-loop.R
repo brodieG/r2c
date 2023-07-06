@@ -25,6 +25,9 @@ f_for_iter <- '
 static int %s(%s) {
   return (int) lens[di[0]] > 0;
 }'
+f_for_other <- '
+// NO-OP, not output but needed for internal checks
+// static void %s(%s) { /* NOOP */ }'
 
 code_gen_for_init <- function(fun, args.reg, args.ctrl, args.flags) {
   vetr(
@@ -64,7 +67,7 @@ code_gen_for_n <- function(fun, args.reg, args.ctrl, args.flags) {
     args.flags=list() && length(.) == 0L
   )
   name <- FUN.NAMES[fun]
-  defn <- "" # not output
+  defn <- sprintf(f_for_other, name, toString(F.ARGS.BASE))
   code_res(
     defn=defn, name=name, c.call.gen=function(...) "} } else {",
     out.ctrl=CGEN.OUT.CALL
@@ -78,7 +81,7 @@ code_gen_for_0 <- function(fun, args.reg, args.ctrl, args.flags) {
     args.flags=list() && length(.) == 0L
   )
   name <- FUN.NAMES[fun]
-  defn <- "" # not output
+  defn <- sprintf(f_for_other, name, toString(F.ARGS.BASE))
   code_res(
     defn=defn, name=name, c.call.gen=function(...) "}",
     out.ctrl=CGEN.OUT.CALL
@@ -92,7 +95,7 @@ code_gen_r2c_for <-function(fun, args.reg, args.ctrl, args.flags) {
     args.flags=list() && length(.) == 0L
   )
   name <- FUN.NAMES[fun]
-  defn <- "" # not output
+  defn <- sprintf(f_for_other, name, toString(F.ARGS.BASE))
   code_res(defn=defn, name=name, out.ctrl=CGEN.OUT.NONE)
 }
 code_gen_for <- function(...) {

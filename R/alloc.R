@@ -371,7 +371,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
       # on them.  Also, because we make the control flow test a separate
       # expression (e.g `if()` becomes `if_test(); r2c_if()`) the test and
       # execution calls sandwich all the branch calls.
-      if (name %in% BRANCH.TEST.SYM) {
+      if (name %in% BRANCH.START.SYM) {
         # First in branch expression after this one
         branch.lvl <- branch.lvl + 1L
         branch.start.stack <- c(branch.start.stack, i)

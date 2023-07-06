@@ -77,11 +77,13 @@ LOOP.SUB.SYM <- c("for_0", "for_n")
 IF.SUB.SYM <- c("if_true", "if_false")
 CTRL.SYM <- c("if", LOOP.SYM)
 CTRL.SUB.SYM <- c(IF.SUB.SYM, LOOP.SUB.SYM)
-BRANCH.TEST.SYM <- c("if_test")
+BRANCH.START.SYM <- c("if_test", "for_iter")
 BRANCH.EXEC.SYM <- c("r2c_if", "r2c_for")
 REC.FUNS <- c('vcopy', 'rec')
 
-INTERNAL.FUNS <- c(IF.SUB.SYM, BRANCH.TEST.SYM, BRANCH.EXEC.SYM, REC.FUNS)
+INTERNAL.FUNS <- c(
+  IF.SUB.SYM, BRANCH.START.SYM, BRANCH.EXEC.SYM, REC.FUNS, "for_init"
+)
 
 NUM.TYPES <- c('logical', 'integer', 'double')
 
@@ -91,7 +93,11 @@ NUM.TYPES <- c('logical', 'integer', 'double')
 # compute, but if the return value is used, it ensures that both of it's
 # branches either compute or `vcopy` that..
 PASSIVE.SYM <- unique(
-  c(MODIFY.SYM, LOOP.SYM, "if", "{", "uplus", IF.SUB.SYM, BRANCH.EXEC.SYM, 'rec')
+  c(
+    MODIFY.SYM, CTRL.SYM, "{", "uplus",
+    CTRL.SUB.SYM, BRANCH.EXEC.SYM, 'rec',
+    'for_init' # so it allows assignments inside
+  )
 )
 # In branches, some symbols are not considered passive even though they don't
 # strictly compute.
