@@ -599,9 +599,9 @@ generate_candidate <- function(
   }
   # sub assignment to an external symbol requires that a copy of the external
   # symbol be made first.  We put that copy at the very beginning of the code
-  # hence 1L for the index value instead of the index value.
+  # hence 0L for the index value instead of the index value.
   if(sym.name == "subassign" && !tar.sym %in% computed.sym) {
-    data <- add_actual_sub_callptr(data, 1L, name=tar.sym)
+    data <- add_actual_sub_callptr(data, 0L, name=tar.sym)
   }
   if(in.branch) {
     # Symbols bound in branches will require rec and/or vcopy of their payload
@@ -837,8 +837,8 @@ merge_copy_dat <- function(old, a, b, index) {
   a.miss <- setdiff(b.names, a.names)
   b.miss <- setdiff(a.names, b.names)
   # Inject at start (hence 0L; so branch return value unchanged).
-  a.miss.list <- gen_callptrs(a.miss, c(index, 2L, 0L), copy=TRUE, rec=TRUE)
-  b.miss.list <- gen_callptrs(b.miss, c(index, 3L, 0L), copy=TRUE, rec=TRUE)
+  a.miss.list <- gen_callptrs(a.miss, c(index, 2L, 2L, 0L), copy=TRUE, rec=TRUE)
+  b.miss.list <- gen_callptrs(b.miss, c(index, 3L, 2L, 0L), copy=TRUE, rec=TRUE)
 
   # Combine all found free symbols
   prev.bound <- c(old[[B.LOC.CMP]], old[[B.LOC]], old[[B.ALL]])
@@ -887,7 +887,11 @@ en_rec <- function(x, clean=FALSE) {
   if(clean) names(tmp) <- NULL  # recompose_ifelse uses en_rec, hence this option
   tmp
 }
-# Inject vcopy at Specific Point in Braces
+# Inject vcopy at Specific Point, Optionally in Braces
+#
+# Adds the `x <- vcopy(x)` bit.
+#
+# If the provided index ends in zero, it means inject whatever 
 #
 # Adds a brace call if needed.  This is to add the e.g. `x <- vcopy(x)` at the
 # correct point in a call, both when balancing symbols across branches and also
@@ -909,9 +913,8 @@ en_rec <- function(x, clean=FALSE) {
 
 inject_copy_in_brace_at <- function(x, ptr) {
   index <- ptr[['index']]
-  if(!index[length(index)]) par.idx <- c(index[-length(index)], 2L)
-  else par.idx <- index
-  par.call <- x[[par.idx]]
+  if(!index[length(index)]) par.idx <- index[-length(index)]
+  par.call <- if(!length(par.idx)) x else x[[par.idx]]
 
   # Add braces to call if not present
   if(!is.call(par.call) || get_lang_name(par.call) != "{")
@@ -926,30 +929,33 @@ inject_copy_in_brace_at <- function(x, ptr) {
   names(new.call) <- c("", rep("...", length(new.call) - 1L))
 
   # Inject call back
-  x[[par.idx]] <- new.call
+
+  if(length(par.idx)) x[[par.idx]] <- new.call else x <- new.call
 
   # Remove possibly redundant nested braces (only one level since at most we
   # added one level).  This is not an exact reversal so we might end up removing
   # a brace that we did not add.  Need to `rev` because we're going to grow
   # the call by merging in braces.
-  gpar.idx <- par.idx[-length(par.idx)]
-  gpar.call <- if(!length(gpar.idx)) x else x[[gpar.idx]]
 
-  if(get_lang_name(gpar.call) == "{") {
-    gpar.list <- as.list(gpar.call)
-    for(i in rev(seq_along(gpar.list)[-1L])) {
-      if(get_lang_name(gpar.list[[i]]) == "{") {
-        gpar.list <- c(
-          gpar.list[1L:(i - 1L)],
-          as.list(gpar.list[[i]])[-1L],
-          if(i < length(gpar.list)) gpar.list[(i + 1L):length(gpar.list)]
-        )
-    } }
-    # in order to look match-called we need names on the call
-    gpar.call <- as.call(gpar.list)
-    names(gpar.call) <- c("", rep("...", length(gpar.call) - 1L))
-    if(!length(gpar.idx)) x <- gpar.call else x[[gpar.idx]] <- gpar.call
-  }
+  if(length(par.idx)) {
+    gpar.idx <- par.idx[-length(par.idx)]
+    gpar.call <- if(!length(gpar.idx)) x else x[[gpar.idx]]
+
+    if(get_lang_name(gpar.call) == "{") {
+      gpar.list <- as.list(gpar.call)
+      for(i in rev(seq_along(gpar.list)[-1L])) {
+        if(get_lang_name(gpar.list[[i]]) == "{") {
+          gpar.list <- c(
+            gpar.list[1L:(i - 1L)],
+            as.list(gpar.list[[i]])[-1L],
+            if(i < length(gpar.list)) gpar.list[(i + 1L):length(gpar.list)]
+          )
+      } }
+      # in order to look match-called we need names on the call
+      gpar.call <- as.call(gpar.list)
+      names(gpar.call) <- c("", rep("...", length(gpar.call) - 1L))
+      if(!length(gpar.idx)) x <- gpar.call else x[[gpar.idx]] <- gpar.call
+  } }
   x
 }
 
@@ -969,16 +975,12 @@ inject_rec_and_copy <- function(x, branch.dat) {
   if(length(all.inj)) {
     # Order the indices in reverse order of appearance
     indices <- lapply(all.inj, "[[", "index")
-    indices.eq <- lapply(indices, `length<-`, max(lengths(indices)))
+    indices.eq <- lapply(indices, `length<-`, max(c(lengths(indices), 1L)))
     indices.mx <- do.call(cbind, indices.eq)
     indices.order <- do.call(
       order, c(split(indices.mx, row(indices.mx)), list(na.last=FALSE))
     )
     indices.type <- rep(c(0:1), c(length(promoted), length(sub.assign)))
-    # Re-order to make sure all sub.assign indices are very last b/c they will
-    # be injected at the very beginning of the code (logic a bit convoluted b/c
-    # we decided to do this after the fact).
-    indices.order <- indices.order[order(-indices.type[indices.order])]
 
     # Inject the vcopies in reverse order so that indices are not made invalid
     # by tree modifications ahead of them (which could happen if we have nested
@@ -986,28 +988,20 @@ inject_rec_and_copy <- function(x, branch.dat) {
     for(ii in rev(seq_along(all.inj)[indices.order])) {
       i <- all.inj[[ii]]
       i.type <- indices.type[ii]
-      if(i.type) {
-        if(get_lang_name(x[[i[['index']]]]) != "subassign")
-          stop("Internal error: expected sub-assign.")
-        # Sub-assign to an external symbol requires a vcopy of the symbol.
-        x <- inject_copy_in_brace_at(x, i)
-      } else if(identical(i[["index"]], 0L)) {
-        # Special case, wrap entire expression in vcopy
-        if(i[['copy']]) x <- en_vcopy(x)
-      } else if(i[["index"]][length(i[["index"]])]) {
-        # Trailing index not zero, so wrap a symbol/call in vcopy if needed
-        if(i[['copy']]) x[[i[["index"]]]] <- en_vcopy(x[[i[["index"]]]])
-      } else {
-        # These always require a copy, even if the alternate branch doesn't.
-        # Insert an e.g. `x <- vcopy(x)` when trailing index is zero
+      if(!i[["index"]][length(i[["index"]])]) {
+        # These require addition of e.g. `x <- vcopy(x)`
         x <- inject_copy_in_brace_at(x, i)
         # update index to point to new `vcopy` for potential `rec` next
         # if_true/false({x <- r2c:::vcopy(x)}).  This assumes that
         # inject_copy_in_brace_at did not collapse the brace it added (it
-          # shouldn't in this branch).
+        # shouldn't in this branch).
         par.idx <- i[["index"]][-length(i[["index"]])]
-        i[["index"]] <- c(par.idx, 2L, 2L, 3L)
+        i[["index"]] <- c(par.idx, 2L)
+      } else {
+        # Trailing index not zero, so wrap a symbol/call in vcopy if needed
+        if(i[['copy']]) x[[i[["index"]]]] <- en_vcopy(x[[i[["index"]]]])
       }
+      # Add reconcile if needed
       if(i[['rec']]) {
         if(identical(i[["index"]], 0L)) x <- en_rec(x)
         else x[[i[["index"]]]] <- en_rec(x[[i[["index"]]]])
