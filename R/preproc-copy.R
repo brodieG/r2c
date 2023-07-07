@@ -599,9 +599,9 @@ generate_candidate <- function(
   }
   # sub assignment to an external symbol requires that a copy of the external
   # symbol be made first.  We put that copy at the very beginning of the code
-  # hence 0L for the index value instead of the index value.
+  # hence -1L for the index value instead of the index value.
   if(sym.name == "subassign" && !tar.sym %in% computed.sym) {
-    data <- add_actual_sub_callptr(data, 0L, name=tar.sym)
+    data <- add_actual_sub_callptr(data, -1L, name=tar.sym)
   }
   if(in.branch) {
     # Symbols bound in branches will require rec and/or vcopy of their payload
@@ -687,35 +687,29 @@ generate_candidate <- function(
 #
 # `callptr` is used both to create candidates and actual direct promotions, but
 # this is not ideal.  In particular, once a candidate is promoted, or a sub-call
-# is direct-promoted, the meaning of the `name` field is lost as the only thing
-# that matters is the location of the sub-call that needs to be `vcopy`ed, not
-# the symbol that caused the promotion (and in direct-promotion there is not a
-# causal symbol anyway).
+# is direct-promoted, the meaning of the `name` field is not the same.  Prior to
+# promotion it is the symbol that triggers the promotion, but once the promotion
+# happens only the location of the sub-call matters.  Since designing this
+# we've also hijacked the name field to use for the cases where we want to
+# inject an e.g. `x <- vcopy(x)` for branch balancing or subassigns.
 #
 # @param name scalar character the symbol that triggers promotion of a
 #   candidate, which when a symbol is up for promotion is typically not that
 #   symbols name (e.g. in `x <- y; x` the trigger is `x`, but the symbol that
-#   will be `vcopy`ed is `y`), except that for `add_actual_sub_callptr` it is
-#   the name of the symbol that needs to be copied (this is a bit shoe-horned -
-#   maybe we don't need this shoe-horning since we can recover that symbol
-#   from the call itself?).
+#   will be `vcopy`ed is `y`), except that for cases where we need to add
+#   e.g. `x <- vcopy(x)` is the symbol corresponding to `x`.  The latter type of
+#   pointers are distinguished by virtue of a trailing zero in `index`.
 # @param index integer vector that can be used to pull up a sub-call within a
 #   call tree e.g. with `x[[index]]` where `index` might be `c(2,3,1)`.  This
 #   gives the location of the expression to `vcopy`/`rec`.  If the index ends in
-#   0L then a `sym <- vcopy(sym)` (assuming `x` is the symbol `sym`) is added at
-#   the beginning of the branch the index points to; this represents an external
-#   symbol missing from one branch but used in the other.  For the special case
-#   where index is 0 length, we record 0L as an indication that the entire call
-#   needs to be `vcopy`/`rec`'ed.
+#   0L then a `sym <- vcopy(sym)` is prepended to the expression pointed at
+#   by `index`, possibly wrapping the expression in braces first to allow this.
 # @param rec whether this is a value that will require reconciliation across
 #   branches.
 # @param copy whether this is a value that need to be `vcopy`ed (see
 #   copy_branchdat`).
 
 callptr <- function(name, index, rec=TRUE, copy=FALSE) {
-  # If the entire expression needs to be wrapped, the index is zero length.  We
-  # deal with that special case by setting an index of 0L
-  if(!length(index)) index <- 0L
   list(name=name, index=index, rec=rec, copy=copy)
 }
 add_actual_callptr  <- function(data, index, rec=TRUE, copy=TRUE) {
@@ -732,21 +726,14 @@ add_candidate_callptr <- function(data, index, triggers, rec=TRUE, copy=TRUE) {
 # We're shoe-horning existing structure to add support for sub-assignment.
 #
 # This is used for the case where we need to add an `x <- vcopy(x)` prior to
-# subassignment.  Dirtyb/c we implicitily encode that there is a created
-# assignment via the passive flag, and rely on the logic in the assignments
-# section in `copy_branchdat_rec` right after `generate_candidate` to record the
-# effect on the bindings.
-#
-# All the worse because the assignment that is affecting the bindings is not
-# actually created until much later during the inejection phase, so if you look
-# at the code while it's being processed it's less than obvious what's going on.
+# subassignment.
 
 add_actual_sub_callptr <- function(data, index, name) {
   new.act.sub <- callptr(name, index, copy=TRUE, rec=FALSE)
   data[[ACT.SUB]] <- c(data[[ACT.SUB]], list(new.act.sub))
   # Return value of sub assignment should not be used anywhere...
-  # But we mark as non-passive so the assignment code will record the
-  # assignment that will be added once the injection happens.
+  # Marking non-passive is legacy of earlier implementation but should not
+  # matter.
   data[['passive']] <- FALSE
   data
 }
@@ -759,8 +746,8 @@ gen_callptrs <- function(names, index, rec, copy)
 # general, we remove candidates based on the position in the call tree they
 # promote, so it is possible that one promotion will clear many candidates,
 # including some bound to different trigger symbols.  The exception is for
-# balancing candidates (those with indices ending in 0 that are not just 0, see
-# `merge_copy_dat`), which are only removed if they also match on symbol.
+# balancing candidates (those with indices ending in -1, see `merge_copy_dat`),
+# which are only removed if they also match on symbol.
 #
 # @param cand list of candidate pointers
 # @param ii which of those in `cand` were promoted
@@ -771,7 +758,7 @@ clear_candidates <- function(cand, ii) {
   # use hashed matching to match candidate pointers
   for(i in ii) {
     ci <- cand[[i]]
-    if(ci[['index']][length(ci[['index']])]) {
+    if(ci[['index']][length(ci[['index']])] > 0L) {
       # Regular promotion don't care about names
       to.clear[cand.unm %in% cand.unm[i]] <- TRUE
     } else {
@@ -818,10 +805,10 @@ index_greater <- function(a, b) {
 # @param a list should be `data` from `copy_branchdat_rec` (see details).
 # @param b like `a`.
 # @param old like `a`.
-# @param index integer vector the index into the call returning the expression
+# @param idx integer vector the index into the call returning the expression
 #   setting the current if/else context (see `callptr`).
 
-merge_copy_dat <- function(old, a, b, index) {
+merge_copy_dat <- function(old, a, b, idx) {
   # Removed shared history from both branches.  This is for the case where a
   # pre-existing candidate is cleared in one branch, but not the other.  If we
   # didn't remove shared history, the old candidate would be seen as new.
@@ -836,9 +823,9 @@ merge_copy_dat <- function(old, a, b, index) {
   b.names <- c(names(b.cand), b[[B.LOC.CMP]], b[[B.LOC]])
   a.miss <- setdiff(b.names, a.names)
   b.miss <- setdiff(a.names, b.names)
-  # Inject at start (hence 0L; so branch return value unchanged).
-  a.miss.list <- gen_callptrs(a.miss, c(index, 2L, 2L, 0L), copy=TRUE, rec=TRUE)
-  b.miss.list <- gen_callptrs(b.miss, c(index, 3L, 2L, 0L), copy=TRUE, rec=TRUE)
+  # Inject at start (hence -1L; so branch return value unchanged).
+  a.miss.list <- gen_callptrs(a.miss, c(idx, 2L, 2L, -1L), copy=TRUE, rec=TRUE)
+  b.miss.list <- gen_callptrs(b.miss, c(idx, 3L, 2L, -1L), copy=TRUE, rec=TRUE)
 
   # Combine all found free symbols
   prev.bound <- c(old[[B.LOC.CMP]], old[[B.LOC]], old[[B.ALL]])
@@ -887,33 +874,22 @@ en_rec <- function(x, clean=FALSE) {
   if(clean) names(tmp) <- NULL  # recompose_ifelse uses en_rec, hence this option
   tmp
 }
-# Inject vcopy at Specific Point, Optionally in Braces
+# Inject Self-vcopy
 #
-# Adds the `x <- vcopy(x)` bit.
+# Injects a self vcopy (e.g. `x <- vcopy(x)`) just prior to the position pointed
+# to by `head(ptr[['index']], -1L)`.  The trailing index value is a marker that
+# designates the callptr object as one that requires a self-vcopy instead of
+# just a regular vcopy.  If the parent call is not already a braces call, the
+# target insertion point is wrapped in braces before insertion.
 #
-# If the provided index ends in zero, it means inject whatever 
-#
-# Adds a brace call if needed.  This is to add the e.g. `x <- vcopy(x)` at the
-# correct point in a call, both when balancing symbols across branches and also
-# dealing with e.g. `[<-` on an external symbol.
-#
-# We always add and then collapse unnecessary braces to handle both cases
-# equally.
-#
-# If the trailing index is zero, then the index minus the trailing is pointing
-# to if_true/if_false and we need to inject first.  If it is not zero, then we
-# need to inject just before the index.  So we need to set the correct value
-# for index, which is to change the 0L to 2L.
-#
-# options are:
-#
-# * subassign(x, ...)
-# * if_true(numeric(0))
-# * if_true({...})
+# @param x a call
+# @param ptr a `callptr` object
 
 inject_copy_in_brace_at <- function(x, ptr) {
   index <- ptr[['index']]
-  if(!index[length(index)]) par.idx <- index[-length(index)]
+  if(index[length(index)] >= 0L)
+    stop("Internal Error: expected trailing negative index.")
+  par.idx <- index[-length(index)]
   par.call <- if(!length(par.idx)) x else x[[par.idx]]
 
   # Add braces to call if not present
@@ -929,14 +905,12 @@ inject_copy_in_brace_at <- function(x, ptr) {
   names(new.call) <- c("", rep("...", length(new.call) - 1L))
 
   # Inject call back
-
   if(length(par.idx)) x[[par.idx]] <- new.call else x <- new.call
 
   # Remove possibly redundant nested braces (only one level since at most we
   # added one level).  This is not an exact reversal so we might end up removing
   # a brace that we did not add.  Need to `rev` because we're going to grow
   # the call by merging in braces.
-
   if(length(par.idx)) {
     gpar.idx <- par.idx[-length(par.idx)]
     gpar.call <- if(!length(gpar.idx)) x else x[[gpar.idx]]
@@ -956,14 +930,20 @@ inject_copy_in_brace_at <- function(x, ptr) {
       names(gpar.call) <- c("", rep("...", length(gpar.call) - 1L))
       if(!length(gpar.idx)) x <- gpar.call else x[[gpar.idx]] <- gpar.call
   } }
-  x
+  # Update index to point to the vcopy part of the just injected call.
+  list(x=x, index=c(par.idx, 2L, 3L))
 }
 
 # Inject vcopy Calls
 #
+# We either wrap a pointed-to call win `vcopy`/`rec`, or we inject a self copy
+# (e.g. `x <- vcopy(x)`).  The latter are designated by a negative trailing
+# index (e.g. `c(1L, 2L, 2L, -1L)`) in the `callptr` object.  The trailing index
+# is a marker without any meaning in the context of the call tree.
+#
 # @param x call to modify.
-# @promoted list of `callptr` objects pointing to sub-calls/symbols that need to
-#   be wrapped in `vcopy` / `rec`.
+# @branch.dat data object from `copy_brandat` used to identify the locations
+#   where we need to inject `vcopy` / `rec`.
 
 inject_rec_and_copy <- function(x, branch.dat) {
   promoted <- unique(branch.dat[[ACT]])
@@ -977,9 +957,8 @@ inject_rec_and_copy <- function(x, branch.dat) {
     indices <- lapply(all.inj, "[[", "index")
     indices.eq <- lapply(indices, `length<-`, max(c(lengths(indices), 1L)))
     indices.mx <- do.call(cbind, indices.eq)
-    indices.order <- do.call(
-      order, c(split(indices.mx, row(indices.mx)), list(na.last=FALSE))
-    )
+    indices.mx[is.na(indices.mx)] <- 0L
+    indices.order <- do.call(order, split(indices.mx, row(indices.mx)))
     indices.type <- rep(c(0:1), c(length(promoted), length(sub.assign)))
 
     # Inject the vcopies in reverse order so that indices are not made invalid
@@ -988,22 +967,23 @@ inject_rec_and_copy <- function(x, branch.dat) {
     for(ii in rev(seq_along(all.inj)[indices.order])) {
       i <- all.inj[[ii]]
       i.type <- indices.type[ii]
-      if(!i[["index"]][length(i[["index"]])]) {
-        # These require addition of e.g. `x <- vcopy(x)`
-        x <- inject_copy_in_brace_at(x, i)
-        # update index to point to new `vcopy` for potential `rec` next
-        # if_true/false({x <- r2c:::vcopy(x)}).  This assumes that
-        # inject_copy_in_brace_at did not collapse the brace it added (it
-        # shouldn't in this branch).
-        par.idx <- i[["index"]][-length(i[["index"]])]
-        i[["index"]] <- c(par.idx, 2L)
-      } else {
-        # Trailing index not zero, so wrap a symbol/call in vcopy if needed
+      if(!length(i[["index"]])) {
+        # Empty index means full expression.  Ideally `x[[integer()]] <- ` would
+        # work and then this would just fold into next branch.
+        x <- en_vcopy(x)
+      } else if(i[["index"]][length(i[["index"]])] > 0L) {
+        # Trail index positive, so wrap a symbol/call in vcopy if needed
         if(i[['copy']]) x[[i[["index"]]]] <- en_vcopy(x[[i[["index"]]]])
-      }
+      } else if(i[["index"]][length(i[["index"]])] < 0L) {
+        # Trail index negative; these require addition of e.g. `x <- vcopy(x)`
+        tmp <- inject_copy_in_brace_at(x, i)
+        x <- tmp[['x']]
+        i[['index']] <- tmp[['index']]
+      } else stop("Internal Error: invalid injection index.")
+
       # Add reconcile if needed
       if(i[['rec']]) {
-        if(identical(i[["index"]], 0L)) x <- en_rec(x)
+        if(!length(i[["index"]])) x <- en_rec(x)
         else x[[i[["index"]]]] <- en_rec(x[[i[["index"]]]])
       }
     }
