@@ -26,7 +26,6 @@
 
 CAND <- c('copy', 'cand')
 ACT <- c('copy', 'act')
-ACT.SUB <- c('copy', 'act.sub')
 # Local binding
 B.LOC <- c('bind', 'loc')
 # Local and computed
@@ -309,11 +308,9 @@ copy_branchdat <- function(x) {
 # @param data list with named elements:
 #   * "bind": a list containing branch-local bindings, branch-local computed
 #     bindings, and global bindings.
-#   * "copy": a list with elements "cand", "act", and "act.sub". Each is a list
+#   * "copy": a list with elements "cand", and "act". Each is a list
 #     of `callptr` generated objects used to track calls that need to be
-#     reconciled and/or vcopied (potentially for "cand", definitively for "act"
-#     and "act.sub").  "act.sub" tracks copies required by e.g. `x[a] <- y`
-#     where `x` is an external symbol.
+#     reconciled and/or vcopied (potentially for "cand", definitively).
 #   * "passive": whether `x` is passive (i.e. non-computing); this is part of
 #     what the caller uses to determine whether a reconciliation needs to be
 #     vcopied.
@@ -329,7 +326,7 @@ copy_branchdat_rec <- function(
   prev.call="",
   data=list(
     bind=list(loc=character(), all=character(), loc.compute=character()),
-    copy=list(cand=list(), act=list(), act.sub=list()),
+    copy=list(cand=list(), act=list()),
     passive=TRUE, assigned.to=character(), leaf.name="", free=character()
   )
 ) {
@@ -483,14 +480,10 @@ copy_branchdat_rec <- function(
       }
     }
   } else if (call.modify) {
-    # Call modify adds a top level computing binding if it doesn't exist already
-    # (this is a NULL op if it does).  One issue is that the generated binding
-    # is not visible in the call until after the injection happens, so the
-    # bindings record will appear at odds with the call.  Also, earlier
-    # processed calls won't know that this binding ended up existing as a
-    # top-level computed binding, although right now I don't think there is a
-    # case where that makes a difference (and if it did it should just result in
-    # innocuous over-copying).
+    # Subassign adds a top level computing binding if it doesn't exist already
+    # via `generate_candidate`.  If it exists already then it's already in
+    # `data[[B.ALL]]`.  Note the binding might be implicit in the promoted
+    # bindings list as opposed to explicit in the unmodified call tree.
     data[[B.ALL]] <- union(data[[B.ALL]], tar.sym)
     if(!in.branch) { # recall binding added top-level as e.g. `x <- vcopy(x)`
       data[[B.LOC]] <- union(data[[B.LOC]], tar.sym)
@@ -609,11 +602,13 @@ generate_candidate <- function(
   ) ) {
     data <- add_actual_callptr(data, index, rec=FALSE, copy=TRUE)
   }
-  # sub assignment to an external symbol requires that a copy of the external
-  # symbol be made first.  We put that copy at the very beginning of the code
-  # hence -1L for the index value instead of the index value.
+  # Subassignment to an external symbol requires a symbol be made internal via a
+  # self-copy.  We put that copy at the very beginning of the code hence -1L for
+  # the index value instead of the index value.  One weirdness is that prior
+  # calls wouldn't have known about this, but as of this writing it shouldn't
+  # change behavior since everything else in branches still needs to copy.
   if(sym.name == "subassign" && !tar.sym %in% computed.sym) {
-    data <- add_actual_sub_callptr(data, -1L, name=tar.sym)
+    data <- add_actual_callptr(data, -1L, name=tar.sym, rec=FALSE, copy=TRUE)
   }
   if(in.branch) {
     # Symbols bound in branches will require rec and/or vcopy of their payload
@@ -724,8 +719,10 @@ generate_candidate <- function(
 callptr <- function(name, index, rec=TRUE, copy=FALSE) {
   list(name=name, index=index, rec=rec, copy=copy)
 }
-add_actual_callptr  <- function(data, index, rec=TRUE, copy=TRUE) {
-  new.act <- callptr(NA_character_, index, copy=copy, rec=rec)
+add_actual_callptr  <- function(
+  data, index, rec=TRUE, copy=TRUE, name=NA_character_
+) {
+  new.act <- callptr(name, index, copy=copy, rec=rec)
   data[[ACT]] <- c(data[[ACT]], list(new.act))
   data[['passive']] <- !copy
   data
@@ -733,20 +730,6 @@ add_actual_callptr  <- function(data, index, rec=TRUE, copy=TRUE) {
 add_candidate_callptr <- function(data, index, triggers, rec=TRUE, copy=TRUE) {
   new.cand <- gen_callptrs(triggers, index, copy=copy, rec=rec)
   data[[CAND]] <- c(data[[CAND]], new.cand)
-  data
-}
-# We're shoe-horning existing structure to add support for sub-assignment.
-#
-# This is used for the case where we need to add an `x <- vcopy(x)` prior to
-# subassignment.
-
-add_actual_sub_callptr <- function(data, index, name) {
-  new.act.sub <- callptr(name, index, copy=TRUE, rec=FALSE)
-  data[[ACT.SUB]] <- c(data[[ACT.SUB]], list(new.act.sub))
-  # Return value of sub assignment should not be used anywhere...
-  # Marking non-passive is legacy of earlier implementation but should not
-  # matter.
-  data[['passive']] <- FALSE
   data
 }
 gen_callptrs <- function(names, index, rec, copy)
@@ -854,13 +837,11 @@ merge_copy_dat <- function(old, a, b, idx) {
 
   # Merge all promotions. Promotions irrevocable, so union is sufficient.
   copy.act <- unique(c(a[[ACT]], b[[ACT]], old[[ACT]]))
-  copy.act.sub <- unique(c(a[[ACT.SUB]], b[[ACT.SUB]], old[[ACT.SUB]]))
 
   # regen names lost in unique/union
   names(copy.cand) <- vapply(copy.cand, "[[", "", 1L)
   names(copy.act) <- vapply(copy.act, "[[", "", 1L)
-  names(copy.act.sub) <- vapply(copy.act.sub, "[[", "", 1L)
-  old[['copy']] <- list(cand=copy.cand, act=copy.act, act.sub=copy.act.sub)
+  old[['copy']] <- list(cand=copy.cand, act=copy.act)
 
   # Any symbols that were assigned to in the branches are no longer local
   # in the parent expression.  Because usage of the symbols will promote any
@@ -959,26 +940,24 @@ inject_copy_in_brace_at <- function(x, ptr) {
 
 inject_rec_and_copy <- function(x, branch.dat) {
   promoted <- unique(branch.dat[[ACT]])
-  sub.assign <- unique(branch.dat[[ACT.SUB]])
-  all.inj <- c(promoted, sub.assign)
-  if(anyDuplicated(all.inj))  # make sure no double promote for a sub-assign
-    stop("Internal Error: duplicate injections.")
 
-  if(length(all.inj)) {
+  if(length(promoted)) {
     # Order the indices in reverse order of appearance
-    indices <- lapply(all.inj, "[[", "index")
+    indices <- lapply(promoted, "[[", "index")
+    # Extend shorter indices to length of longest
     indices.eq <- lapply(indices, `length<-`, max(c(lengths(indices), 1L)))
     indices.mx <- do.call(cbind, indices.eq)
+    if(isTRUE(any(indices.mx == 0L)))
+      stop("Internal Error: 0 callptr index vals disallowed.")
+    # Fill extensions with 0 so that self-copies with -1 index values sort first
     indices.mx[is.na(indices.mx)] <- 0L
     indices.order <- do.call(order, split(indices.mx, row(indices.mx)))
-    indices.type <- rep(c(0:1), c(length(promoted), length(sub.assign)))
 
     # Inject the vcopies in reverse order so that indices are not made invalid
     # by tree modifications ahead of them (which could happen if we have nested
     # vcopies such as `vcopy(y <- vcopy(x))` at end of branch).
-    for(ii in rev(seq_along(all.inj)[indices.order])) {
-      i <- all.inj[[ii]]
-      i.type <- indices.type[ii]
+    for(ii in rev(seq_along(promoted)[indices.order])) {
+      i <- promoted[[ii]]
       if(!length(i[["index"]])) {
         # Empty index means full expression.  Ideally `x[[integer()]] <- ` would
         # work and then this would just fold into next branch.
