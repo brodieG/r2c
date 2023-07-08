@@ -903,31 +903,34 @@ inject_copy_in_brace_at <- function(x, ptr) {
   # Inject call back
   if(length(par.idx)) x[[par.idx]] <- new.call else x <- new.call
 
-  # Remove possibly redundant nested braces (only one level since at most we
-  # added one level).  This is not an exact reversal so we might end up removing
-  # a brace that we did not add.  Need to `rev` because we're going to grow
-  # the call by merging in braces.
+  # Remove possibly redundant nested braces.
+  brace.collapse <- FALSE
   if(length(par.idx)) {
     gpar.idx <- par.idx[-length(par.idx)]
     gpar.call <- if(!length(gpar.idx)) x else x[[gpar.idx]]
 
     if(get_lang_name(gpar.call) == "{") {
+      brace.collapse <- TRUE
+      merge.point <- par.idx[length(par.idx)]
+      if(merge.point < 2L) {
+        # if gpar is a "{", then parent must be at least 2nd element
+        stop("Internal Error: unexpected index structure.")
+      }
       gpar.list <- as.list(gpar.call)
-      for(i in rev(seq_along(gpar.list)[-1L])) {
-        if(get_lang_name(gpar.list[[i]]) == "{") {
-          gpar.list <- c(
-            gpar.list[1L:(i - 1L)],
-            as.list(gpar.list[[i]])[-1L],
-            if(i < length(gpar.list)) gpar.list[(i + 1L):length(gpar.list)]
-          )
-      } }
+      gpar.list <- c(
+        gpar.list[1L:(merge.point - 1L)],
+        as.list(gpar.list[[merge.point]])[-1L],
+        if(merge.point < length(gpar.list))
+          gpar.list[(merge.point + 1L):length(gpar.list)]
+      )
       # in order to look match-called we need names on the call
       gpar.call <- as.call(gpar.list)
       names(gpar.call) <- c("", rep("...", length(gpar.call) - 1L))
       if(!length(gpar.idx)) x <- gpar.call else x[[gpar.idx]] <- gpar.call
-  } }
+    }
+  }
   # Update index to point to the vcopy part of the just injected call.
-  list(x=x, index=c(par.idx, 2L, 3L))
+  list(x=x, index=c(par.idx, if(!brace.collapse) 2L, 3L))
 }
 
 # Inject vcopy/rec Calls
