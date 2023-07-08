@@ -31,6 +31,21 @@ unitizer_sect('subassign', {
   })
   r2c:::pp_clean(call8a1)
 
+  # There should be reconcile and copy for both self copies, and both results
+  # need reconcile, and TRUE branch result also must copy again (we can't
+  # reconcile the same memory twice).
+  call8a2 <- quote({
+    z <- if(a) {
+      s <- mean(y)
+      x[a] <- s
+      x
+    } else {
+      y <- x + 1
+    }
+    x + z
+  })
+  r2c:::pp_clean(call8a2)
+
   # `x` is internal, but assigning from self requires copy
   call8b <- quote({
     x <- x + 1
@@ -74,7 +89,8 @@ unitizer_sect('in branch', {
   })
   r2c:::pp_clean(call9b2)
 
-  # Should trigger prior branch (but no longer if we ever remove dead code)
+  # Copies in first branch should trigger, but if we were to remove dead code
+  # then they wouldn't since `x` does not affect final return value.
   call9c <- quote({
     if(b) x <- y + 1 else x <- y
     if(c) x[a] <- z else x[a] <- y

@@ -572,9 +572,8 @@ generate_candidate <- function(
     call.modify <- TRUE
   } else tar.sym <- ""
 
-  # sub.assignment from same symbol must always be vcopy'ed, because otherwise
-  # we're overwriting what we're reading from.  Since their output
-  # is not allowed to be used anywhere it does not need to be reconciled.
+  # Subassignment from same symbol (e.g. `x[s] <- x`, note `x` twice) must
+  # be vcopy'ed to avoid read/write conflicts.  No reconciliation needed.
   if(
     nzchar(sub.assign.to) &&
     (
@@ -584,10 +583,16 @@ generate_candidate <- function(
     data <- add_actual_callptr(data, index, rec=FALSE, copy=TRUE)
   }
   # Subassignment to an external symbol requires self-copy to make it internal.
+  # This will be branch-balanced in `merge_copy_dat`.
   if(sym.name == "subassign" && !tar.sym %in% computed.sym) {
-    data <- add_actual_callptr(
-      data, c(index, -1L), name=tar.sym, rec=FALSE, copy=TRUE
-    )
+    # Self-copy always requires a copy (obviously)
+    s.cpy.idx <- c(index, -1L)
+    data <-
+      add_actual_callptr(data, s.cpy.idx, name=tar.sym, rec=FALSE, copy=TRUE)
+    # Self-copy could require reconciliation, but not a given.
+    if(in.branch)
+      data <-
+        add_candidate_callptr(data, s.cpy.idx, copy=FALSE, triggers=tar.sym)
   }
   if(in.branch) {
     # Symbols bound in branches will require rec and/or vcopy of their payload
@@ -883,54 +888,66 @@ en_rec <- function(x, clean=FALSE) {
 
 inject_copy_in_brace_at <- function(x, ptr) {
   index <- ptr[['index']]
-  if(index[length(index)] >= 0L)
-    stop("Internal Error: expected trailing negative index.")
+  if(index[length(index)] != -1L)
+    stop("Internal Error: expected -1L trailing index.") # see callptr
   par.idx <- index[-length(index)]
   par.call <- if(!length(par.idx)) x else x[[par.idx]]
 
-  # Add braces to call if not present
-  if(!is.call(par.call) || get_lang_name(par.call) != "{")
-    par.call <- call("{", par.call)
+  if(ptr[['copy']]) {
+    # Add braces to call if not present
+    if(!is.call(par.call) || get_lang_name(par.call) != "{")
+      par.call <- call("{", par.call)
 
-  # generate e.g. `x <- vcopy(x)`
-  sym.miss <- as.symbol(ptr[["name"]])
-  sym.vcopy <- call("<-", sym.miss, en_vcopy(sym.miss))
-  call.list <- as.list(par.call)
-  new.call <- as.call(c(call.list[1L], list(sym.vcopy), call.list[-1L]))
-  # in order to look match-called we need names on the call
-  names(new.call) <- c("", rep("...", length(new.call) - 1L))
+    # generate e.g. `x <- vcopy(x)`
+    sym.miss <- as.symbol(ptr[["name"]])
+    sym.vcopy <- call("<-", sym.miss, en_vcopy(sym.miss))
+    call.list <- as.list(par.call)
+    new.call <- as.call(c(call.list[1L], list(sym.vcopy), call.list[-1L]))
+    # in order to look match-called we need names on the call
+    names(new.call) <- c("", rep("...", length(new.call) - 1L))
 
-  # Inject call back
-  if(length(par.idx)) x[[par.idx]] <- new.call else x <- new.call
+    # Inject call back
+    if(length(par.idx)) x[[par.idx]] <- new.call else x <- new.call
 
-  # Remove possibly redundant nested braces.
-  brace.collapse <- FALSE
-  if(length(par.idx)) {
-    gpar.idx <- par.idx[-length(par.idx)]
-    gpar.call <- if(!length(gpar.idx)) x else x[[gpar.idx]]
+    # Remove possibly redundant nested braces.
+    brace.collapse <- FALSE
+    if(length(par.idx)) {
+      gpar.idx <- par.idx[-length(par.idx)]
+      gpar.call <- if(!length(gpar.idx)) x else x[[gpar.idx]]
 
-    if(get_lang_name(gpar.call) == "{") {
-      brace.collapse <- TRUE
-      merge.point <- par.idx[length(par.idx)]
-      if(merge.point < 2L) {
-        # if gpar is a "{", then parent must be at least 2nd element
-        stop("Internal Error: unexpected index structure.")
+      if(get_lang_name(gpar.call) == "{") {
+        brace.collapse <- TRUE
+        merge.point <- par.idx[length(par.idx)]
+        if(merge.point < 2L) {
+          # if gpar is a "{", then parent must be at least 2nd element
+          stop("Internal Error: unexpected index structure.")
+        }
+        gpar.list <- as.list(gpar.call)
+        gpar.list <- c(
+          gpar.list[1L:(merge.point - 1L)],
+          as.list(gpar.list[[merge.point]])[-1L],
+          if(merge.point < length(gpar.list))
+            gpar.list[(merge.point + 1L):length(gpar.list)]
+        )
+        # in order to look match-called we need names on the call
+        gpar.call <- as.call(gpar.list)
+        names(gpar.call) <- c("", rep("...", length(gpar.call) - 1L))
+        if(!length(gpar.idx)) x <- gpar.call else x[[gpar.idx]] <- gpar.call
       }
-      gpar.list <- as.list(gpar.call)
-      gpar.list <- c(
-        gpar.list[1L:(merge.point - 1L)],
-        as.list(gpar.list[[merge.point]])[-1L],
-        if(merge.point < length(gpar.list))
-          gpar.list[(merge.point + 1L):length(gpar.list)]
-      )
-      # in order to look match-called we need names on the call
-      gpar.call <- as.call(gpar.list)
-      names(gpar.call) <- c("", rep("...", length(gpar.call) - 1L))
-      if(!length(gpar.idx)) x <- gpar.call else x[[gpar.idx]] <- gpar.call
     }
   }
-  # Update index to point to the vcopy part of the just injected call.
-  list(x=x, index=c(par.idx, if(!brace.collapse) 2L, 3L))
+  if(ptr[['rec']]) {
+    # This relies on a self copy having been injected first.  Check out how we
+    # order `indices.mx` in `inject_rec_and_copy`.
+    if(is.call(par.call) && get_lang_name(par.call) == "{") {
+      # Brace was not collapsed
+      x[[c(par.idx, 2L, 3L)]] <- en_rec(x[[c(par.idx, 2L, 3L)]])
+    } else {
+      # Brace was collapsed
+      x[[c(par.idx, 3L)]] <- en_rec(x[[c(par.idx, 3L)]])
+    }
+  }
+  x
 }
 
 # Inject vcopy/rec Calls
@@ -956,6 +973,11 @@ inject_rec_and_copy <- function(x, branch.dat) {
       stop("Internal Error: 0 callptr index vals disallowed.")
     # Fill extensions with 0 so that self-copies with -1 index values sort first
     indices.mx[is.na(indices.mx)] <- 0L
+    # Break tie with reconcile value so that reconcile sorts first (once
+    # reversed, the reconciles will be applied second; this is required for the
+    # self copies which must be inserted first before we can `en_rec` them).
+    rec <- vapply(promoted, "[[", TRUE, "rec")
+    indices.mx <- rbind(indices.mx, !rec)
     indices.order <- do.call(order, split(indices.mx, row(indices.mx)))
 
     # Inject the vcopies in reverse order so that indices are not made invalid
@@ -972,13 +994,13 @@ inject_rec_and_copy <- function(x, branch.dat) {
         if(i[['copy']]) x[[i[["index"]]]] <- en_vcopy(x[[i[["index"]]]])
       } else if(i[["index"]][length(i[["index"]])] < 0L) {
         # Trail index negative; these require addition of e.g. `x <- vcopy(x)`
-        tmp <- inject_copy_in_brace_at(x, i)
-        x <- tmp[['x']]
-        i[['index']] <- tmp[['index']]
+        x <- inject_copy_in_brace_at(x, i)
+        # Self copies do reconciliation in `inject_copy_in_brace_at`
+        i[['rec']] <- FALSE
       } else stop("Internal Error: invalid injection index.")
 
       # Add reconcile if needed
-      if(i[['rec']]) {
+      if(i[['rec']] && i[["index"]][length(i[["index"]])] > 0L) {
         if(!length(i[["index"]])) x <- en_rec(x)
         else x[[i[["index"]]]] <- en_rec(x[[i[["index"]]]])
       }
