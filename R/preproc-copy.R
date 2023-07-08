@@ -463,34 +463,10 @@ copy_branchdat_rec <- function(
 
   data <- generate_candidate(
     x, data, index, branch.res=branch.res, in.branch=in.branch, last=last,
-    passive=passive, call.assign=call.assign, assign.to=assign.to,
-    sub.assign.to=sub.assign.to, leaf=leaf, sym.name=sym.name
+    passive=passive, call.assign=call.assign, call.modify=call.modify,
+    assign.to=assign.to, sub.assign.to=sub.assign.to, leaf=leaf,
+    sym.name=sym.name, tar.sym=tar.sym
   )
-  # Update bindings
-  if(call.assign) {
-    if(!data[['passive']]) {
-      data[[B.LOC]] <- union(data[[B.LOC]], tar.sym)
-      data[[B.LOC.CMP]] <- union(data[[B.LOC.CMP]], tar.sym)
-      data[[B.ALL]] <- union(data[[B.ALL]], tar.sym)
-    } else if(call.assign) {
-      data[[B.LOC]] <- union(data[[B.LOC]], tar.sym)
-      if(in.branch) {
-        # non-computing local expressions make global bindings non-global
-        data[[B.ALL]] <- setdiff(data[[B.ALL]], tar.sym)
-      }
-    }
-  } else if (call.modify) {
-    # Subassign adds a top level computing binding if it doesn't exist already
-    # via `generate_candidate`.  If it exists already then it's already in
-    # `data[[B.ALL]]`.  Note the binding might be implicit in the promoted
-    # bindings list as opposed to explicit in the unmodified call tree.
-    data[[B.ALL]] <- union(data[[B.ALL]], tar.sym)
-    if(!in.branch) { # recall binding added top-level as e.g. `x <- vcopy(x)`
-      data[[B.LOC]] <- union(data[[B.LOC]], tar.sym)
-      data[[B.LOC.CMP]] <- union(data[[B.LOC.CMP]], tar.sym)
-    }
-  }
-  data[['assigned.to']] <- assign.to
   data
 }
 # Generate Candidate (and Actual) Call Pointers
@@ -570,14 +546,17 @@ copy_branchdat_rec <- function(
 #   expression.  It is possible but not required for `branch.res` and `last` to
 #   both be true.  Like `branch.res` this status carries to sub-expressions.
 # @param call.assign whether `x` is an assigning call.
+# @param call.modify whether `x` is a modifying call (includes `call.assign`,
+#   and additionally e.g. subassign).
 # @param leaf `x` is a symbol, OR a computing **call** (because we never make
 #   candidates from children of a computing call).
 #
 # @return data, updated (see copy_branchdat_rec).
 
 generate_candidate <- function(
-  x, data, index, branch.res, in.branch, last, passive, call.assign, assign.to,
-  leaf, sym.name, sub.assign.to
+  x, data, index, branch.res, in.branch, last, passive,
+  call.assign, assign.to, call.modify, tar.sym, leaf,
+  sym.name, sub.assign.to
 ) {
   # data[['passive']]: like `passive`, except if the outer calls are passive,
   # but the return value of the inner sub-calls are computed, the call is
@@ -587,9 +566,11 @@ generate_candidate <- function(
   computed.sym <- union(data[[B.ALL]], data[[B.LOC.CMP]])
 
   first.assign <- call.assign && length(assign.to) == 1L
-  tar.sym <-
-    if(sym.name %in% MODIFY.SYM) get_target_symbol(x, sym.name)
-    else ""
+
+  if(sym.name %in% MODIFY.SYM) {
+    tar.sym <- get_target_symbol(x, sym.name)
+    call.modify <- TRUE
+  } else tar.sym <- ""
 
   # sub.assignment from same symbol must always be vcopy'ed, because otherwise
   # we're overwriting what we're reading from.  Since their output
@@ -602,13 +583,11 @@ generate_candidate <- function(
   ) ) {
     data <- add_actual_callptr(data, index, rec=FALSE, copy=TRUE)
   }
-  # Subassignment to an external symbol requires a symbol be made internal via a
-  # self-copy.  We put that copy at the very beginning of the code hence -1L for
-  # the index value instead of the index value.  One weirdness is that prior
-  # calls wouldn't have known about this, but as of this writing it shouldn't
-  # change behavior since everything else in branches still needs to copy.
+  # Subassignment to an external symbol requires self-copy to make it internal.
   if(sym.name == "subassign" && !tar.sym %in% computed.sym) {
-    data <- add_actual_callptr(data, -1L, name=tar.sym, rec=FALSE, copy=TRUE)
+    data <- add_actual_callptr(
+      data, c(index, -1L), name=tar.sym, rec=FALSE, copy=TRUE
+    )
   }
   if(in.branch) {
     # Symbols bound in branches will require rec and/or vcopy of their payload
