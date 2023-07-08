@@ -469,20 +469,32 @@ copy_branchdat_rec <- function(
     passive=passive, call.assign=call.assign, assign.to=assign.to,
     sub.assign.to=sub.assign.to, leaf=leaf, sym.name=sym.name
   )
-  if(call.modify) {
-    # Update bindings
+  # Update bindings
+  if(call.assign) {
     if(!data[['passive']]) {
       data[[B.LOC]] <- union(data[[B.LOC]], tar.sym)
       data[[B.LOC.CMP]] <- union(data[[B.LOC.CMP]], tar.sym)
       data[[B.ALL]] <- union(data[[B.ALL]], tar.sym)
-    } else if (call.assign) {
-      # call.modify only updates bindings for the case where it causes a
-      # `add_actual_sub_callptr` (then data[['passive']] is FALSE).
+    } else if(call.assign) {
       data[[B.LOC]] <- union(data[[B.LOC]], tar.sym)
       if(in.branch) {
         # non-computing local expressions make global bindings non-global
         data[[B.ALL]] <- setdiff(data[[B.ALL]], tar.sym)
       }
+    }
+  } else if (call.modify) {
+    # Call modify adds a top level computing binding if it doesn't exist already
+    # (this is a NULL op if it does).  One issue is that the generated binding
+    # is not visible in the call until after the injection happens, so the
+    # bindings record will appear at odds with the call.  Also, earlier
+    # processed calls won't know that this binding ended up existing as a
+    # top-level computed binding, although right now I don't think there is a
+    # case where that makes a difference (and if it did it should just result in
+    # innocuous over-copying).
+    data[[B.ALL]] <- union(data[[B.ALL]], tar.sym)
+    if(!in.branch) { # recall binding added top-level as e.g. `x <- vcopy(x)`
+      data[[B.LOC]] <- union(data[[B.LOC]], tar.sym)
+      data[[B.LOC.CMP]] <- union(data[[B.LOC.CMP]], tar.sym)
     }
   }
   data[['assigned.to']] <- assign.to
