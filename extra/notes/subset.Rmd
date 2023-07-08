@@ -14,6 +14,17 @@ one?  One way this goes wrong is for the final return vector
 
 ## Subset assign
 
+### Copy to First
+
+One problem with a sub-assign self-copying to first is that it invalidates some
+of the assumptions we made about vcopy.  In particular, by `vcopy`ing to first
+any expressions between the beginning and the sub-assign will not realize that
+the symbol was already copied.  Does this matter?  For the result it shouldn't
+because it's the last thing.  For branches it probably shouldn't either since we
+have to rec/vcopy everything anyway, but it feels a bit unclean.
+
+But it is important to note that a sub-assign does not create a binding.
+
 ### Transform
 
 We've put the subassign transform in possibly a weird place?  `uplus`/`uminus`

@@ -30,8 +30,23 @@
 
 ## Current
 
+* Think carefully about the following case.  Can we get away without a
+  reconciliation (as it is it's just not right - mismatched rec):
+
+  {
+      x <- r2c::vcopy(x)
+      if (b) 
+          x[a] <- y
+      else {
+          x <- r2c::rec(r2c::vcopy(x))
+          numeric(0)
+      }
+      x
+  }
+
 * Can we collapse the subassign into regular promotes now that we're
-  rationalizing the 0?
+  rationalizing the 0 (i.e. get rid of `add_actual_sub_callptr` (or whatever
+  it's called).
 
 * Do we need `if_true` / `if_false`?  Effectively implicit in position, but
   might simplify finding boundaries (actually, definitely does).
