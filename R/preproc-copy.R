@@ -556,7 +556,7 @@ copy_branchdat_rec <- function(
 #     if(a) rec(vcopy(x))  # this is branch result and r2c result
 #     else rec(-y)
 #
-# We can tell if an sub-expression is part of the return value of an expression
+# We can tell if a sub-expression is part of the return value of an expression
 # without having to process the whole expression, so we know that `x` needs to
 # be copied as soon as we encounter it.
 #
@@ -685,32 +685,59 @@ generate_candidate <- function(
     )
       data <- add_actual_callptr(data, index, rec=FALSE)
   }
+  # Update bindings to reflect new actual computed bindings we introduced or
+  # previous computed ones we overwrote with non-computing.
+  if(call.modify) {
+    if(!data[['passive']]) {
+      data[[B.LOC]] <- union(data[[B.LOC]], tar.sym)
+      data[[B.LOC.CMP]] <- union(data[[B.LOC.CMP]], tar.sym)
+      data[[B.ALL]] <- union(data[[B.ALL]], tar.sym)
+    } else if(call.assign) {
+      data[[B.LOC]] <- union(data[[B.LOC]], tar.sym)
+      if(in.branch) {
+        # non-computing local expressions make global bindings non-global
+        data[[B.ALL]] <- setdiff(data[[B.ALL]], tar.sym)
+      }
+    }
+  }
+  data[['assigned.to']] <- assign.to
   data
 }
 # A "Pointer" to Spot in Call Tree to Modify
 #
-# Allows us to track potential candidates for `vcopy` promotion and/or `rec`
-# (reconciliation) tagging.
+# Allows us to track candidates or actual positions in the call tree for
+# injection of `vcopy`, `rec`, and/or self-copies (e.g. `x <- vcopy(x)`).  See
+# `generate_candidate` for context.  The point of injection is designated by the
+# `index` member which represents a recursive indexing vector to be used with
+# double brackets, e.g. `quote(x + y * z)[[c(3L, 2L)]]` retrieves `y`.
 #
-# `callptr` is used both to create candidates and actual direct promotions, but
-# this is not ideal.  In particular, once a candidate is promoted, or a sub-call
-# is direct-promoted, the meaning of the `name` field is not the same.  Prior to
-# promotion it is the symbol that triggers the promotion, but once the promotion
-# happens only the location of the sub-call matters.  Since designing this
-# we've also hijacked the name field to use for the cases where we want to
-# inject an e.g. `x <- vcopy(x)` for branch balancing or subassigns.
+# Self copies are identified by a `-1L` at the trailing index value (e.g. `c(1L,
+# 2L, 2L, -1L)`).  The `-1L` is a marker that has no other meaning in the
+# context of index (and needs to be removed when using the index to access the
+# call tree).
 #
-# @param name scalar character the symbol that triggers promotion of a
-#   candidate, which when a symbol is up for promotion is typically not that
-#   symbols name (e.g. in `x <- y; x` the trigger is `x`, but the symbol that
-#   will be `vcopy`ed is `y`), except that for cases where we need to add
-#   e.g. `x <- vcopy(x)` is the symbol corresponding to `x`.  The latter type of
-#   pointers are distinguished by virtue of a trailing zero in `index`.
+# `callptr` is used for candidates for injection, promoted candidates for
+# injection (i.e. those that will cause injections), and actuals (injections
+# that are known to be required from the get go).  The semantics of a `callptr`
+# object are similar but not identical depending on which of the three
+# types of `callptr` we are dealing with.  The semantics are embedded in the
+# context the `callptr` objects are used in (not ideal, but so it is).
+#
+# @seealso generate_candidate, inject_rec_and_copy.
+#
+# @param name scalar character.  For candidates, the symbol that triggers
+#   promotion of a candidate, which when a symbol is up for promotion is
+#   typically not that symbols name (e.g. in `x <- y; x` the trigger is `x`, but
+#   the symbol that will be `vcopy`ed is `y`).  For promoted candidates, as for
+#   candidates.  For actuals that where never candidates, depends on context.
+#   For self-copies, it will be the symbol that needs to be copied (e.g. "`x`"
+#   in `x <- vcopy(x)`), and NA for other actuals.
 # @param index integer vector that can be used to pull up a sub-call within a
 #   call tree e.g. with `x[[index]]` where `index` might be `c(2,3,1)`.  This
 #   gives the location of the expression to `vcopy`/`rec`.  If the index ends in
-#   0L then a `sym <- vcopy(sym)` is prepended to the expression pointed at
-#   by `index`, possibly wrapping the expression in braces first to allow this.
+#   -1L then a `sym <- vcopy(sym)` is prepended to the expression pointed at
+#   by `index`, possibly wrapping the expression in braces first if it isn't
+#   already.
 # @param rec whether this is a value that will require reconciliation across
 #   branches.
 # @param copy whether this is a value that need to be `vcopy`ed (see
@@ -870,10 +897,7 @@ en_rec <- function(x, clean=FALSE) {
 # Inject Self-vcopy
 #
 # Injects a self vcopy (e.g. `x <- vcopy(x)`) just prior to the position pointed
-# to by `head(ptr[['index']], -1L)`.  The trailing index value is a marker that
-# designates the callptr object as one that requires a self-vcopy instead of
-# just a regular vcopy.  If the parent call is not already a braces call, the
-# target insertion point is wrapped in braces before insertion.
+# to by `head(ptr[['index']], -1L)`.
 #
 # @param x a call
 # @param ptr a `callptr` object
@@ -927,15 +951,14 @@ inject_copy_in_brace_at <- function(x, ptr) {
   list(x=x, index=c(par.idx, 2L, 3L))
 }
 
-# Inject vcopy Calls
+# Inject vcopy/rec Calls
 #
-# We either wrap a pointed-to call win `vcopy`/`rec`, or we inject a self copy
-# (e.g. `x <- vcopy(x)`).  The latter are designated by a negative trailing
-# index (e.g. `c(1L, 2L, 2L, -1L)`) in the `callptr` object.  The trailing index
-# is a marker without any meaning in the context of the call tree.
+# Take candidate and actual injection coordinates and modify the call to
+# add `vcopy`/`rec`/self-copies.
 #
+# @seealso generate_candidate, callptr
 # @param x call to modify.
-# @branch.dat data object from `copy_brandat` used to identify the locations
+# @branch.dat data object from `copy_branchdat` used to identify the locations
 #   where we need to inject `vcopy` / `rec`.
 
 inject_rec_and_copy <- function(x, branch.dat) {
