@@ -22,10 +22,19 @@ static int %s(%s) {
   return (int) lens[di[0]] > 0;
 }'
 f_for_iter <- '
-// Check whether a loop has any iterations
+// Increment the iteration variable
 static int %s(%s) {
-  (void) data; // unused
-  return (int) lens[di[0]] > 0;
+  R_xlen_t seq_i = data[di[2]][0];
+  R_xlen_t seq_len = lens[di[1]];
+  if(seq_i < seq_len) {
+    // set the iteration variable to new value
+    data[di[0]][0] = data[di[1]][seq_i];
+    // increment the pointer into the iteration vector for next iteration
+    data[di[2]][0]++;
+    return 1;
+  } else {
+    return 0;
+  }
 }'
 f_for_other <- '
 // NO-OP, not output but needed for internal checks
