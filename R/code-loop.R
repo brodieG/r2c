@@ -19,7 +19,6 @@ f_for_init <- '
 // Check whether a loop has any iterations
 static int %s(%s) {
   (void) data; // unused
-  Rprintf("init %%d\\n", lens[di[0]] > 0);
   return (int) lens[di[0]] > 0;
 }'
 f_for_iter <- '
@@ -27,9 +26,6 @@ f_for_iter <- '
 static int %s(%s) {
   R_xlen_t seq_i = (R_xlen_t) data[di[2]][0];
   R_xlen_t seq_len = lens[di[1]];
-  Rprintf("di0 %%d di1 %%d di2 %%d\\n", di[0], di[2], di[1]);
-  Rprintf("seqi %%d\\n", seq_i);
-  Rprintf("seqlen %%d\\n", seq_len);
   if(seq_i < seq_len) {
     // set the iteration variable to new value
     data[di[0]][0] = data[di[1]][seq_i];

@@ -64,15 +64,12 @@ static void %s(%s) {
   R_xlen_t lenr = lens[di[0]];
   R_xlen_t v = 0;
 
-  Rprintf("sub leni %%d\\n", leni);
   for(R_xlen_t i = 0; i < leni; ++i, ++v) {
     if(v >= lenv) v = 0;
     double ival = index[i];
-    Rprintf("ival %%0.1f ", ival);
     int isna = ISNAN(ival);
     if(!isna && ival > 0 && ival <= lenr) {
       R_xlen_t ival0 = ival - 1;
-      Rprintf("newval %%0.1f\\n", dat[v]);
       res[ival0] = dat[v];
     } else if (isna) {
       Rf_error("NAs are not allowed in subscripted assignments.");
