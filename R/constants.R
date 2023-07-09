@@ -70,13 +70,16 @@ MISSING <- list(formals(base::identical)[[1L]])
 # `for` assigns to the counter variable.  `->` becomes `<-` on parsing.
 
 ASSIGN.SYM.BASE <- c("<-", "=")
-ASSIGN.SYM <- c(ASSIGN.SYM.BASE, "for")
+ASSIGN.SYM <- c(ASSIGN.SYM.BASE, "for", "for_iter")
 MODIFY.SYM <- c(ASSIGN.SYM, "subassign")
 LOOP.SYM <- c("for", "while", "repeat")
 LOOP.SUB.SYM <- c("for_0", "for_n")
 IF.SUB.SYM <- c("if_true", "if_false")
 CTRL.SYM <- c("if", LOOP.SYM)
 CTRL.SUB.SYM <- c(IF.SUB.SYM, LOOP.SUB.SYM)
+# `for_iter` and `if_test` are not quite the same because for_iter is nested
+# inside `r2c_for`.  Works out the same though in terms of sandwiching the
+# branches.
 BRANCH.START.SYM <- c("if_test", "for_iter")
 BRANCH.EXEC.SYM <- c("r2c_if", "r2c_for")
 REC.FUNS <- c('vcopy', 'rec')

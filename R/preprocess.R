@@ -235,7 +235,9 @@ pp_internal <- function(
           call=args[[i]], depth=depth + 1L, x=x, argn=names(args)[i],
           assign=i == 1L && next.assign,
           call.parent=call, call.parent.name=func,
-          indent=indent + (func %in% CTRL.SUB.SYM) * 2L, passive=passive
+          indent=indent +
+            (func %in% c(CTRL.SUB.SYM, 'for_iter', 'r2c_for')) * 2L,
+          passive=passive
     ) } }
     # Are we in a rec chain?  Needed for alloc to know which bindings are
     # from rec (see reconcile_control_flow).
@@ -524,6 +526,7 @@ transform_control <- function(x, i=0L) {
       # Can't use `quote(numeric(0L))` because we don't (and can't? Err we
       # could since it's constant alloc) implement `numeric`.
       if(length(x) == 3L) x[[4L]] <- numeric(0L)
+      # **DANGER**, read docs if you change this
       x <- bquote(
         {
           r2c::if_test(cond=.(x[[2L]]))
@@ -535,21 +538,34 @@ transform_control <- function(x, i=0L) {
       )
       names(x)[2:3] <- "..."  # needed for alloc logic
     } else if (call.sym == "for") {
+      # Strategy is to compute the iteration vector into a new variable (_seq_)
+      # so that it is immune from subsequent modification.  We then track where
+      # we are in that vector (_seqi_).  The C code for `for_iter` will update
+      # the iteration variable using those, and increment _seq_i_.  The `%d`
+      # business is b/c we need different variables for each nested loop.
+
       # A copy (candidate) of the result of evaluating the exp in for(i in exp)
       seq.name <- as.name(sprintf(".R2C_for_seq_%d", i))
       # The index into `seq.name` that we're at
       seq.i.name <- as.name(sprintf(".R2C_for_seqi_%d", i))
+      # **DANGER**, read docs if you change this
+      # `for_iter` nested inside `r2c_for` for correct indenting of the C code.
       x <- bquote(
         {
           r2c::for_init(
             seq=.(call("<-", seq.name, x[[3L]])),
             seq.i=.(call("<-", seq.i.name, 0))
           )
-          r2c::for_iter(var=.(x[[2L]]), seq=.(seq.name), seq.i=.(seq.i.name))
-          r2c::r2c_for(r2c::for_n(.(x[[4L]])), r2c::for_0(.(numeric(0))))
+          r2c::r2c_for(
+            iter=r2c::for_iter(
+              var=.(x[[2L]]), seq=.(seq.name), seq.i=.(seq.i.name)
+            ),
+            for.n=r2c::for_n(.(x[[4L]])),
+            for.0=r2c::for_0(.(numeric(0)))
+          )
         }
       )
-      names(x)[2:4] <- "..."  # needed for alloc logic
+      names(x)[2:3] <- "..."  # needed for alloc logic
     } else if (call.sym == "{" && length(x) == 2L) {
       # remove redundant nested braces as could be introduced above.  This could
       # remove other redundant nested braces.

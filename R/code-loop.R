@@ -101,7 +101,7 @@ code_gen_for_0 <- function(fun, args.reg, args.ctrl, args.flags) {
 code_gen_r2c_for <-function(fun, args.reg, args.ctrl, args.flags) {
   vetr(
     identical(., "r2c_for"),
-    args.reg=list(NULL, NULL),
+    args.reg=list(NULL, NULL, NULL),
     args.ctrl=list() && length(.) == 0L,
     args.flags=list() && length(.) == 0L
   )
@@ -121,7 +121,7 @@ code_gen_for <- function(...) {
 #' @keywords internal
 #' @export
 
-r2c_for <- function() NULL
+r2c_for <- function(iter, for.n, for.0) NULL
 
 #' @rdname r2c_for
 #' @export

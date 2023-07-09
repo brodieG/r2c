@@ -391,6 +391,22 @@ copy_branchdat_rec <- function(
     } else ""  # We want sub-assign symbol to spread to its children only
 
     if(sym.name %in% BRANCH.EXEC.SYM) {
+      # Different struture for loops and if/else (see `transform_control`)
+      if(sym.name == 'r2c_if') {
+        idx.offset <- 0L
+      } else {
+        idx.offset <- 1L
+        # recurse into the iterator (maybe not necessary?)
+        data <- copy_branchdat_rec(
+          x[[2L]], index=c(index, 2L),
+          last=FALSE, branch.res=FALSE,
+          in.compute=FALSE, in.branch=in.branch, prev.call=sym.name,
+          data=data
+        )
+      }
+      idx.T <- 2L + idx.offset
+      idx.F <- 3L + idx.offset
+
       # New branch context resets all local bindings
       data.next <- data
       data.next[[B.LOC]] <- data.next[[B.LOC.CMP]] <- character()
@@ -401,18 +417,18 @@ copy_branchdat_rec <- function(
       # Recurse through each branch independently since they are "simultaneous"
       # with respect to call order (either could be last too).  In loops, the
       # not-taken branch is the FALSE branch (see code-ifelse.R, code-loop.R).
-      prev.T <- get_lang_name(x[[2L]])
+      prev.T <- get_lang_name(x[[idx.T]])
       data.T <- copy_branchdat_rec(
-        x[[c(2L,2L)]], index=c(index, c(2L,2L)), data=data.next, last=last,
-        in.branch=TRUE, branch.res=branch.res.next, prev.call=prev.T
+        x[[c(idx.T, 2L)]], index=c(index, c(idx.T, 2L)), data=data.next,
+        last=last, in.branch=TRUE, branch.res=branch.res.next, prev.call=prev.T
       )
-      prev.F <- get_lang_name(x[[3L]])
+      prev.F <- get_lang_name(x[[idx.F]])
       data.F <- copy_branchdat_rec(
-        x[[c(3L,2L)]], index=c(index, c(3L,2L)), data=data.next, last=last,
-        in.branch=TRUE, branch.res=branch.res.next, prev.call=prev.F
+        x[[c(idx.F, 2L)]], index=c(index, c(idx.F, 2L)), data=data.next,
+        last=last, in.branch=TRUE, branch.res=branch.res.next, prev.call=prev.F
       )
       # Recombine branch data and the pre-branch data
-      data <- merge_copy_dat(data, data.T, data.F, index)
+      data <- merge_copy_dat(data, data.T, data.F, index, idx.offset)
 
       # Guaranteed branch result is non-passive (if it is used)
       data[['passive']] <- FALSE
@@ -813,8 +829,10 @@ index_greater <- function(a, b) {
 # @param old like `a`.
 # @param idx integer vector the index into the call returning the expression
 #   setting the current if/else context (see `callptr`).
+# @param idx.offset needed b/c loops have the TRUE/FALSE branches in different
+#   positions.
 
-merge_copy_dat <- function(old, a, b, idx) {
+merge_copy_dat <- function(old, a, b, idx, idx.offset) {
   # Removed shared history from both branches.  This is for the case where a
   # pre-existing candidate is cleared in one branch, but not the other.  If we
   # didn't remove shared history, the old candidate would be seen as new.
@@ -830,8 +848,10 @@ merge_copy_dat <- function(old, a, b, idx) {
   a.miss <- setdiff(b.names, a.names)
   b.miss <- setdiff(a.names, b.names)
   # Inject at start (hence -1L; so branch return value unchanged).
-  a.miss.list <- gen_callptrs(a.miss, c(idx, 2L, 2L, -1L), copy=TRUE, rec=TRUE)
-  b.miss.list <- gen_callptrs(b.miss, c(idx, 3L, 2L, -1L), copy=TRUE, rec=TRUE)
+  a.miss.list <-
+    gen_callptrs(a.miss, c(idx, 2L + idx.offset, 2L, -1L), copy=TRUE, rec=TRUE)
+  b.miss.list <-
+    gen_callptrs(b.miss, c(idx, 3L + idx.offset, 2L, -1L), copy=TRUE, rec=TRUE)
 
   # Combine all found free symbols
   prev.bound <- c(old[[B.LOC.CMP]], old[[B.LOC]], old[[B.ALL]])
