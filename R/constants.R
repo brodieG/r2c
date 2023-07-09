@@ -81,6 +81,8 @@ CTRL.SUB.SYM <- c(IF.SUB.SYM, LOOP.SUB.SYM)
 # inside `r2c_for`.  Works out the same though in terms of sandwiching the
 # branches.
 BRANCH.START.SYM <- c("if_test", "for_iter")
+BRANCH.MID.SYM <- c("if_true", "for_n")
+BRANCH.END.SYM <- c("if_false", "for_0")
 BRANCH.EXEC.SYM <- c("r2c_if", "r2c_for")
 REC.FUNS <- c('vcopy', 'rec')
 

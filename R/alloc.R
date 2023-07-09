@@ -378,7 +378,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
       } else if (name %in% BRANCH.EXEC.SYM) {
         # Last branch expression before this one
         branch.lvl <- branch.lvl - 1L
-      } else if(name == "if_true") {
+      } else if(name %in%  BRANCH.MID.SYM) {
         # Just completed TRUE branch
         # Needs to be stack to handle , e.g. in `if(a) b else {if(c) d}`
         binding.stack <- c(
@@ -391,14 +391,14 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
         names.assign.in.br <-
           names.assign > branch.start.stack[length(branch.start.stack)]
         alloc[['names']]['br.hide', names.assign.in.br] <- branch.lvl
-      } else if (name == "if_false") {
+      } else if (name %in% BRANCH.END.SYM) {
         # Just completed FALSE branch
         if(length(x[['call']]) < i + 1L)
-          stop("Internal Error: missing 'r2c_if' after 'if_else'")
+          stop("Internal Error: missing outer control after control components.")
         rcf.dat <- reconcile_control_flow(
           alloc, call.dat, stack, binding.stack, i.call=i,
           depth=depth, gmax=gmax, gmin=gmin, branch.lvl=branch.lvl,
-          # send if_true / r2c_if for full error message
+          # send full control call for error message
           call=x[['call']][c(tail(branch.start.stack, 1L), i + 1L)]
         )
         alloc <- rcf.dat[['alloc']]
