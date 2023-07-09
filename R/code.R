@@ -307,7 +307,8 @@ VALID_FUNS <- c(
   list(
     cgen(
       "seq_along", defn=function(along.with) NULL,
-      type=list("arglen", "along.with"), code.gen=code_gen_seq_along
+      type=list("arglen", "along.with"), code.gen=code_gen_seq_along,
+      res.type='preserve'
     )
   ),
   # - Subset -----------------------------------------------------------------
@@ -386,15 +387,15 @@ VALID_FUNS <- c(
     cgen(
       "if", type=list("eqlen", 2:3), code.gen=code_gen_if, res.type="preserve"
     ),
-
-    # result of this one is not used outside of the C code
+    # Result of this one is only used directly in C code, but passive pass
+    # through of type so we need to preserve that.
     cgen(
       "for_init", type=list("constant", 1L), code.gen=code_gen_for_init,
-      res.type="logical", fun=for_init
+      res.type="preserve.last", fun=for_init
     ),
     cgen(
       "for_iter", type=list("constant", 1L), code.gen=code_gen_for_iter,
-      res.type="logical", fun=for_iter
+      res.type="preserve.last", fun=for_iter
     ),
     cgen(
       "for_n", type=list("arglen", "expr"), code.gen=code_gen_for_n,
@@ -406,7 +407,7 @@ VALID_FUNS <- c(
     ),
     # `res.type` gets special handling in `reconcile_control_flow` for `r2c_if`.
     cgen(
-      "r2c_for", type=list("eqlen", c("true", "false")),
+      "r2c_for", type=list("eqlen", c("for.n", "for.0")),
       code.gen=code_gen_r2c_for, fun=r2c_for, res.type="preserve"
     ),
     # This is a stub function like `if`.

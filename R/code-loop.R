@@ -126,12 +126,12 @@ r2c_for <- function(iter, for.n, for.0) NULL
 #' @rdname r2c_for
 #' @export
 
-for_init <- function(seq, seq.i) NULL
-#'
+for_init <- function(seq.i, seq) NULL
+
 #' @rdname r2c_for
 #' @export
 
-for_iter <- function(var, seq, seq.i) NULL
+for_iter <- function(var, seq.i, seq) NULL
 
 #' @rdname r2c_for
 #' @export
@@ -142,6 +142,5 @@ for_n <- function(expr.n) NULL
 #' @export
 
 for_0 <- function(expr.0) NULL
-
 
 

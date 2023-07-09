@@ -1207,7 +1207,7 @@ names_bind <- function(alloc, new.name, call.i, rec) {
   alloc
 }
 names_update <- function(alloc, i, call, call.name, call.i, rec) {
-  alloc <- names_clean(alloc, i)
+  alloc <- names_clean(alloc, i)  # should be call.i, i is embedded in alloc
   if(call.name %in% ASSIGN.SYM) { # not MODIFY.SYM
     # Remove protection from prev assignment to same name, and bind previous
     # computation (`alloc[[i]]`) to it.
