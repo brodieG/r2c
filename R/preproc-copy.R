@@ -32,6 +32,8 @@ B.LOC <- c('bind', 'loc')
 B.LOC.CMP <- c('bind', 'loc.compute')
 # Global and computing
 B.ALL <- c('bind', 'all')
+# Track all bindings irrespective of type for free variables
+B.NAMED <- c('bind', 'named')
 
 # Copy Branch Data
 #
@@ -307,7 +309,7 @@ copy_branchdat <- function(x) {
 #   determine whether the result of a branch is further used.
 # @param data list with named elements:
 #   * "bind": a list containing branch-local bindings, branch-local computed
-#     bindings, and global bindings.
+#     bindings, global bindings, and every encountered binding (named).
 #   * "copy": a list with elements "cand", and "act". Each is a list
 #     of `callptr` generated objects used to track calls that need to be
 #     reconciled and/or vcopied (potentially for "cand", definitively).
@@ -325,7 +327,10 @@ copy_branchdat_rec <- function(
   in.compute=FALSE, in.branch=FALSE, branch.res=FALSE, last=TRUE,
   prev.call="",
   data=list(
-    bind=list(loc=character(), all=character(), loc.compute=character()),
+    bind=list(
+      loc=character(), all=character(), loc.compute=character(),
+      named=character()
+    ),
     copy=list(cand=list(), act=list()),
     passive=TRUE, assigned.to=character(), leaf.name="", free=character()
   )
@@ -341,9 +346,10 @@ copy_branchdat_rec <- function(
     passive <- !sym.local.cmp
     leaf <- TRUE
     data[['leaf.name']] <- sym.name
-    if(!sym.local && !sym.local.cmp && !sym.global)
-      data[['free']] <- union(data[['free']], sym.name)
 
+    if(!sym.name %in% data[[B.NAMED]]) {
+      data[['free']] <- union(data[['free']], sym.name)
+    }
     # For symbols matching candidate(s): promote candidate if allowed.
     cand <- data[[CAND]]
     cand.prom.i <- which(names(cand) == sym.name & !sym.local)
@@ -700,6 +706,9 @@ generate_candidate <- function(
       }
     }
   }
+  # Anytime a symbol is assigned to track for free symbol checks for formals
+  if(call.assign) data[[B.NAMED]] <- union(data[[B.NAMED]], tar.sym)
+
   data[['assigned.to']] <- assign.to
   data
 }
