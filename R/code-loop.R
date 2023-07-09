@@ -18,11 +18,13 @@
 f_for_init <- '
 // Check whether a loop has any iterations
 static int %s(%s) {
+  (void) data; // unused
   return (int) lens[di[0]] > 0;
 }'
 f_for_iter <- '
 // Check whether a loop has any iterations
 static int %s(%s) {
+  (void) data; // unused
   return (int) lens[di[0]] > 0;
 }'
 f_for_other <- '
@@ -56,7 +58,7 @@ code_gen_for_iter <- function(fun, args.reg, args.ctrl, args.flags) {
   code_res(
     defn=defn, name=name,
     c.call.gen=function(...)
-      paste0("while(f_for_iter(", sub(";$", "", c_call_gen(...)), ") {")
+      paste0("while(", sub(";$", "", c_call_gen(...)), ") {")
   )
 }
 code_gen_for_n <- function(fun, args.reg, args.ctrl, args.flags) {

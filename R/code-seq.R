@@ -16,9 +16,7 @@
 f_seq_along <- '
 static void %s(%s) {
   double * res = data[di[1]];
-  double * input = data[di[0]];
   R_xlen_t len0 = lens[di[0]];
-  R_xlen_t ri = 0;
   double counter = 0.0;
 
   for(R_xlen_t i = 0; i < len0; ++i) res[i] = ++counter;
