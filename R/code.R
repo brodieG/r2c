@@ -391,11 +391,11 @@ VALID_FUNS <- c(
     # through of type so we need to preserve that.
     cgen(
       "for_init", type=list("constant", 1L), code.gen=code_gen_for_init,
-      res.type="preserve.last", fun=for_init
+      res.type="preserve.which", res.type.which=2L, fun=for_init
     ),
     cgen(
       "for_iter", type=list("constant", 1L), code.gen=code_gen_for_iter,
-      res.type="preserve.last", fun=for_iter
+      res.type="preserve.which", res.type.which=2L, fun=for_iter
     ),
     cgen(
       "for_n", type=list("arglen", "expr"), code.gen=code_gen_for_n,

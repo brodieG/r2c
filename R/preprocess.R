@@ -516,8 +516,9 @@ transform_call_rec <- function(call) {
 # linearized recorded calls in `preprocess`, and the C generator functions in
 # e.g. `code-ifelse.R`.
 #
-# **CAREFUL**: subsequent code relies on the exact nesting structure of the code
-# replacement.  Things you'll need to modify if you change the replaced call:
+# **CAREFUL**: subsequent code relies on the exact nesting structure and
+# parameter order of the code replacement.  Things you'll need to modify if you
+# change the replaced call:
 #
 # * Branch handling logic in `copy_branchdat_rec`.
 # * Branch merging logic in `merge_copy_dat`.
@@ -565,18 +566,17 @@ transform_control <- function(x, i=0L) {
       # **DANGER**, read docs if you change this
       # `for_iter` nested inside `r2c_for` for correct indenting of the C code.
       # `for_iter` is considered an assignment function (b/c it sets the
-      # iteration variable).  It derives the type from it's last argument `seq`
-      # (when linearized that will have been the last call evaluated prior to
-      # `for_iter`).
+      # iteration variable).  While `for_iter` is declared as passive, it does
+      # change the value of `i` and `seq.i` in-place.
       x <- bquote(
         {
           r2c::for_init(
-            seq.i=.(call("<-", seq.i.name, en_vcopy(0))),
-            seq=.(call("<-", seq.name, x[[3L]]))
+            seq=.(call("<-", seq.name, x[[3L]])),
+            seq.i=.(call("<-", seq.i.name, 0))
           )
           r2c::r2c_for(
             iter=r2c::for_iter(
-              var=.(x[[2L]]), seq.i=.(seq.i.name), seq=.(seq.name)
+              var=.(x[[2L]]), seq=.(seq.name), seq.i=.(seq.i.name)
             ),
             for.n=r2c::for_n(expr=.(x[[4L]])),
             for.0=r2c::for_0(expr=.(numeric(0)))
