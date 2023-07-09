@@ -571,7 +571,7 @@ transform_control <- function(x, i=0L) {
       x <- bquote(
         {
           r2c::for_init(
-            seq.i=.(call("<-", seq.i.name, 0)),
+            seq.i=.(call("<-", seq.i.name, en_vcopy(0))),
             seq=.(call("<-", seq.name, x[[3L]]))
           )
           r2c::r2c_for(
