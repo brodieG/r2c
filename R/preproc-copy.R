@@ -607,14 +607,17 @@ generate_candidate <- function(
   # Subassignment to an external symbol requires self-copy to make it internal.
   # This will be branch-balanced in `merge_copy_dat`.
   if(sym.name == "subassign" && !tar.sym %in% computed.sym) {
-    # Self-copy always requires a copy (obviously)
-    s.cpy.idx <- c(index, -1L)
+    # Self-copy goes all the way to the beginning of code because that works,
+    # and if we did it adjacent existing code that happened to be in a loop we
+    # would be copying the vector each iteration (and over-writing any
+    # modifications).
+    s.cpy.idx <- -1L
     data <-
       add_actual_callptr(data, s.cpy.idx, name=tar.sym, rec=FALSE, copy=TRUE)
     # Self-copy could require reconciliation, but not a given.
-    if(in.branch)
-      data <-
-        add_candidate_callptr(data, s.cpy.idx, copy=FALSE, triggers=tar.sym)
+    ## if(in.branch)
+    ##   data <-
+    ##     add_candidate_callptr(data, s.cpy.idx, copy=FALSE, triggers=tar.sym)
   }
   if(in.branch) {
     # Symbols bound in branches will require rec and/or vcopy of their payload
@@ -695,8 +698,10 @@ generate_candidate <- function(
   # previous computed ones we overwrote with non-computing.
   if(call.modify) {
     if(!data[['passive']]) {
-      data[[B.LOC]] <- union(data[[B.LOC]], tar.sym)
-      data[[B.LOC.CMP]] <- union(data[[B.LOC.CMP]], tar.sym)
+      if(call.assign) {
+        data[[B.LOC]] <- union(data[[B.LOC]], tar.sym)
+        data[[B.LOC.CMP]] <- union(data[[B.LOC.CMP]], tar.sym)
+      }
       data[[B.ALL]] <- union(data[[B.ALL]], tar.sym)
     } else if(call.assign) {
       data[[B.LOC]] <- union(data[[B.LOC]], tar.sym)
