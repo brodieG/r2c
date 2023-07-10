@@ -70,17 +70,25 @@ MISSING <- list(formals(base::identical)[[1L]])
 # `for` assigns to the counter variable.  `->` becomes `<-` on parsing.
 
 ASSIGN.SYM.BASE <- c("<-", "=")
-ASSIGN.SYM <- c(ASSIGN.SYM.BASE, "for")
+ASSIGN.SYM <- c(ASSIGN.SYM.BASE, "for", "for_iter")
 MODIFY.SYM <- c(ASSIGN.SYM, "subassign")
 LOOP.SYM <- c("for", "while", "repeat")
+LOOP.SUB.SYM <- c("for_0", "for_n")
 IF.SUB.SYM <- c("if_true", "if_false")
 CTRL.SYM <- c("if", LOOP.SYM)
-CTRL.SUB.SYM <- c(IF.SUB.SYM)
-BRANCH.TEST.SYM <- c("if_test")
-BRANCH.EXEC.SYM <- c("r2c_if")
+CTRL.SUB.SYM <- c(IF.SUB.SYM, LOOP.SUB.SYM)
+# `for_iter` and `if_test` are not quite the same because for_iter is nested
+# inside `r2c_for`.  Works out the same though in terms of sandwiching the
+# branches.
+BRANCH.START.SYM <- c("if_test", "for_iter")
+BRANCH.MID.SYM <- c("if_true", "for_n")
+BRANCH.END.SYM <- c("if_false", "for_0")
+BRANCH.EXEC.SYM <- c("r2c_if", "r2c_for")
 REC.FUNS <- c('vcopy', 'rec')
 
-INTERNAL.FUNS <- c(IF.SUB.SYM, BRANCH.TEST.SYM, BRANCH.EXEC.SYM, REC.FUNS)
+INTERNAL.FUNS <- c(
+  IF.SUB.SYM, BRANCH.START.SYM, BRANCH.EXEC.SYM, REC.FUNS, "for_init"
+)
 
 NUM.TYPES <- c('logical', 'integer', 'double')
 
@@ -90,7 +98,11 @@ NUM.TYPES <- c('logical', 'integer', 'double')
 # compute, but if the return value is used, it ensures that both of it's
 # branches either compute or `vcopy` that..
 PASSIVE.SYM <- unique(
-  c(MODIFY.SYM, LOOP.SYM, "if", "{", "uplus", IF.SUB.SYM, BRANCH.EXEC.SYM, 'rec')
+  c(
+    MODIFY.SYM, CTRL.SYM, "{", "uplus",
+    CTRL.SUB.SYM, BRANCH.EXEC.SYM, 'rec',
+    'for_init' # so it allows assignments inside
+  )
 )
 # In branches, some symbols are not considered passive even though they don't
 # strictly compute.
@@ -134,10 +146,13 @@ FUN.NAMES <- c(
 
   vcopy="vcopy", rec="rec",
 
-  # "for"="for", "while"="while", "repeat"="repeat", "if"="if"
+  # "while"="while", "repeat"="repeat", "if"="if"
 
   if_test="if_test", if_true="if_true", if_false="if_false", r2c_if="r2c_if",
   "if"="if",
+
+  for_init="for_init", for_iter="for_iter", for_n="for_n", for_0="for_0",
+  r2c_for="r2c_for", "for"="for",
 
   seq_along="seq_along",
 

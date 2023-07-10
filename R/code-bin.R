@@ -31,13 +31,13 @@ OP.OP <- c(
 ## likely branch first, but have not tested.  Not clear that returning NA_REAL
 ## here is correct as one of the inputs could be regular NaN.
 OP.DEFN <- c(
-  ">"="#define GT(x, y) (!isunordered(x, y) ? (x) > (y) : NA_REAL)",
-  ">="="#define GTE(x, y) (!isunordered(x, y) ? (x) >= (y) : NA_REAL)",
-  "<"="#define LT(x, y) (!isunordered(x, y) ? (x) < (y) : NA_REAL)",
-  "<="="#define LTE(x, y) (!isunordered(x, y) ? (x) <= (y) : NA_REAL)",
-  "=="="#define EQ(x, y) (!isunordered(x, y) ? (x) == (y) : NA_REAL)",
-  "!="="#define NEQ(x, y) (!isunordered(x, y) ? (x) != (y) : NA_REAL)",
-  "&"="#define AND(x, y) ((x) == 0 || (y) == 0 ? 0 : isunordered(x, y) ? NA_REAL : 1)",
+  ">"="#define GT(x, y) (!isunordered((x), (y)) ? (x) > (y) : NA_REAL)",
+  ">="="#define GTE(x, y) (!isunordered((x), (y)) ? (x) >= (y) : NA_REAL)",
+  "<"="#define LT(x, y) (!isunordered((x), (y)) ? (x) < (y) : NA_REAL)",
+  "<="="#define LTE(x, y) (!isunordered((x), (y)) ? (x) <= (y) : NA_REAL)",
+  "=="="#define EQ(x, y) (!isunordered((x), (y)) ? (x) == (y) : NA_REAL)",
+  "!="="#define NEQ(x, y) (!isunordered((x), (y)) ? (x) != (y) : NA_REAL)",
+  "&"="#define AND(x, y) ((x) == 0 || (y) == 0 ? 0 : isunordered((x), (y)) ? NA_REAL : 1)",
   "|"="#define OR(x, y) (!ISNAN(x) && (x) || !ISNAN(y) && (y) ? 1 : (x) == 0 && (y) == 0 ? 0 : NA_REAL)"
 )
 stopifnot(

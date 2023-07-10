@@ -244,7 +244,7 @@ get_lang_info <- function(call) {
       else if (is.chr_or_sym(call[[1L]])) as.character(call[[1L]])
       else stop(
         "Only calls in form `fun(...)` and `pkg::fun(...)` where `fun` is a ",
-        "symbol or character are supported (i.e. not `", deparse1(call), "`)."
+        "symbol or character are supported, i.e. not:\n", deparseLines(call)
       )
     }
     else ""

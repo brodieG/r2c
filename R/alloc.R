@@ -285,7 +285,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
       } else stop("Internal Error: unknown function type.")
 
       # Cleanup expired symbols, and bind new ones
-      alloc <- names_update(alloc, i, call, call.name=name, call.i=i, rec=rec)
+      alloc <- names_update(alloc, call, call.name=name, call.i=i, rec=rec)
       # Prepare new vec data (if any), and tweak objet depending on situation.
       # Alloc is made later, but only if vec.dat[['new']] is not null.
       vec.dat <- vec_dat(NULL, "tmp", typeof=res.typeof, group=group, size=size)
@@ -371,14 +371,14 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
       # on them.  Also, because we make the control flow test a separate
       # expression (e.g `if()` becomes `if_test(); r2c_if()`) the test and
       # execution calls sandwich all the branch calls.
-      if (name %in% BRANCH.TEST.SYM) {
+      if (name %in% BRANCH.START.SYM) {
         # First in branch expression after this one
         branch.lvl <- branch.lvl + 1L
         branch.start.stack <- c(branch.start.stack, i)
       } else if (name %in% BRANCH.EXEC.SYM) {
         # Last branch expression before this one
         branch.lvl <- branch.lvl - 1L
-      } else if(name == "if_true") {
+      } else if(name %in%  BRANCH.MID.SYM) {
         # Just completed TRUE branch
         # Needs to be stack to handle , e.g. in `if(a) b else {if(c) d}`
         binding.stack <- c(
@@ -391,14 +391,14 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
         names.assign.in.br <-
           names.assign > branch.start.stack[length(branch.start.stack)]
         alloc[['names']]['br.hide', names.assign.in.br] <- branch.lvl
-      } else if (name == "if_false") {
+      } else if (name %in% BRANCH.END.SYM) {
         # Just completed FALSE branch
         if(length(x[['call']]) < i + 1L)
-          stop("Internal Error: missing 'r2c_if' after 'if_else'")
+          stop("Internal Error: missing outer control after control components.")
         rcf.dat <- reconcile_control_flow(
           alloc, call.dat, stack, binding.stack, i.call=i,
           depth=depth, gmax=gmax, gmin=gmin, branch.lvl=branch.lvl,
-          # send if_true / r2c_if for full error message
+          # send full control call for error message
           call=x[['call']][c(tail(branch.start.stack, 1L), i + 1L)]
         )
         alloc <- rcf.dat[['alloc']]
@@ -1206,11 +1206,11 @@ names_bind <- function(alloc, new.name, call.i, rec) {
   colnames(alloc[['names']])[ncol(alloc[['names']])] <- new.name
   alloc
 }
-names_update <- function(alloc, i, call, call.name, call.i, rec) {
-  alloc <- names_clean(alloc, i)
+names_update <- function(alloc, call, call.name, call.i, rec) {
+  alloc <- names_clean(alloc, call.i)
   if(call.name %in% ASSIGN.SYM) { # not MODIFY.SYM
     # Remove protection from prev assignment to same name, and bind previous
-    # computation (`alloc[[i]]`) to it.
+    # computation (`alloc[[call.i]]`) to it.
     sym <- get_target_symbol(call, call.name)
     alloc <- names_free(alloc, sym, rec)
     alloc <- names_bind(alloc, sym, call.i, rec)

@@ -206,8 +206,12 @@ both \code{yes} and \code{no} values.
 \item \verb{\{} must contain at least one parameter (no empty braces).
 \item \code{seq_along} always returns a double vector, never integer.
 \item \code{[} only supports strictly positive indices.
-\item \code{x[s] <- expr} may not have \code{expr} be \code{x}, and the return value of the
-sub-assignment cannot be used directly.
+\item \code{x[s] <- y}
+\itemize{
+\item May only be used for the side effect of changing \code{x} (i.e. the return
+value of the sub-assignment expression may not be used).
+\item \code{s} may only contain values in \code{seq_along(x)}.
+}
 \item Assignments may only be nested in braces (\verb{\{}) or in control structure
 branches.  This is a recursive requirement, so \code{mean(if(a) x <- y)} is
 disallowed.

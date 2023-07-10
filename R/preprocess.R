@@ -235,7 +235,9 @@ pp_internal <- function(
           call=args[[i]], depth=depth + 1L, x=x, argn=names(args)[i],
           assign=i == 1L && next.assign,
           call.parent=call, call.parent.name=func,
-          indent=indent + (func %in% IF.SUB.SYM) * 2L, passive=passive
+          indent=indent +
+            (func %in% c(CTRL.SUB.SYM, 'for_iter', 'r2c_for')) * 2L,
+          passive=passive
     ) } }
     # Are we in a rec chain?  Needed for alloc to know which bindings are
     # from rec (see reconcile_control_flow).
@@ -509,10 +511,29 @@ transform_call_rec <- function(call) {
 # to help deal with the limitation of linearized calls.  For example, we know
 # that the TRUE branch contents will be between the `if_test` and `if_true`
 # call.
+#
+# Best way to understand what's going on is to look at the generated C code, the
+# linearized recorded calls in `preprocess`, and the C generator functions in
+# e.g. `code-ifelse.R`.
+#
+# **CAREFUL**: subsequent code relies on the exact nesting structure and
+# parameter order of the code replacement.  Things you'll need to modify if you
+# change the replaced call:
+#
+# * Branch handling logic in `copy_branchdat_rec`.
+# * Branch merging logic in `merge_copy_dat`.
+# * Code generation logic in e.g. `code-loop.R` or `code-ifelse.R`, as well as
+#   formal order, etc.
+# * Undoing of this in `recompose_control`.
+# * Indentation in `pp_internal`.
+#
+# @param i scalar integer used to track loop number
 
-transform_control <- function(x) {
+transform_control <- function(x, i=0L) {
+  if(i > 999L)
+    stop("Exceeded maximum allowable control structure count (", i - 1L,")")
   if(is.call(x)) {
-    x[-1L] <- lapply(x[-1L], transform_control)
+    x[-1L] <- lapply(x[-1L], transform_control, i=i + 1L)
     call.sym <- get_lang_name(x)
     if(call.sym == "if") {
       if(!length(x) %in% 3:4)
@@ -520,12 +541,45 @@ transform_control <- function(x) {
       # Can't use `quote(numeric(0L))` because we don't (and can't? Err we
       # could since it's constant alloc) implement `numeric`.
       if(length(x) == 3L) x[[4L]] <- numeric(0L)
+      # **DANGER**, read docs if you change this
       x <- bquote(
         {
           r2c::if_test(cond=.(x[[2L]]))
           r2c::r2c_if(
             true=r2c::if_true(expr=.(x[[3L]])),
             false=r2c::if_false(expr=.(x[[4L]]))
+          )
+        }
+      )
+      names(x)[2:3] <- "..."  # needed for alloc logic
+    } else if (call.sym == "for") {
+      # Strategy is to compute the iteration vector into a new variable (_seq_)
+      # so that it is immune from subsequent modification.  We then track where
+      # we are in that vector (_seqi_).  The C code for `for_iter` will update
+      # the iteration variable using those, and increment _seq_i_.  The `%d`
+      # business is b/c we need different variables for each nested loop.
+
+      # A copy (candidate) of the result of evaluating the exp in for(i in exp)
+      seq.name <- as.name(sprintf(".R2C_for_seq_%d", i))
+      # The index into `seq.name` that we're at
+      seq.i.name <- as.name(sprintf(".R2C_for_seqi_%d", i))
+      # **DANGER**, read docs if you change this
+      # `for_iter` nested inside `r2c_for` for correct indenting of the C code.
+      # `for_iter` is considered an assignment function (b/c it sets the
+      # iteration variable).  While `for_iter` is declared as passive, it does
+      # change the value of `i` and `seq.i` in-place.
+      x <- bquote(
+        {
+          r2c::for_init(
+            seq=.(call("<-", seq.name, x[[3L]])),
+            seq.i=.(call("<-", seq.i.name, 0))
+          )
+          r2c::r2c_for(
+            iter=r2c::for_iter(
+              var=.(x[[2L]]), seq=.(seq.name), seq.i=.(seq.i.name)
+            ),
+            for.n=r2c::for_n(expr=.(x[[4L]])),
+            for.0=r2c::for_0(expr=.(numeric(0)))
           )
         }
       )

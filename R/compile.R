@@ -146,7 +146,7 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' * Logical functions: `&`, `&&`, `|`, `||`, `!`, `ifelse`.
 #' * Statistics: `mean`, `sum`, `length`, `all`, `any`.
 #' * Assignment and braces: `<-`, `=`, and `{`.
-#' * Branches: `if/else`.
+#' * Control Structures: `if/else`, `for`.
 #' * Sequences: `seq_along`.
 #' * Subsetting: `[`, `x[s] <- expr`
 #'
@@ -154,7 +154,9 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #'
 #' * `ifelse` and `if` / `else` always return in a common type that can support
 #'   both `yes` and `no` values.
-#' * `if`/`else` returns `numeric(0)` instead of NULL if an empty branch is taken.
+#' * `if`/`else` returns `numeric(0)` instead of NULL if an empty branch is
+#'   taken.
+#' * `for` return value may not be used unless it is `numeric(0)`.
 #' * `&&` and `||` always evaluate all parameters.
 #' * `{` must contain at least one parameter (no empty braces).
 #' * `seq_along` always returns a double vector, never integer.
@@ -163,9 +165,10 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #'     * May only be used for the side effect of changing `x` (i.e. the return
 #'       value of the sub-assignment expression may not be used).
 #'     * `s` may only contain values in `seq_along(x)`.
+#'     * `"[<-"(x, s, y)` is considered distinct and disallowed.
 #' * Assignments may only be nested in braces (`{`) or in control structure
 #'   branches.  This is a recursive requirement, so `mean(if(a) x <- y)` is
-#'   disallowed.
+#'   disallowed even though `if(a) x <- y` is allowed.
 #' * Additional constraints detailed next.
 #'
 #' Calls must be in the form `fun(...)` (`a fun b` for operators)  where `fun`
@@ -183,10 +186,11 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' have branches; the loop branches are loop not taken (0 iterations) vs loop
 #' taken (1+ iterations).  Control structures add additional constraints:
 #'
-#' * If used, control structure return values must be guaranteed to be the same
-#'   size irrespective of the branch taken.
-#' * If used after a control structure, assignments therein must be consistent
-#'   in size irrespective of branch taken.
+#' * Control structure return values must be guaranteed to be the same
+#'   size irrespective of the branch taken if they are subsequently used.
+#' * Assignments made within control structure branches must be guaranteed to be
+#'   the same size irrespective of branch taken if the corresponding bindings
+#'   are subsequently used.
 #'
 #' Outside of the aforementioned constraints and exceptions, `r2c` attempts to
 #' mimic the corresponding R function semantics to the `identical` level, but

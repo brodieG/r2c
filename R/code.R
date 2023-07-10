@@ -13,7 +13,9 @@
 ##
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
-#' @include code-assign-control.R
+#' @include code-assign-braces.R
+#' @include code-ifelse.R
+#' @include code-loop.R
 #' @include code-summary.R
 #' @include code-seq.R
 #' @include code-bin.R
@@ -305,7 +307,8 @@ VALID_FUNS <- c(
   list(
     cgen(
       "seq_along", defn=function(along.with) NULL,
-      type=list("arglen", "along.with"), code.gen=code_gen_seq_along
+      type=list("arglen", "along.with"), code.gen=code_gen_seq_along,
+      res.type='preserve'
     )
   ),
   # - Subset -----------------------------------------------------------------
@@ -383,6 +386,33 @@ VALID_FUNS <- c(
     # early parsing passes recognize it as an allowed function.
     cgen(
       "if", type=list("eqlen", 2:3), code.gen=code_gen_if, res.type="preserve"
+    ),
+    # Result of this one is only used directly in C code, but passive pass
+    # through of type so we need to preserve that.
+    cgen(
+      "for_init", type=list("constant", 1L), code.gen=code_gen_for_init,
+      res.type="preserve.which", res.type.which=2L, fun=for_init
+    ),
+    cgen(
+      "for_iter", type=list("constant", 1L), code.gen=code_gen_for_iter,
+      res.type="preserve.which", res.type.which=2L, fun=for_iter
+    ),
+    cgen(
+      "for_n", type=list("arglen", "expr"), code.gen=code_gen_for_n,
+      fun=for_n, res.type="preserve"
+    ),
+    cgen(
+      "for_0", type=list("arglen", "expr"), code.gen=code_gen_for_0,
+      fun=for_0, res.type="preserve"
+    ),
+    # `res.type` gets special handling in `reconcile_control_flow` for `r2c_if`.
+    cgen(
+      "r2c_for", type=list("eqlen", c("for.n", "for.0")),
+      code.gen=code_gen_r2c_for, fun=r2c_for, res.type="preserve"
+    ),
+    # This is a stub function like `if`.
+    cgen(
+      "for", type=list("arglen", 4L), code.gen=code_gen_for, res.type="preserve"
     )
   ),
   # - r2c funs -----------------------------------------------------------------
