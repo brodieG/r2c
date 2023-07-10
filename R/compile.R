@@ -146,7 +146,7 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' * Logical functions: `&`, `&&`, `|`, `||`, `!`, `ifelse`.
 #' * Statistics: `mean`, `sum`, `length`, `all`, `any`.
 #' * Assignment and braces: `<-`, `=`, and `{`.
-#' * Branches: `if/else`.
+#' * Control Structures: `if/else`, `for`.
 #' * Sequences: `seq_along`.
 #' * Subsetting: `[`, `x[s] <- expr`
 #'
@@ -156,6 +156,7 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #'   both `yes` and `no` values.
 #' * `if`/`else` returns `numeric(0)` instead of NULL if an empty branch is
 #'   taken.
+#' * `for` return value may not be used unless it is `numeric(0)`.
 #' * `&&` and `||` always evaluate all parameters.
 #' * `{` must contain at least one parameter (no empty braces).
 #' * `seq_along` always returns a double vector, never integer.
