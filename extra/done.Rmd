@@ -12,8 +12,55 @@
 
 ### v0.4.0
 
+* Remove old reference to `i` from `names_update`.
+
+* Why did we move the self-copy for sub-assign into ext to the very beginning of
+  the call?  Probably nested branches with sub-assigns?  Problem is this causes
+  more than one copy as next.  If we had deferred the copy to be in-branch the
+  return value copy would not be necessary.  Gaah, it's because we don't want to
+  vcopy every loop iteration, and particularly with nested loops, we really want
+  the copy to be done outside of every loop.  It ends up looking messy but the
+  flipside is you avoid needless copies since we just want one copy to ensure
+  not external.
+
+    x <- r2c::vcopy(x)
+    if (a) {
+        s <- mean(y)
+        x[a] <- s
+        r2c::rec(r2c::vcopy(x))
+    }
+    else r2c::rec(y <- x + 1)
+
+  Additionally, copying in a loop is always just going to reset to the original
+  values since the second time the loop goes around it's still referencing the
+  old value that was copied.
+
+* The `x <- vcopy(x)` issue in a loop where we then sub-assign to `x`, but the
+  second (and n) times around all our modifications are overwritten because the
+  two `x`s in the self copy are actually different memory locations.
+
+* Do we need `if_true` / `if_false`?  Effectively implicit in position, but
+  might simplify finding boundaries (actually, definitely does).
+
+* Loop counter variable not being recognized as assigned-to.
+
 * Zero length return value does not retain correct type (this was specific to
   subset bug).
+
+* Think carefully about the following case.  Can we get away without a
+  reconciliation (as it is it's just not right - mismatched rec).  This is now
+  resolved by moving the vcopy outside of the branch.
+
+  {
+      x <- r2c::vcopy(x)
+      if (b) 
+          x[a] <- y
+      else {
+          x <- r2c::rec(r2c::vcopy(x))
+          numeric(0)
+      }
+      x
+  }
 
 * Sub-assignment from a complex expressions that strains eval order.  How do we
   recognize that `x` is not external because we'll be vcopying it?  Is this even
@@ -35,6 +82,9 @@
   Seems like we can't get in a situation where we don't recognize the symbol is
   local.
 
+* Can we collapse the subassign into regular promotes now that we're
+  rationalizing the 0 (i.e. get rid of `add_actual_sub_callptr` (or whatever
+  it's called).  Yes, done.
 * Make sure that we deduplicate `rec` and `vcopy` requirements e.g. for the case
   of sub-assignment (maybe this is untestable because we don't allow the result
   of a sub-assignment to be used?).  Does't seem an issue now?

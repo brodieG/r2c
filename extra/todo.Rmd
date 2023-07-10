@@ -30,38 +30,28 @@
 
 ## Current
 
-* Think carefully about the following case.  Can we get away without a
-  reconciliation (as it is it's just not right - mismatched rec):
+* Braces not getting fully collapsed anymore after processing for `for`.
 
-  {
-      x <- r2c::vcopy(x)
-      if (b) 
-          x[a] <- y
-      else {
-          x <- r2c::rec(r2c::vcopy(x))
-          numeric(0)
-      }
-      x
-  }
+* Whitespace not great for generated C code for loops.
 
-* Can we collapse the subassign into regular promotes now that we're
-  rationalizing the 0 (i.e. get rid of `add_actual_sub_callptr` (or whatever
-  it's called).
+* Check that we can't do stuff like `for(a + 2 in ...)` (i.e. symbol must be
+  target).
 
-* Do we need `if_true` / `if_false`?  Effectively implicit in position, but
-  might simplify finding boundaries (actually, definitely does).
+* Make sure that all loops have interrupts (subset/assign don't).
 
 * Move subassign to assign/control?
 
 * Rationalize documentation of "implementation detail" functions like `r2c_if`
   and `subassign`.  Maybe hide them from the index with `@keywords internal` and
-  add a family that connects them. Make sure to explain how we generate the C
-  code for control structures as that is not at all obvious.
+  add a family that connects them.
+* Make sure to explain how we generate the C code for control structures as that
+  is not at all obvious.  Currently docs are spread in `?r2c_if` and in
+  `transform_control`.
 * Document for:
   * Limit to number of for loops.
 
-* Make sure that all loops have interrupts (subset/assign don't).
-
+* Not clear that constants are being handled properly (e.g. need to `en_vcopy`
+  the constant in `transform_control` for `for_init`).
 
 ## Next
 
