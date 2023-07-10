@@ -285,7 +285,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
       } else stop("Internal Error: unknown function type.")
 
       # Cleanup expired symbols, and bind new ones
-      alloc <- names_update(alloc, i, call, call.name=name, call.i=i, rec=rec)
+      alloc <- names_update(alloc, call, call.name=name, call.i=i, rec=rec)
       # Prepare new vec data (if any), and tweak objet depending on situation.
       # Alloc is made later, but only if vec.dat[['new']] is not null.
       vec.dat <- vec_dat(NULL, "tmp", typeof=res.typeof, group=group, size=size)
@@ -1206,11 +1206,11 @@ names_bind <- function(alloc, new.name, call.i, rec) {
   colnames(alloc[['names']])[ncol(alloc[['names']])] <- new.name
   alloc
 }
-names_update <- function(alloc, i, call, call.name, call.i, rec) {
-  alloc <- names_clean(alloc, i)  # should be call.i, i is embedded in alloc
+names_update <- function(alloc, call, call.name, call.i, rec) {
+  alloc <- names_clean(alloc, call.i)
   if(call.name %in% ASSIGN.SYM) { # not MODIFY.SYM
     # Remove protection from prev assignment to same name, and bind previous
-    # computation (`alloc[[i]]`) to it.
+    # computation (`alloc[[call.i]]`) to it.
     sym <- get_target_symbol(call, call.name)
     alloc <- names_free(alloc, sym, rec)
     alloc <- names_bind(alloc, sym, call.i, rec)
