@@ -32,6 +32,8 @@ B.LOC <- c('bind', 'loc')
 B.LOC.CMP <- c('bind', 'loc.compute')
 # Global and computing
 B.ALL <- c('bind', 'all')
+# Global and computing, but to inject at front by e.g. subassign
+B.ALL0 <- c('bind', 'all0')
 # Track all bindings irrespective of type for free variables
 B.NAMED <- c('bind', 'named')
 
@@ -309,7 +311,8 @@ copy_branchdat <- function(x) {
 #   determine whether the result of a branch is further used.
 # @param data list with named elements:
 #   * "bind": a list containing branch-local bindings, branch-local computed
-#     bindings, global bindings, and every encountered binding (named).
+#     bindings, global bindings (all, and all0 for those re-injected at
+#     beginning of call by e.g. subassign), and every encountered binding (named).
 #   * "copy": a list with elements "cand", and "act". Each is a list
 #     of `callptr` generated objects used to track calls that need to be
 #     reconciled and/or vcopied (potentially for "cand", definitively).
@@ -328,7 +331,8 @@ copy_branchdat_rec <- function(
   prev.call="",
   data=list(
     bind=list(
-      loc=character(), all=character(), loc.compute=character(),
+      loc=character(), loc.compute=character(),
+      all=character(), all0=character(),
       named=character()
     ),
     copy=list(cand=list(), act=list()),
@@ -342,7 +346,7 @@ copy_branchdat_rec <- function(
   if (is.symbol(x)) {
     sym.local.cmp <- sym.name %in% data[[B.LOC.CMP]]
     sym.local <- sym.name %in% data[[B.LOC]]
-    sym.global <- sym.name %in% data[[B.ALL]]
+    sym.global <- sym.name %in% c(data[[B.ALL]], data[[B.ALL0]])
     passive <- !sym.local.cmp
     leaf <- TRUE
     data[['leaf.name']] <- sym.name
@@ -585,7 +589,7 @@ generate_candidate <- function(
   # considered non-passive.
   # add_actual sets data[['passive']], so save current value.
   passive.now <- data[['passive']]
-  computed.sym <- union(data[[B.ALL]], data[[B.LOC.CMP]])
+  computed.sym <- unique(c(data[[B.ALL]], data[[B.ALL0]], data[[B.LOC.CMP]]))
 
   first.assign <- call.assign && length(assign.to) == 1L
 
@@ -684,8 +688,6 @@ generate_candidate <- function(
   } else if (last) {
     # Final return not from branch: need to copy if not computed already.
     # Reconciliation not necessary since we're not in branch.
-    # if(a) vcopy(x)   # need to copy
-    # if(a) mean(x)    # don't need to copy
     assign.passive <- !data[['leaf.name']] %in% computed.sym
     sym.passive <- is.symbol(x) && !sym.name %in% computed.sym
     if(
@@ -701,8 +703,11 @@ generate_candidate <- function(
       if(call.assign) {
         data[[B.LOC]] <- union(data[[B.LOC]], tar.sym)
         data[[B.LOC.CMP]] <- union(data[[B.LOC.CMP]], tar.sym)
+        data[[B.ALL]] <- union(data[[B.ALL]], tar.sym)
       }
-      data[[B.ALL]] <- union(data[[B.ALL]], tar.sym)
+      if(call.modify) {
+        data[[B.ALL0]] <- union(data[[B.ALL0]], tar.sym)
+      }
     } else if(call.assign) {
       data[[B.LOC]] <- union(data[[B.LOC]], tar.sym)
       if(in.branch) {
@@ -868,7 +873,7 @@ merge_copy_dat <- function(old, a, b, idx, idx.offset) {
     gen_callptrs(b.miss, c(idx, 3L + idx.offset, 2L, -1L), copy=TRUE, rec=TRUE)
 
   # Combine all found free symbols
-  prev.bound <- c(old[[B.LOC.CMP]], old[[B.LOC]], old[[B.ALL]])
+  prev.bound <- c(old[[B.LOC.CMP]], old[[B.LOC]], old[[B.ALL]], old[[B.ALL]])
   old[['free']] <- unique(
     c(
       a[['free']], b[['free']],
@@ -894,10 +899,11 @@ merge_copy_dat <- function(old, a, b, idx, idx.offset) {
   branch.all.new <- setdiff(union(a[[B.ALL]], b[[B.ALL]]), old[[B.ALL]])
   branch.loc <- union(a[[B.LOC]], b[[B.LOC]])
   branch.loc.cmp <- union(a[[B.LOC.CMP]], b[[B.LOC.CMP]])
-  old[[B.ALL]] <- unique(c(old[[B.ALL]], branch.loc, branch.loc.cmp))
   old[[B.LOC]] <- setdiff(old[[B.LOC]], union(branch.all.new, branch.loc))
   old[[B.LOC.CMP]] <-
     setdiff(old[[B.LOC.CMP]], union(branch.all.new, branch.loc.cmp))
+  old[[B.ALL]] <- unique(c(old[[B.ALL]], branch.loc, branch.loc.cmp))
+  old[[B.ALL0]] <- unique(c(old[[B.ALL0]], a[[B.ALL0]], b[[B.ALL0]]))
 
   old
 }
