@@ -282,7 +282,13 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
         asize  <- if(anyNA(s.tmp)) NA_real_ else s.tmp[1L]
         size <- if(anyNA(s.tmp)) gmax else s.tmp[1L]
         group <- max(g.tmp)  # any group size in the lot?
-      } else stop("Internal Error: unknown function type.")
+      } else if(ftype[[1L]] == "product") {
+        # Results size is the product of the size of the selected inputs,
+        # e.g. for nested loops, maybe matrix in the future.
+        sizes.tmp <- input_arg_size_dat(stack, depth, ftype, call, .CALL)
+
+      }
+      stop("Internal Error: unknown function type.")
 
       # Cleanup expired symbols, and bind new ones
       alloc <- names_update(alloc, call, call.name=name, call.i=i, rec=rec)

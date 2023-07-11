@@ -30,6 +30,8 @@
 
 ## Current
 
+* Make sure we can't overflow `R_xlen_t` with `seq.i`.
+
 * Braces not getting fully collapsed anymore after processing for `for`.
 
 * Whitespace not great for generated C code for loops.

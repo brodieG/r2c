@@ -8,7 +8,7 @@
 \alias{for_0}
 \title{Loop Stub Functions}
 \usage{
-r2c_for()
+r2c_for(iter, for.n, for.0)
 
 for_init(seq, seq.i)
 

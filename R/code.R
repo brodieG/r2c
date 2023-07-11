@@ -23,6 +23,7 @@
 #' @include code-logical.R
 #' @include code-unary.R
 #' @include code-subset.R
+#' @include code-numeric.R
 
 NULL
 
@@ -413,6 +414,13 @@ VALID_FUNS <- c(
     # This is a stub function like `if`.
     cgen(
       "for", type=list("arglen", 4L), code.gen=code_gen_for, res.type="preserve"
+    )
+  ),
+  # - Miscellaneous ------------------------------------------------------------
+  list(
+    cgen(
+      "numeric", defn=function(length=0L) NULL, type=list("arglen", "length"),
+      code.gen=code_gen_numeric, res.type="double"
     )
   ),
   # - r2c funs -----------------------------------------------------------------

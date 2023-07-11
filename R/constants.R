@@ -157,7 +157,9 @@ FUN.NAMES <- c(
   seq_along="seq_along",
 
   "["="subset",
-  subassign="subassign"   # this is [<-
+  subassign="subassign",   # this is [<-
+
+  numeric="numeric"
 )
 # C Generator Output Types
 CGEN.OUT.CALL <- 1L   # output call to C fun e.g. `mean(data, lens, di[5])`

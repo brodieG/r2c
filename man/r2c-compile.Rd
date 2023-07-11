@@ -192,7 +192,7 @@ The following functions are supported in \code{x} (or in the body of \code{x} fo
 \item Logical functions: \code{&}, \code{&&}, \code{|}, \code{||}, \code{!}, \code{ifelse}.
 \item Statistics: \code{mean}, \code{sum}, \code{length}, \code{all}, \code{any}.
 \item Assignment and braces: \verb{<-}, \code{=}, and \verb{\{}.
-\item Branches: \verb{if/else}.
+\item Control Structures: \verb{if/else}, \code{for}.
 \item Sequences: \code{seq_along}.
 \item Subsetting: \code{[}, \code{x[s] <- expr}
 }
@@ -201,7 +201,9 @@ In general these will behave as in R, with the following exceptions:
 \itemize{
 \item \code{ifelse} and \code{if} / \verb{else} always return in a common type that can support
 both \code{yes} and \code{no} values.
-\item \code{if}/\verb{else} returns \code{numeric(0)} instead of NULL if an empty branch is taken.
+\item \code{if}/\verb{else} returns \code{numeric(0)} instead of NULL if an empty branch is
+taken.
+\item \code{for} return value may not be used unless it is \code{numeric(0)}.
 \item \code{&&} and \code{||} always evaluate all parameters.
 \item \verb{\{} must contain at least one parameter (no empty braces).
 \item \code{seq_along} always returns a double vector, never integer.
@@ -211,10 +213,11 @@ both \code{yes} and \code{no} values.
 \item May only be used for the side effect of changing \code{x} (i.e. the return
 value of the sub-assignment expression may not be used).
 \item \code{s} may only contain values in \code{seq_along(x)}.
+\item \code{"[<-"(x, s, y)} is considered distinct and disallowed.
 }
 \item Assignments may only be nested in braces (\verb{\{}) or in control structure
 branches.  This is a recursive requirement, so \code{mean(if(a) x <- y)} is
-disallowed.
+disallowed even though \code{if(a) x <- y} is allowed.
 \item Additional constraints detailed next.
 }
 
@@ -232,10 +235,11 @@ Control structures include \code{if} / \verb{else} statements and loops.  All of
 have branches; the loop branches are loop not taken (0 iterations) vs loop
 taken (1+ iterations).  Control structures add additional constraints:
 \itemize{
-\item If used, control structure return values must be guaranteed to be the same
-size irrespective of the branch taken.
-\item If used after a control structure, assignments therein must be consistent
-in size irrespective of branch taken.
+\item Control structure return values must be guaranteed to be the same
+size irrespective of the branch taken if they are subsequently used.
+\item Assignments made within control structure branches must be guaranteed to be
+the same size irrespective of branch taken if the corresponding bindings
+are subsequently used.
 }
 
 Outside of the aforementioned constraints and exceptions, \code{r2c} attempts to
