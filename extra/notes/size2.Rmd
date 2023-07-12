@@ -1,0 +1,90 @@
+# Complex Sizing
+
+## Overview
+
+For each function, we want to record the size as a vector, e.g:
+
+    sv <- c(1, 3)
+
+Each position `p` of a vector correspond to the `p - 1`th power of group size,
+so with group size `g` the actual result size is:
+
+    g^(seq_along(sv) - 1L) * sv
+
+Nesting of functions may produce a list of such `sv` values.  For example, for a
+binary op (i.e. `vecrec` with inputs):
+
+    sv.e1 <- c(4, 2)
+    sv.e2 <- c(0, 0, 1)
+
+How do we encode a 0 length vector in all this (`c(0)` doesn't work?  Should?).
+
+We need to pick the bigger of the two (or zero).  This is not knowable ahead of
+execution time, so we need to record both vectors, along with the nature of
+their comparison.
+
+* `vecrec`
+* `arglen`
+* `eqlen`
+* `constant`
+* `concat`: i.e. what `c` would use.
+* `product`: i.e. what we would need to implement something for the convolution
+  (x * y)
+* `control`: specified via a control style argument `seq_len(ctrl)`
+
+## Strawman
+
+Size is represented as a list of polynomial factors.  If a list has more than
+one element, then for any given group, the largest element when group size is
+specified is taken to be the group size.
+
+## Eqlen
+
+Does `eqlen` allow only one formulation?  If `gmax == gmin` do we just collapse
+all the vectors to the constant argument (probably yes).  Then `eqlen` can just
+focus on that and not need special handling.  This sounds appealing.
+
+So `eqlen` requires (after `gmax==gmin` simplification) that all arguments have
+the exact same formulation, and returns a single copy of that formulation.
+
+## Vecrec
+
+`vecrec` returns a list of all its formulations.
+
+## Constant
+
+Returns a single length ` vector.
+
+## Control
+
+Like constant, but requires evaluation (and check not hitting a group vector).
+
+## Concat
+
+Returns a single formulation by making all the vectors equal length and reducing
+them with add.
+
+## Product
+
+Computes the polynomial.
+
+# Initializers?
+
+Do we need `numeric_along(x)`.  Or do we special case substitute
+`numeric(length(x))` into `numeric_along`?  What about:
+
+    numeric(length(x) * length(y))
+
+# Control Size
+
+Special type of argument that can't be evaluated per group like controls, but
+used exclusively with functions that use it to size input.  E.g. `numeric(x)`,
+`seq_len(x)`.  Any others?  `rep`, `rep_len`, `r2c:::rep_along` (although the
+latter does not need control size).
+
+`rep` is complicated because it is both `arglen` and `control`, and involves the
+product with `control` for `each` and the sum of `times` depending on which
+parameter is specified (these can be substituted into two different functions
+depending on parameters?).
+
+
