@@ -207,6 +207,8 @@ pp_internal <- function(
     args.types <- rep("other", length(args))
     args.types[names(args) %in% VALID_FUNS[[c(func, "ctrl")]]] <- "control"
     args.types[names(args) %in% VALID_FUNS[[c(func, "flag")]]] <- "flag"
+    args.types[names(args) %in% VALID_FUNS[[c(func, "extern")]]] <- "extern"
+
     passive <- passive && func %in% c(PASSIVE.SYM, 'vcopy')
 
     # Check if we're in assignment call
@@ -223,7 +225,10 @@ pp_internal <- function(
       stop(simpleError(msg, call.parent))
     }
     for(i in seq_along(args)) {
-      if(args.types[i] %in% c('control', 'flag')) { # shouldn't be assign symbol
+      if(
+        args.types[i] %in% c('control', 'flag', 'extern')
+      ) {
+        # Recursion end for these; shouldn't be assign symbol
         if(next.assign) stop("Internal error: controls/flag on assignment.")
         x <- record_call_dat(
           x, call=args[[i]], depth=depth + 1L, argn=names(args)[i],
@@ -253,7 +258,7 @@ pp_internal <- function(
     # Generate Code
     code <- VALID_FUNS[[c(func, "code.gen")]](
       func,
-      args[args.types == "other"],
+      args[!args.types %in% CTRL.FLAG], # other/external
       args[args.types == "control"],
       args[args.types == "flag"]
     )

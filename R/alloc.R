@@ -195,12 +195,12 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
   # structure.  This data structure will also include references to external
   # vectors (if there are such references).  The result of evaluating
   # control/flag parameters is recorded separately in `call.dat`.
-
   stack <- init_stack()
   stack.ctrl <- stack.flag <- list()
   stack.sizes <- list()   # argument sizes (see size.R)
   call.dat <- list()
   branch.lvl <- 0L
+  extern.evals <- list()
 
   for(i in seq_along(x[['call']])) {
     type <- x[['type']][[i]]
@@ -283,10 +283,29 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
       vec.dat <- vec_dat(numeric(), "tmp", typeof="logical", size=0)
     # - Control Parameter / External -------------------------------------------
     } else if (
-      type %in% CTRL.FLAG ||
+      (cfe <- type %in% CTRL.FLAG.EXT) ||
       !(id <- name_to_id(alloc, name)) # `id` used in next else if
     ) {
-      # Need to eval parameter
+      # External evals should not mix with internal values
+      if(cfe && id) {
+        # An id should never resolve to 'ext' anyway...
+        if(!alloc[['type']][id] %in% c('ext')) {
+          stop(
+            "Parameter `", argn ,"` must resolve to iteration invariant ",
+            "external data."
+          )
+        }
+      }
+      # Cache the call so we don't re-evaluate the same thing over and over?
+
+
+      # Also need new type.
+      stop(
+        "Make it an error for a control parameter to be defined in the ",
+        "expression.  It can be one of the MoreArgs, but not data, and not ",
+        "assigned in r2c."
+      )
+      # Need to eval parameter; `env` contains MoreArgs.
       tryCatch(
         arg.e <- eval(call, envir=data, enclos=env),
         error=function(e) stop(simpleError(conditionMessage(e), call.outer))
@@ -305,7 +324,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
         # Validate non-control external args after eval, and add to vec.dat
         validate_ext(x, i, type, arg.e, name, call, .CALL)
         typeof <- typeof(arg.e)
-        size <- length(arg.e)
+        size <- list(length(arg.e))
         vec.dat <- vec_dat(arg.e, "ext", typeof=typeof, size=size)
       }
 
@@ -441,8 +460,8 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
 ## * ids0: a unique identifier for each allocation, differs from column rank in
 ##   `dat` as soon as there is a re-use of a previous allocation.  This is a
 ##   sentinel to detect deviations between the stack and allocations.
-## * type: one of "tmp" (allocated), "grp" (from the data we're generating
-##   groups from, "ext" (any other data vector), "res" (the result), "sts"
+## * type: one of "tmp" (allocated), "grp" (from the iteration/group variant
+##   data, "ext" (any other data vector), "res" (the result), "sts"
 ##   (status flags, e.g. recycle warning).
 ## * typeof: the intended data format at the end of the computation.  Used to
 ##   try to track whether a vector could be interpreted as logical or integer.
@@ -976,21 +995,6 @@ latest_action_call <- function(x) {
     stop("Internal Error: no active return call found.")
   max(call.active.i)
 }
-## Identify Missing Parameters on Stack
-##
-## Ends execution with Error
-
-stack_param_missing <- function(params, stack.avail, call, .CALL) {
-  stop(
-    simpleError(
-      paste0(
-        "Parameter(s) ",
-        deparse1(params[!params %in% stack.avail]),
-        " missing but required for sizing in\n", deparseLines(call)
-      ),
-      .CALL
-  ) )
-}
 ## Compute Possible Size
 ##
 ## This is affected by maximum group size as well as any non-group parameters.
@@ -1051,46 +1055,6 @@ vec_eqlen <- function(sizes, groups, gmax, gmin) {
 stack_inputs <- function(stack, depth)
   stack[, stack['depth',] == depth + 1L, drop=FALSE]
 
-# Retrieve Size Data For Input Parameters
-#
-# For size resolution that depends on the size of potentially multiple
-# candidates arguments, return the size data for the relevant candidates.
-#
-# @param ftype see `type` for `cgen`
-
-input_arg_size_dat <- function(stack, depth, ftype, call, .CALL) {
-  stack.cand <- stack['depth',] == depth + 1L
-  if(is.character(ftype[[2L]])) {
-    param.cand.tmp <- colnames(stack)[stack.cand]
-    if(!all(param.cand.match <- ftype[[2L]] %in% param.cand.tmp))
-      stack_param_missing(
-        ftype[[2L]][!param.cand.match], param.cand.tmp,
-        call, .CALL
-      )
-    param.cand <-
-      seq_len(ncol(stack))[colnames(stack) %in% ftype[[2L]] & stack.cand]
-  } else if(is.integer(ftype[[2L]])) {
-    param.cand <- seq_along(stack)[stack.cand][ftype[[2L]]]
-    if(anyNA(param.cand))
-      stack_param_missing(
-        ftype[[2L]][is.na(param.cand)], seq_along(stack)[stack.cand],
-        call, .CALL
-      )
-  } else stop("Internal Error: unexpected arg index type.")
-
-  # Arglen needs to disambiguate multiple params (e.g. `...` may show up
-  # multiple times in `colnames(stack)` for any given depth).
-  if(length(ftype) > 2L && is.function(ftype[[3L]])) {
-    param.cand.tmp <- ftype[[3L]](param.cand)
-    if(
-      !is.integer(param.cand.tmp) ||
-      !all(param.cand.tmp %in% param.cand)
-    )
-      stop("Internal Error: parameter disambiguation for sizing failed.")
-    param.cand <- param.cand.tmp
-  }
-  stack[c('size', 'group'), param.cand, drop=FALSE]
-}
 
 ## Check function validity
 check_fun <- function(name, pkg, env) {

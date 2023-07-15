@@ -15,6 +15,61 @@
 
 target_inputs <- function(ftype, stack) {
 }
+# Retrieve Ids For Input Parameters
+#
+# For size resolution that depends on the size of potentially multiple
+# candidates arguments, return the size data for the relevant candidates.
+#
+# @param ftype see `type` for `cgen`
+
+input_args <- function(stack, depth, ftype, call, .CALL) {
+  stack.cand <- stack['depth',] == depth + 1L
+  if(is.character(ftype[[2L]])) {
+    param.cand.tmp <- colnames(stack)[stack.cand]
+    if(!all(param.cand.match <- ftype[[2L]] %in% param.cand.tmp))
+      stack_param_missing(
+        ftype[[2L]][!param.cand.match], param.cand.tmp,
+        call, .CALL
+      )
+    param.cand <-
+      seq_len(ncol(stack))[colnames(stack) %in% ftype[[2L]] & stack.cand]
+  } else if(is.integer(ftype[[2L]])) {
+    param.cand <- seq_along(stack)[stack.cand][ftype[[2L]]]
+    if(anyNA(param.cand))
+      stack_param_missing(
+        ftype[[2L]][is.na(param.cand)], seq_along(stack)[stack.cand],
+        call, .CALL
+      )
+  } else stop("Internal Error: unexpected arg index type.")
+
+  # Arglen needs to disambiguate multiple params (e.g. `...` may show up
+  # multiple times in `colnames(stack)` for any given depth).
+  if(length(ftype) > 2L && is.function(ftype[[3L]])) {
+    param.cand.tmp <- ftype[[3L]](param.cand)
+    if(
+      !is.integer(param.cand.tmp) ||
+      !all(param.cand.tmp %in% param.cand)
+    )
+      stop("Internal Error: parameter disambiguation for sizing failed.")
+    param.cand <- param.cand.tmp
+  }
+  param.cand['id',]
+}
+## Identify Missing Parameters on Stack
+##
+## Ends execution with Error
+
+stack_param_missing <- function(params, stack.avail, call, .CALL) {
+  stop(
+    simpleError(
+      paste0(
+        "Parameter(s) ",
+        deparse1(params[!params %in% stack.avail]),
+        " missing but required for sizing in\n", deparseLines(call)
+      ),
+      .CALL
+  ) )
+}
 
 compute_size <- compute_size(alloc, stack, depth, ftype, call, .CALL) {
   # Compute result size
@@ -24,7 +79,9 @@ compute_size <- compute_size(alloc, stack, depth, ftype, call, .CALL) {
     size <- list(ftype[[2L]])
   } else if(ftype[[1L]] == "external") {
     # Find which arguments are in play?
-    inputs <- target_inputs(ftype)
+    inputs <- input_args(ftype)
+    if(!all(alloc[[]]))
+
 
     # Resolve them with a function?  Can this logic be merged?
     if(!is.function(ftype[[3L]]))
@@ -33,6 +90,7 @@ compute_size <- compute_size(alloc, stack, depth, ftype, call, .CALL) {
     # Probably needs input ids
     # DOES `alloc` CONTAIN SIZES?
     size <- ftype[[3L]](alloc, inputs)
+
   } else if(ftype[[1L]] %in% c("arglen", "vecrec")) {
     # Length of a specific argument, like `probs` for `quantile`
     # `depth + 1L` should be params to current call (this is only true for

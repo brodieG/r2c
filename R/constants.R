@@ -115,8 +115,10 @@ ALLOC.DAT.VEC <- c(
   'ids0', 'alloc', 'size', 'depth', 'type', 'typeof'
 )
 
-# To avoid typos
+# To avoid typos.  External different because its value does get used in a C
+# call directly.
 CTRL.FLAG <- c("control", "flag")
+CTRL.FLAG.EXT <- c(CTRL.FLAG, "extern")
 
 # Packages allowable in `::`
 VALID.PKG <- c('base', 'r2c')

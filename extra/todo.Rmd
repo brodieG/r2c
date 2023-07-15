@@ -50,6 +50,9 @@
   re-allocation vs just rewriting with zeros?  Should be okay, but we do need to
   rewrite with zeros every iteration.
 
+* Resolve confusing naming around control parameters and control flow
+  structures.
+
 * Make sure we can't overflow `R_xlen_t` with `seq.i`.
 
 * Braces not getting fully collapsed anymore after processing for `for`.

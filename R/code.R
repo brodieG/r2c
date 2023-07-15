@@ -38,11 +38,22 @@ is.valid_n_arglen <- function(type)
   (is.character(type[[2L]]) || is.integer(type[[2L]])) &&
   !anyNA(type[[2L]])
 
+# should rationalize these...
 is.valid_vecrec <- function(type)
   is.valid_n_arglen(type) && type[[1L]] == "vecrec"
 
 is.valid_eqlen <- function(type)
   is.valid_n_arglen(type) && type[[1L]] == "eqlen"
+
+is.valid_extern <- function(type)
+  is.valid_n_arglen(type) && type[[1L]] == "extern" &&
+  length(type[[2L]]) == 1L
+
+is.valid_concat <- function(type)
+  is.valid_n_arglen(type) && type[[1L]] == "concat"
+
+is.valid_prod <- function(type)
+  is.valid_n_arglen(type) && type[[1L]] == "prod"
 
 is.valid_constant <- function(type)
   is.integer(type[[2L]]) &&
@@ -109,9 +120,10 @@ is.valid_constant <- function(type)
 #'   may be conveyed to the function without the need to use `VECTOR_ELT`, etc.,
 #'   to access the specific control parameter.  Any parameters here are
 #'   exclusive of those listed in `ctrl.params`.
-#' @param type list(2:3) containing the type of function in "constant", "arglen",
-#'   or "vecrec" at position one, and additional meta data at position two or
-#'   three that can be depending on the value in position one:
+#' @param type list(2:3) containing the type of function in "constant", 
+#'   "arglen", "vecrec", "eqlen", "concat", or "extern" position one, and
+#'   additional meta data at position two or three that can be depending on the
+#'   value in position one (see size.R for details):
 #'
 #'   * constant: a positive non-NA integer indicating the constant result size
 #'     (e.g. 1L for `mean`)
@@ -119,9 +131,9 @@ is.valid_constant <- function(type)
 #'     the result size (e.g. `probs` for [`quantile`]), also allows specifying a
 #'     function at position 3 to e.g. pick which of multiple arguments matching
 #'     `...` to use for the length.
-#'   * vecrec: character(n) (or integer(n)) the names (or indices in the matched
-#'     call) of the arguments to use to compute result size under assumption of
-#'     recycling to longest, or zero if any argument is zero length.
+#'   * vecrec, eqlen, concat, external: character(n) (or integer(n)) the names
+#'     (or indices in the matched call) of the arguments to use to compute
+#'     result size.
 #'
 #' @param code.gen a function that generates the C code corresponding to an R
 #'   function, which accepts three parameters (see details for the expected
@@ -154,7 +166,7 @@ is.valid_constant <- function(type)
 cgen <- function(
   name, fun=get(name, baseenv(), mode="function"),
   defn=if(typeof(fun) == 'closure') fun,
-  ctrl.params=character(), flag.params=character(),
+  ctrl.params=character(), flag.params=character(), extern.params=character()
   type, code.gen,
   ctrl.validate=function(...) 0L,
   input.validate=function(types) TRUE,
@@ -190,17 +202,21 @@ cgen <- function(
   # Limitation in vetr prevents this being done directly above
   stopifnot(
     is.character(type[[1L]]) && length(type[[1L]]) == 1L && !is.na(type[[1L]]),
-    type[[1L]] %in% c("constant", "arglen", "vecrec", "eqlen"),
+    type[[1L]] %in%
+      c("constant", "arglen", "vecrec", "eqlen", "extern", "concat", "prod"),
     (
       (type[[1L]] == "constant" && is.valid_constant(type)) ||
       (type[[1L]] == "arglen" && is.valid_arglen(type)) ||
       (type[[1L]] == "vecrec" && is.valid_vecrec(type)) ||
-      (type[[1L]] == "eqlen" && is.valid_eqlen(type))
+      (type[[1L]] == "eqlen" && is.valid_eqlen(type)) ||
+      (type[[1L]] == "extern" && is.valid_extern(type)) ||
+      (type[[1L]] == "concat" && is.valid_concat(type)) ||
+      (type[[1L]] == "prod" && is.valid_prod(type))
     ),
     # positional matching or match.call?
     type[[1L]] %in% c("constant") ||
     (
-      type[[1L]] %in% c('arglen', 'vecrec', 'eqlen') && (
+      type[[1L]] %in% c('arglen', 'vecrec', 'eqlen', 'extern') && (
         (is.null(defn) && is.integer(type[[2L]])) ||
         (!is.null(defn) && is.character(type[[2L]]))
       )
@@ -419,7 +435,9 @@ VALID_FUNS <- c(
   # - Miscellaneous ------------------------------------------------------------
   list(
     cgen(
-      "numeric", defn=function(length=0L) NULL, type=list("arglen", "length"),
+      "numeric", defn=function(length=0L) NULL,
+      # Is length redundant? One is to classify, and to the other compute size.
+      type=list("extern", "length"), extern.params="length",
       code.gen=code_gen_numeric, res.type="double"
     )
   ),
