@@ -32,11 +32,93 @@ their comparison.
   (x * y)
 * `control`: specified via a control style argument `seq_len(ctrl)`
 
+## Implementation
+
+We want to generalize the process across all size types.  We need a mechanism to
+get the input sizes that is general across all.  For `vecrec`/`arglen`/`eqlen`
+that's done by `input_arg_size_dat`.  So something like:
+
+    get_input_size(input_args, ftype)
+
+How does this work for constant?
+
+We need:
+
+* An `asize` (alloc size).
+* An argument size to pass on as a list.
+
+Three types of situations:
+
+* Size derive from argument size.
+* Constant size from data in `ftype`.
+* Constant size from data derived from external parameters.
+
+We would like to shoehorn these into two steps:
+
+* Compute input argument sizes.
+* Compute output based on function type.
+
+But first step doesn't make sense for two of the three cases.
+
+For `numeric_along(x)` that works fine.  But for `numeric(length(x))` it gets
+tricky.  What about things like:
+
+    len <- length(x)
+    numeric(len)
+
+We could create a whole new type of variable in addition to "tmp" like "len"
+which is known to contain a length, and those of that type store their length in
+a separate allocation data source.  Then, any function of the right type that
+uses them can consult the "value" for purposes of allocation.  Seems like this
+gets real tricky though.
+
+What about:
+
+    numeric(len)
+
+Or even:
+
+    len <- x      # `x` is external
+    numeric(len)
+
+So the abstraction layer is:
+
+    function type -> dispatch to size computation
+
+Right now we have `ftype` providing either a constant size or a mechanism for
+selecting arguments to feed into an arg derived size calculation.  In the future
+we add the case where we want to consult the actual value of an argument, which
+we can do if the argument is external.  TBD if we allow it if it's the result of
+`length` (but then what if its 2x that or some other arithmetic expression? Just
+gets out of hand).
+
+Conclusion for now is we don't allow the computation of lengths.
+
+We need:
+
+* A new type of size function that looks up the externally computed value.
+* 
+
+
 ## Strawman
 
 Size is represented as a list of polynomial factors.  If a list has more than
 one element, then for any given group, the largest element when group size is
-specified is taken to be the group size.
+specified is taken to be the group size.  I.e. implicitly the only way we can
+have a list with more than one element is from `vecrec`.
+
+In order to track this our stack matrix is insufficient.  The stack matrix could
+reference an item in a list.  Thus each of the sizing functions will accept a
+list of lists, with each sub-list representing one argument.
+
+* `vecrec`: just concatenate them looking for the zero constant to turn
+  everything to zero.
+* `eqlen`: handle `gmax == gmin` reduction, and then require things to be
+  identical.
+* `concat`: reduce the list into a single vector by summing.
+* `product`: reduce the list into a single vector by polynomial computation.
+
+Do we worry about `gmax == gmin` outside of `eqlen`?
 
 ## Eqlen
 
@@ -49,15 +131,36 @@ the exact same formulation, and returns a single copy of that formulation.
 
 ## Vecrec
 
-`vecrec` returns a list of all its formulations.
+`vecrec` returns a list of all its formulations.  The real issue is when we have
+inputs that are not obviously discernible as being bigger than the other because
+we don't know group size.
+
+One possible resolution is we do a cartesian multiply of all the possible
+variations of `vecrec` we might get.  This gets out of hand pretty quickly, not
+to mention has a complex implementation.
+
+The implementation of this would require that all size functions return a list
+of indices, where `vecrec` is the only one that can return a length greater than
+one?
+
+Then we have runners that generate scenarios of parameters, feed each one into
+the corresponding sizing function, and recover the result into a list.
+
+It will be important to try to reduce the lists, but need to think about it.
+What if one of the inputs is zero length?  Can we rely on `gmax` / `gmin` to
+compute sizes in max and min case and determine if the same scenario is always
+bigger/smaller?  So long as we never have negative coefficients (check for this)
+that should be TRUE.  We should also only ever have integer coefficients.
 
 ## Constant
 
-Returns a single length ` vector.
+Returns a single length 1 vector.
 
 ## Control
 
 Like constant, but requires evaluation (and check not hitting a group vector).
+Maybe this is deduced automatically from `arglen` pointing to a control
+parameter.  That would be nice.
 
 ## Concat
 

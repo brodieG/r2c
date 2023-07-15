@@ -45,11 +45,7 @@ NULL
 #' the function in the call to compute the output size.  The inputs are then
 #' removed from the stack and replaced by the output size from the sub call, and
 #' we allocate (or re-use a no-longer needed allocation) to/from the storage
-#' list.  For outputs that have iteration-dependent size, we record the size
-#' as NA (this will need to change in the future to accommodate more complex
-#' functions like `c`), and allocate a vector large enough for the largest
-#' group.  Recording the size as NA allows us to propagate that the output is
-#' of group-size.
+#' list.  Ex-ante calculation of output size is complex (see size.R).
 #'
 #' This continues until the stack contains the output size and location of the
 #' final call, and the allocation memory list contains all the vectors required
@@ -73,6 +69,7 @@ NULL
 #' When linearized becomes:
 #'
 #'     expression          depth
+#'
 #'     x               2-------+
 #'                             |
 #'     y                  3--+ |
@@ -87,9 +84,9 @@ NULL
 #'
 #' Unfortunately much after the initial implementation we decided it
 #' would be a fun challenge to add branches, and the linearized format is not
-#' well suited for them.  Rather than try to transition everything to a
-#' recursive structure we resorted to some convolutions to deal with the
-#' branches
+#' well suited for them for the purpose of ex-ante size calculation.  Rather
+#' than try to transition everything to a recursive structure we resorted to
+#' some convolutions to deal with the branches
 #'
 #' @section Depth:
 #'
@@ -166,7 +163,6 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
   alloc <- append_dat(
     alloc, vdat=vdat, depth=0L, call.i=0L, rec=0L, branch.lvl=0L
   )
-
   # Result placeholder, to be alloc'ed once we know group sizes.
   vdat <- vec_dat(numeric(), size=0L, type="res", typeof='double', group=0)
   alloc <- append_dat(
@@ -202,6 +198,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
 
   stack <- init_stack()
   stack.ctrl <- stack.flag <- list()
+  stack.sizes <- list()   # argument sizes (see size.R)
   call.dat <- list()
   branch.lvl <- 0L
 
@@ -250,51 +247,17 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
         }
       } else VALID_FUNS[[c(name, "res.type")]]
 
-      # Compute result size
-      if(ftype[[1L]] == "constant") {
-        # Always constant size, e.g. 1 for `sum`
-        asize <- size <- ftype[[2L]]
-        group <- 0
-      } else if(ftype[[1L]] %in% c("arglen", "vecrec")) {
-        # Length of a specific argument, like `probs` for `quantile`
-        # `depth + 1L` should be params to current call (this is only true for
-        # the stack, not necessarily for other things in `x`)
-        sizes.tmp <- input_arg_size_dat(stack, depth, ftype, call, .CALL)
-
-        # asize uses max group size instead of NA so we can allocate for it
-        asize  <- vecrec_max_size(sizes.tmp, gmax)
-        size <- vecrec_known_size(sizes.tmp[1L,])  # knowable sizes could be NA
-        group <- max(sizes.tmp['group',])          # any group size in the lot?
-      } else if(ftype[[1L]] == "eqlen") {
-        sizes.tmp <- input_arg_size_dat(stack, depth, ftype, call, .CALL)
-        s.tmp <- sizes.tmp['size',]
-        g.tmp <- sizes.tmp['group',]
-        # All arguments must be equal length.  Branch exec funs are checked in
-        # `reconcile_control_flow`, but not here because we don't actually care
-        # if the results are unequal sizes in the case the result isn't used.
-        if(!vec_eqlen(s.tmp, g.tmp, gmax, gmin) && !name %in% BRANCH.EXEC.SYM) {
-          stop(
-            "Potentially unequal sizes for parameters ",
-            toString(ftype[[2L]]), " in a function that requires them ",
-            "to be equal sized:\n", deparseLines(clean_call(call, level=2L))
-          )
-        }
-        asize  <- if(anyNA(s.tmp)) NA_real_ else s.tmp[1L]
-        size <- if(anyNA(s.tmp)) gmax else s.tmp[1L]
-        group <- max(g.tmp)  # any group size in the lot?
-      } else if(ftype[[1L]] == "product") {
-        # Results size is the product of the size of the selected inputs,
-        # e.g. for nested loops, maybe matrix in the future.
-        sizes.tmp <- input_arg_size_dat(stack, depth, ftype, call, .CALL)
-
-      }
-      stop("Internal Error: unknown function type.")
+      # Compute expression result size
+      size.tmp <- compute_size(alloc, stack, depth, ftype, call, .CALL)
+      alloc <- size.tmp[['alloc']]
+      size <- size.tmp[['size']]     # iteration/group dependant size
+      asize <- size.tmp[['asize']]   # required allocation size
 
       # Cleanup expired symbols, and bind new ones
       alloc <- names_update(alloc, call, call.name=name, call.i=i, rec=rec)
       # Prepare new vec data (if any), and tweak objet depending on situation.
       # Alloc is made later, but only if vec.dat[['new']] is not null.
-      vec.dat <- vec_dat(NULL, "tmp", typeof=res.typeof, group=group, size=size)
+      vec.dat <- vec_dat(NULL, "tmp", typeof=res.typeof, size=size)
       if(!name %in% c(PASSIVE.SYM, MODIFY.SYM)) {
         # We have a computing expression in need of a free slots.
         # (NB: PASSIVE includes ASSIGN, but use both in case that changes).
@@ -317,7 +280,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
       # in e.g. `x <- y`, this is the `x`, which isn't actually data,
       # We don't need to record it but we do for consistency.  The values here
       # shouldn't realy get used anywhere where they have an impact.
-      vec.dat <- vec_dat(numeric(), "tmp", typeof="logical", group=0, size=0)
+      vec.dat <- vec_dat(numeric(), "tmp", typeof="logical", size=0)
     # - Control Parameter / External -------------------------------------------
     } else if (
       type %in% CTRL.FLAG ||
@@ -343,7 +306,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
         validate_ext(x, i, type, arg.e, name, call, .CALL)
         typeof <- typeof(arg.e)
         size <- length(arg.e)
-        vec.dat <- vec_dat(arg.e, "ext", typeof=typeof, group=0, size=size)
+        vec.dat <- vec_dat(arg.e, "ext", typeof=typeof, size=size)
       }
 
     # - Match a Symbol In Data -------------------------------------------------
@@ -485,19 +448,10 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
 ##   try to track whether a vector could be interpreted as logical or integer.
 ## * alloc: the true size of the vector (should be equivalent to
 ##   `lengths(dat[['dat']])`?).
-## * size: the largest **knowable** size of the vector in use (can be less than
-##   'alloc' if a smaller vector is assigned to a freed bigger slot), can be NA
-##   for vectors that are group size.  We say **knowable** because in op like
-##   `known + group` where `known` is constant known size, and `group` is
-##   iteration varying, we record `known` as `size` even though the actual size
-##   of the result will vary.  We must always consult `group` as we cannot
-##   always tell from `size` alone whether iteration size affects any given
-##   element.
-## * group: whether the allocation is of group size.  This is distinct to
-##   `type=="grp"`, which refers to data from the original group varying data.
-##   This designation is needed so that if a group sized allocation is bound to
-##   a variable, that allocation is group sized is still available when the
-##   variable is retrieved later (it's possible this is a bit duplicative of NA
+## * size: a list of integer vectors representing the size of an allocation.
+##   Each integer vector is a univariate polynomial on group size, where the
+##   first element is power 0 (i.e. constant), second is group size, third group
+##   size squared, etc.  See size.R for details.
 ## * depth: the depth at which allocation occurred, only relevant for
 ##   `type == "tmp"`
 ## * i: scalar integer the index in `data` of the most recently
@@ -512,7 +466,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
 ##   `i.assign` the index in which the symbol was bound, and `br.hide` is the
 ##   branch level the symbols assigned in the TRUE branch need to be hidden from
 ##   (so the FALSE branch can't see them)..
-## * rec: see `rec` paramater.
+## * rec: see `rec` parameter.
 ##
 ## We're mixing return value elements and params, a bit, but there are some
 ## differences, e.g.:
@@ -534,14 +488,16 @@ append_dat <- function(
   typeof <- vdat[['typeof']]
   new <- vdat[['new']]
   size <- vdat[['size']]
-  group <- vdat[['group']]
   if(is.null(new)) stop("Internal Error: cannot append null data.")
 
   if(!is.num_naked(list(new))) stop("Internal Error: bad data column.")
   if(!type %in% c("res", "grp", "ext", "tmp", "sts"))
     stop("Internal Error: bad type.")
-  if(is.na(size) && !type %in% c("grp", "tmp"))
-    stop("Internal Eror: NA sizes only for temporary allocs or group.")
+  if(type != "tmp" && (length(size) != 1L || any(lengths(size)) > 2L))
+    stop("Internal Eror: complex sizes only for computed allocs.") # and res?
+
+  if(any(lengths(size) > 1L && !type %in% c("grp", "tmp")))
+    stop("Internal Eror: complex sizes only for temporary allocs or group.")
 
   new.num <- if(is.integer(new) || is.logical(new)) as.numeric(new) else new
   dat[['dat']] <- c(dat[['dat']], list(new.num))
@@ -552,11 +508,10 @@ append_dat <- function(
   # need to test whether data.frame would slow things down too much
   dat[['ids0']] <- c(dat[['ids0']], id0.new)
   dat[['alloc']] <- c(dat[['alloc']], length(new)) # true size
-  dat[['size']] <- c(dat[['size']], size)          # could be NA
+  dat[['size']] <- c(dat[['size']], size)          # this is a list
   dat[['depth']] <- c(dat[['depth']], depth)
   dat[['type']] <- c(dat[['type']], type)
   dat[['typeof']] <- c(dat[['typeof']], typeof)
-  dat[['group']] <- c(dat[['group']], group)
 
   if(length(unique(lengths(dat[ALLOC.DAT.VEC]))) != 1L)
     stop("Internal Error: irregular vector alloc data.")
@@ -597,12 +552,11 @@ init_dat <- function(call, meta, scope) {
 
     # Equal length vector data
     alloc=numeric(),
-    size=numeric(),
+    size=list(),
     depth=integer(),
     ids0=integer(),
     type=character(),
     typeof=character(),
-    group=numeric(),     # because it is used in a numeric matrix too
 
     # Other data
     i=0L,
@@ -625,27 +579,30 @@ init_vec_dat <- function() {
     size=NA_real_
   )
 }
-# See `append_dat` for details on what these mean.
+# See `append_dat` for details on what the parameters are.
 
 vec_dat <- function(
-  new=NULL, type=NA_character_, typeof=NA_character_, group=NA_real_,
-  size=NA_real_
+  new=NULL, type=NA_character_, typeof=NA_character_, size=NA_real_
 ) {
-  vec.dat <- list(new=new, type=type, typeof=typeof, group=group, size=size)
+  vec.dat <- list(new=new, type=type, typeof=typeof, size=size)
   stopifnot(is.vec_dat(vec.dat))
   vec.dat
 }
 is.vec_dat <- function(x)
   is.list(x) &&
-  all(c('new', 'type', 'group', 'size', 'typeof') %in% names(x)) &&
+  all(c('new', 'type', 'size', 'typeof') %in% names(x)) &&
   is.character(x[['type']]) &&
   isTRUE(x[['type']] %in% c("res", "grp", "ext", "tmp", "sts")) && (
     is.numeric(x[['new']]) || is.integer(x[['new']]) ||
     is.logical(x[['new']]) || is.null(x[['new']])
   ) &&
-  is.numeric(x[['group']]) && length(x[['group']]) == 1L &&
-  !is.na(x[['group']]) &&
-  is.numeric(x[['size']]) && length(x[['size']]) == 1L &&
+  # See `append_dat`
+  is.list(x[['size']]) && (
+    x[['type']] == "tmp" ||
+    length(x[['size']]) == 1L && (
+      (x[['type']] == "grp" && length(x[['size']][[1L]] == 2L)) ||
+    length(x[['size']][[1L]] == 1L)
+  ) ) &&
   is.character(x[['typeof']]) && length(x[['typeof']]) == 1L &&
   isTRUE(x[['typeof']] %in% c("double", "integer", "logical"))
 
@@ -658,8 +615,6 @@ init_stack <- function() {
         'id',      # index in our allocated data structure
         'id0',     # unique id for integrity checks
         'depth',
-        'size',    # see `append_dat`
-        'group'    # see `append_dat`
       ),
       NULL
 ) ) }
@@ -668,9 +623,7 @@ append_stack <- function(stack, alloc, id=alloc[['i']], depth, argn) {
   id0 <- if(!id) id else alloc[['ids0']][id]
 
   size <- alloc[['size']][id]
-  group <- alloc[['group']][id]
-
-  stack <- cbind(stack, c(id, id0, depth, size, group))
+  stack <- cbind(stack, c(id, id0, depth))
   colnames(stack)[ncol(stack)] <- argn
   stack
 }
@@ -735,7 +688,6 @@ alloc_result <- function(alloc, vdat){
   # 'depth', 'id0', are not relevant anymore as the stack is done.
   alloc[['i']] <- slot
   alloc[['typeof']][slot] <- vdat[['typeof']]
-  alloc[['group']][slot] <- vdat[['group']]
   alloc[['size']][slot] <- vdat[['size']]
   alloc
 }
@@ -800,12 +752,9 @@ reconcile_control_flow <- function(
   # Find sizes (they should be the same).  Compare pair wise.
   size.F <- alloc[['size']][id.rc.F]
   size.T <- alloc[['size']][id.rc.T]
-  group.F <- alloc[['group']][id.rc.F]
-  group.T <- alloc[['group']][id.rc.T]
   size.eq <- vapply(
     seq_along(size.F),
-    function(i)
-      vec_eqlen(c(size.F[i], size.T[i]), c(group.F[i], group.T[i]), gmax, gmin),
+    function(i) vec_eqlen(c(size.F[i], size.T[i]), gmax, gmin),
     TRUE
   )
   if(!all(size.eq)) {
@@ -855,13 +804,12 @@ reconcile_control_flow <- function(
   for(i in seq_along(id.rc.F)) {
     # Size and generate allocation
     size <- size.T[i]
-    group <- as.numeric(group.T[i] | group.F[i])
     asize <- if(is.na(size)) gmax else size
     new <- numeric(asize)
     # Take the most general type from the two branches
     typeof.num <- match(c(typeof.F[i], typeof.T[i]), NUM.TYPES)
     typeof <- NUM.TYPES[max(typeof.num)]
-    vec.dat <- vec_dat(new, "tmp", typeof=typeof, group=group, size=size)
+    vec.dat <- vec_dat(new, "tmp", typeof=typeof, size=size)
     # rec=0L b/c reconciliation decisions made on 'rec' data from names matrix,
     # so this value should not be used anymore.
     alloc <- append_dat(
@@ -899,8 +847,8 @@ reconcile_control_flow <- function(
       alloc[['names']]['rec', names.target] <- branch.lvl - 1L
     }
     # Finally update stack just in case
-    stack.up <- c('id', 'id0', 'size', 'group')
-    stack.up.val <- c(new.i, new.id0, size, group)
+    stack.up <- c('id', 'id0')
+    stack.up.val <- c(new.i, new.id0)
     stack[stack.up, stack['id',] == id.rc.F[i]] <- stack.up.val
     stack[stack.up, stack['id',] == id.rc.T[i]] <- stack.up.val
   }

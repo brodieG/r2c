@@ -28,7 +28,27 @@
 
 * Size computed correctly with concatenations of things produced in branches.
 
+* Eqlen when one of the inputs is group size; maybe working because we paper
+  over the NA when `gmax == gmin`
+
 ## Current
+
+* For control / flag parameters, do we evaluate sub-components?
+
+* Rename control parameter to external parameter so that e.g. `numeric(x)` makes
+  sense.
+
+* Do we disallow using group vectors as control variables?  Probably makes sense
+  to do this.  Very confusing / weird otherwise, straight up error message
+  better.  I'm not sure there is a use case that makes sense.  Also need to
+  resolve the complexity of an external variable getting masked by a binding.
+  This should just be disallowed.  Need to consider the case where control
+  parameters include expressions.  Do we just defer evaluation on those?  How
+  complex an expression do we allow?  Do we allow binding symbols in them?
+
+* Think through implications of `x <- numeric(n)`, any problems with
+  re-allocation vs just rewriting with zeros?  Should be okay, but we do need to
+  rewrite with zeros every iteration.
 
 * Make sure we can't overflow `R_xlen_t` with `seq.i`.
 
