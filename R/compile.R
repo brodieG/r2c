@@ -120,7 +120,11 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' `r2c` will coerce the result to the corresponding type, again with a copy.
 #' To avoid copies provide all inputs as doubles.
 #'
-#' Control parameters are evaluated once at allocation time, even when they
+#' Control parameters are evaluated once at allocation time, and cannot
+#' reference 
+#' 
+#' DEFINE NEW SEMANTICS THAT PREVENT USE OF ITERATION VARYING STUFF.
+#' even when they
 #' reference symbols that are otherwise iteration varying. So in
 #' `sum(x, na.rm=x)` where `x` is part of the iteration varying data, the second
 #' `x` will be evaluated a single time as the entire `x` vector.  That value

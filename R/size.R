@@ -70,6 +70,9 @@ stack_param_missing <- function(params, stack.avail, call, .CALL) {
       .CALL
   ) )
 }
+# Length of a specific argument, like `probs` for `quantile`
+# `depth + 1L` should be params to current call (this is only true for
+# the stack, not necessarily for other things in `x`)
 
 compute_size <- compute_size(alloc, stack, depth, ftype, call, .CALL) {
   # Compute result size
@@ -79,74 +82,65 @@ compute_size <- compute_size(alloc, stack, depth, ftype, call, .CALL) {
     size <- list(ftype[[2L]])
   } else if(ftype[[1L]] == "external") {
     # Find which arguments are in play?
-    inputs <- input_args(ftype)
-    if(!all(alloc[[]]))
-
-
-    # Resolve them with a function?  Can this logic be merged?
+    inputs <- input_args(
+      statck=stack, depth=depth, ftype=ftype, call=call, .CALL=.CALL
+    )
     if(!is.function(ftype[[3L]]))
       stop("Internal error: no function to resolve external size.")
-
-    # Probably needs input ids
-    # DOES `alloc` CONTAIN SIZES?
-    size <- ftype[[3L]](alloc, inputs)
-
+    size <- ftype[[3L]](alloc[['size']][inputs])
   } else if(ftype[[1L]] %in% c("arglen", "vecrec")) {
-    # Length of a specific argument, like `probs` for `quantile`
-    # `depth + 1L` should be params to current call (this is only true for
-    # the stack, not necessarily for other things in `x`)
-    sizes.tmp <- input_arg_size_dat(stack, depth, ftype, call, .CALL)
-
-    # asize uses max group size instead of NA so we can allocate for it
-    asize  <- vecrec_max_size(sizes.tmp, gmax)
-    size <- vecrec_known_size(sizes.tmp[1L,])  # knowable sizes could be NA
-    group <- max(sizes.tmp['group',])          # any group size in the lot?
+    inputs <- input_args(
+      statck=stack, depth=depth, ftype=ftype, call=call, .CALL=.CALL
+    )
+    size <- size_vecrec(alloc[['size']][inputs])
   } else if(ftype[[1L]] == "eqlen") {
-    sizes.tmp <- input_arg_size_dat(stack, depth, ftype, call, .CALL)
-    s.tmp <- sizes.tmp['size',]
-    g.tmp <- sizes.tmp['group',]
-    # All arguments must be equal length.  Branch exec funs are checked in
-    # `reconcile_control_flow`, but not here because we don't actually care
-    # if the results are unequal sizes in the case the result isn't used.
-    if(!vec_eqlen(s.tmp, g.tmp, gmax, gmin) && !name %in% BRANCH.EXEC.SYM) {
+    inputs <- input_args(
+      statck=stack, depth=depth, ftype=ftype, call=call, .CALL=.CALL
+    )
+    size <- size_eqlen(alloc[['size']][inputs], gmax, gmin)
+    if(length(size) != 1L) {
       stop(
         "Potentially unequal sizes for parameters ",
         toString(ftype[[2L]]), " in a function that requires them ",
         "to be equal sized:\n", deparseLines(clean_call(call, level=2L))
       )
     }
-    # This seems like it's backwards.  `asize` shouldn't be NA?
-    asize  <- if(anyNA(s.tmp)) {
-      warning("this seems like a bug")
-      NA_real_
-    } else s.tmp[1L]
-    size <- if(anyNA(s.tmp)) gmax else s.tmp[1L]
-    group <- max(g.tmp)  # any group size in the lot?
   } else if(ftype[[1L]] == "product") {
     stop("Not implemented")
-
   }
-  asize <- compute_asize_from_size(size)
+  asize <- compute_asize_from_size(size, type=ftype[[1L]], gmax, gmin)
 
   stop("Internal Error: unknown function type.")
 
+}
+# Compute Allocation Size Guaranteed to Hold Result
+#
+# @param size list of integer vectors representing coefs to univariate
+#   polynomial on group/iteration size.
+# @param numeric scalar maximum group/iteration size
+# @return
+#
+
+actual_size  <- function(size, base) sum(size * base ^ (seq_along(x) - 1L))
+alloc_size <- function(size, base) max(vapply(size, actual_size, 0, base))
+
+compute_asize_from_size <- function(size, type, gmax, gmin) {
+  if(length(size) > 1L && type != "vecrec")
+    stop("Internal Error: size must resolve to 1 element except for vecrec.")
+  alloc_size(sizes, gmax)
 }
 
 
 # Compute Possible Iteration Result Sizes
 #
 # Each iteration's result size will be affected by the interaction of the
-# functions in the `r2c` expression with the sizes of the vectors they use.  The
-# `r2c` supported functions are of the type that has a result size that can be
-# computed from the input sizes.  In some cases the computation is very
-# straightforward.  For example, `mean(x)` will always produce a size 1 result.
-# More complex are things like `a + b`, where the result size is the larger of
-# `a` or `b`.  This creates interesting examples such as with `a` as iteration
-# variant and `b` constant size, where either `a` or `b` could be the larger one
-# for any given iteration.
+# functions in the `r2c` expression with the sizes of the vectors they use.  For
+# most `r2c` supported functions we can deduce the result size from the input
+# sizes.  In some special cases like `numeric(x)` where `x` is an external
+# variable we can also deduce it from the input value.
 #
-# In order to compute result sizes we classify all the r2c functions based on
-# the relationship between input and output sizes.  The categories are:
+# `r2c` functions are classified by the relationship between their inputs and
+# their output size.  The categories are:
 #
 # * constant: e.g. `mean(x)` always produces return size 1.
 # * arglen: e.g. `seq_along(x)` produces result same size as input `x`.
@@ -155,22 +149,16 @@ compute_size <- compute_size(alloc, stack, depth, ftype, call, .CALL) {
 # * vecrec: e.g. `a + b` produces a result the size of the larger input, except
 #   if either is zero length the result is zero length.
 # * concat: e.g. in `c(a, b)` the result size is the sum of the input sizes.
-#
-# Additionally there are categories that rely on input values instead of
-# input lengths.  In this case the inputs must be of the external variety (i.e.
-# group/iteration invariant).
-#
-# * external: e.g. `numeric(x)` where `x` is an external value (i.e. iteration
-#   independent).
 # * product: e.g. `numeric_along(x, y)`. here the result size is `length(x) *
 #   length(y)`.  `numeric_along` is substituted for things like `numeric(x)` or
 #   `numeric(length(x) * length(y))`.
+# * external: e.g. `numeric(x)` where `x` is an external value (i.e. iteration
+#   independent).
 #
-# Because the size of an output is not knowable when there are iteration/group
-# dependent variables, we record the output sizes as a univariate polynomial of
-# the iteration/group size (we'll call that `g` going forward).  The polynomial
-# is encoded as a vector of positive integer coefficients, so that the size of
-# e.g.:
+# Because the size of an output may depend on iteration/group size, we express
+# size as a univariate polynomial of the iteration/group size (we'll call that
+# size `g` going forward).  The polynomial is encoded as a vector of positive
+# integer coefficients, so that the size of e.g.:
 #
 #     c(mean(x), c(x, x))
 #
@@ -182,12 +170,16 @@ compute_size <- compute_size(alloc, stack, depth, ftype, call, .CALL) {
 # and so on.  Higher degree polynomials are possible in situations like
 # `numeric_along(x, y)`.
 #
-# `vecrec` is particularly challenging because we cannot know which input is
-# larger without fixing the value of the iteration size.  This requires keeping
-# track of all the possible output polynomial expressions.  We can bind this a
-# little bit using `gmax` and `gmin`.  We could also compute the sizes of every
-# parameter against the known group size vector, but that is likely to become
-# computationally expensive.
+# With `vecrec` we cannot know which input is larger without fixing the value of
+# the iteration size.  Because of this we keep track of sizes as lists of
+# polynomial coefficients, which we only reduce to actual sizes when we have an
+# iteration size we want to check against.
+#
+#
+# This requires keeping track of all the possible output
+# polynomial expressions.  We can bind this a little bit using `gmax` and
+# `gmin`.  We could also compute the sizes of every parameter against the known
+# group size vector, but that is likely to become computationally expensive.
 #
 # @param size_fun a function taking in a list of integer size vectors and
 #   returning a list of integer size vectors, where all but `size_product`
@@ -198,26 +190,7 @@ compute_size <- compute_size(alloc, stack, depth, ftype, call, .CALL) {
 # @param gmin scalar integer the size of the smallest group / iteration.
 # @return a list of `size_fun` return values.
 
-sizer <- function(size_fun, inputs, gmax, gmin) {
-  inputs <- unique(inputs)
 
-  # Drop input sizes that are always smaller than all others, except for 0 size
-  inputs.min <- lapply(inputs, "*", gmin)
-  inputs.max <- lapply(inputs, "*", gmax)
-
-
-
-}
-# Compute Allocation Size Guaranteed to Hold Result
-#
-# @param size list of integer vectors representing coefs to univariate
-#   polynomial on group/iteration size.
-# @param numeric scalar maximum group/iteration size
-# @return
-#
-
-alloc_size <- function(size, gmax)
-  max(lapply(size, function(x) x * gmax ^ (seq_along(x) - 1L)))
 
 # Multiply Two Polynomials
 #
@@ -246,30 +219,75 @@ poly_mult <- function(a, b) {
 # @return an integer vector of the same nature as those in `sizes` that reflects
 #   the polynomial multiplication of those in `sizes`.
 
-size_product <- function(sizes) {
-  Reduce(poly_mult, sizes)
+size_product <- function(size) {
+  Reduce(poly_mult, size)
 }
+# Vector Recycling
 
-size_vecrec <- function(sizes) {
-  if(any(lengths(sizes) == 0L)) 0L
-  else unique(sizes)
+size_vecrec <- function(size, gmax, gmin) {
+  size[length(size) == 0L] <- 0L
+  size <-
+    if(any(vapply(size, function(x) sum(x) == 0L, TRUE))) list(0L)
+    else unique(size)
+  # Try to further reduce possible sizes under assumption that if a size expr is
+  # larger both at gmin & gmax than others, it will always be larger.
+  sizes.max <- vapply(size, actual_size, 0, gmax)
+  sizes.min <- vapply(size, actual_size, 0, gmin)
+  if(which.max(sizes.max) == which.max(sizes.min)) size[which.max(sizes.max)]
+  else size
 }
+# Equal size parameters
+#
+# Does not actually check that the results are equal size; to confirm make sure
+# return value is length 1.
 
-size_constant <-  function(sizes) {
+size_eqlen <- function(size, gmax, gmin) {
+  # If gmax==gmin, what can we assume?  We can assume that if they are all equal
+  # under that assumption the size becomes constant.
+  size <- if(gmax == gmin) {
+    list(alloc_size(size, gmax))
+  } else {
+    unique(size)
+  }
 
 }
+# 
 
-size_concat <- function(sizes) {
-  len <- max(lengths(sizes))
-  sizes <- lapply(
-    sizes, function(x, len) {
+size_concat <- function(size) {
+  len <- max(lengths(size))
+  size <- lapply(
+    size, function(x, len) {
       res <- numeric(len)
       res[seq_along(x)] <- x
     }
   )
-  sizes.mx <- do.call(cbind, sizes)
-  list(rowSums(sizes.mx))
+  size.mx <- do.call(cbind, size)
+  list(rowSums(size.mx))
 }
+
+
+#' Can All Vectors Be Considered Equal Size
+#'
+#' Each element in sizes and groups represents one parameter.
+#'
+#' @param sizes vector of size values (see `alloc_dat`)
+#' @param groups vector of group designations (see `alloc_dat`)
+#' @param gmax scalar maximum iteration varying iteration size
+#' @param gmin scalar minimum iteration varying iteration size
+
+vec_eqlen <- function(sizes, groups, gmax, gmin) {
+  stop("Needs re-implementation")
+  # If the known size is less the gmin this is effectively group size always
+  # Unless special case of size 0
+  sizes[!is.na(sizes) & groups != 0 & sizes < gmin & sizes != 0] <- NA_real_
+  if(gmax == gmin) {
+    sizes[is.na(sizes)] <- gmax
+    length(unique(sizes)) == 1L
+  } else if (all(groups != 0)) {
+    all(is.na(sizes)) || length(unique(sizes)) == 1L
+  } else FALSE
+}
+
 
 
 

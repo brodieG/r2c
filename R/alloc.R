@@ -280,7 +280,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
     } else if(x[['assign']][i]) {
       # in e.g. `x <- y`, this is the `x`, which isn't actually data,
       # We don't need to record it but we do for consistency.  The values here
-      # shouldn't realy get used anywhere where they have an impact.
+      # shouldn't really get used anywhere where they have an impact.
       vec.dat <- vec_dat(numeric(), "tmp", typeof="logical", size=0)
     # - Control Parameter / External -------------------------------------------
     } else if (
@@ -294,9 +294,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
           stop(
             "Parameter `", argn ,"` must resolve to iteration invariant ",
             "external data."
-          )
-        }
-      }
+      ) } }
       if(is.language(call)) {
         if(id || !cfe) stop("Internal Error: name-external exp conflict.")
         # To simplify semantics we disallow use of symbols bound to local
@@ -491,8 +489,13 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
 ##   try to track whether a vector could be interpreted as logical or integer.
 ## * alloc: the true size of the vector (should be equivalent to
 ##   `lengths(dat[['dat']])`?).
-## * size: a list of integer vectors representing the size of an allocation.
-##   Each integer vector is a univariate polynomial on group size, where the
+## * size: a list of lists of integer vectors representing the size of an
+##   allocation. Each list contains one or more integer vectors representing the
+##   size of evaluating the expression.
+##
+##   is a univariate polynomial on group size,
+##   kk
+## where the
 ##   first element is power 0 (i.e. constant), second is group size, third group
 ##   size squared, etc.  See size.R for details.
 ## * depth: the depth at which allocation occurred, only relevant for
@@ -1019,61 +1022,6 @@ latest_action_call <- function(x) {
     stop("Internal Error: no active return call found.")
   max(call.active.i)
 }
-## Compute Possible Size
-##
-## This is affected by maximum group size as well as any non-group parameters.
-## This allows us to keep track of what the most significant size resulting from
-## prior calls is in the presence of some calls affected by group sizes.  That
-## way, if e.g. at some point we have a small group, but the limiting size is
-## from the non-group data, that info isn't lost.  This keeps the largest
-## knowable (non-group size).
-##
-## IMPORTANT: the result of this alone _must_ be combined with preserving
-## whether the data was group data or not given that some groups might be larger
-## than the known size returned here.
-
-vecrec_known_size <- function(x) {
-  tmp <- x[!is.na(x)]             # non-group sizes
-  if(!length(tmp)) NA_real_
-  else if(any(tmp == 0)) 0
-  else max(tmp)
-}
-## As above, but sub-in max group size instead of treating group size as
-## unknown.
-
-vecrec_max_size <- function(x, gmax) {
-  if(
-    !is.numeric(x) || !is.matrix(x) || nrow(x) != 2 ||
-    any(is.na(x[1L,] & !x[2L,]))
-  )
-    stop("Internal error, malformed size data.")
-
-  size <- x[1L,]
-  group <- as.logical(x[2L,])
-  size[is.na(size) | group] <- gmax
-  if(any(size == 0)) 0 else max(size)
-}
-#' Can All Vectors Be Considered Equal Size
-#'
-#' Each element in sizes and groups represents one parameter.
-#'
-#' @param sizes vector of size values (see `alloc_dat`)
-#' @param groups vector of group designations (see `alloc_dat`)
-#' @param gmax scalar maximum iteration varying iteration size
-#' @param gmin scalar minimum iteration varying iteration size
-
-vec_eqlen <- function(sizes, groups, gmax, gmin) {
-  # If the known size is less the gmin this is effectively group size always
-  # Unless special case of size 0
-  sizes[!is.na(sizes) & groups != 0 & sizes < gmin & sizes != 0] <- NA_real_
-  if(gmax == gmin) {
-    sizes[is.na(sizes)] <- gmax
-    length(unique(sizes)) == 1L
-  } else if (all(groups != 0)) {
-    all(is.na(sizes)) || length(unique(sizes)) == 1L
-  } else FALSE
-}
-
 # Retrieve Inputs to Current Call From Stack
 
 stack_inputs <- function(stack, depth)
