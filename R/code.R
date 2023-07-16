@@ -437,7 +437,8 @@ VALID_FUNS <- c(
     cgen(
       "numeric", defn=function(length=0L) NULL,
       # Is length redundant? One is to classify, and to the other compute size.
-      type=list("extern", "length"), extern.params="length",
+      type=list("extern", "length", numeric_size),
+      extern.params="length",
       code.gen=code_gen_numeric, res.type="double"
     )
   ),

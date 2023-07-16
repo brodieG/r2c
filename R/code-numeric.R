@@ -15,22 +15,34 @@
 
 f_numeric <- '
 static void %s(%s) {
+  if(lens[0] != 1) Rf_error("invalid length argument");
+  double lend = data[di[0]][0];
   double * res = data[di[1]];
-  if(data[di[0]][0] < R_XLEN_T_MAX) {
+
+  if(lend >= 0 && lend < R_XLEN_T_MAX) {
     R_xlen_t len = data[di[0]][0];
     R_xlen_t i;
-    // AFAICT 0.0 not guaranteed to be all zeroes.  Should consider just using
-    // a simple for loop so that compiler can replace with memset in common
-    // case where it can be used.
+    // AFAICT 0.0 not guaranteed to be all zeroes in binary representation, so
+    // cannot just memset.  If we used a simple loop instead of macro
+    // compiler can replace with memset in common case where zero is zeroes.
+    // So something to consider here.
     LOOP_W_INTERRUPT1(len, {res[i] = 0;});
     lens[1] = len;
   } else {
-    Rf_error(
-      "Cannot create vector larger than R_XLEN_T_MAX (got %%f)",
-      data[di[0]][0]
-    );
+    Rf_error("Invalid vector size (got %%f)", data[di[0]][0]);
   }
 }'
+# Sizing fun for things like `numeric(x)`
+
+numeric_size <- function(vals) {
+  if(!is.list(vals) || length(vals) != 1L) stop(
+    "There should only be one sizing param, got ", length(vals)
+  )
+  val <- vals[[1L]]
+  if(!is.numeric(val) || length(val) != 1L || is.na(val) || val < 0)
+    stop("Invalid size parameter.")
+  list(val)
+}
 
 code_gen_numeric <- function(fun, args.reg, args.ctrl, args.flags) {
   vetr(
