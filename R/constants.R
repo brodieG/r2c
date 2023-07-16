@@ -116,9 +116,14 @@ ALLOC.DAT.VEC <- c(
 )
 
 # To avoid typos.  External different because its value does get used in a C
-# call directly.
-CTRL.FLAG <- c("control", "flag")
-CTRL.FLAG.EXT <- c(CTRL.FLAG, "extern")
+# call directly. "PT" for Parameter Type
+PT.CTL <- "control"
+PT.FLAG <- "flag"
+PT.EXT <- "extern"
+
+
+CTRL.FLAG <- c(PT.CTL, PT.FLAG)
+CTRL.FLAG.EXT <- c(CTRL.FLAG, PT.EXT)
 
 # Packages allowable in `::`
 VALID.PKG <- c('base', 'r2c')

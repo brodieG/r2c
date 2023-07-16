@@ -203,6 +203,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
   extern.evals <- list()
 
   for(i in seq_along(x[['call']])) {
+    ext.id <- ""
     type <- x[['type']][[i]]
     call <- x[['call']][[i]]
     depth <- x[['depth']][[i]]
@@ -296,40 +297,61 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
           )
         }
       }
-      # Cache the call so we don't re-evaluate the same thing over and over?
-
-
-      # Also need new type.
-      stop(
-        "Make it an error for a control parameter to be defined in the ",
-        "expression.  It can be one of the MoreArgs, but not data, and not ",
-        "assigned in r2c."
-      )
-      # Need to eval parameter; `env` contains MoreArgs.
-      tryCatch(
-        arg.e <- eval(call, envir=data, enclos=env),
-        error=function(e) stop(simpleError(conditionMessage(e), call.outer))
-      )
-      if(type == "control") {
-        if(!nzchar(argn)) stop("Internal Error: missing arg name for control.")
-        ctrl <- list(arg.e)
-        names(ctrl) <- argn
-        stack.ctrl <- c(stack.ctrl, ctrl)
-      } else if (type == "flag") {
-        if(!nzchar(argn)) stop("Internal Error: missing arg name for flag")
-        flag <- list(arg.e)
-        names(flag) <- argn
-        stack.flag <- c(stack.flag, flag)
-      } else {
-        # Validate non-control external args after eval, and add to vec.dat
-        validate_ext(x, i, type, arg.e, name, call, .CALL)
-        typeof <- typeof(arg.e)
-        size <- list(length(arg.e))
-        vec.dat <- vec_dat(arg.e, "ext", typeof=typeof, size=size)
+      if(is.language(call)) {
+        if(id || !cfe) stop("Internal Error: name-external exp conflict.")
+        # To simplify semantics we disallow use of symbols bound to local
+        # computations for external parameters that use external eval.
+        # This is not a fool-proof check.
+        if(length(internal.sym <- internal_symbols(call, alloc))) {
+          stop(
+            "External expression may not reference internal symbols, found ",
+            toString(sprintf("`%s`", internal.sym))
+          )
+        }
+        # Cache the call so we don't re-evaluate if re-encounter.  Particularly
+        # important if we reference same external symbol multiple times and it
+        # is e.g. integer, which would require coercion to numeric each time.
+        # Drawback is expressions with side-effects will not work correctly.
+        if(type == PT.EXT) {
+          ext.id <- paste0(deparse(call, control="all"), collapse="\n")
+          if(!nzchar(ext.id))
+            stop("Symbol with zero length name disallowed.")
+          if(!is.null(external.eval[[ext.id]])) {
+            id <- external.eval[[ext.id]]
+            if(!id) stop("Internal Error: external eval cache corrupted.")
+            # Similar logic "Symbol in Data" Section
+            alloc[['i']] <- id
+            # Update symbol depth (from Symbol in Data, maybe N/A here?)
+            if(alloc[['depth']][id] > depth) alloc[['depth']][id] <- depth
+          }
+      } }
+      # Need to eval parameter if not cached; `env` contains MoreArgs.
+      if(!id) {
+        tryCatch(
+          arg.e <- eval(call, envir=data, enclos=env),
+          error=function(e) stop(simpleError(conditionMessage(e), call.outer))
+        )
+        if(type == PT.CTL) {
+          if(!nzchar(argn)) stop("Internal Error: missing arg name for control.")
+          ctrl <- list(arg.e)
+          names(ctrl) <- argn
+          stack.ctrl <- c(stack.ctrl, ctrl)
+        } else if (type == PT.FLAG) {
+          if(!nzchar(argn)) stop("Internal Error: missing arg name for flag")
+          flag <- list(arg.e)
+          names(flag) <- argn
+          stack.flag <- c(stack.flag, flag)
+        } else {
+          # Validate non-control external args after eval, and add to vec.dat
+          validate_ext(x, i, type, arg.e, name, call, .CALL)
+          typeof <- typeof(arg.e)
+          size <- list(length(arg.e))
+          vec.dat <- vec_dat(arg.e, "ext", typeof=typeof, size=size)
+        }
       }
-
     # - Match a Symbol In Data -------------------------------------------------
     } else if (id) {  # see prior else if for `id`
+      # Similar logic in Control/ExternalSection
       alloc[['i']] <- id
       # Update symbol depth (needed for assigned-to symbols)
       if(alloc[['depth']][id] > depth) alloc[['depth']][id] <- depth
@@ -340,11 +362,13 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
 
     # Append new data to our data array.  Not all calls produce data; those
     # that do have non-NULL vec.dat[['new']].
-    if(!is.null(vec.dat[['new']]))
+    if(!is.null(vec.dat[['new']])) {
       alloc <- append_dat(
         alloc, vec.dat, depth=depth, call.i=i, rec=rec, branch.lvl=0L
       )
-
+      # Cache if external and generated a ext.id
+      if(nzchar(ext.id)) external.eval[[ext.id]] <- alloc[[i]]
+    }
     # Call actions that need to happen after allocation data updated
     if(type == "call") {
       # Release allocation after call parameters incorporated
@@ -1156,6 +1180,27 @@ name_to_id <- function(alloc, name) {
   } }
   res
 }
+# Retrieve any Symbols Bound to Internal Data
+#
+# Internal data includes the group/iteration varying data as well as any symbols
+# bound to the result of an intermediate r2c calculation.  This is a best
+# efforts basis and will not catch anything cute like using `get` or `assign`.
+#
+# @return a vector contaianing any found internal symbols.
+
+internal_symbols(call, alloc, found=character()) {
+  if(is.symbol(call)) {
+    name <- as.character(call)
+    if(name_to_id(alloc, name))
+    found <- c(found, name)
+  } else if (is.call_w_args(call)) {
+    for(i in 2:length(call)) {
+      found <- c(found, internal_symbols(call[[i]], alloc, found))
+    }
+  }
+  found
+}
+
 ## Check That External Vectors are OK
 
 validate_ext <- function(x, i, type, arg.e, name, call, .CALL) {
