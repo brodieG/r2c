@@ -489,15 +489,8 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
 ##   try to track whether a vector could be interpreted as logical or integer.
 ## * alloc: the true size of the vector (should be equivalent to
 ##   `lengths(dat[['dat']])`?).
-## * size: a list of lists of integer vectors representing the size of an
-##   allocation. Each list contains one or more integer vectors representing the
-##   size of evaluating the expression.
-##
-##   is a univariate polynomial on group size,
-##   kk
-## where the
-##   first element is power 0 (i.e. constant), second is group size, third group
-##   size squared, etc.  See size.R for details.
+## * size: a list of lists of integer vectors  representing the size of an
+##   allocation. See `compute_asize_from_size` for details.
 ## * depth: the depth at which allocation occurred, only relevant for
 ##   `type == "tmp"`
 ## * i: scalar integer the index in `data` of the most recently

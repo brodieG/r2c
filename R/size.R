@@ -13,8 +13,6 @@
 ##
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
-target_inputs <- function(ftype, stack) {
-}
 # Retrieve Ids For Input Parameters
 #
 # For size resolution that depends on the size of potentially multiple
@@ -74,63 +72,6 @@ stack_param_missing <- function(params, stack.avail, call, .CALL) {
 # `depth + 1L` should be params to current call (this is only true for
 # the stack, not necessarily for other things in `x`)
 
-compute_size <- compute_size(alloc, stack, depth, ftype, call, .CALL) {
-  # Compute result size
-  if(ftype[[1L]] == "constant") {
-    # Always constant size, e.g. 1 for `sum`
-    asize <- ftype[[2L]]
-    size <- list(ftype[[2L]])
-  } else if(ftype[[1L]] == "external") {
-    # Find which arguments are in play?
-    inputs <- input_args(
-      statck=stack, depth=depth, ftype=ftype, call=call, .CALL=.CALL
-    )
-    if(!is.function(ftype[[3L]]))
-      stop("Internal error: no function to resolve external size.")
-    size <- ftype[[3L]](alloc[['size']][inputs])
-  } else if(ftype[[1L]] %in% c("arglen", "vecrec")) {
-    inputs <- input_args(
-      statck=stack, depth=depth, ftype=ftype, call=call, .CALL=.CALL
-    )
-    size <- size_vecrec(alloc[['size']][inputs])
-  } else if(ftype[[1L]] == "eqlen") {
-    inputs <- input_args(
-      statck=stack, depth=depth, ftype=ftype, call=call, .CALL=.CALL
-    )
-    size <- size_eqlen(alloc[['size']][inputs], gmax, gmin)
-    if(length(size) != 1L) {
-      stop(
-        "Potentially unequal sizes for parameters ",
-        toString(ftype[[2L]]), " in a function that requires them ",
-        "to be equal sized:\n", deparseLines(clean_call(call, level=2L))
-      )
-    }
-  } else if(ftype[[1L]] == "product") {
-    stop("Not implemented")
-  }
-  asize <- compute_asize_from_size(size, type=ftype[[1L]], gmax, gmin)
-
-  stop("Internal Error: unknown function type.")
-
-}
-# Compute Allocation Size Guaranteed to Hold Result
-#
-# @param size list of integer vectors representing coefs to univariate
-#   polynomial on group/iteration size.
-# @param numeric scalar maximum group/iteration size
-# @return
-#
-
-actual_size  <- function(size, base) sum(size * base ^ (seq_along(x) - 1L))
-alloc_size <- function(size, base) max(vapply(size, actual_size, 0, base))
-
-compute_asize_from_size <- function(size, type, gmax, gmin) {
-  if(length(size) > 1L && type != "vecrec")
-    stop("Internal Error: size must resolve to 1 element except for vecrec.")
-  alloc_size(sizes, gmax)
-}
-
-
 # Compute Possible Iteration Result Sizes
 #
 # Each iteration's result size will be affected by the interaction of the
@@ -181,14 +122,81 @@ compute_asize_from_size <- function(size, type, gmax, gmin) {
 # `gmin`.  We could also compute the sizes of every parameter against the known
 # group size vector, but that is likely to become computationally expensive.
 #
-# @param size_fun a function taking in a list of integer size vectors and
-#   returning a list of integer size vectors, where all but `size_product`
-#   return length 1 lists.
-# @param inputs a list of lists, where each element in the list matches the
-#   description of the return value of this function.
 # @param gmax scalar integer the size of the largest group / iteration.
 # @param gmin scalar integer the size of the smallest group / iteration.
-# @return a list of `size_fun` return values.
+# @param size list of integer vectors representing the size of the result of an
+#   expression, or that of a single input into a function.  Each integer vector
+#   represents a possible size for the result/input expressed as a univariate
+#   polynomial on group size, where the first element is power 0 (i.e.
+#   constant), second is group size, third group size squared, etc.  See
+#   details for why there may be more than one such vector..
+# @param size.in list of lists as described in `size`, used to represent the set
+#   of inputs into a function..
+#
+# @return a list with members:
+#
+# * "alloc": An updated copy of `alloc` (maybe not needed).
+# * "size": a list as described in `size`.
+# * "asize": an integer-like number describing max allocation size to hold the
+#   result of the current call for any iteration.
+
+compute_size <- compute_size(alloc, stack, depth, ftype, call, .CALL) {
+  # Compute result size
+  if(ftype[[1L]] == "constant") {
+    # Always constant size, e.g. 1 for `sum`
+    asize <- ftype[[2L]]
+    size <- list(ftype[[2L]])
+  } else if(ftype[[1L]] == "external") {
+    # Find which arguments are in play?
+    inputs <- input_args(
+      statck=stack, depth=depth, ftype=ftype, call=call, .CALL=.CALL
+    )
+    if(!is.function(ftype[[3L]]))
+      stop("Internal error: no function to resolve external size.")
+    size <- ftype[[3L]](alloc[['size']][inputs])
+  } else if(ftype[[1L]] %in% c("arglen", "vecrec")) {
+    inputs <- input_args(
+      statck=stack, depth=depth, ftype=ftype, call=call, .CALL=.CALL
+    )
+    size <- size_vecrec(alloc[['size']][inputs])
+  } else if(ftype[[1L]] == "eqlen") {
+    inputs <- input_args(
+      statck=stack, depth=depth, ftype=ftype, call=call, .CALL=.CALL
+    )
+    size <- size_eqlen(alloc[['size']][inputs], gmax, gmin)
+    if(length(size) != 1L) {
+      stop(
+        "Potentially unequal sizes for parameters ",
+        toString(ftype[[2L]]), " in a function that requires them ",
+        "to be equal sized:\n", deparseLines(clean_call(call, level=2L))
+      )
+    }
+  } else if(ftype[[1L]] == "product") {
+    stop("Not implemented")
+  }
+  asize <- compute_asize_from_size(size, type=ftype[[1L]], gmax, gmin)
+
+  stop("Internal Error: unknown function type.")
+
+}
+
+
+
+# Convert polynomial size vector to an actual size given an iteration size.
+actual_size  <- function(x, base) sum(x * base ^ (seq_along(x) - 1L))
+
+# Given multiple possible for a single input/result, what allocation size will
+# hold the largest of them for any given iteration size.  Typically we compute
+# this for the largest iteration size (`gmax`).
+alloc_size <- function(size, base) max(vapply(size, actual_size, 0, base))
+
+compute_asize_from_size <- function(size, type, gmax, gmin) {
+  if(length(size) > 1L && type != "vecrec")
+    stop("Internal Error: size must resolve to 1 element except for vecrec.")
+  alloc_size(sizes, gmax)
+}
+
+
 
 
 
@@ -224,44 +232,52 @@ size_product <- function(size) {
 }
 # Vector Recycling
 
-size_vecrec <- function(size, gmax, gmin) {
-  size[length(size) == 0L] <- 0L
-  size <-
-    if(any(vapply(size, function(x) sum(x) == 0L, TRUE))) list(0L)
-    else unique(size)
-  # Try to further reduce possible sizes under assumption that if a size expr is
-  # larger both at gmin & gmax than others, it will always be larger.
-  sizes.max <- vapply(size, actual_size, 0, gmax)
-  sizes.min <- vapply(size, actual_size, 0, gmin)
-  if(which.max(sizes.max) == which.max(sizes.min)) size[which.max(sizes.max)]
-  else size
+size_vecrec <- function(size.in, gmax, gmin) {
+  # for vecrec, one arg with multiple potential lengths is the same as more
+  # individual args each with one of those potential lengths
+  size.ul <- unlist(size.in, recursive=FALSE)
+  size.ul[length(size.ul) == 0L] <- 0L
+  size.ul <-
+    if(any(vapply(size.ul, function(x) sum(x) == 0L, TRUE))) list(0L)
+    else unique(size.ul)
+  # Try to further reduce possible sizes under assumption that if a size.ul expr
+  # is larger both at gmin & gmax than others, it will always be larger.
+  sizes.max <- vapply(size.ul, actual_size, 0, gmax)
+  sizes.min <- vapply(size.ul, actual_size, 0, gmin)
+  if(which.max(sizes.max) == which.max(sizes.min)) size.ul[which.max(sizes.max)]
+  else size.ul
 }
 # Equal size parameters
 #
 # Does not actually check that the results are equal size; to confirm make sure
 # return value is length 1.
 
-size_eqlen <- function(size, gmax, gmin) {
+size_eqlen <- function(size.in, gmax, gmin) {
+  # for eqlen, one arg with multiple potential lengths is the same as more
+  # individual args each with one of those potential lengths
+  size.ul <- unlist(size.in, recursive=FALSE)
+
+
   # If gmax==gmin, what can we assume?  We can assume that if they are all equal
   # under that assumption the size becomes constant.
-  size <- if(gmax == gmin) {
-    list(alloc_size(size, gmax))
+  size.in <- if(gmax == gmin) {
+    list(alloc_size(size.in, gmax))
   } else {
-    unique(size)
+    unique(size.in)
   }
 
 }
 # 
 
-size_concat <- function(size) {
-  len <- max(lengths(size))
-  size <- lapply(
-    size, function(x, len) {
+size_concat <- function(size.in) {
+  len <- max(lengths(size.in))
+  size.in <- lapply(
+    size.in, function(x, len) {
       res <- numeric(len)
       res[seq_along(x)] <- x
     }
   )
-  size.mx <- do.call(cbind, size)
+  size.mx <- do.call(cbind, size.in)
   list(rowSums(size.mx))
 }
 
