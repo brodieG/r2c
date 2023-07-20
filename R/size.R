@@ -247,10 +247,10 @@ size_concat <- function(size.in) {
   size.in.exp <- expand_sizes(size.in)
   lapply(
     size.in.exp,
-    function(x) rowSums(do.call(cbind, pad_sizes(x.pad)))
+    function(x) rowSums(do.call(cbind, pad_sizes(x)))
   )
 }
-size_product <- function(size.in) {
+size_prod <- function(size.in) {
   size.in.exp <- expand_sizes(size.in) # this validates size.in
   lapply(size.in.exp, Reduce, f=poly_mult)
 }
