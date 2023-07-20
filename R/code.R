@@ -34,7 +34,7 @@ is.valid_arglen <- function(type)
   (length(type) <= 2L || is.function(type[[3L]]))
 
 is.valid_n_arglen <- function(type)
-  length(type) == 2L &&
+  length(type) >= 2L &&
   (is.character(type[[2L]]) || is.integer(type[[2L]])) &&
   !anyNA(type[[2L]])
 
@@ -166,7 +166,7 @@ is.valid_constant <- function(type)
 cgen <- function(
   name, fun=get(name, baseenv(), mode="function"),
   defn=if(typeof(fun) == 'closure') fun,
-  ctrl.params=character(), flag.params=character(), extern.params=character()
+  ctrl.params=character(), flag.params=character(), extern.params=character(),
   type, code.gen,
   ctrl.validate=function(...) 0L,
   input.validate=function(types) TRUE,

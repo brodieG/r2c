@@ -250,7 +250,6 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
 
       # Compute expression result size
       size.tmp <- compute_size(alloc, stack, depth, ftype, call, .CALL)
-      alloc <- size.tmp[['alloc']]
       size <- size.tmp[['size']]     # iteration/group dependant size
       asize <- size.tmp[['asize']]   # required allocation size
 
@@ -793,10 +792,10 @@ reconcile_control_flow <- function(
   size.T <- alloc[['size']][id.rc.T]
   size.eq <- vapply(
     seq_along(size.F),
-    function(i) vec_eqlen(c(size.F[i], size.T[i]), gmax, gmin),
-    TRUE
+    function(i) length(size_eqlen(list(size.F[i], size.T[i]), gmax, gmin)),
+    0L
   )
-  if(!all(size.eq)) {
+  if(!all(size.eq == 1L)) {
     # Reconstitute the call
     call.rec <- clean_call(call("{", call[[1L]], call[[2L]]), level=2L)
     stop(
@@ -1129,7 +1128,7 @@ name_to_id <- function(alloc, name) {
 #
 # @return a vector contaianing any found internal symbols.
 
-internal_symbols(call, alloc, found=character()) {
+internal_symbols <- function(call, alloc, found=character()) {
   if(is.symbol(call)) {
     name <- as.character(call)
     if(name_to_id(alloc, name))

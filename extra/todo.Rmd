@@ -80,6 +80,7 @@
   `transform_control`.
 * Document for:
   * Limit to number of for loops.
+  * Limit for parameter size permutations.
 
 * Not clear that constants are being handled properly (e.g. need to `en_vcopy`
   the constant in `transform_control` for `for_init`).

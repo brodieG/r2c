@@ -44,5 +44,6 @@ Collate:
     'load.R'
     'r2c-package.R'
     'run.R'
+    'size.R'
     'util.R'
     'window.R'

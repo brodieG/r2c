@@ -164,7 +164,11 @@ cases where the output type is knowable to be either integer or logical,
 \code{r2c} will coerce the result to the corresponding type, again with a copy.
 To avoid copies provide all inputs as doubles.
 
-Control parameters are evaluated once at allocation time, even when they
+Control parameters are evaluated once at allocation time, and cannot
+reference
+
+DEFINE NEW SEMANTICS THAT PREVENT USE OF ITERATION VARYING STUFF.
+even when they
 reference symbols that are otherwise iteration varying. So in
 \code{sum(x, na.rm=x)} where \code{x} is part of the iteration varying data, the second
 \code{x} will be evaluated a single time as the entire \code{x} vector.  That value
