@@ -137,23 +137,31 @@ compute_size <- function(alloc, stack, depth, ftype, call, .CALL) {
   # Compute result size
   if(ftype[[1L]] == "constant") {
     # Always constant size, e.g. 1 for `sum`
-    asize <- ftype[[2L]]
     size.coef <- list(ftype[[2L]])
-  } else {
+  } else if (ftype[[1L]] == "external") {
     # Select inputs
     inputs <- input_args(
-      statck=stack, depth=depth, ftype=ftype, call=call, .CALL=.CALL
+      stack=stack, depth=depth, ftype=ftype, call=call, .CALL=.CALL
     )
+    in.size <- alloc[['size']][inputs]
     # Compute group/iteration dependent size
     size.coef <- switch(
       ftype[[1L]],
       external={
         if(!is.function(ftype[[3L]]))
           stop("Internal error: no function to resolve external size.")
-        ftype[[3L]](inputs)
+        if(!all(alloc[['type']][inputs] == 'ext'))
+          stop(
+            "Non-external parameter(s) ", toString(names(inputs)),
+            " in a function that requires them to be external:\n":
+            deparseLines(clean_call(call, level=2L))
+          )
+        size <- ftype[[3L]](alloc[['dat']][inputs])
+        if(!valid_size_input(size, error=FALSE))
+          stop("Internal Error: external parameter size comp invalid.")
       },
       eqlen={
-        size <- size_eqlen(alloc[['size']][inputs], gmax, gmin)
+        size <- size_eqlen(in.size, gmax, gmin)
         if(length(size) != 1L) {
           stop(
             "Potentially unequal sizes for parameters ",
@@ -162,10 +170,10 @@ compute_size <- function(alloc, stack, depth, ftype, call, .CALL) {
           )
         size
       } },
-      arglen=size_arglen(inputs),
-      vecrec=size_vecrec(inputs),
-      product=size_prod(inputs),
-      concat=size_concat(inputs)
+      arglen=size_arglen(in.size),
+      vecrec=size_vecrec(in.size),
+      product=size_prod(in.size),
+      concat=size_concat(in.size)
     )
   }
   # Determine allocation
@@ -179,21 +187,24 @@ actual_size  <- function(x, base) sum(x * base ^ (seq_along(x) - 1L))
 # Given multiple possible for a single input/result, what allocation size will
 # hold the largest of them for any given iteration size.  Typically we compute
 # this for the largest iteration size (`gmax`).
-alloc_size <- function(size.coef, base) max(vapply(size.coef, actual_size, 0, base))
+alloc_size <- function(size.coef, base)
+  max(vapply(size.coef, actual_size, 0, base))
 
 compute_asize_from_size <- function(size.coef, type, gmax, gmin) {
   alloc_size(sizes, gmax)
 }
 
-valid_size_input <- function(size.in) {
+valid_size_input <- function(size.in, error=TRUE) {
   s.ul <- unlist(size.in)
-  if(!(
+  test <- (
     is.list(size.in) && all(vapply(size.in, is.list, TRUE)) &&
     all(lengths(size.in) > 0) &&
     all(unlist(lapply(size.in, lapply, is.numeric))) &&
     all(s.ul >= 0)  && !anyNA(s.ul) && all(round(s.ul) == s.ul)
-  ) )
+  )
+  if(error && !test)
     stop("Internal Error: bad input size list.")
+  else test
 }
 
 # Vector Recycling
