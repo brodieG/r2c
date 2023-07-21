@@ -45,7 +45,7 @@ NULL
 #' the function in the call to compute the output size.  The inputs are then
 #' removed from the stack and replaced by the output size from the sub call, and
 #' we allocate (or re-use a no-longer needed allocation) to/from the storage
-#' list.  Ex-ante calculation of output size is complex (see size.R).
+#' list.  Ex-ante calculation of output size is complex (see `compute_size`).
 #'
 #' This continues until the stack contains the output size and location of the
 #' final call, and the allocation memory list contains all the vectors required
@@ -95,9 +95,9 @@ NULL
 #' by a symbol that is still in use (designated `alloc[['names']]`).  The
 #' `depth` variable semantics are strongly shaped by how it is generated (i.e.
 #' by incrementing it with each level of recursion in the call tree it
-#' originates from).  For example, for each call, it is a given that all of
-#' it's parameters will have a `depth` of `depth+1`.  We use `stack` as a
-#' mechanism for tracking the current call's parameters.
+#' originates from).  For example, for a call at depth `depth`, it is a given
+#' that all of it's parameters will have a `depth` of `depth+1`.  We use `stack`
+#' as a mechanism for tracking the current call's parameters.
 #'
 #' @section Special Sub-Calls:
 #'
@@ -116,18 +116,11 @@ NULL
 #' All the allocations in the storage list are sized to contain a single
 #' iteration (group, window, etc.), but the result vector will hold the
 #' concatenation of all of them.  Thus, the final call is intercepted and
-#' redirected to the special result vector in the storage list.
+#' redirected to the special result vector in the storage list.  Special
+#' handling is required when the result is just a symbol, or branches are
+#' involved.  See `copy_branchdat` in preprocess.R.
 #'
-#' This is trivial to do so long as what is written to the result is a sub-call
-#' (e.g. something like `sum(x)` or `x + y`).  If instead it is just a symbol
-#' referencing a previous sub-call or external vector (e.g. just `x`), we would
-#' have to back-trace through the history of all the assignments to figure out
-#' what sub-call was effectively responsible for producing that value, and
-#' redirect that one to write to the result vector.  To simplify `r2c`
-#' modifies the last expression to be `r2c_copy(expression)` if it turns out
-#' that `expression` is a symbol.  See `copy_last` in preprocess.R
-#'
-#' @param x preprocess data as produced by `preprocess`
+#' @param x preprocessed data as produced by `preprocess`
 #' @return an alloc object:
 #'
 #' alloc
@@ -138,8 +131,9 @@ NULL
 #'     $ctrl: evaluated control parameters
 #'     $flag: computed flag parameter value
 #'   $stack:
-#'     matrix used to track parameter sizes, but the time it's returned it
-#'     should just have the size of the final return
+#'     matrix used to track call-parameter relationships; when returned it
+#'     should just have one column representing the return value of the r2c
+#'     expression.
 #'
 #' @noRd
 #' @param x the result of preprocessing an expression
@@ -159,12 +153,12 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
   alloc <- init_dat(x[['call']], meta=meta, scope=0L)
   # Status control placeholder.
   sts.vec <- numeric(IX[['STAT.N']])
-  vdat <- vec_dat(sts.vec, "sts", typeof='double', group=0, size=IX[['STAT.N']])
+  vdat <- vec_dat(sts.vec, "sts", typeof='double')
   alloc <- append_dat(
     alloc, vdat=vdat, depth=0L, call.i=0L, rec=0L, branch.lvl=0L
   )
   # Result placeholder, to be alloc'ed once we know group sizes.
-  vdat <- vec_dat(numeric(), size=0L, type="res", typeof='double', group=0)
+  vdat <- vec_dat(numeric(), type="res", typeof='double')
   alloc <- append_dat(
     alloc, vdat=vdat, depth=0L, call.i=0L, rec=0L, branch.lvl=0L
   )
@@ -177,7 +171,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
     datum <- data.naked[[i]]
     dname <- names(data.naked)[i]
     typeof <- typeof(datum)
-    vdat <- vec_dat(datum, type="grp", typeof=typeof, group=1, size=NA_real_)
+    vdat <- vec_dat(datum, type="grp", typeof=typeof, size.coef=list(0:1))
     alloc <-
       append_dat(alloc, vdat=vdat, depth=0L, name=dname, call.i=0L, rec=0L)
   }
@@ -250,14 +244,14 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
 
       # Compute expression result size
       size.tmp <- compute_size(alloc, stack, depth, ftype, call, .CALL)
-      size <- size.tmp[['size']]     # iteration/group dependant size
-      asize <- size.tmp[['asize']]   # required allocation size
+      size.coef <- size.tmp[['size.coef']] # iteration/group dependant size
+      asize <- size.tmp[['asize']]         # required allocation size
 
       # Cleanup expired symbols, and bind new ones
       alloc <- names_update(alloc, call, call.name=name, call.i=i, rec=rec)
       # Prepare new vec data (if any), and tweak objet depending on situation.
       # Alloc is made later, but only if vec.dat[['new']] is not null.
-      vec.dat <- vec_dat(NULL, "tmp", typeof=res.typeof, size=size)
+      vec.dat <- vec_dat(NULL, "tmp", typeof=res.typeof, size.coef=size.coef)
       if(!name %in% c(PASSIVE.SYM, MODIFY.SYM)) {
         # We have a computing expression in need of a free slots.
         # (NB: PASSIVE includes ASSIGN, but use both in case that changes).
@@ -280,7 +274,8 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
       # in e.g. `x <- y`, this is the `x`, which isn't actually data,
       # We don't need to record it but we do for consistency.  The values here
       # shouldn't really get used anywhere where they have an impact.
-      vec.dat <- vec_dat(numeric(), "tmp", typeof="logical", size=0)
+      vec.dat <-
+        vec_dat(numeric(), "tmp", typeof="logical", size.coef=list(integer()))
     # - Control Parameter / External -------------------------------------------
     } else if (
       (cfe <- type %in% CTRL.FLAG.EXT) ||
@@ -342,8 +337,8 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
           # Validate non-control external args after eval, and add to vec.dat
           validate_ext(x, i, type, arg.e, name, call, .CALL)
           typeof <- typeof(arg.e)
-          size <- list(length(arg.e))
-          vec.dat <- vec_dat(arg.e, "ext", typeof=typeof, size=size)
+          size.coef <- list(length(arg.e))
+          vec.dat <- vec_dat(arg.e, "ext", typeof=typeof, size.coef=size.coef)
         }
       }
     # - Match a Symbol In Data -------------------------------------------------
@@ -488,8 +483,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
 ##   try to track whether a vector could be interpreted as logical or integer.
 ## * alloc: the true size of the vector (should be equivalent to
 ##   `lengths(dat[['dat']])`?).
-## * size: a list of lists of integer vectors  representing the size of an
-##   allocation. See `compute_asize_from_size` for details.
+## * size.coefs: a list `size.coef` elements as described in `compute_size`.
 ## * depth: the depth at which allocation occurred, only relevant for
 ##   `type == "tmp"`
 ## * i: scalar integer the index in `data` of the most recently
@@ -525,16 +519,16 @@ append_dat <- function(
   type <- vdat[['type']]
   typeof <- vdat[['typeof']]
   new <- vdat[['new']]
-  size <- vdat[['size']]
+  size.coef <- vdat[['size.coef']]
   if(is.null(new)) stop("Internal Error: cannot append null data.")
 
   if(!is.num_naked(list(new))) stop("Internal Error: bad data column.")
   if(!type %in% c("res", "grp", "ext", "tmp", "sts"))
     stop("Internal Error: bad type.")
-  if(type != "tmp" && (length(size) != 1L || any(lengths(size)) > 2L))
+  if(type != "tmp" && (length(size.coef) != 1L || any(lengths(size.coef)) > 2L))
     stop("Internal Eror: complex sizes only for computed allocs.") # and res?
 
-  if(any(lengths(size) > 1L && !type %in% c("grp", "tmp")))
+  if(any(lengths(size.coef) > 1L && !type %in% c("grp", "tmp")))
     stop("Internal Eror: complex sizes only for temporary allocs or group.")
 
   new.num <- if(is.integer(new) || is.logical(new)) as.numeric(new) else new
@@ -545,8 +539,8 @@ append_dat <- function(
 
   # need to test whether data.frame would slow things down too much
   dat[['ids0']] <- c(dat[['ids0']], id0.new)
-  dat[['alloc']] <- c(dat[['alloc']], length(new)) # true size
-  dat[['size']] <- c(dat[['size']], size)          # this is a list
+  dat[['alloc']] <- c(dat[['alloc']], length(new))         # true size
+  dat[['size.coefs']] <- c(dat[['size.coefs']], size.coef) # list of lists
   dat[['depth']] <- c(dat[['depth']], depth)
   dat[['type']] <- c(dat[['type']], type)
   dat[['typeof']] <- c(dat[['typeof']], typeof)
@@ -590,7 +584,7 @@ init_dat <- function(call, meta, scope) {
 
     # Equal length vector data
     alloc=numeric(),
-    size=list(),
+    size.coefs=list(),
     depth=integer(),
     ids0=integer(),
     type=character(),
@@ -614,32 +608,33 @@ init_dat <- function(call, meta, scope) {
 init_vec_dat <- function() {
   list(
     new=NULL, type=NA_character_, typeof=NA_character_, group=NA_real_,
-    size=NA_real_
+    size.coef=list(integer())
   )
 }
 # See `append_dat` for details on what the parameters are.
 
 vec_dat <- function(
-  new=NULL, type=NA_character_, typeof=NA_character_, size=NA_real_
+  new=NULL, type=NA_character_, typeof=NA_character_,
+  size.coef=list(length(new))
 ) {
-  vec.dat <- list(new=new, type=type, typeof=typeof, size=size)
+  vec.dat <- list(new=new, type=type, typeof=typeof, size.coef=size.coef)
   stopifnot(is.vec_dat(vec.dat))
   vec.dat
 }
 is.vec_dat <- function(x)
   is.list(x) &&
-  all(c('new', 'type', 'size', 'typeof') %in% names(x)) &&
+  all(c('new', 'type', 'size.coef', 'typeof') %in% names(x)) &&
   is.character(x[['type']]) &&
   isTRUE(x[['type']] %in% c("res", "grp", "ext", "tmp", "sts")) && (
     is.numeric(x[['new']]) || is.integer(x[['new']]) ||
     is.logical(x[['new']]) || is.null(x[['new']])
   ) &&
   # See `append_dat`
-  is.list(x[['size']]) && (
+  is.size_coef(x[['size.coef']]) && (
     x[['type']] == "tmp" ||
-    length(x[['size']]) == 1L && (
-      (x[['type']] == "grp" && length(x[['size']][[1L]] == 2L)) ||
-    length(x[['size']][[1L]] == 1L)
+    length(x[['size.coef']]) == 1L && (
+      (x[['type']] == "grp" && length(x[['size.coef']][[1L]] == 2L)) ||
+      length(x[['size.coef']][[1L]] == 1L)
   ) ) &&
   is.character(x[['typeof']]) && length(x[['typeof']]) == 1L &&
   isTRUE(x[['typeof']] %in% c("double", "integer", "logical"))
@@ -659,8 +654,6 @@ init_stack <- function() {
 append_stack <- function(stack, alloc, id=alloc[['i']], depth, argn) {
   if(!id) stop("Internal Error: an alloc id must be specified.")
   id0 <- if(!id) id else alloc[['ids0']][id]
-
-  size <- alloc[['size']][id]
   stack <- cbind(stack, c(id, id0, depth))
   colnames(stack)[ncol(stack)] <- argn
   stack
@@ -726,7 +719,7 @@ alloc_result <- function(alloc, vdat){
   # 'depth', 'id0', are not relevant anymore as the stack is done.
   alloc[['i']] <- slot
   alloc[['typeof']][slot] <- vdat[['typeof']]
-  alloc[['size']][slot] <- vdat[['size']]
+  alloc[['size.coefs']][slot] <- vdat[['size.coef']]
   alloc
 }
 # Reconcile Allocations Across Branches
@@ -788,14 +781,15 @@ reconcile_control_flow <- function(
   rc.sym.names <- c(colnames(names.rc.F), if(rec.ret) "<return-value>")
 
   # Find sizes (they should be the same).  Compare pair wise.
-  size.F <- alloc[['size']][id.rc.F]
-  size.T <- alloc[['size']][id.rc.T]
+  size.coef.F <- alloc[['size.coefs']][id.rc.F]
+  size.coef.T <- alloc[['size.coefs']][id.rc.T]
   size.eq <- vapply(
-    seq_along(size.F),
-    function(i) length(size_eqlen(list(size.F[i], size.T[i]), gmax, gmin)),
+    seq_along(size.coef.F),
+    function(i)
+      length(size_eqlen(list(size.coef.F[i], size.coef.T[i]), gmax, gmin)),
     0L
   )
-  if(!all(size.eq == 1L)) {
+  if(!all(size.coef.eq == 1L)) {
     # Reconstitute the call
     call.rec <- clean_call(call("{", call[[1L]], call[[2L]]), level=2L)
     stop(
@@ -804,7 +798,7 @@ reconcile_control_flow <- function(
       toString(
         sprintf(
           "`%s` (TRUE: %d vs FALSE: %d)",
-          rc.sym.names[!size.eq], size.T[!size.eq], size.F[!size.eq]
+          rc.sym.names[!size.eq], size.coef.T[!size.eq], size.coef.F[!size.eq]
       ) ),
       " in:\n", deparseLines(call.rec)
     )
@@ -841,13 +835,13 @@ reconcile_control_flow <- function(
   typeof.T <- alloc[['typeof']][id.rc.T]
   for(i in seq_along(id.rc.F)) {
     # Size and generate allocation
-    size <- size.T[i]
-    asize <- if(is.na(size)) gmax else size
+    size.coef <- size.coef.T[i]
+    asize <- compute_asize_from_size(size.coef, gmax)
     new <- numeric(asize)
     # Take the most general type from the two branches
     typeof.num <- match(c(typeof.F[i], typeof.T[i]), NUM.TYPES)
     typeof <- NUM.TYPES[max(typeof.num)]
-    vec.dat <- vec_dat(new, "tmp", typeof=typeof, size=size)
+    vec.dat <- vec_dat(new, "tmp", typeof=typeof, size.coef=size.coef)
     # rec=0L b/c reconciliation decisions made on 'rec' data from names matrix,
     # so this value should not be used anymore.
     alloc <- append_dat(

@@ -74,11 +74,11 @@ stack_param_missing <- function(params, stack.avail, call, .CALL) {
 
 # Compute Possible Iteration Result Sizes
 #
-# Each iteration's result size will be affected by the interaction of the
-# functions in the `r2c` expression with the sizes of the vectors they use.  For
-# most `r2c` supported functions we can deduce the result size from the input
-# sizes.  In some special cases like `numeric(x)` where `x` is an external
-# variable we can also deduce it from the input value.
+# Each computation result size will be deduced primarily from the input sizes
+# accounting for the semantics of the function under computation.
+# Special cases like `numeric(x)` will look at the value of their inputs, but
+# these functions can only be used when the inputs are external (thus computed
+# once before iteration, see `?r2c::r2cq`).  See `alloc` for context.
 #
 # `r2c` functions are classified by the relationship between their inputs and
 # their output size.  The categories are:
@@ -90,9 +90,9 @@ stack_param_missing <- function(params, stack.avail, call, .CALL) {
 # * vecrec: e.g. `a + b` produces a result the size of the larger input, except
 #   if either is zero length the result is zero length.
 # * concat: e.g. in `c(a, b)` the result size is the sum of the input sizes.
-# * product: e.g. `numeric_along(x, y)`. here the result size is `length(x) *
-#   length(y)`.  `numeric_along` is substituted for things like `numeric(x)` or
-#   `numeric(length(x) * length(y))`.
+# * product: e.g. `r2c::numeric_along(x, y)`. here the result size is
+#   `length(x) * length(y)`.  `numeric_along` is substituted for things like
+#   `numeric(x)` or `numeric(length(x) * length(y))`.
 # * external: e.g. `numeric(x)` where `x` is an external value (i.e. iteration
 #   independent).
 #
@@ -109,12 +109,17 @@ stack_param_missing <- function(params, stack.avail, call, .CALL) {
 #
 # Where 1L is the `g^0` (i.e. constant) coefficient, 2L the `g^1` coefficient,
 # and so on.  Higher degree polynomials are possible in situations like
-# `numeric_along(x, y)`.
+# `numeric_along(x, y)` where a length is the product of two input lenghts.
 #
 # With `vecrec` we cannot know which input is larger without fixing the value of
-# the iteration size.  Because of this we keep track of sizes as lists of
+# the iteration size (e.g. imagine `(1:5) + x` where `x` is iteration-varying;
+# which is larger?).  Because of this we keep track of sizes as lists of
 # polynomial coefficients, which we only reduce to actual sizes when we have an
-# iteration size we want to check against.
+# iteration size we want to check against.  It is possible for the complexity of
+# a size calculation to blow-up if there are many nested calculations that
+# produce different size coefficients and we limit how many different
+# coefficients a single input is allowed.  Expressions that exceed that limit
+# will fail with an error.
 #
 # @param gmax scalar integer the size of the largest group / iteration.
 # @param gmin scalar integer the size of the smallest group / iteration.
@@ -124,12 +129,12 @@ stack_param_missing <- function(params, stack.avail, call, .CALL) {
 #   univariate polynomial on group size, where the first element is power 0
 #   (i.e.  constant), second is group size, third group size squared, etc.  See
 #   details for why there may be more than one such vector.
-# @param size.in list of lists as described in `size.coef`, used to represent
+# @param size.args list of lists as described in `size.coef`, used to represent
 #   the set of inputs into a function.
 #
 # @return a list with members:
 #
-# * "size": a list as described in `size.coef`.
+# * "size.coef": a list as described in `size.coef`.
 # * "asize": an integer-like number describing max allocation size to hold the
 #   result of the current call for any iteration.
 
@@ -143,7 +148,7 @@ compute_size <- function(alloc, stack, depth, ftype, call, .CALL) {
     inputs <- input_args(
       stack=stack, depth=depth, ftype=ftype, call=call, .CALL=.CALL
     )
-    in.size <- alloc[['size']][inputs]
+    in.size <- alloc[['size.coefs']][inputs]
     # Compute group/iteration dependent size
     size.coef <- switch(
       ftype[[1L]],
@@ -178,7 +183,7 @@ compute_size <- function(alloc, stack, depth, ftype, call, .CALL) {
   }
   # Determine allocation
   asize <- compute_asize_from_size(size.coef, gmax)
-  list(size=size.coef, asize=asize)
+  list(size.coef=size.coef, asize=asize)
 }
 
 # Convert polynomial size vector to an actual size given an iteration size.
@@ -190,18 +195,20 @@ actual_size  <- function(x, base) sum(x * base ^ (seq_along(x) - 1L))
 alloc_size <- function(size.coef, base)
   max(vapply(size.coef, actual_size, 0, base))
 
-compute_asize_from_size <- function(size.coef, type, gmax, gmin) {
+compute_asize_from_size <- function(size.coef, gmax) {
   alloc_size(sizes, gmax)
 }
+is.size_coef <- function(size.coef) {
+  if(is.list(size.coef)) {
+    coef.ul <- unlist(size.coef)
+    all(vapply(size.coef, is.numeric, TRUE)) &&
+      !anyNA(coef.ul) && all(coef.ul >= 0) && all(round(coef.ul) == coef.ul)
+  } else FALSE
+}
 
-valid_size_input <- function(size.in, error=TRUE) {
-  s.ul <- unlist(size.in)
-  test <- (
-    is.list(size.in) && all(vapply(size.in, is.list, TRUE)) &&
-    all(lengths(size.in) > 0) &&
-    all(unlist(lapply(size.in, lapply, is.numeric))) &&
-    all(s.ul >= 0)  && !anyNA(s.ul) && all(round(s.ul) == s.ul)
-  )
+valid_size_input <- function(size.args, error=TRUE) {
+  s.ul <- unlist(size.args)
+  test <- is.list(size.args) && all(vapply(size.args, is.size_coef, TRUE))
   if(error && !test)
     stop("Internal Error: bad input size list.")
   else test
@@ -209,10 +216,10 @@ valid_size_input <- function(size.in, error=TRUE) {
 
 # Vector Recycling
 
-size_vecrec <- function(size.in, gmax, gmin) {
+size_vecrec <- function(size.args, gmax, gmin) {
   # for vecrec, one arg with multiple potential lengths is the same as more
   # individual args each with one of those potential lengths
-  size.ul <- unlist(size.in, recursive=FALSE)
+  size.ul <- unlist(size.args, recursive=FALSE)
   size.ul <-
     if(any(vapply(size.ul, function(x) sum(x) == 0L, TRUE))) list(0L)
     else unique(size.ul)
@@ -228,10 +235,10 @@ size_vecrec <- function(size.in, gmax, gmin) {
 # Does not actually check that the results are equal size; to confirm make sure
 # return value is length 1.
 
-size_eqlen <- function(size.in, gmax, gmin) {
+size_eqlen <- function(size.args, gmax, gmin) {
   # for eqlen, one arg with multiple potential lengths is the same as more
   # individual args each with one of those potential lengths
-  size.ul <- unlist(size.in, recursive=FALSE)
+  size.ul <- unlist(size.args, recursive=FALSE)
 
   # If gmax==gmin, what can we assume?  We can assume that if they are all equal
   # under that assumption the size becomes constant.  Recall that we need to
@@ -254,24 +261,24 @@ size_eqlen <- function(size.in, gmax, gmin) {
 #
 # @return A list with integer vectors representing potential result sizes.
 
-size_concat <- function(size.in) {
-  size.in.exp <- expand_sizes(size.in)
+size_concat <- function(size.args) {
+  size.args.exp <- expand_sizes(size.args)
   lapply(
-    size.in.exp,
+    size.args.exp,
     function(x) rowSums(do.call(cbind, pad_sizes(x)))
   )
 }
-size_prod <- function(size.in) {
-  size.in.exp <- expand_sizes(size.in) # this validates size.in
-  lapply(size.in.exp, Reduce, f=poly_mult)
+size_prod <- function(size.args) {
+  size.args.exp <- expand_sizes(size.args) # this validates size.args
+  lapply(size.args.exp, Reduce, f=poly_mult)
 }
 
 # Generate Permutations of Size Inputs
 #
 # Returns a list of lists of integer vectors.  Each sub-list represents one
 # possible permutation of input sizes and will have as many integer elements as
-# there were sub-lists in `size.in`.  The result will have
-# `prod(lengths(size.in))` elements, and will be zero-right-padded so that all
+# there were sub-lists in `size.args`.  The result will have
+# `prod(lengths(size.args))` elements, and will be zero-right-padded so that all
 # integer vectors are the lenght of the longest integer vector in the input.
 #
 # @example
@@ -279,18 +286,18 @@ size_prod <- function(size.in) {
 # arg2 <- list(c(1, 1), c(2, 3))  # Arg 2 has two size expressions
 # r2c:::expand_sizes(list(arg1, arg2))
 
-expand_sizes <- function(size.in) {
-  valid_size_input(size.in)
-  if(perms <- prod(lengths(size.in)) > 1024)
+expand_sizes <- function(size.args) {
+  valid_size_input(size.args)
+  if(perms <- prod(lengths(size.args)) > 1024)
     stop(
       "Too many possible parameter size permutations (", perms, ")."
     )
-  size.ids <- lapply(size.in, seq_along)
+  size.ids <- lapply(size.args, seq_along)
   size.perm <- as.matrix(do.call(expand.grid, size.ids))
   size.exp.i <- split(size.perm, row(size.perm))
-  pad_sizes(lapply(size.exp.i, function(x) Map("[[", size.in, x)))
+  pad_sizes(lapply(size.exp.i, function(x) Map("[[", size.args, x)))
 }
-# Pad all polynomial coefficients represented by `size.in` to degree of highest
+# Pad all polynomial coefficients represented by `size.args` to degree of highest
 # polynomial.
 
 pad_fun <- function(x, len) {
