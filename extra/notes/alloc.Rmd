@@ -1,0 +1,42 @@
+# Allocation
+
+## External vs. Control
+
+For functions that rely on an external input (we don't have any at the moment),
+can we just rely wholly on the control parameter?
+
+We just include a control validation function, and then subsequent to that in
+each iteration we directly access the value?
+
+A few issues:
+
+* We really don't want to have to use `REAL(x)[0]` each iteration; for control
+  parameters that are supposed to evaluate to doubles it would be nice if we
+  could just throw them in the data array.
+* Maybe that is the purpose of "extern", has the same semantics as "control",
+  but is required to evaluate to a numeric so we can throw it in the data pile.
+  So e.g. `quantile` could rely on "extern" instead of control.
+
+Is "extern" the right name?  Seems like that is the overall category for
+"control", "flag", and "numeric".  More broadly, maybe "control" is also not
+right".  Really we're dealing with "ext.generic", "ext.lgl", and "ext.num".
+
+More generally, maybe we can simplify the control parameter thing to be
+external/internal.  The distinction between flag/general/numeric can be an
+implementation detail (I guess it kind of is already).
+
+## Eval of External Args
+
+Maybe we can set up an environment where we keep adding any internal symbols as
+active bindings that blow up if you try to use them?
+
+    env <- new.env()
+    makeActiveBinding("a", function() stop('boom'), env)
+    evalq(sum(a), env)
+
+Probably want to signal a condition that we catch, where we embed the symbol
+name in the message of the condition, and then we can compose a meaningful
+message like:
+
+> Attempt to use internal symbol via an external parameter.
+
