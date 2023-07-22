@@ -198,12 +198,12 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
 
   for(i in seq_along(x[['call']])) {
     ext.id <- ""
-    type <- x[['type']][[i]]
+    ltype <- x[['type']][[i]]
     call <- x[['call']][[i]]
     depth <- x[['depth']][[i]]
     argn <- x[['argn']][[i]]
     pkg <- name <- ""
-    if(!type %in% CTRL.FLAG) {
+    if(!ltype %in% CTRL.FLAG) {
       tmp <- get_lang_info(call)
       name <- tmp[['name']]
       pkg <- tmp[['pkg']]
@@ -216,7 +216,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
     rec <- rec * branch.lvl
 
     # - Process Call -----------------------------------------------------------
-    if(type == "call") {
+    if(ltype == "call") {
       # Based on previously accrued stack and function type, compute call result
       # size, allocate for it, etc.  Stack reduction happens later.
       check_fun(name, pkg, env)
@@ -304,7 +304,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
         # important if we reference same external symbol multiple times and it
         # is e.g. integer, which would require coercion to numeric each time.
         # Drawback is expressions with side-effects will not work correctly.
-        if(type == PT.EXT) {
+        if(ltype == PT.EXT) {
           ext.id <- paste0(deparse(call, control="all"), collapse="\n")
           if(!nzchar(ext.id))
             stop("Symbol with zero length name disallowed.")
@@ -323,19 +323,19 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
           arg.e <- eval(call, envir=data, enclos=env),
           error=function(e) stop(simpleError(conditionMessage(e), call.outer))
         )
-        if(type == PT.CTL) {
+        if(ltype == PT.CTL) {
           if(!nzchar(argn)) stop("Internal Error: missing arg name for control.")
           ctrl <- list(arg.e)
           names(ctrl) <- argn
           stack.ctrl <- c(stack.ctrl, ctrl)
-        } else if (type == PT.FLAG) {
+        } else if (ltype == PT.FLAG) {
           if(!nzchar(argn)) stop("Internal Error: missing arg name for flag")
           flag <- list(arg.e)
           names(flag) <- argn
           stack.flag <- c(stack.flag, flag)
         } else {
           # Validate non-control external args after eval, and add to vec.dat
-          validate_ext(x, i, type, arg.e, name, call, .CALL)
+          validate_ext(x, i, ltype, arg.e, name, call, .CALL)
           typeof <- typeof(arg.e)
           size.coef <- list(length(arg.e))
           vec.dat <- vec_dat(arg.e, "ext", typeof=typeof, size.coef=size.coef)
@@ -362,7 +362,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
       if(nzchar(ext.id)) external.eval[[ext.id]] <- alloc[[i]]
     }
     # Call actions that need to happen after allocation data updated
-    if(type == "call") {
+    if(ltype == "call") {
       # Release allocation after call parameters incorporated
       alloc <- alloc_free(alloc, depth)
       # Append call data (different than append_dat)
@@ -416,7 +416,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
       stack.ctrl <- stack.flag <- list()
     }
     # Append new data/computation result to stack
-    if(!type %in% CTRL.FLAG)
+    if(!ltype %in% CTRL.FLAG)
       stack <- append_stack(stack, alloc=alloc, depth=depth, argn=argn)
   }
   # - Finalize -----------------------------------------------------------------
@@ -642,12 +642,12 @@ is.vec_dat <- function(x)
 ## Stack used to track parameters ahead of reduction when processing call.
 init_stack <- function() {
   matrix(
-    numeric(), nrow=5L,
+    numeric(), nrow=3L,
     dimnames=list(
       c(
         'id',      # index in our allocated data structure
         'id0',     # unique id for integrity checks
-        'depth',
+        'depth'
       ),
       NULL
 ) ) }

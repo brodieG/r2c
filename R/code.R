@@ -65,9 +65,9 @@ is.valid_constant <- function(type)
 #'
 #' @section Code Generation:
 #'
-#' Code generation is handled by the function provided in `code.gen`.  The
-#' function should return a list with three character vectors, each
-#' representing:
+#' Code generation is handled by the function provided in `code.gen` which are
+#' run during preprocessing.  The function should return a list with three
+#' character vectors, each representing:
 #'
 #' * Definition of the C function.
 #' * Name of the C function.
@@ -97,7 +97,7 @@ is.valid_constant <- function(type)
 #' Generally a C function with `n` arguments is supposed to compute on the data
 #' in `data[di[0:(n-1)]]` and record the result into `data[di[n]]` and the
 #' length of the result into `lens[di[n]]` (although the latter in theory should
-#' be known ahead of time - maybe this allows a check?).
+#' be known ahead of time - we use this to check size calcs correct).
 #'
 #' For functions with variable arguments (e.g. because they have `...` in their
 #' signature), be sure to include `F.ARGS.VAR` in the definition, and to use
@@ -111,7 +111,9 @@ is.valid_constant <- function(type)
 #'   for [`match.call`]'s `definition` parameter.  Also can be NULL for
 #'   primitives that only do positional matching.
 #' @param ctrl.params character names of all the formal parameters that are
-#'   to be evaluated once up front and not for each group in the data.  If any
+#'   to be evaluated once up front and not for each group in the data.  They may
+#'   not overlap with 
+#'   If any
 #'   data columns are referenced by these parameters, the entire data column
 #'   will be used for them, not the group varying subsets of them.  Any
 #'   parameters here are exclusive of those listed in `flag.params`.
@@ -136,13 +138,22 @@ is.valid_constant <- function(type)
 #'     result size.
 #'
 #' @param code.gen a function that generates the C code corresponding to an R
-#'   function, which accepts three parameters (see details for the expected
-#'   function semantics):
+#'   function during the preprocessing steps.  Accepts as parameters:
 #'
 #'   * Name of the R function.
-#'   * A numeric vector of argument sizes of non-control parameters,
-#'     where arguments of group size are given NA size.
-#'   * A list of the evaluated control parameters.
+#'   * Three `args.*` params that are lists of unevaluated parameters:
+#'      * `args.reg`: neither control nor flag; mixes regular and extern, which
+#'        at currently happens to be okay but might need splitting out in the
+#'        future.
+#'      * `args.ctrl`: control parameters.
+#'      * `args.flag`: flag parameters.
+#'
+#'   Currently only `args.reg` is ever used, and then only to detect whether we
+#'   should generate the single or multi-arg versions of e.g. `sum`.  It's not
+#'   clear whether we'll ever have a use for the rest.  For most functions the
+#'   name of the functions wholly determines what the C function and calls to it
+#'   look like.  Almost all of the handling of control/flag/external is done at
+#'   the allocation step.
 #'
 #' @param ctrl.validate a function to validate both control and flag parameters,
 #'   should `stop`, or return the flag parameters encoded into an integer.
@@ -197,8 +208,13 @@ cgen <- function(
       ),
     res.type.which=INT.POS.STR
   )
-  if(length(intersect(ctrl.params, flag.params)))
-    stop("Control and Flag parameters may not overlap.")
+  if(
+    length(intersect(ctrl.params, flag.params)) ||
+    length(intersect(ctrl.params, extern.params)) ||
+    length(intersect(flag.params, extern.params))
+  )
+    stop("Control, flag, and external parameters may not overlap.")
+
   # Limitation in vetr prevents this being done directly above
   stopifnot(
     is.character(type[[1L]]) && length(type[[1L]]) == 1L && !is.na(type[[1L]]),
@@ -223,7 +239,8 @@ cgen <- function(
     )
   )
   list(
-    name=name, fun=fun, defn=defn, ctrl=ctrl.params, flag=flag.params,
+    name=name, fun=fun, defn=defn,
+    ctrl=ctrl.params, flag=flag.params, extern=extern.params,
     type=type, code.gen=code.gen,
     transform=transform, res.type=res.type, res.type.which=res.type.which,
     ctrl.validate=ctrl.validate, input.validate=input.validate
@@ -237,7 +254,7 @@ cgen_bin <- function(name, res.type="preserve.int") {
     transform=unary_transform
   )
 }
-## Specialized for binops that require the macros
+## Specialized for binops that require inclusion of macros (logicals)
 cgen_bin2 <- function(name, res.type="preserve.int") {
   cgen(
     name, defn=NULL,

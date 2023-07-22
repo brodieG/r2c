@@ -318,12 +318,15 @@ pp_internal <- function(
 #'   as the names, and their current renamed version as the value.  This is a
 #'   point in time snapshot and cannot be used to reconstruct the history of the
 #'   renames.
-#' $last.read: named integer of indeces in the linearized call tree of the last
+#' $last.read: named integer of indices in the linearized call tree of the last
 #'   _call_ that read a particular symbol.  This allow us to know when we can
 #'   free an allocation otherwise used by that symbol.  The names of this vector
 #'   correspond to the **renamed** variables.
 #' $call.rename: version of `call` with symbols renamed using `rename`.
-#' $type: argument type
+#' $type: argument type, one of "control", "flag", "extern", "call", "leaf".
+#'   The last two are "internal" tokens to be evaluated by "r2c", the first
+#'   three are "external" tokens to be evaluated once during allocation but
+#'   before iteration.
 #' $rec: whether current call is a part of a chain that ends with a `rec`
 #'
 #' @noRd

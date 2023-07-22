@@ -35,6 +35,16 @@
 
 ## Current
 
+* Simplify flags to make them part of the data array?  This would remove one
+  parameter from parameter list since we're already squeezed there.  Something
+  to think about, could be nice.  Then numeric external and flag external can
+  have the same logic.  Implementation can still use "bitwise" comparison on the
+  double values and now can go up to 2^53 (but is this slow?).  Looks like this
+  would require coercion.
+
+* What's up with the `args.ctrl`, `args.flags`, etc in the code gen functions
+  where we don't seem to use those anywhere?
+
 * Where do we check the validity of size vectors?
 
 * Clearly document `ftype[[3L]]` function format.
