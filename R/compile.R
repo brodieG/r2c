@@ -60,7 +60,8 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' out numerical calculations with `r2c` native instructions instead of with the
 #' standard R routines. "r2c_fun" functions are intended to be run with the
 #' `r2c` [runners] for fast iterated calculations.  `r2c` attempts to adheres
-#' closely to R semantics for the supported use cases.
+#' closely to R semantics for the supported use cases.  Look at the examples
+#' here and those of the [runners] to get started.
 #'
 #' @section r2c Generated Functions:
 #'
