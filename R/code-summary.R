@@ -158,25 +158,18 @@ code_gen_summary <- function(fun, args.reg, args.ctrl, args.flag) {
     defines=if(name %in% names(SUM.DEFN)) SUM.DEFN[name]
   )
 }
-## @param x a list of the matched parameters for the call `call`
-## @call the unmatched (sub)call as provided by the user
+## Validation functions for external parameters.
 
-ctrl_val_summary <- function(ctrl, flag, call) {
-  # for mean.default
-  trim <- ctrl[['trim']]
+valid_narm <- function(na.rm) vet(LGL.1, na.rm)
+valid_trim <- function(trim) {
   if(!isTRUE(trim.test <- vet(NULL || identical(., 0), trim)))
-    stop(
-      paste0(
-        c("`trim` must be set to default value (", trim.test, ")"),
-        collapse="\n"
-    ) )
-
-  na.rm <- flag[['na.rm']]
-  if(!isTRUE(na.test <- vet(LGL.1, na.rm)))
-    stop(na.test, " in `", deparse1(call), "`.")
-
-  if(flag[['na.rm']]) 1L else 0L # avoid bizarre cases of TRUE != 1L
+    paste0(
+      c("`trim` must be set to default value (", trim.test, ")"),
+      collapse="\n"
+    )
+  else TRUE
 }
+
 #' Single Pass Mean Calculation
 #'
 #' [`base::mean`] does a two pass calculation that additional handles cases

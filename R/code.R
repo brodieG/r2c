@@ -62,9 +62,20 @@ is.valid_constant <- function(type)
   type[[2L]] >= 0L
 
 # Initialize External Parameter List (see `cgen`).
+#
+# @param type one of "num" or "any", where "num" represents parameters that are
+#   expected to evalauate to naked numeric, and "any" those that can evalaute to
+#   anything.
+# @param validate a function that takes one parameter that should return TRUE or
+#   a text string describing why the parameter is not valid.
 
-par_list <- function(flag=character(), num=character(), any=character())
-  list(flag=flag, num=num, any=any)
+ext_par <- function(type="num", validate=function(x) TRUE) {
+  vetr(
+    character(1L) && . %in% c("num", "any"),
+    is.function(.) && length(formals(.)) == 1L
+  )
+  structure(list(type=type, validate=validate), class='ext_par')
+}
 
 #' Initializer for Function Registration Entries
 #'
@@ -114,11 +125,10 @@ par_list <- function(flag=character(), num=character(), any=character())
 #' @param defn NULL if fun is a closure, otherwise a function template to use
 #'   for [`match.call`]'s `definition` parameter.  Also can be NULL for
 #'   primitives that only do positional matching.
-#' @param params list with members "flag", "num", and "any", each a character
-#'   vector with the names of external parameters that respectively can be
-#'   TRUE/FALSE, numeric, or any arbitrary R object.  Parameters that don't
-#'   match any of the members are considered internal (see `?"r2c-compile"`).
-#'   Members should be non-overlapping.
+#' @param extern named list, with each member corresponding to an external
+#'   parameter of the same name.  The members are generated with `ext_par`.
+#'   Parameters that don't match any of the members are considered internal (see
+#'   `?"r2c-compile"`).
 #' @param type list(2:3) containing the length-type of function with at position
 #'   one a scalar character in "constant", "arglen", "vecrec", "eqlen",
 #'   "concat", or "extern", and additional meta data at position two or three
@@ -153,8 +163,6 @@ par_list <- function(flag=character(), num=character(), any=character())
 #'   look like.  Almost all of the handling of control/flag/external is done at
 #'   the allocation step.
 #'
-#' @param ctrl.validate a function to validate both control and flag parameters,
-#'   should `stop`, or return the flag parameters encoded into an integer.
 #' @param input.validate a function to validate input types.  Will be given a
 #'   named character vector with the values the possible types (e.g. "double",
 #'   "logical") and the names the parameter names they were matched to.
@@ -175,9 +183,7 @@ par_list <- function(flag=character(), num=character(), any=character())
 cgen <- function(
   name, fun=get(name, baseenv(), mode="function"),
   defn=if(typeof(fun) == 'closure') fun,
-  params=par_list(),
-  type, code.gen,
-  ctrl.validate=function(...) 0L,
+  extern=list(), type, code.gen,
   input.validate=function(types) TRUE,
   transform=identity,
   res.type="double", res.type.which=1L
@@ -187,10 +193,9 @@ cgen <- function(
     fun=is.function(.),
     # really should have put some parens to resolve ambiguity below
     defn=typeof(.) == "closure" || NULL,
-    params=par_list(),
+    extern=list(),
     type=list() && length(.) %in% 1:3,
     code.gen=is.function(.),
-    ctrl.validate=is.function(.),
     input.validate=is.function(.),
     transform=is.function(.),
     res.type=CHR.1 &&
@@ -202,13 +207,15 @@ cgen <- function(
   )
   # Limitation in vetr prevents following checks from being done above
 
-  par.names <- unlist(params)
-  if(anyNA(par.names) || anyDuplicated(par.names) || !all(nzchar(par.names)))
+  if(
+    anyDuplicated(names(extern)) ||
+    !all(vapply(extern, inherits, TRUE, "ext_par"))
+  )
     stop("Internal Error: badly specified external parameter names.")
 
   if(
     !is.null(defn) &&
-    (!all(par.names %in% names(formals(defn))) || "..." %in% par.names)
+    (!all(names(extern) %in% names(formals(defn))) || "..." %in% names(extern))
   )
     stop("Internal Error: external params missing from defn or include '...'.")
 
@@ -235,10 +242,10 @@ cgen <- function(
     )
   )
   list(
-    name=name, fun=fun, defn=defn, params=params,
+    name=name, fun=fun, defn=defn, extern=extern,
     type=type, code.gen=code.gen,
     transform=transform, res.type=res.type, res.type.which=res.type.which,
-    ctrl.validate=ctrl.validate, input.validate=input.validate
+    input.validate=input.validate
   )
 }
 ## Specialized for binops
@@ -263,34 +270,33 @@ VALID_FUNS <- c(
   list(
     cgen(
       "sum", defn=function(..., na.rm=FALSE) NULL,
-      params=par_list(flag="na.rm"),
+      extern=list(na.rm=ext_par("num", valid_narm)),
       type=list("constant", 1L),
       code.gen=code_gen_summary,
-      ctrl.validate=ctrl_val_summary,
       res.type='preserve.int'
     ),
     cgen(
       "mean", defn=base::mean.default,
-      params=par_list(flag="na.rm", any="trim"),
+      extern=list(
+        na.rm=ext_par("num", valid_narm),
+        trim=ext_par("any", valid_trim)
+      ),
       type=list("constant", 1L),
-      code.gen=code_gen_summary,
-      ctrl.validate=ctrl_val_summary
+      code.gen=code_gen_summary
     ),
     cgen("length", type=list("constant", 1L), code.gen=code_gen_length),
     cgen(
       "all", defn=function(..., na.rm=FALSE) NULL,
-      params=par_list(flag="na.rm"),
+      extern=list(na.rm=ext_par("num", valid_narm)),
       type=list("constant", 1L),
       code.gen=code_gen_summary,
-      ctrl.validate=ctrl_val_summary,
       res.type='logical'
     ),
     cgen(
       "any", defn=function(..., na.rm=FALSE) NULL,
-      params=par_list(flag="na.rm"),
+      extern=list(na.rm=ext_par("num", valid_narm)),
       type=list("constant", 1L),
       code.gen=code_gen_summary,
-      ctrl.validate=ctrl_val_summary,
       res.type='logical'
     )
   ),
@@ -450,7 +456,7 @@ VALID_FUNS <- c(
       "numeric", defn=function(length=0L) NULL,
       # Is length redundant? One is to classify, and to the other compute size.
       type=list("extern", "length", numeric_size),
-      extern.params="length",
+      extern=ext_list(num="length"),
       code.gen=code_gen_numeric, res.type="double"
     )
   ),
@@ -458,10 +464,9 @@ VALID_FUNS <- c(
   list(
     cgen(
       "mean1", fun=mean1,
-      params=par_list(flag="na.rm"),
+      extern=list(na.rm=ext_par("num", valid_narm)),
       type=list("constant", 1L),
       code.gen=code_gen_summary,
-      ctrl.validate=ctrl_val_summary
     ),
     cgen(
       "square", fun=square, defn=square,
