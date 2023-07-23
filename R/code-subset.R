@@ -38,12 +38,11 @@ static void %s(%s) {
   lens[di[2]] = len;
 }'
 
-code_gen_subset <- function(fun, args.reg, args.ctrl, args.flags) {
+code_gen_subset <- function(fun, par, par.types) {
   vetr(
     identical(., "["),
-    args.reg=list(NULL, NULL),
-    args.ctrl=list() && length(.) == 0L,
-    args.flags=list() && length(.) == 0L
+    pars=list(NULL, NULL),
+    par.types=character() && all(. %in% PAR.INT)
   )
   name <- FUN.NAMES[fun]
   defn <- sprintf(f_subset, name, toString(F.ARGS.BASE))
@@ -104,12 +103,11 @@ subset_input_val <- function(types) {
   TRUE
 }
 
-code_gen_subassign <- function(fun, args.reg, args.ctrl, args.flags) {
+code_gen_subassign <- function(fun, pars, par.types) {
   vetr(
     identical(., "subassign"),
-    args.reg=list(NULL, NULL, NULL),
-    args.ctrl=list() && length(.) == 0L,
-    args.flags=list() && length(.) == 0L
+    pars=list(NULL, NULL, NULL),
+    par.types=character() && all(. %in% PAR.INT)
   )
   name <- FUN.NAMES[fun]
   defn <- sprintf(

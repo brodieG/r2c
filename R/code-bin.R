@@ -91,12 +91,11 @@ static void %1$s(%2$s) {
     lens[dires] = len2;
   }
 }')
-code_gen_bin <- function(fun, args.reg, args.ctrl, args.flags) {
+code_gen_bin <- function(fun, pars, par.types) {
   vetr(
     CHR.1 && . %in% setdiff(names(OP.OP), names(OP.DEFN)),
-    args.reg=list(NULL, NULL),
-    args.ctrl=list() && length(.) == 0L,
-    args.flags=list() && length(.) == 0L
+    pars=list(NULL, NULL),
+    par.types=character() && all(. %in% PAR.INT)
   )
   name <- FUN.NAMES[fun]
   op <- OP.OP[fun]      # needed for modulo
@@ -107,12 +106,11 @@ code_gen_bin <- function(fun, args.reg, args.ctrl, args.flags) {
   code_res(defn=defn, name=name, headers=character())
 }
 # For the ones that need the defined macro
-code_gen_bin2 <- function(fun, args.reg, args.ctrl, args.flags) {
+code_gen_bin2 <- function(fun, pars, par.types) {
   vetr(
     CHR.1 && . %in% names(OP.DEFN),
-    args.reg=list(),
-    args.ctrl=list() && length(.) == 0L,
-    args.flags=list() && length(.) == 0L
+    pars=list(),
+    par.types=character() && all(. %in% PAR.INT)
   )
   name <- FUN.NAMES[fun]
   op <- OP.OP[fun]      # needed for modulo

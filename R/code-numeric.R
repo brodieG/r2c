@@ -44,12 +44,11 @@ numeric_size <- function(vals) {
   list(val)
 }
 
-code_gen_numeric <- function(fun, args.reg, args.ctrl, args.flags) {
+code_gen_numeric <- function(fun, pars, par.types) {
   vetr(
     identical(., "numeric"),
-    args.reg=list(NULL),
-    args.ctrl=list() && length(.) == 0L,
-    args.flags=list() && length(.) == 0L
+    pars=list(NULL),
+    par.types=character() && all(. %in% PAR.INT)
   )
   name <- FUN.NAMES[fun]
   defn <- sprintf(f_numeric, name, toString(F.ARGS.BASE))

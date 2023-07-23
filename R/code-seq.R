@@ -24,12 +24,11 @@ static void %s(%s) {
   lens[1] = len0;
 }'
 
-code_gen_seq_along <- function(fun, args.reg, args.ctrl, args.flags) {
+code_gen_seq_along <- function(fun, par, par.types) {
   vetr(
     identical(., "seq_along"),
-    args.reg=list(NULL),
-    args.ctrl=list() && length(.) == 0L,
-    args.flags=list() && length(.) == 0L
+    pars=list(NULL),
+    par.types=character() && all(. %in% PAR.INT)
   )
   name <- FUN.NAMES[fun]
   defn <- sprintf(f_seq_along, name, toString(F.ARGS.BASE))

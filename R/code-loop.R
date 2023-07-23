@@ -40,12 +40,11 @@ f_for_other <- '
 // NO-OP, not output but needed for internal checks
 // static void %s(%s) { /* NOOP */ }'
 
-code_gen_for_init <- function(fun, args.reg, args.ctrl, args.flags) {
+code_gen_for_init <- function(fun, pars, par.types) {
   vetr(
     identical(., "for_init"),
-    args.reg=list(NULL, NULL),
-    args.ctrl=list() && length(.) == 0L,
-    args.flags=list() && length(.) == 0L
+    pars=list(NULL, NULL),
+    par.types=character() && all(. %in% PAR.INT)
   )
   name <- FUN.NAMES[fun]
   defn <- sprintf(f_for_init, name, toString(F.ARGS.BASE))
@@ -55,12 +54,11 @@ code_gen_for_init <- function(fun, args.reg, args.ctrl, args.flags) {
       paste0("if(", sub(";$", "", c_call_gen(...)), ") {")
   )
 }
-code_gen_for_iter <- function(fun, args.reg, args.ctrl, args.flags) {
+code_gen_for_iter <- function(fun, pars, par.types) {
   vetr(
     identical(., "for_iter"),
-    args.reg=list(NULL, NULL, NULL),
-    args.ctrl=list() && length(.) == 0L,
-    args.flags=list() && length(.) == 0L
+    pars=list(NULL, NULL, NULL),
+    par.types=character() && all(. %in% PAR.INT)
   )
   name <- FUN.NAMES[fun]
   defn <- sprintf(f_for_iter, name, toString(F.ARGS.BASE))
@@ -70,12 +68,11 @@ code_gen_for_iter <- function(fun, args.reg, args.ctrl, args.flags) {
       paste0("while(", sub(";$", "", c_call_gen(...)), ") {")
   )
 }
-code_gen_for_n <- function(fun, args.reg, args.ctrl, args.flags) {
+code_gen_for_n <- function(fun, pars, par.types) {
   vetr(
     identical(., "for_n"),
-    args.reg=list(NULL),
-    args.ctrl=list() && length(.) == 0L,
-    args.flags=list() && length(.) == 0L
+    pars=list(NULL),
+    par.types=character() && all(. %in% PAR.INT)
   )
   name <- FUN.NAMES[fun]
   defn <- sprintf(f_for_other, name, toString(F.ARGS.BASE))
@@ -84,12 +81,11 @@ code_gen_for_n <- function(fun, args.reg, args.ctrl, args.flags) {
     out.ctrl=CGEN.OUT.CALL
   )
 }
-code_gen_for_0 <- function(fun, args.reg, args.ctrl, args.flags) {
+code_gen_for_0 <- function(fun, pars, par.types) {
   vetr(
     identical(., "for_0"),
-    args.reg=list(NULL),
-    args.ctrl=list() && length(.) == 0L,
-    args.flags=list() && length(.) == 0L
+    pars=list(NULL),
+    par.types=character() && all(. %in% PAR.INT)
   )
   name <- FUN.NAMES[fun]
   defn <- sprintf(f_for_other, name, toString(F.ARGS.BASE))
@@ -98,12 +94,11 @@ code_gen_for_0 <- function(fun, args.reg, args.ctrl, args.flags) {
     out.ctrl=CGEN.OUT.CALL
   )
 }
-code_gen_r2c_for <-function(fun, args.reg, args.ctrl, args.flags) {
+code_gen_r2c_for <-function(fun, pars, par.types) {
   vetr(
     identical(., "r2c_for"),
-    args.reg=list(NULL, NULL, NULL),
-    args.ctrl=list() && length(.) == 0L,
-    args.flags=list() && length(.) == 0L
+    pars=list(NULL, NULL, NULL),
+    par.types=character() && all(. %in% PAR.INT)
   )
   name <- FUN.NAMES[fun]
   defn <- sprintf(f_for_other, name, toString(F.ARGS.BASE))

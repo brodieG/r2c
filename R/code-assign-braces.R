@@ -32,12 +32,11 @@ static void %s(%s) {
   lens[1] = len0;
 }'
 
-code_gen_copy <- function(fun, args.reg, args.ctrl, args.flags) {
+code_gen_copy <- function(fun, pars, par.types) {
   vetr(
     identical(., "vcopy"),
-    args.reg=list(NULL),
-    args.ctrl=list() && length(.) == 0L,
-    args.flags=list() && length(.) == 0L
+    pars=list(NULL),
+    par.types=character() && all(. %in% PAR.INT)
   )
   name <- FUN.NAMES[fun]
   defn <- sprintf(f_copy, name, toString(F.ARGS.BASE))
@@ -70,12 +69,11 @@ f_rec <- '
 // Reconciliation is a no-op
 // static void %s(%s) { /* NOOP */ }'
 
-code_gen_rec <- function(fun, args.reg, args.ctrl, args.flags) {
+code_gen_rec <- function(fun, pars, par.type) {
   vetr(
     identical(., "rec"),
-    args.reg=list(NULL),
-    args.ctrl=list() && length(.) == 0L,
-    args.flags=list() && length(.) == 0L
+    pars=list(NULL),
+    par.types=character() && all(. %in% PAR.INT)
   )
   name <- FUN.NAMES[fun]
   defn <- sprintf(f_rec, name, toString(F.ARGS.BASE))
@@ -100,14 +98,13 @@ rec <- function(x) x
 f_braces <- '
 // Braces are a no-op; allocation handles them.
 // static void %s(%s) { /* NOOP */ }'
-code_gen_braces <- function(fun, args.reg, args.ctrl, args.flags) {
+code_gen_braces <- function(fun, pars, par.types) {
   vetr(
     identical(., "{"),
-    args.reg=list(),
-    args.ctrl=list() && length(.) == 0L,
-    args.flags=list() && length(.) == 0L
+    pars=list(),
+    par.types=character() && all(. %in% PAR.INT)
   )
-  if(length(args.reg) < 1L) stop("Empty braces expresssions disallowed.")
+  if(length(pars) < 1L) stop("Empty braces expresssions disallowed.")
   name <- FUN.NAMES[fun]
   defn <- sprintf(f_braces, name, toString(c(F.ARGS.BASE, F.ARGS.VAR)))
   code_res(defn=defn, narg=TRUE, name=name, out.ctrl=CGEN.OUT.NONE)
@@ -116,12 +113,11 @@ code_gen_braces <- function(fun, args.reg, args.ctrl, args.flags) {
 f_assign <- '
 // Read-only assignments are a no-op; allocation handles them.
 // static void %s(%s) { /* NOOP */ }'
-code_gen_assign <- function(fun, args.reg, args.ctrl, args.flags) {
+code_gen_assign <- function(fun, pars, par.types) {
   vetr(
     isTRUE(. %in% c("=", "<-")),
-    args.reg=list(NULL, NULL),
-    args.ctrl=list() && length(.) == 0L,
-    args.flags=list() && length(.) == 0L
+    pars=list(NULL, NULL),
+    par.types=character() && all(. %in% PAR.INT)
   )
   name <- FUN.NAMES[fun]
   defn <- sprintf(f_assign, name, toString(F.ARGS.BASE))

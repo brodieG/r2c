@@ -127,8 +127,8 @@ ext_par <- function(type="num", validate=function(x) TRUE) {
 #'   primitives that only do positional matching.
 #' @param extern named list, with each member corresponding to an external
 #'   parameter of the same name.  The members are generated with `ext_par`.
-#'   Parameters that don't match any of the members are considered internal (see
-#'   `?"r2c-compile"`).
+#'   `r2c` function parameters that don't match any of the members registered
+#'   here are considered "internal" (see `?"r2c-compile"`).
 #' @param type list(2:3) containing the length-type of function with at position
 #'   one a scalar character in "constant", "arglen", "vecrec", "eqlen",
 #'   "concat", or "extern", and additional meta data at position two or three
@@ -149,19 +149,15 @@ ext_par <- function(type="num", validate=function(x) TRUE) {
 #'   function during the preprocessing steps.  Accepts as parameters:
 #'
 #'   * Name of the R function.
-#'   * Three `args.*` params that are lists of unevaluated parameters:
-#'      * `args.reg`: neither control nor flag; mixes regular and extern, which
-#'        at currently happens to be okay but might need splitting out in the
-#'        future.
-#'      * `args.ctrl`: control parameters.
-#'      * `args.flag`: flag parameters.
+#'   * A list of the unevaluated expressions provided as parameters.
+#'   * A character vector with the types of each of the unevaluated parameters,
+#'     where the types are from PAR.INT and PAR.EXT.
 #'
-#'   Currently only `args.reg` is ever used, and then only to detect whether we
-#'   should generate the single or multi-arg versions of e.g. `sum`.  It's not
-#'   clear whether we'll ever have a use for the rest.  For most functions the
-#'   name of the functions wholly determines what the C function and calls to it
-#'   look like.  Almost all of the handling of control/flag/external is done at
-#'   the allocation step.
+#'   The second and third argument are currently only used to detect whether we
+#'   should generate the single or multi-arg versions of e.g. `sum`.  For most
+#'   functions the name of the functions alone wholly determines what the C
+#'   function and calls to it look like.  Almost all of the handling of
+#'   internal/external parameters is done at the allocation step.
 #'
 #' @param input.validate a function to validate input types.  Will be given a
 #'   named character vector with the values the possible types (e.g. "double",

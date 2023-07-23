@@ -204,7 +204,7 @@ pp_internal <- function(
     args <- as.list(call[-1L])
     if(is.null(names(args))) names(args) <- character(length(args))
     func <- get_lang_name(call)
-    par.types <- rep("other", length(args))
+    par.types <- rep("internal", length(args))
     par.types[names(args) %in% VALID_FUNS[[c(func, "ctrl")]]] <- "control"
     par.types[names(args) %in% VALID_FUNS[[c(func, "flag")]]] <- "flag"
     par.types[names(args) %in% VALID_FUNS[[c(func, "extern")]]] <- "extern"
@@ -258,9 +258,8 @@ pp_internal <- function(
     # Generate Code
     code <- VALID_FUNS[[c(func, "code.gen")]](
       func,
-      args[!par.types %in% CTRL.FLAG], # other/external
-      args[par.types == "control"],
-      args[par.types == "flag"]
+      args[par.types %in% PAR.INT],   # numeric arguments
+      args[par.types == EXT.ANY]       # non-numeric arguments
     )
     code_valid(code, call)
 
@@ -291,8 +290,8 @@ pp_internal <- function(
       }
     }
     record_call_dat(
-      x, call=call, depth=depth, argn=argn, par.type=par.type, code=code, assign=assign,
-      indent=indent, rec=FALSE
+      x, call=call, depth=depth, argn=argn, par.type=par.type, code=code,
+      assign=assign, indent=indent, rec=FALSE
     )
 } }
 
@@ -323,10 +322,10 @@ pp_internal <- function(
 #'   free an allocation otherwise used by that symbol.  The names of this vector
 #'   correspond to the **renamed** variables.
 #' $call.rename: version of `call` with symbols renamed using `rename`.
-#' $par.type: argument type, one of "control", "flag", "extern", "call", "leaf".
-#'   The last two are "internal" tokens to be evaluated by "r2c", the first
-#'   three are "external" tokens to be evaluated once during allocation but
-#'   before iteration.
+#' $par.type: argument type, one of "ext.num", "ext.any", "int.call",
+#'   "int.leaf".  The first two are "external", and the last two are
+#'   respectively non-terminal and terminal "internal" tokens.  See `?r2cq` for
+#'   details on internal/external..
 #' $rec: whether current call is a part of a chain that ends with a `rec`
 #'
 #' @noRd
@@ -353,6 +352,8 @@ init_call_dat <- function()
 ## `code_blank` for terminals.  We need the terminals because the allocator
 ## still needs to know about them to find them in the data array or to evaluate
 ## them (for external symbols).
+##
+## See `init_call_dat` for parameter details.
 
 record_call_dat <- function(
   x, call, depth, argn, par.type, code, assign, indent, rec

@@ -115,15 +115,13 @@ ALLOC.DAT.VEC <- c(
   'ids0', 'alloc', 'size.coefs', 'depth', 'type', 'typeof'
 )
 
-# To avoid typos.  External different because its value does get used in a C
-# call directly. "PT" for Parameter Type
-PT.CTL <- "control"
-PT.FLAG <- "flag"
-PT.EXT <- "extern"
-
-
-CTRL.FLAG <- c(PT.CTL, PT.FLAG)
-CTRL.FLAG.EXT <- c(CTRL.FLAG, PT.EXT)
+# Parameter types
+PAR.EXT.ANY <- "ext.any"
+PAR.EXT.NUM <- "ext.num"
+PAR.EXT <- c(PAR.EXT.NUM, PAR.EXT.ANY)
+PAR.INT.LEAF <- "int.leaf"
+PAR.INT.CALL <- "int.call"
+PAR.INT <- c(PAR.INT.LEAF, PAR.INT.CALL)
 
 # Packages allowable in `::`
 VALID.PKG <- c('base', 'r2c')

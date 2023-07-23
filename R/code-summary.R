@@ -138,16 +138,19 @@ f_summary <- list(
   all_n=f_all_n,
   any_n=f_any_n
 )
-code_gen_summary <- function(fun, args.reg, args.ctrl, args.flag) {
+code_gen_summary <- function(fun, pars, par.types) {
   vetr(
     CHR.1 && . %in% names(f_summary),
-    args.reg=list(),
-    args.ctrl=list(),
-    args.flag=list()
+    pars=list(),
+    par.types=
+      character() && length(.) == length(pars) &&
+      all(. %in% c(PAR.INT, PAR.EXT))
   )
+  pars.int <- pars[par.types %in% PAR.INT]
+
   multi <-
-    length(args.reg) > 1L ||
-    (length(args.reg) == 1L && identical(args.reg[[1L]], quote(.R2C.DOTS)))
+    length(pars.int) > 1L ||
+    (length(pars.int) == 1L && identical(pars.int[[1L]], quote(.R2C.DOTS)))
   name <- paste0(FUN.NAMES[fun], if(multi) "_n")
   code_res(
     defn=sprintf(
@@ -201,12 +204,11 @@ static void %s(%s) {
   *data[di[1]] = (double) lens[di[0]];
   lens[di[1]] = 1;
 }'
-code_gen_length <- function(fun, args.reg, args.ctrl, args.flags) {
+code_gen_length <- function(fun, pars, par.types) {
   vetr(
     identical(., "length"),
-    args.reg=list(NULL),
-    args.ctrl=list() && length(.) == 0L,
-    args.flags=list() && length(.) == 0L
+    pars=list(NULL),
+    par.types=character() && all(. %in% PAR.INT)
   )
   name <- FUN.NAMES[fun]
   defn <- sprintf(f_length, name, toString(F.ARGS.BASE))
