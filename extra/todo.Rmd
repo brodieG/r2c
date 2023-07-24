@@ -33,7 +33,23 @@
 
 * Extern symbol resolution caching actually works.
 
+* Attempt to use internal symbol in external param is caught.  Maybe test with
+  'get' too?  Still can get around by specifying an environment.
+
 ## Current
+
+* Can we rationalize the typeof parameter of `vec_dat`?
+
+* Check that we don't lose "shallow copy" of external vectors.
+
+* Rationalize `code_gen_*` funs?  We need name, number of params, and the C
+  template, but the last one has a bit of variability that might be difficult to
+  parametrize generally.  There is a set of functions that do look very similar
+  though.
+
+* Do we need to check for integers larger than 2^53 for loss of precision?  Is
+  that even possible?  R semi guarantees 32 bit integers.  What if double was 32
+  bits?  Probably do need a similar assumption check.
 
 * Simplify flags to make them part of the data array?  This would remove one
   parameter from parameter list since we're already squeezed there.  Something

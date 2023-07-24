@@ -25,6 +25,15 @@ More generally, maybe we can simplify the control parameter thing to be
 external/internal.  The distinction between flag/general/numeric can be an
 implementation detail (I guess it kind of is already).
 
+It seems that we want two classes of external params: "any" and "numeric", the
+latter could be logical or integer too, just a matter of interpretation, but
+they will be stored as double.
+
+We can use the validation function to check that they are good.  Validation
+functions should take a parameter name and check for acceptable values.  Unlike
+what we have now, validation should happen after each external parameter is
+evaluated.
+
 ## Eval of External Args
 
 Maybe we can set up an environment where we keep adding any internal symbols as
@@ -40,3 +49,15 @@ message like:
 
 > Attempt to use internal symbol via an external parameter.
 
+Here we need to intercept any attemps to use internal parameters. At the most
+basic this means create a fake `data` environment that has the special active
+bindings with the `env` environment as the parent.  Do we add a child
+environment?  What about branches and nested functions?
+
+Can we rely on the fact that anything that is internal in one branch will be
+internal in the other?  No, because we don't make copies of symbols that are not
+used outside of the branch.  So what might be an illegal access in one branch,
+is not in the other.
+
+What about nested functions?  If implemented R semantic these should reset the
+search path.

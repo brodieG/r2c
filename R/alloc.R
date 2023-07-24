@@ -22,21 +22,24 @@ NULL
 #' This is internal documentation.  Please be sure to read `?r2c-compile` and
 #' the documentation for the `preprocess` internal function before reading this.
 #'
-#' We iterate through the linearized call list (see "Linearaziation"` for
+#' We iterate through the linearized call list (see "Linearization"` for
 #' details) to determine the memory needs to support the evaluation of the
 #' function, and pre-allocate this memory.  The allocations are sized to fit
 #' the largest iteration (and thus should fit all iterations).  The
 #' allocations are appended to the storage list that is part of the `alloc`
 #' object (`alloc[['dat']]).  See docs for `append_dat`.
 #'
-#' Every leaf expression that might affect allocation requirements (i.e.
-#' excluding control and flag values) is brought into the storage list if
-#' it is not there already.  External vectors (i.e. not part of the group data)
-#' are shallow copied into the storage list (i.e. just referenced, not actually
-#' copied, per standard R semantics).  The semantics of lookup should mimic
-#' those of e.g. `with`, where we first look through any symbols previously
-#' bound in the `r2c` evaluation environment, then in the data in `with`, and
-#' finally in the calling environment.
+#' Every leaf expression that might affect allocation requirements  is brought
+#' into the storage list if it is not there already.  Leaf expressions include
+#' those labeled PAR.INT.LEAF and those labeled PAR.EXT, but note that
+#' PAR.EXT.ANY are kept on their own stack and thus don't affect allocation
+#' requirements.  External vectors (i.e. not part of the group data) are shallow
+#' copied into the storage list (i.e. just referenced, not actually copied, per
+#' standard R semantics), except that if they are integer/logical they are
+#' coerced and thus copied.  The semantics of lookup should mimic those of e.g.
+#' `with`, where we first look through any symbols previously bound in the `r2c`
+#' evaluation environment, then in the data in `with`, and finally in the
+#' calling environment.
 #'
 #' The sizes of leaf expressions are tracked in the `stack` array, along with
 #' their depth, and where in the storage list they reside.  When we reach a
@@ -190,7 +193,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
   # vectors (if there are such references).  The result of evaluating
   # control/flag parameters is recorded separately in `call.dat`.
   stack <- init_stack()
-  stack.ctrl <- stack.flag <- list()
+  stack.ext.any <- list()
   stack.sizes <- list()   # argument sizes (see size.R)
   call.dat <- list()
   branch.lvl <- 0L
@@ -216,7 +219,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
     rec <- rec * branch.lvl
 
     # - Process Call -----------------------------------------------------------
-    if(par.type == "call") {
+    if(par.type == PAR.INT.CALL) {
       # Based on previously accrued stack and function type, compute call result
       # size, allocate for it, etc.  Stack reduction happens later.
       check_fun(name, pkg, env)
@@ -278,11 +281,11 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
         vec_dat(numeric(), "tmp", typeof="logical", size.coef=list(integer()))
     # - Control Parameter / External -------------------------------------------
     } else if (
-      (cfe <- par.type %in% CTRL.FLAG.EXT) ||
+      (par.ext <- par.type %in% PAR.EXT) ||
       !(id <- name_to_id(alloc, name)) # `id` used in next else if
     ) {
-      # External evals should not mix with internal values
-      if(cfe && id) {
+      # External evals should not mix with internal values.
+      if(par.ext && id) {
         # An id should never resolve to 'ext' anyway...
         if(!alloc[['type']][id] %in% c('ext')) {
           stop(
@@ -290,10 +293,11 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
             "external data."
       ) } }
       if(is.language(call)) {
-        if(id || !cfe) stop("Internal Error: name-external exp conflict.")
+        if(id || !par.ext) stop("Internal Error: name-external exp conflict.")
         # To simplify semantics we disallow use of symbols bound to local
         # computations for external parameters that use external eval.
         # This is not a fool-proof check.
+        warning('replace this check')
         if(length(internal.sym <- internal_symbols(call, alloc))) {
           stop(
             "External expression may not reference internal symbols, found ",
@@ -304,7 +308,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
         # important if we reference same external symbol multiple times and it
         # is e.g. integer, which would require coercion to numeric each time.
         # Drawback is expressions with side-effects will not work correctly.
-        if(par.type == PT.EXT) {
+        if(par.type %in% PAR.EXT) {
           ext.id <- paste0(deparse(call, control="all"), collapse="\n")
           if(!nzchar(ext.id))
             stop("Symbol with zero length name disallowed.")
@@ -318,23 +322,25 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
           }
       } }
       # Need to eval parameter if not cached; `env` contains MoreArgs.
+      # Here we need to intercept any attemps to use internal parameters. At the
+      # most basic this means create a fake `data` environment that has the
+      # special active bindings with the `env` environment as the parent.  Do we
+      # add a child environment?  What about branches and nested functions?
       if(!id) {
         tryCatch(
           arg.e <- eval(call, envir=data, enclos=env),
           error=function(e) stop(simpleError(conditionMessage(e), call.outer))
         )
-        if(par.type == PT.CTL) {
-          if(!nzchar(argn)) stop("Internal Error: missing arg name for control.")
-          ctrl <- list(arg.e)
-          names(ctrl) <- argn
-          stack.ctrl <- c(stack.ctrl, ctrl)
-        } else if (par.type == PT.FLAG) {
-          if(!nzchar(argn)) stop("Internal Error: missing arg name for flag")
-          flag <- list(arg.e)
-          names(flag) <- argn
-          stack.flag <- c(stack.flag, flag)
+        if(par.type == PAR.EXT.ANY) {
+          if(!nzchar(argn))
+            stop("Internal Error: missing arg name for control.")
+          ext.any <- list(arg.e)
+          names(ext.any) <- argn
+          stack.ext.any <- c(stack.ext.any, ext.any)
         } else {
-          # Validate non-control external args after eval, and add to vec.dat
+          # Validate external args after eval, and add to vec.dat
+          if(!par.type %in% PAR.INT && !nzchar(argn))
+            stop("Internal Error: missing arg name for external param")
           validate_ext(x, i, par.type, arg.e, name, call, .CALL)
           typeof <- typeof(arg.e)
           size.coef <- list(length(arg.e))
@@ -362,13 +368,14 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
       if(nzchar(ext.id)) external.eval[[ext.id]] <- alloc[[i]]
     }
     # Call actions that need to happen after allocation data updated
-    if(par.type == "call") {
+    if(par.type == PAR.INT.CALL) {
       # Release allocation after call parameters incorporated
       alloc <- alloc_free(alloc, depth)
       # Append call data (different than append_dat)
       call.dat <- append_call_dat(
-        call.dat, call=call, call.name=name, stack=stack, depth=depth,
-        alloc=alloc, ctrl=stack.ctrl, flag=stack.flag, call.i=i
+        call.dat, call=call, call.name=name,
+        stack=stack, stack.ext.any=stack.ext.any, depth=depth,
+        alloc=alloc, call.i=i
       )
       # Handle name reconciliation for control flow calls.  Recall that call
       # linearization causes paramters to be seen before the call that computes
@@ -413,7 +420,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
       }
       # Reduce stack
       stack <- stack[,stack['depth',] <= depth, drop=FALSE]
-      stack.ctrl <- stack.flag <- list()
+      stack.ext.any <- list()
     }
     # Append new data/computation result to stack
     if(!par.type %in% CTRL.FLAG)
@@ -667,15 +674,13 @@ append_stack <- function(stack, alloc, id=alloc[['i']], depth, argn) {
 ##
 ## * call: the call
 ## * name: the name of the function that's being called (excludes `pkg::` part)
-## * ctrl, flag: evaluated control and flag data
+## * stack.ext.any: evaluated external parameters that can be non-numeric.
 
 append_call_dat <- function(
-  call.dat, call, call.name, stack, alloc, depth, ctrl, flag, call.i
+  call.dat, call, call.name, stack, stack.ext.any, alloc, depth, call.i
 ) {
   if(!is.call(call))
     stop("Internal Error: only calls should be appended to call dat.")
-  ctrl_val_f <- VALID_FUNS[[c(call.name, "ctrl.validate")]]
-  flag <- ctrl_val_f(ctrl, flag, call)
 
   param.ids <- stack['id', stack['depth',] > depth]
   param.ids0 <- stack['id0', stack['depth',] > depth]
@@ -694,9 +699,10 @@ append_call_dat <- function(
     call.dat,
     list(
       list(
-        call=call, name=call.name, ids=ids, ctrl=ctrl,
-        flag=flag, call.i=call.i
-  ) ) )
+        call=call, name=call.name, ids=ids,
+        stack.ext.any=stack.ext.any, call.i=call.i
+    ) )
+  )
 }
 # "free" the data produced by arguments.  Not in the malloc sense, just an
 # indication that next time this function is called it can re-use the
@@ -1137,10 +1143,12 @@ internal_symbols <- function(call, alloc, found=character()) {
 
 ## Check That External Vectors are OK
 
-validate_ext <- function(x, i, type, arg.e, name, call, .CALL) {
-  if(type == "leaf" && !is.num_naked(list(arg.e))) {
+validate_ext <- function(x, i, par.type, arg.e, name, call, .CALL) {
+  if(par.type == PAR.INT.LEAF && !is.num_naked(list(arg.e))) {
     # Next call, if any
-    next.call.v <- which(seq_along(x[['call']]) > i & x[['type']] == 'call')
+    next.call.v <- which(
+      seq_along(x[['call']]) > i & x[['par.type']] == PAR.INT.CALL
+    )
     err.call <-
       if(length(next.call.v)) x[['call']][[next.call.v[1L]]]
       else call
