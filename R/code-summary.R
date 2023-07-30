@@ -23,16 +23,17 @@ NULL
 f_summary_base <- '
 static void %%s(%%s) {
   int di0 = di[0];
-  int di1 = di[1];
+  int di_na = di[1];
+  int di_res = di[2];
 
   R_xlen_t len_n = lens[di0];
   %sdouble * dat = data[di0];
-  int narm = flag;  // only one possible flag parameter
+  int narm = (int) data[di_na];  // checked to be 0 or 1 by valid_narm
 
 %s%s
 
-  *data[di1] = (double) tmp;
-  lens[di1] = 1;
+  *data[di_res] = (double) tmp;
+  lens[di_res] = 1;
 }'
 loop.base <- '
 long double tmp = 0;
@@ -58,9 +59,9 @@ f_mean1 <- sprintf(
 f_sum_1 <- sprintf(f_summary_base, "", make_loop_base(count.na=FALSE), "")
 f_sum_n_base <- '
 static void %%s(%%s) {
-  int narm = flag;  // only one possible flag parameter
+  int narm = di[narg - 1];  // checked to be 0 or 1 by valid_narm
 %s
-  for(int arg = 0; arg < narg; ++arg) {
+  for(int arg = 0; arg < narg - 1; ++arg) {
     int din = di[arg];
     R_xlen_t len_n = lens[din];
     double * dat = data[din];
@@ -155,24 +156,12 @@ code_gen_summary <- function(fun, pars, par.types) {
   code_res(
     defn=sprintf(
       f_summary[[name]], name,
-      toString(c(F.ARGS.BASE, if(multi) F.ARGS.VAR, F.ARGS.FLAG))
+      toString(c(F.ARGS.BASE, if(multi) F.ARGS.VAR))
     ),
-    name=name, narg=multi, flag=TRUE, headers="<math.h>",
+    name=name, narg=multi, headers="<math.h>",
     defines=if(name %in% names(SUM.DEFN)) SUM.DEFN[name]
   )
 }
-## Validation functions for external parameters.
-
-valid_narm <- function(na.rm) vet(LGL.1, na.rm)
-valid_trim <- function(trim) {
-  if(!isTRUE(trim.test <- vet(NULL || identical(., 0), trim)))
-    paste0(
-      c("`trim` must be set to default value (", trim.test, ")"),
-      collapse="\n"
-    )
-  else TRUE
-}
-
 #' Single Pass Mean Calculation
 #'
 #' [`base::mean`] does a two pass calculation that additional handles cases
