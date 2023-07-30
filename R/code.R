@@ -76,6 +76,18 @@ ext_par <- function(type="num", validate=function(x) TRUE) {
   )
   structure(list(type=type, validate=validate), class='ext_par')
 }
+## Validation functions for external parameters.
+
+valid_narm <- function(na.rm) vet(LGL.1, na.rm)
+valid_trim <- function(trim) {
+  if(!isTRUE(trim.test <- vet(NULL || identical(., 0), trim)))
+    paste0(
+      c("`trim` must be set to default value (", trim.test, ")"),
+      collapse="\n"
+    )
+  else TRUE
+}
+valid_length <- function(length) vet(NUM.1.POS, length)
 
 #' Initializer for Function Registration Entries
 #'
@@ -98,21 +110,28 @@ ext_par <- function(type="num", validate=function(x) TRUE) {
 #'
 #' * data: an array of pointers to double, which includes every every allocation
 #'   that exists at any point in time in the process, including those required
-#'   to support the inputs and the output of the C function.
+#'   to support the inputs and the output of the C function, as well as those
+#'   produced by evaluation of iteration invariant numeric external expressions.
 #' * lens: an array of `R_xlen_t` values, each one representing how many items
 #'   the corresponding array of doubles in `data` has.
 #' * di: an array of integers that represents, in order, the indices of the data
-#'   parameters (i.e. not control or flag) of the function, in `data`.  So for
-#'   example, `data[di[0]]` returns a pointer to the data backing the first data
-#'   parameter for the function.  If a function takes `n` args, then
+#'   parameters (i.e. internal or external numeric) of the function, in `data`.
+#'   So for example, `data[di[0]]` returns a pointer to the data backing the
+#'   first data parameter for the function.  If a function takes `n` args, then
 #'   `data[di[n]]` points to where the result of the function should be written
 #'   to.
 #'
-#' Generally the C counterpart of an r2c function with `n` arguments is supposed
-#' to compute on the data in `data[di[0:(n-1)]]` and record the result into
-#' `data[di[n]]` and the length of the result into `lens[di[n]]` (although the
-#' latter in theory should be known ahead of time - we use this to check size
-#' calcs correct).
+#' Additionally functions with non-numeric external parameters should include:
+#'
+#' * ctrl: a list of arbitrary iteration invariant objects.  In the future the
+#'   hope is to add facilities to convert these into numeric so they can just
+#'   live in the data array.
+#'
+#' Generally the C counterpart of an r2c function with `n` internal arguments is
+#' supposed to compute on the data in `data[di[0:(n-1)]]` and record the result
+#' into `data[di[n]]` and the length of the result into `lens[di[n]]` (although
+#' the latter in theory should be known ahead of time - we use this to check
+#' size calcs correct).
 #'
 #' For functions with variable arguments (e.g. because they have `...` in their
 #' signature), be sure to include `F.ARGS.VAR` in the definition, and to use
@@ -202,7 +221,6 @@ cgen <- function(
     res.type.which=INT.POS.STR
   )
   # Limitation in vetr prevents following checks from being done above
-
   if(
     anyDuplicated(names(extern)) ||
     !all(vapply(extern, inherits, TRUE, "ext_par"))
@@ -452,7 +470,7 @@ VALID_FUNS <- c(
       "numeric", defn=function(length=0L) NULL,
       # Is length redundant? One is to classify, and to the other compute size.
       type=list("extern", "length", numeric_size),
-      extern=ext_list(num="length"),
+      extern=list(length=ext_par("num", valid_length)),
       code.gen=code_gen_numeric, res.type="double"
     )
   ),
@@ -493,7 +511,7 @@ stopifnot(
 
 code_blank <- function()
   list(
-    defn="", name="", call="", narg=FALSE, flag=FALSE, ctrl=FALSE,
+    defn="", name="", call="", narg=FALSE, extern=FALSE,
     headers=character(), defines=character(), out.ctrl=CGEN.OUT.NONE
   )
 code_valid <- function(code, call) {
@@ -547,14 +565,13 @@ call_valid <- function(call) {
 #'
 #' @noRd
 
-c_call_gen <- function(name, narg, flag, ctrl) {
+c_call_gen <- function(name, narg, extern) {
   sprintf(
     "%s(%s%s%s%s);",
     name,
     toString(CALL.BASE),
     if(narg) paste0(", ", CALL.VAR) else "",
-    if(flag) paste0(", ", CALL.FLAG) else "",
-    if(ctrl) paste0(", ", CALL.CTRL) else ""
+    if(extern) paste0(", ", CALL.EXTERN) else ""
   )
 }
 #' Organize C Code Generation Output
@@ -587,8 +604,7 @@ c_call_gen <- function(name, narg, flag, ctrl) {
 #' @seealso `cgen` for the actual C code generation, `preprocess` for the
 #'   assembly into the final C file.
 #' @param narg TRUE if function has variable number of arguments
-#' @param flag TRUE if function has flag parameters
-#' @param ctrl TRUE if function has control parameters
+#' @param extern TRUE if function has non-numeric external parameters
 #' @param headers character vector with header names that need to be #included
 #' @param defines character with #define directives
 #' @param out.ctrl scalar integer sum of various `CGEN.OUT.*` constants (see
@@ -601,7 +617,7 @@ c_call_gen <- function(name, narg, flag, ctrl) {
 #'   e.g. braces or an else statement.
 
 code_res <- function(
-  defn, name, narg=FALSE, flag=FALSE, ctrl=FALSE,
+  defn, name, narg=FALSE, extern=FALSE,
   headers=character(), defines=character(), out.ctrl=CGEN.OUT.DFLT,
   c.call.gen=c_call_gen
 ) {
@@ -612,13 +628,13 @@ code_res <- function(
     stop("Internal Error: cannot mute ", name, ", as not in PASSIVE.SYM")
 
   c_call <- paste0(
-    c.call.gen(name, narg=narg, flag=flag, ctrl=ctrl), collapse="\n"
+    c.call.gen(name, narg=narg, extern=extern), collapse="\n"
   )
   list(
     defn=defn, name=name,
     call=c_call,
     headers=if(is.null(headers)) character() else headers,
     defines=if(is.null(defines)) character() else defines,
-    narg=narg, flag=flag, ctrl=ctrl, out.ctrl=out.ctrl
+    narg=narg, extern=extern, out.ctrl=out.ctrl
   )
 }

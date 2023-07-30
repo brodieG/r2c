@@ -128,14 +128,14 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' avoid copies provide all inputs as doubles.
 #'
 #' External sub-expressions may be arbitrary R expressions, but if they are used
-#' for internal parameters their result will be constrained in the same way that
-#' internal ones are.  Additionally, such expressions should not reference
-#' internal symbols, and in cases where this is obviously happening `r2c` will
-#' error.  External sub-expressions are evaluated once at allocation time.  If
-#' the same sub-expression appears more than once, it is only evaluated once
-#' with the result re-used.  External sub-expressions that cause side-effects,
-#' or make disguised attempts to access internal symbols, are likely to have
-#' different effects than intended.
+#' for internal parameters their result will be constrained like internal ones
+#' are.  Additionally, such expressions should not reference internal symbols,
+#' and in cases where this is obviously happening `r2c` will error.  External
+#' sub-expressions are evaluated once at allocation time.  If the same
+#' sub-expression appears more than once, it is only evaluated once with the
+#' result re-used.  External sub-expressions that cause side-effects, use
+#' `eval`, manipulate frames, or engage in other complex "meta" operations are
+#' likely to have different effects than intended.
 #'
 #' The dichotomy between internal and external sub-expressions allows for
 #' efficient mixing of iteration varying and static data, as well as non

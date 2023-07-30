@@ -38,6 +38,21 @@
 
 ## Current
 
+* Go through all the cgen functions and make sure they are okay with the changes
+  in flag, etc.
+
+* Check what the `ARGS.NM.VAR` variable is, is it the total number of arguments,
+  or the total number of `...` arguments.  Important to get this right for the
+  summary functions.  Seems like it is total count.
+
+* Check that multi-arg summary cannot have zero args?  Need to automatically
+  give it at least one arg to be consistent.
+
+* Add the capability to convert a non-numeric external into a numeric external
+  with the validation function.
+
+* In alloc.R what's the deal with call.outer vs .CALL?
+
 * Can we rationalize the typeof parameter of `vec_dat`?
 
 * Check that we don't lose "shallow copy" of external vectors.
