@@ -288,7 +288,9 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
       (par.ext <- par.type %in% PAR.EXT) ||
       !(id <- name_to_id(alloc, name)) # `id` used in next else if
     ) {
-      # External evals should not mix with internal values.
+      # ext.any evals should not mix with internal values.
+      if(id && par.type == PAR.EXT.ANY)
+        stop("Internal Error: name-external exp conflict.")
       if(par.ext && id) {
         # An id should never resolve to 'ext' anyway...
         if(!alloc[['type']][id] %in% c('ext')) {
@@ -297,7 +299,6 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
             "external data."
       ) } }
       if(is.language(call)) {
-        if(id || !par.ext) stop("Internal Error: name-external exp conflict.")
         # Cache the call so we don't re-evaluate if re-encounter.  Particularly
         # important if we reference same external symbol multiple times and it
         # is e.g. integer, which would require coercion to numeric each time.
