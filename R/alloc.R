@@ -298,16 +298,6 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
       ) } }
       if(is.language(call)) {
         if(id || !par.ext) stop("Internal Error: name-external exp conflict.")
-        # To simplify semantics we disallow use of symbols bound to local
-        # computations for external parameters that use external eval.
-        # This is not a fool-proof check.
-        warning('replace this check')
-        if(length(internal.sym <- internal_symbols(call, alloc))) {
-          stop(
-            "External expression may not reference internal symbols, found ",
-            toString(sprintf("`%s`", internal.sym))
-          )
-        }
         # Cache the call so we don't re-evaluate if re-encounter.  Particularly
         # important if we reference same external symbol multiple times and it
         # is e.g. integer, which would require coercion to numeric each time.
@@ -1181,27 +1171,6 @@ name_to_id <- function(alloc, name) {
   } }
   res
 }
-# Retrieve any Symbols Bound to Internal Data
-#
-# Internal data includes the group/iteration varying data as well as any symbols
-# bound to the result of an intermediate r2c calculation.  This is a best
-# efforts basis and will not catch anything cute like using `get` or `assign`.
-#
-# @return a vector contaianing any found internal symbols.
-
-internal_symbols <- function(call, alloc, found=character()) {
-  if(is.symbol(call)) {
-    name <- as.character(call)
-    if(name_to_id(alloc, name))
-    found <- c(found, name)
-  } else if (is.call_w_args(call)) {
-    for(i in 2:length(call)) {
-      found <- c(found, internal_symbols(call[[i]], alloc, found))
-    }
-  }
-  found
-}
-
 ## Check That External Vectors are OK
 
 validate_ext <- function(x, i, par.type, arg.e, name, call, .CALL) {
