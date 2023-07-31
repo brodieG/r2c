@@ -17,7 +17,7 @@
 
 ARGS.NM.BASE <- c('data', 'lens', 'di')
 ARGS.NM.VAR <- 'narg'
-ARGS.NM.EXTERN <- 'extern'
+ARGS.NM.EXTERN <- 'extn'
 ARGS.NM.ALL <- c(ARGS.NM.BASE, ARGS.NM.VAR, ARGS.NM.EXTERN)
 
 ARGS.TYPE.F <- c('double **', 'R_xlen_t *', 'int *')
@@ -30,7 +30,7 @@ R.ARGS.BASE <- paste(ARGS.TYPE.R, ARGS.NM.BASE)
 F.ARGS.VAR <- paste('int', ARGS.NM.VAR)
 R.ARGS.VAR <- paste('int *', ARGS.NM.VAR)
 
-F.ARGS.EXTERN <- R.ARGS.EXTERN <- 'SEXP extern'
+F.ARGS.EXTERN <- R.ARGS.EXTERN <- 'SEXP extn'
 
 F.ARGS.ALL <- c(F.ARGS.BASE, F.ARGS.VAR, F.ARGS.EXTERN)
 R.ARGS.ALL <- c(R.ARGS.BASE, R.ARGS.VAR, R.ARGS.EXTERN)

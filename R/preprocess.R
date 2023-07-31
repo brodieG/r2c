@@ -134,7 +134,7 @@ preprocess <- function(call, optimize=FALSE) {
           )
         }
   ) } )
-  extra.vars <- c('narg', 'flag', 'ctrl')
+  extra.vars <- c('narg', 'ext.any')
   extra.vars.tpl <- logical(length(extra.vars))
   names(extra.vars.tpl) <- extra.vars
   args.used <- vapply(
@@ -161,9 +161,8 @@ preprocess <- function(call, optimize=FALSE) {
       "  ",
       c(
         # Some variables not always used so add dummy uses to suppress warnings
-        if(!any(args.used['narg',])) "(void) narg; // unused",
-        if(!any(args.used['flag',])) "(void) flag; // unused",
-        if(!any(args.used['ctrl',])) "(void) ctrl; // unused",
+        if(!any(args.used['narg',]))    "(void) narg;  // unused",
+        if(!any(args.used['ext.any',])) "(void) extn;  // unused",
         "",
         # C calls.
         unlist(calls.fin)
