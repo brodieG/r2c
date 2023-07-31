@@ -567,7 +567,7 @@ call_valid <- function(call) {
 
 c_call_gen <- function(name, narg, extern) {
   sprintf(
-    "%s(%s%s%s%s);",
+    "%s(%s%s%s);",
     name,
     toString(CALL.BASE),
     if(narg) paste0(", ", CALL.VAR) else "",
