@@ -71,7 +71,7 @@ static void %%s(%%s) {
   R_xlen_t n, m;
   n = m = lens[di0];
   double * dx = data[di0];
-  int narm = flag;  // only one possible flag parameter
+  int narm = (int) data[di_na];  // checked to be 0 or 1 by valid_narm
 
   long double s = 0.0;
 %s
