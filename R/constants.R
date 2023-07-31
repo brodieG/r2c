@@ -113,7 +113,7 @@ ALLOC.DAT.VEC <- c(
 # Parameter types
 PAR.EXT.ANY <- "ext.any"
 PAR.EXT.NUM <- "ext.num"
-PAR.EXT <- c(PAR.EXT.NUM, PAR.EXT.ANY)
+PAR.EXT <- c(num=PAR.EXT.NUM, any=PAR.EXT.ANY)
 PAR.INT.LEAF <- "int.leaf"
 PAR.INT.CALL <- "int.call"
 PAR.INT <- c(PAR.INT.LEAF, PAR.INT.CALL)

@@ -211,7 +211,7 @@ pp_internal <- function(
     par.ext.types <- vapply(par.ext, "[[", "", "type")
 
     par.types <- rep("internal", length(args))
-    par.types[match(names(args), par.ext.names, no.match=0)] <- par.ext.types
+    par.types[match(par.ext.names, names(args), nomatch=0)] <- par.ext.types
 
     passive <- passive && func %in% c(PASSIVE.SYM, 'vcopy')
 
@@ -246,7 +246,8 @@ pp_internal <- function(
             (func %in% c(CTRL.SUB.SYM, 'for_iter', 'r2c_for')) * 2L,
           passive=passive
         )
-      } else stop("Internal Error: bad parameter type ", par.types[i])
+        par.types[i] <- x[['par.type']][length(x[['par.type']])]
+      } else stop("Internal Error: bad parameter type '", par.types[i], "'")
     }
     # Are we in a rec chain?  Needed for alloc to know which bindings are
     # from rec (see reconcile_control_flow).

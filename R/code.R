@@ -74,7 +74,7 @@ ext_par <- function(type="num", validate=function(x) TRUE) {
     character(1L) && . %in% c("num", "any"),
     is.function(.) && length(formals(.)) == 1L
   )
-  structure(list(type=type, validate=validate), class='ext_par')
+  structure(list(type=PAR.EXT[type], validate=validate), class='ext_par')
 }
 ## Validation functions for external parameters.
 
