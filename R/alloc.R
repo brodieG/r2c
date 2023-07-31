@@ -208,7 +208,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
     depth <- x[['depth']][[i]]
     argn <- x[['argn']][[i]]
     pkg <- name <- ""
-    if(!par.type %in% CTRL.FLAG) {
+    if(par.type != PAR.EXT.ANY) {
       tmp <- get_lang_info(call)
       name <- tmp[['name']]
       pkg <- tmp[['pkg']]
@@ -448,7 +448,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
       stack.ext.any <- list()
     }
     # Append new data/computation result to stack
-    if(!par.type %in% CTRL.FLAG)
+    if(par.type != PAR.EXT.ANY)
       stack <- append_stack(stack, alloc=alloc, depth=depth, argn=argn)
   }
   # - Finalize -----------------------------------------------------------------
