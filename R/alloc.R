@@ -248,7 +248,10 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
       } else VALID_FUNS[[c(name, "res.type")]]
 
       # Compute expression result size
-      size.tmp <- compute_size(alloc, stack, depth, ftype, call, .CALL)
+      size.tmp <- compute_size(
+        alloc, stack, depth, gmax=gmax, gmin=gmin, ftype=ftype, call=call,
+        .CALL=.CALL
+      )
       size.coef <- size.tmp[['size.coef']] # iteration/group dependant size
       asize <- size.tmp[['asize']]         # required allocation size
 
@@ -469,7 +472,8 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
   stack['id',] <- match(stack['id',], ids.keep)
 
   alloc.fin <- lapply(
-    alloc[c('dat', 'alloc', 'depth', 'type', 'typeof')], "[", ids.keep
+    alloc[c('dat', 'alloc', 'depth', 'type', 'typeof', 'size.coefs')],
+    "[", ids.keep
   )
   alloc.fin[['i']] <- match(alloc[['i']], ids.keep)
   list(alloc=alloc.fin, call.dat=call.dat, stack=stack)
@@ -506,7 +510,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
 ##   try to track whether a vector could be interpreted as logical or integer.
 ## * alloc: the true size of the vector (should be equivalent to
 ##   `lengths(dat[['dat']])`?).
-## * size.coefs: a list `size.coef` elements as described in `compute_size`.
+## * size.coefs: a list of `size.coef` elements as described in `compute_size`.
 ## * depth: the depth at which allocation occurred, only relevant for
 ##   `type == "tmp"`
 ## * i: scalar integer the index in `data` of the most recently
@@ -563,7 +567,7 @@ append_dat <- function(
   # need to test whether data.frame would slow things down too much
   dat[['ids0']] <- c(dat[['ids0']], id0.new)
   dat[['alloc']] <- c(dat[['alloc']], length(new))         # true size
-  dat[['size.coefs']] <- c(dat[['size.coefs']], size.coef) # list of lists
+  dat[['size.coefs']] <- c(dat[['size.coefs']], list(size.coef)) # list of lists
   dat[['depth']] <- c(dat[['depth']], depth)
   dat[['type']] <- c(dat[['type']], type)
   dat[['typeof']] <- c(dat[['typeof']], typeof)

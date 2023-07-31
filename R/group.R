@@ -80,21 +80,28 @@ group_exec_int <- function(
 
   empty.res <- FALSE
   gsizes <- group.sizes[['gsizes']]
-  res.size.type <- "variable"
+  res.size.coef <- alloc[['alloc']][['size.coefs']][[stack['id', 1L]]]
 
-  if(!stack['group', 1L]) { # constant group size
-    group.res.sizes <- rep(stack['size', 1L], length(gsizes))
-    res.size.type <- if(stack['size', 1L] == 1L) "scalar" else "constant"
-  } else if (is.na(stack['size', 1L])) {
-    group.res.sizes <- gsizes
-  } else if (stack['size', 1L]) {
-    group.res.sizes <- gsizes
-    group.res.sizes[
-      group.res.sizes < stack['size', 1L] & group.res.sizes != 0
-    ] <- stack['size', 1L]
-  } else {
-    group.res.sizes <- numeric()
-  }
+  # Compute sizes for each size coefs element across all groups; skip
+  # pmax for single element case for speed.
+  iter.sizes.in <- lapply(res.size.coef, iter_result_sizes, base=gsizes)
+  group.res.sizes <- if(length(iter.sizes.in) > 1) {
+    # could use a C implementations, this is the `vecrec` style pmax, where it's
+    # pmax, except if a value is zero, in case it's zero.
+    -do.call(pmin, -iter.sizes.in)
+  } else iter.sizes.in[[1L]]
+
+  # Identify obvious cases for optimizing result label generation
+  res.size.type <- if(length(res.size.coef) == 1L) {
+    rsc1 <- res.size.coef[[1L]]
+    lrsc1 <- length(rsc1)
+    if(lrsc1 == 1L || lrsc1 > 1L && all(rsc1[-1L] == 0)) {
+      # constant size
+      if(rsc1[1L] == 1L) "scalar"
+      else "constant"
+    }
+  } else "variable" # `size_vecrec` should have collapsed simple cases
+
   # - Run ----------------------------------------------------------------------
 
   status <- numeric(1)

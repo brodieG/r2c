@@ -119,7 +119,8 @@ stack_param_missing <- function(params, stack.avail, call, .CALL) {
 # a size calculation to blow-up if there are many nested calculations that
 # produce different size coefficients and we limit how many different
 # coefficients a single input is allowed.  Expressions that exceed that limit
-# will fail with an error.
+# will fail with an error.  `vecrec` right now is the only type of computation
+# that produces these length > 1 coeficient lists.
 #
 # @param gmax scalar integer the size of the largest group / iteration.
 # @param gmin scalar integer the size of the smallest group / iteration.
@@ -138,7 +139,7 @@ stack_param_missing <- function(params, stack.avail, call, .CALL) {
 # * "asize": an integer-like number describing max allocation size to hold the
 #   result of the current call for any iteration.
 
-compute_size <- function(alloc, stack, depth, ftype, call, .CALL) {
+compute_size <- function(alloc, stack, depth, gmax, gmin, ftype, call, .CALL) {
   # Compute result size
   if(ftype[[1L]] == "constant") {
     # Always constant size, e.g. 1 for `sum`
@@ -176,11 +177,16 @@ compute_size <- function(alloc, stack, depth, ftype, call, .CALL) {
         size
       } },
       arglen=size_arglen(in.size),
-      vecrec=size_vecrec(in.size),
+      vecrec=size_vecrec(in.size, gmax, gmin),
       product=size_prod(in.size),
       concat=size_concat(in.size)
     )
   }
+  # Simplify result size; `vecrec` is the only type that natively produces > 1
+  # results (eqlen does here, but that case is an error triggered lter) so we
+  # operate under assumption that `vecrec` simplification is always correct.
+  size.coef <- size_vecrec(list(size.coef), gmax, gmin)
+
   # Determine allocation
   asize <- compute_asize_from_size(size.coef, gmax)
   list(size.coef=size.coef, asize=asize)
@@ -189,6 +195,20 @@ compute_size <- function(alloc, stack, depth, ftype, call, .CALL) {
 # Convert polynomial size vector to an actual size given an iteration size.
 actual_size  <- function(x, base) sum(x * base ^ (seq_along(x) - 1L))
 
+# Like `actual_size`, except that in this case `base` is not a scalar but a
+# vector of all the group/iteration sizes in the result.  Special case is when
+# result is zero size.
+iter_result_sizes <- function(x, base) {
+  if(length(x) < 1L)
+    stop("Internal Error: size.coef expected to contain at least one entry.")
+  else if(length(x) == 1L || all(x[-1L] == 0)) {
+    # constant size
+    rep(x[1L], length(base))
+  } else {
+    Reduce("+", lapply(x, function(xi) base ^ xi))
+  }
+}
+
 # Given multiple possible for a single input/result, what allocation size will
 # hold the largest of them for any given iteration size.  Typically we compute
 # this for the largest iteration size (`gmax`).
@@ -196,7 +216,7 @@ alloc_size <- function(size.coef, base)
   max(vapply(size.coef, actual_size, 0, base))
 
 compute_asize_from_size <- function(size.coef, gmax) {
-  alloc_size(sizes, gmax)
+  alloc_size(size.coef, gmax)
 }
 is.size_coef <- function(size.coef) {
   if(is.list(size.coef)) {
@@ -241,8 +261,8 @@ size_eqlen <- function(size.args, gmax, gmin) {
   size.ul <- unlist(size.args, recursive=FALSE)
 
   # If gmax==gmin, what can we assume?  We can assume that if they are all equal
-  # under that assumption the size becomes constant.  Recall that we need to
-  # check elsewhere whether length of this is 1.
+  # under that assumption the size becomes constant.  Recall that we check
+  # elsewhere whether length of this is 1 and error if not.
   if(gmax == gmin) {
     unique(lapply(size.ul, actual_size, gmax))
   } else {
