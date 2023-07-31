@@ -511,7 +511,7 @@ stopifnot(
 
 code_blank <- function()
   list(
-    defn="", name="", call="", narg=FALSE, extern=FALSE,
+    defn="", name="", call="", narg=FALSE, ext.any=FALSE,
     headers=character(), defines=character(), out.ctrl=CGEN.OUT.NONE
   )
 code_valid <- function(code, call) {
@@ -565,13 +565,13 @@ call_valid <- function(call) {
 #'
 #' @noRd
 
-c_call_gen <- function(name, narg, extern) {
+c_call_gen <- function(name, narg, ext.any) {
   sprintf(
     "%s(%s%s%s);",
     name,
     toString(CALL.BASE),
     if(narg) paste0(", ", CALL.VAR) else "",
-    if(extern) paste0(", ", CALL.EXTERN) else ""
+    if(ext.any) paste0(", ", CALL.EXTERN) else ""
   )
 }
 #' Organize C Code Generation Output
@@ -604,7 +604,7 @@ c_call_gen <- function(name, narg, extern) {
 #' @seealso `cgen` for the actual C code generation, `preprocess` for the
 #'   assembly into the final C file.
 #' @param narg TRUE if function has variable number of arguments
-#' @param extern TRUE if function has non-numeric external parameters
+#' @param ext.any TRUE if function has non-numeric external parameters
 #' @param headers character vector with header names that need to be #included
 #' @param defines character with #define directives
 #' @param out.ctrl scalar integer sum of various `CGEN.OUT.*` constants (see
@@ -617,7 +617,7 @@ c_call_gen <- function(name, narg, extern) {
 #'   e.g. braces or an else statement.
 
 code_res <- function(
-  defn, name, narg=FALSE, extern=FALSE,
+  defn, name, narg=FALSE, ext.any=FALSE,
   headers=character(), defines=character(), out.ctrl=CGEN.OUT.DFLT,
   c.call.gen=c_call_gen
 ) {
@@ -628,13 +628,13 @@ code_res <- function(
     stop("Internal Error: cannot mute ", name, ", as not in PASSIVE.SYM")
 
   c_call <- paste0(
-    c.call.gen(name, narg=narg, extern=extern), collapse="\n"
+    c.call.gen(name, narg=narg, ext.any=ext.any), collapse="\n"
   )
   list(
     defn=defn, name=name,
     call=c_call,
     headers=if(is.null(headers)) character() else headers,
     defines=if(is.null(defines)) character() else defines,
-    narg=narg, extern=extern, out.ctrl=out.ctrl
+    narg=narg, ext.any=ext.any, out.ctrl=out.ctrl
   )
 }

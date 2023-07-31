@@ -159,6 +159,7 @@ code_gen_summary <- function(fun, pars, par.types) {
       toString(c(F.ARGS.BASE, if(multi) F.ARGS.VAR))
     ),
     name=name, narg=multi, headers="<math.h>",
+    ext.any=FALSE,
     defines=if(name %in% names(SUM.DEFN)) SUM.DEFN[name]
   )
 }
