@@ -17,6 +17,7 @@
 
 // System headers if any go above ^^
 #include "r2c.h"
+#include "loop-interrupt-basic.h"
 #include <R_ext/Rdynload.h>
 
 /*
@@ -59,12 +60,10 @@ SEXP R2C_group_sizes(SEXP g) {
     int g_int_val = *g_int;
     *(glabs++) = g_int_val;
 
-    R_xlen_t gi = 1;
-    R_xlen_t next_interrupt = INTERRUPT_AT;
-    // Iterate with interrupts, see inst/headers/loop-interrupt.h
-    while(1) {
-      R_xlen_t gi_stop = next_interrupt > glen ? glen : next_interrupt;
-      for(; gi < gi_stop; ++gi) {
+    R_xlen_t i = 1;
+    R_xlen_t next_interrupt = INTERRUPT_AT;                            \
+    LOOP_W_INTERRUPT_BASIC(
+      glen, {
         int g_int_prev_val = g_int_val;
         g_int_val = *(++g_int);
         ++gsize_i;
@@ -72,18 +71,12 @@ SEXP R2C_group_sizes(SEXP g) {
         if(g_int_val != g_int_prev_val) {
           *(gsize++) = gsize_i;
           if(gsize_i > gmax) gmax = gsize_i;
-          if(gsize_i < gmin || gi == 1) gmin = gsize_i;
+          if(gsize_i < gmin || i == 1) gmin = gsize_i;
           *(glabs++) = g_int_val;
           gsize_i = 0;
-      } }
-      if(gi == glen) break;
-      else if(gi == next_interrupt) {
-        R_CheckUserInterrupt();
-        if(gi <= R_XLEN_T_MAX - INTERRUPT_AT)
-          next_interrupt = gi + INTERRUPT_AT;
-        else next_interrupt = glen;
+        }
       }
-    }
+    );
     // One extra item in the trailing group we will not have counted
     *gsize = gsize_i + 1;
     if(*gsize > gmax) gmax = *gsize;
@@ -145,7 +138,7 @@ SEXP R2C_run_group(
     // result size in `lens[I_RES]`.
     for(int j = dp.dat_start; j <= dp.dat_end; ++j) dp.lens[j] = g_len;
 
-    // Check for interrupts
+    // Check for interrupts (too complicated for _INTERRUPT_BASIC)
     if(
       g_len <= INTERRUPT_AT &&  /* we don't know what R_XLEN_T_MIN is */
       interrupt_i <= INTERRUPT_AT - g_len && interrupt_i <= R_XLEN_T_MAX - g_len

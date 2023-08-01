@@ -351,7 +351,7 @@ static double ** copy_dat(struct R2C_dat dp) {
     }                                                                        \
     /* ileft max is R_XLEN_T_MAX - 1, so + 1 cannot overflow */              \
     R_xlen_t len = iright - ileft + 1;                                       \
-    /* Check for interrupts */                                               \
+    /* Check for interrupts (too complicated for _INTERRUPT_BASIC) */        \
     if(                                                                      \
       len <= INTERRUPT_AT &&  /* we don't know what R_XLEN_T_MIN is */       \
       interrupt_i <= INTERRUPT_AT - len && interrupt_i <= R_XLEN_T_MAX - len \

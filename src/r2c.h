@@ -18,7 +18,6 @@
 #ifndef R2C_H
 #define R2C_H
 #define R_NO_REMAP
-#define INTERRUPT_AT 10000000 /* keep sync'ed with loop-interrupt.h */
 
 // System headers go above
 #include <R.h>
@@ -38,6 +37,8 @@
 #define STAT_N       2  // STATUS entry count (not an index)
 #define STAT_RECYCLE 0  // bad recycling
 #define STAT_LOOP    1  // loop counter for interrupts
+
+#define INTERRUPT_AT 10000000
 
 // KEEP SYNC'ED WITH inst/headers/r2c-const.h
 // ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
