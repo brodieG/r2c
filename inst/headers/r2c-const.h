@@ -19,6 +19,14 @@
 #define R2C_CONST_H
 #define R_NO_REMAP
 
+/*
+ * Headers in this folder are used during the compilation of r2c functions, as
+ * opposed to the compilation of r2c itself.  For the latter see the headers in
+ * the 'src' folder.  We haven't taken the time to figure out a mechanism for
+ * headers to share data from both locations, so we must keep things in sync
+ * manually.
+ */
+
 // vvvvvvvvvvvvvvvvvvvvvvvvvvv
 // KEEP SYNC'ED WITH src/r2c.h (and rebuild all .o on update)
 
@@ -29,6 +37,8 @@
 #define STAT_N       2  // STATUS entry count (not an index)
 #define STAT_RECYCLE 0  // bad recycling
 #define STAT_LOOP    1  // loop counter for interrupts
+
+#define INTERRUPT_AT 10000000
 
 // KEEP SYNC'ED WITH src/r2c.h
 // ^^^^^^^^^^^^^^^^^^^^^^^^^^^
