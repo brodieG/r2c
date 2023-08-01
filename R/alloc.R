@@ -204,6 +204,8 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
   for(i in seq_along(x[['call']])) {
     ext.id <- ""
     par.type <- x[['par.type']][[i]]
+    par.ext <- par.type %in% PAR.EXT
+
     call <- x[['call']][[i]]
     depth <- x[['depth']][[i]]
     argn <- x[['argn']][[i]]
@@ -213,6 +215,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
       name <- tmp[['name']]
       pkg <- tmp[['pkg']]
     }
+    id <- if(par.type != PAR.INT.CALL) name_to_id(alloc, name) else 0L
     vec.dat <- init_vec_dat()
 
     # reconciliation level
@@ -287,10 +290,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
       vec.dat <-
         vec_dat(numeric(), "tmp", typeof="logical", size.coef=list(integer()))
     # - Control Parameter / External -------------------------------------------
-    } else if (
-      (par.ext <- par.type %in% PAR.EXT) ||
-      !(id <- name_to_id(alloc, name)) # `id` used in next else if
-    ) {
+    } else if (par.ext || !id) {
       # ext.any evals should not mix with internal values.
       if(id && par.type == PAR.EXT.ANY)
         stop("Internal Error: name-external exp conflict.")
