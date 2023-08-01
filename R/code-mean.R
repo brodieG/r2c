@@ -68,6 +68,8 @@ f_mean <- sprintf('
 static void %%s(%%s) {
   int di0 = di[0];
   int di1 = di[1];
+  int di_na = di[1];
+
   R_xlen_t n, m;
   n = m = lens[di0];
   double * dx = data[di0];
