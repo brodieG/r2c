@@ -271,6 +271,15 @@ size_eqlen <- function(size.args, gmax, gmin) {
     unique(size.ul)
   }
 }
+# Size of Input
+#
+# Currently only supports one input.
+
+size_arglen <- function(size.args) {
+  if(length(size.args) > 1) stop("Internal Error: arglen may only use one arg.")
+  size.args[[1L]]
+}
+
 # Add or Multiply parameter sizes
 #
 # Due to the possibility of parameters with multiple unresolved sizes (see
