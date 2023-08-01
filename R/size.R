@@ -207,7 +207,7 @@ iter_result_sizes <- function(x, base) {
     # constant size
     rep(x[1L], length(base))
   } else {
-    Reduce("+", lapply(x, function(xi) base ^ xi))
+    Reduce("+", lapply(seq_along(x), function(xi) x[xi] * base ^ (xi - 1L)))
   }
 }
 
