@@ -121,8 +121,7 @@ group_exec_int <- function(
       alp[['dat']],
       alp[['dat_cols']],
       alp[['ids']],
-      alp[['flag']],
-      alp[['control']],
+      alp[['extern']],
       gsizes,
       group.res.sizes
     )
@@ -361,7 +360,7 @@ group_exec <- function(fun, data, groups, MoreArgs=list()) {
 }
 
 run_group_int <- function(
-  handle, dat, dat_cols, ids, flag, control, group.sizes, group.res.sizes
+  handle, dat, dat_cols, ids, extern, group.sizes, group.res.sizes
 ) {
   .Call(
     R2C_run_group,
@@ -369,8 +368,7 @@ run_group_int <- function(
     dat,
     dat_cols,
     ids,
-    flag,
-    control,
+    extern,
     group.sizes,
     group.res.sizes
   )

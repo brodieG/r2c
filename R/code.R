@@ -56,7 +56,7 @@ is.valid_prod <- function(type)
   is.valid_n_arglen(type) && type[[1L]] == "prod"
 
 is.valid_constant <- function(type)
-  is.integer(type[[2L]]) &&
+  typeof(type[[2L]]) == "double" &&
   length(type[[2L]]) == 1L &&
   !is.na(type[[2L]]) &&
   type[[2L]] >= 0L
@@ -285,7 +285,7 @@ VALID_FUNS <- c(
     cgen(
       "sum", defn=function(..., na.rm=FALSE) NULL,
       extern=list(na.rm=ext_par("num", valid_narm)),
-      type=list("constant", 1L),
+      type=list("constant", 1),
       code.gen=code_gen_summary,
       res.type='preserve.int'
     ),
@@ -295,21 +295,21 @@ VALID_FUNS <- c(
         na.rm=ext_par("num", valid_narm),
         trim=ext_par("any", valid_trim)
       ),
-      type=list("constant", 1L),
+      type=list("constant", 1),
       code.gen=code_gen_summary
     ),
-    cgen("length", type=list("constant", 1L), code.gen=code_gen_length),
+    cgen("length", type=list("constant", 1), code.gen=code_gen_length),
     cgen(
       "all", defn=function(..., na.rm=FALSE) NULL,
       extern=list(na.rm=ext_par("num", valid_narm)),
-      type=list("constant", 1L),
+      type=list("constant", 1),
       code.gen=code_gen_summary,
       res.type='logical'
     ),
     cgen(
       "any", defn=function(..., na.rm=FALSE) NULL,
       extern=list(na.rm=ext_par("num", valid_narm)),
-      type=list("constant", 1L),
+      type=list("constant", 1),
       code.gen=code_gen_summary,
       res.type='logical'
     )
@@ -382,11 +382,11 @@ VALID_FUNS <- c(
 
   list(
     cgen(
-      "&&", type=list("constant", 1L), code.gen=code_gen_lgl2,
+      "&&", type=list("constant", 1), code.gen=code_gen_lgl2,
       res.type="logical"
     ),
     cgen(
-      "||", type=list("constant", 1L), code.gen=code_gen_lgl2,
+      "||", type=list("constant", 1), code.gen=code_gen_lgl2,
       res.type="logical"
     ),
     cgen(
@@ -414,7 +414,7 @@ VALID_FUNS <- c(
     ),
     # result of this one is not used outside of the C code
     cgen(
-      "if_test", type=list("constant", 1L), code.gen=code_gen_if_test,
+      "if_test", type=list("constant", 1), code.gen=code_gen_if_test,
       res.type="logical", fun=if_test
     ),
     cgen(
@@ -439,11 +439,11 @@ VALID_FUNS <- c(
     # Result of this one is only used directly in C code, but passive pass
     # through of type so we need to preserve that.
     cgen(
-      "for_init", type=list("constant", 1L), code.gen=code_gen_for_init,
+      "for_init", type=list("constant", 1), code.gen=code_gen_for_init,
       res.type="preserve.which", res.type.which=2L, fun=for_init
     ),
     cgen(
-      "for_iter", type=list("constant", 1L), code.gen=code_gen_for_iter,
+      "for_iter", type=list("constant", 1), code.gen=code_gen_for_iter,
       res.type="preserve.which", res.type.which=2L, fun=for_iter
     ),
     cgen(
@@ -479,7 +479,7 @@ VALID_FUNS <- c(
     cgen(
       "mean1", fun=mean1,
       extern=list(na.rm=ext_par("num", valid_narm)),
-      type=list("constant", 1L),
+      type=list("constant", 1),
       code.gen=code_gen_summary,
     ),
     cgen(

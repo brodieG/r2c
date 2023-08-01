@@ -111,8 +111,7 @@ SEXP R2C_run_group(
   SEXP dat,
   SEXP dat_cols,
   SEXP ids,
-  SEXP flag,
-  SEXP ctrl,
+  SEXP extn,
   // Size of each window / group
   SEXP grp_lens,
   SEXP res_lens
@@ -120,9 +119,11 @@ SEXP R2C_run_group(
   if(TYPEOF(grp_lens) != REALSXP)
     Rf_error("Argument `grp_lens` should be a real vector.");
   if(TYPEOF(res_lens) != REALSXP || XLENGTH(grp_lens) != XLENGTH(res_lens))
-    Rf_error("Argument `res_lens` should REALSXP and same length as `grp_lens`.");
+    Rf_error(
+      "Argument `res_lens` should be REALSXP and same length as `grp_lens`."
+    );
 
-  struct R2C_dat dp = prep_data(dat, dat_cols, ids, flag, ctrl, so);
+  struct R2C_dat dp = prep_data(dat, dat_cols, ids, extn, so);
 
   double * g_lens = REAL(grp_lens);
   double * r_lens = REAL(res_lens);
@@ -155,7 +156,7 @@ SEXP R2C_run_group(
       R_CheckUserInterrupt();
     }
     // Showtime.  This runs the compiled version of `get_c_code` output:
-    (*(dp.fun))(dp.data, dp.lens, dp.datai, dp.narg, dp.flags, dp.ctrl);
+    (*(dp.fun))(dp.data, dp.lens, dp.datai, dp.narg, dp.extn);
     // Record recycling error if any, g_count < R_XLEN_T_MAX, so could use
     // R_xlen_t here, but being safe in case code changes in future
     if(dp.data[I_STAT][STAT_RECYCLE] && !recycle_warn)

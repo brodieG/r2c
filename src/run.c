@@ -37,7 +37,7 @@ struct Rf_RegisteredNativeSymbol {
  * Shared by group and window functions.  Uses a small amount of R_alloc memory.
  */
 struct R2C_dat prep_data(
-  SEXP dat, SEXP dat_cols, SEXP ids, SEXP flag, SEXP ctrl, SEXP so
+  SEXP dat, SEXP dat_cols, SEXP ids, SEXP extn, SEXP so
 ) {
   if(TYPEOF(so) != STRSXP || XLENGTH(so) != 1)
     Rf_error("Argument `so` should be a scalar string.");
@@ -47,14 +47,10 @@ struct R2C_dat prep_data(
     Rf_error("Argument `data` should be a list.");
   if(TYPEOF(ids) != VECSXP)
     Rf_error("Argument `ids` should be a list.");
-  if(TYPEOF(ctrl) != VECSXP)
-    Rf_error("Argument `ctrl` should be a list.");
-  if(TYPEOF(flag) != INTSXP)
-    Rf_error("Argument `flag` should be an integer vector.");
-  if(XLENGTH(ids) != XLENGTH(ctrl))
-    Rf_error("Argument `ids` and `ctrl` should be the same length.");
-  if(XLENGTH(flag) != XLENGTH(ctrl))
-    Rf_error("Argument `flag` and `ctrl` should be the same length.");
+  if(TYPEOF(extn) != VECSXP)
+    Rf_error("Argument `extn` should be a list.");
+  if(XLENGTH(ids) != XLENGTH(extn))
+    Rf_error("Argument `ids` and `extn` should be the same length.");
 
   const char * fun_char = "run";
   const char * dll_char = CHAR(STRING_ELT(so, 0));
@@ -104,8 +100,7 @@ struct R2C_dat prep_data(
     .dat_count = dat_count,
     .narg = narg,
     .lens = lens,
-    .flags = INTEGER(flag),
-    .ctrl = ctrl,
+    .extn = extn,
     .fun = fun
   };
   return res;

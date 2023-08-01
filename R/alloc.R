@@ -199,7 +199,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
   stack.sizes <- list()   # argument sizes (see size.R)
   call.dat <- list()
   branch.lvl <- 0L
-  extern.evals <- list()
+  external.evals <- list()
 
   for(i in seq_along(x[['call']])) {
     ext.id <- ""
@@ -310,9 +310,9 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
           ext.id <- paste0(deparse(call, control="all"), collapse="\n")
           if(!nzchar(ext.id))
             stop("Symbol with zero length name disallowed.")
-          if(!is.null(external.eval[[ext.id]])) {
-            id <- external.eval[[ext.id]]
-            if(!id) stop("Internal Error: external eval cache corrupted.")
+          if(!is.null(external.evals[[ext.id]])) {
+            id <- external.evals[[ext.id]]
+            if(!id) stop("Internal Error: external.evals cache corrupted.")
             # Similar logic "Symbol in Data" Section
             alloc[['i']] <- id
             # Update symbol depth (from Symbol in Data, maybe N/A here?)
@@ -376,7 +376,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
         alloc, vec.dat, depth=depth, call.i=i, rec=rec, branch.lvl=0L
       )
       # Cache if external and generated a ext.id
-      if(nzchar(ext.id)) external.eval[[ext.id]] <- alloc[[i]]
+      if(nzchar(ext.id)) external.evals[[ext.id]] <- alloc[[i]]
     }
     # Call actions that need to happen after allocation data updated
     if(par.type == PAR.INT.CALL) {
