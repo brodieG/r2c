@@ -90,17 +90,18 @@ group_exec_int <- function(
     .Call(R2C_vecrec_pmax, iter.sizes.in)
   } else iter.sizes.in[[1L]]
 
-  # Identify obvious cases for optimizing result label generation
-  res.size.type <- if(length(res.size.coef) == 1L) {
+  # Identify obvious cases for optimizing result label generation.  size_vecrec
+  # should have collapsed to obvious cases if possible.
+  res.size.type <- "variable"
+  if(length(res.size.coef) == 1L) {
     rsc1 <- res.size.coef[[1L]]
     lrsc1 <- length(rsc1)
     if(lrsc1 == 1L || lrsc1 > 1L && all(rsc1[-1L] == 0)) {
       # constant size
-      if(rsc1[1L] == 1L) "scalar"
-      else "constant"
-    }
-  } else "variable" # `size_vecrec` should have collapsed simple cases
-
+      res.size.type <-
+        if(rsc1[1L] == 1L) "scalar"
+        else "constant"
+  } }
   # - Run ----------------------------------------------------------------------
 
   status <- numeric(1)
