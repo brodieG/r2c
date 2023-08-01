@@ -465,7 +465,7 @@ static double ** copy_dat(struct R2C_dat dp) {
 // R2C_run_window_xx and R2C_size_window_xx.
 //
 // Both actions share the same window seeking code (i.e. identifying which data
-// elements fall within a window).  We use two passes (size and calc) rather
+// elements fall within a window).  We use two passes (size and calc)
 // because we need to know max rolling window for our temporary vector memory
 // allocations.  We could just guess and then grow when we're wrong, which might
 // be worth it given our currently dumb seeking algorithm could be the bottlneck
