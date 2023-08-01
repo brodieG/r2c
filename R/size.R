@@ -16,7 +16,8 @@
 # Retrieve Ids For Input Parameters
 #
 # For size resolution that depends on the size of potentially multiple
-# candidates arguments, return the size data for the relevant candidates.
+# candidates arguments, return the ids from the allocation data that
+# correspond to the relevant candidates.
 #
 # @param ftype see `type` for `cgen`
 
@@ -51,7 +52,7 @@ input_args <- function(stack, depth, ftype, call, .CALL) {
       stop("Internal Error: parameter disambiguation for sizing failed.")
     param.cand <- param.cand.tmp
   }
-  param.cand['id',]
+  stack['id', param.cand]
 }
 ## Identify Missing Parameters on Stack
 ##
@@ -144,7 +145,7 @@ compute_size <- function(alloc, stack, depth, gmax, gmin, ftype, call, .CALL) {
   if(ftype[[1L]] == "constant") {
     # Always constant size, e.g. 1 for `sum`
     size.coef <- list(ftype[[2L]])
-  } else if (ftype[[1L]] == "external") {
+  } else {
     # Select inputs
     inputs <- input_args(
       stack=stack, depth=depth, ftype=ftype, call=call, .CALL=.CALL
@@ -179,7 +180,8 @@ compute_size <- function(alloc, stack, depth, gmax, gmin, ftype, call, .CALL) {
       arglen=size_arglen(in.size),
       vecrec=size_vecrec(in.size, gmax, gmin),
       product=size_prod(in.size),
-      concat=size_concat(in.size)
+      concat=size_concat(in.size),
+      stop("Internal Error: unknown function size type.")
     )
   }
   # Simplify result size; `vecrec` is the only type that natively produces > 1
