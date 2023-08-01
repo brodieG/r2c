@@ -188,6 +188,7 @@ compute_size <- function(alloc, stack, depth, gmax, gmin, ftype, call, .CALL) {
   # results (eqlen does here, but that case is an error triggered lter) so we
   # operate under assumption that `vecrec` simplification is always correct.
   size.coef <- size_vecrec(list(size.coef), gmax, gmin)
+  size.coef <- lapply(size.coef, as.numeric)
 
   # Determine allocation
   asize <- compute_asize_from_size(size.coef, gmax)
@@ -241,15 +242,14 @@ valid_size_input <- function(size.args, error=TRUE) {
 size_vecrec <- function(size.args, gmax, gmin) {
   # for vecrec, one arg with multiple potential lengths is the same as more
   # individual args each with one of those potential lengths
-  size.ul <- unlist(size.args, recursive=FALSE)
-  size.ul <-
-    if(any(vapply(size.ul, function(x) sum(x) == 0L, TRUE))) list(0L)
-    else unique(size.ul)
-  # Try to further reduce possible sizes under assumption that if a size.ul expr
-  # is larger both at gmin & gmax than others, it will always be larger.
+  size.ul <- unique(unlist(size.args, recursive=FALSE))
   sizes.max <- vapply(size.ul, actual_size, 0, gmax)
   sizes.min <- vapply(size.ul, actual_size, 0, gmin)
-  if(which.max(sizes.max) == which.max(sizes.min)) size.ul[which.max(sizes.max)]
+  # Try to reduce possible sizes under assumption that if a size.ul expr
+  # is larger both at gmin & gmax than others, it will always be larger.
+  if(any(sizes.max == 0 & sizes.min == 0)) list(0) # zero length dominates
+  else if(which.max(sizes.max) == which.max(sizes.min))
+    size.ul[which.max(sizes.max)]
   else size.ul
 }
 # Equal size parameters
