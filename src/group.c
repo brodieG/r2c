@@ -93,6 +93,67 @@ SEXP R2C_group_sizes(SEXP g) {
   return res;
 }
 /*
+ * Given vectors of possible sizes, for each set of elements compute the result
+ * size according to vecrec semantics.
+ *
+ * Not strictly group specific, but only used by groups so far.
+ */
+SEXP R2C_vecrec_pmax(SEXP sizes) {
+  if(TYPEOF(sizes) != VECSXP)
+    Rf_error("Internal Error: `sizes` should be a list.");
+
+  Rf_warning("Remember interrupts.");
+
+  R_xlen_t slen = XLENGTH(sizes);
+  SEXP elt0 = VECTOR_ELT(sizes, 0);
+  if(TYPEOF(elt0) != REALSXP)
+    Rf_error("Internal Error: `sizes` may contain only real vectors.");
+  SEXP res;
+
+  if(slen < 1) {
+    Rf_error("Internal Error: `sizes` must contain at least one element.");
+  } else if(slen == 1) {
+    // Simplest case, no ambiguity
+    res = PROTECT(elt0);
+  } else {
+    // Pick largets value, unless zero, in which case zero
+    R_xlen_t elt0_len = XLENGTH(elt0);
+    for(R_xlen_t i = 1; i < slen; ++i) {
+      SEXP elt = VECTOR_ELT(sizes, i);
+      if(TYPEOF(elt) != TYPEOF(elt0))
+        Rf_error("Internal Error: `sizes` may contain only real vectors.");
+      if(XLENGTH(elt) != elt0_len)
+        Rf_error("Internal Error: `sizes` may contain only equal-size vectors.");
+    }
+    res = PROTECT(Rf_allocVector(REALSXP, elt0_len));
+    double * dres = REAL(res);
+    // Simple logic, iterate across every vector, first iteration is between
+    // first two, each subsequent one is between result and next one.
+
+    R_xlen_t next_interrupt = INTERRUPT_AT;                            \
+    for(R_xlen_t j = 1; j < slen; ++j) {
+      double *a, *b;
+      if(j > 1) a = REAL(res); else a = REAL(elt0);
+      b = REAL(VECTOR_ELT(sizes, j));
+
+      // Lose some efficiency trying to make sure the interrupt count carries
+      // across the elements (needs ioff).
+      R_xlen_t i, ioff;
+      i = ioff = (j - 1) * elt0_len;
+      LOOP_W_INTERRUPT_BASIC(elt0_len * j, {
+        R_xlen_t i0 = i - ioff;
+        double da = *(a + i0);
+        double db = *(b + i0);
+        if(da && db) {
+          if(da >=  db) *(dres + i0) = da; else *(dres + i0) = db;
+        } else *(dres + i0) = 0;
+      });
+    }
+  }
+  UNPROTECT(1);
+  return res;
+}
+/*
  * Apply function by groups.
  *
  * See prep_data and R2C_dat struct in r2c.h for more detail on what the

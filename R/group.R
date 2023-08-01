@@ -86,9 +86,8 @@ group_exec_int <- function(
   # pmax for single element case for speed.
   iter.sizes.in <- lapply(res.size.coef, iter_result_sizes, base=gsizes)
   group.res.sizes <- if(length(iter.sizes.in) > 1) {
-    # could use a C implementations, this is the `vecrec` style pmax, where it's
-    # pmax, except if a value is zero, in case it's zero.
-    -do.call(pmin, -iter.sizes.in)
+    # Like pmax, except 0 dominates
+    .Call(R2C_vecrec_pmax, iter.sizes.in)
   } else iter.sizes.in[[1L]]
 
   # Identify obvious cases for optimizing result label generation

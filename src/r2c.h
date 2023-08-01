@@ -53,6 +53,7 @@ typedef SEXP (*r2c_dl_fun) (
 SEXP R2C_assumptions(void);
 SEXP R2C_constants(void);
 SEXP R2C_group_sizes(SEXP g);
+SEXP R2C_vecrec_pmax(SEXP sizes);
 
 /*
  * Structure containing the varying data in a format for faster access
