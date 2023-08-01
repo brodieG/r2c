@@ -260,7 +260,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
 
       # Cleanup expired symbols, and bind new ones
       alloc <- names_update(
-        alloc, call, call.name=name, call.i=i, rec=rec
+        alloc, call, call.name=name, call.i=i, rec=rec, env.ext=env.ext
       )
       # Prepare new vec data (if any), and tweak objet depending on situation.
       # Alloc is made later, but only if vec.dat[['new']] is not null.
