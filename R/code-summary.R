@@ -28,7 +28,7 @@ static void %%s(%%s) {
 
   R_xlen_t len_n = lens[di0];
   %sdouble * dat = data[di0];
-  int narm = (int) data[di_na];  // checked to be 0 or 1 by valid_narm
+  int narm = (int) *data[di_na];  // checked to be 0 or 1 by valid_narm
 
 %s%s
 
@@ -59,7 +59,7 @@ f_mean1 <- sprintf(
 f_sum_1 <- sprintf(f_summary_base, "", make_loop_base(count.na=FALSE), "")
 f_sum_n_base <- '
 static void %%s(%%s) {
-  int narm = di[narg - 1];  // checked to be 0 or 1 by valid_narm
+  int narm = (int) *data[di[narg - 1]];  // checked to be 0 or 1 by valid_narm
 %s
   for(int arg = 0; arg < narg - 1; ++arg) {
     int din = di[arg];
