@@ -835,8 +835,10 @@ reconcile_control_flow <- function(
       "potential size discrepancy for ",
       toString(
         sprintf(
-          "`%s` (TRUE: %d vs FALSE: %d)",
-          rc.sym.names[!size.eq], size.coef.T[!size.eq], size.coef.F[!size.eq]
+          "`%s` (TRUE: %s vs FALSE: %s)",
+          rc.sym.names[!size.eq],
+          toString(size_coefs_as_string(size.coef.T[!size.eq])),
+          toString(size_coefs_as_string(size.coef.F[!size.eq]))
       ) ),
       " in:\n", deparseLines(call.rec)
     )

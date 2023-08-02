@@ -359,3 +359,18 @@ poly_mult <- function(a, b) {
   as.vector(tapply(factors, poly, sum))
 }
 
+size_coef_as_string <- function(x) {
+  if(length(x) == 1) x
+  else if(length(x) == 2)
+    paste0(x, c("", "g"), collapse=" + ")
+  else if(length(x) > 2)
+    paste0(
+      x,
+      c("", "g", paste0(rep("g^", length(x) - 2), (seq_along(x) - 1)[-(1:2)])),
+      collapse=" + "
+    )
+  else stop("Internal Error: zero len size coef")
+}
+size_coefs_as_string <- function(size.args)
+  vapply(size.args, size_coef_as_string, "")
+
