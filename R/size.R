@@ -175,8 +175,9 @@ compute_size <- function(alloc, stack, depth, gmax, gmin, ftype, call, .CALL) {
             toString(ftype[[2L]]), " in a function that requires them ",
             "to be equal sized:\n", deparseLines(clean_call(call, level=2L))
           )
+        }
         size
-      } },
+      },
       arglen=size_arglen(in.size),
       vecrec=size_vecrec(in.size, gmax, gmin),
       product=size_prod(in.size),

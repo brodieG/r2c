@@ -824,10 +824,10 @@ reconcile_control_flow <- function(
   size.eq <- vapply(
     seq_along(size.coef.F),
     function(i)
-      length(size_eqlen(list(size.coef.F[i], size.coef.T[i]), gmax, gmin)),
+      length(size_eqlen(list(size.coef.F[[i]], size.coef.T[[i]]), gmax, gmin)),
     0L
   )
-  if(!all(size.coef.eq == 1L)) {
+  if(!all(size.eq == 1L)) {
     # Reconstitute the call
     call.rec <- clean_call(call("{", call[[1L]], call[[2L]]), level=2L)
     stop(
@@ -873,7 +873,7 @@ reconcile_control_flow <- function(
   typeof.T <- alloc[['typeof']][id.rc.T]
   for(i in seq_along(id.rc.F)) {
     # Size and generate allocation
-    size.coef <- size.coef.T[i]
+    size.coef <- size.coef.T[[i]]
     asize <- compute_asize_from_size(size.coef, gmax)
     new <- numeric(asize)
     # Take the most general type from the two branches
