@@ -69,7 +69,7 @@ f_rec <- '
 // Reconciliation is a no-op
 // static void %s(%s) { /* NOOP */ }'
 
-code_gen_rec <- function(fun, pars, par.type) {
+code_gen_rec <- function(fun, pars, par.types) {
   vetr(
     identical(., "rec"),
     pars=list(NULL),
