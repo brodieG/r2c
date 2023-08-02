@@ -78,6 +78,7 @@ ext_par <- function(type="num", validate=function(x) TRUE) {
 }
 ## Validation functions for external parameters.
 
+# mean uses isTRUE(na.rm).  Sum not sure, mabye !isFALSE(na.rm)
 valid_narm <- function(na.rm) vet(LGL.1, na.rm)
 valid_trim <- function(trim) {
   if(!isTRUE(trim.test <- vet(NULL || identical(., 0), trim)))
