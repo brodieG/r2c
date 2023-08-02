@@ -194,7 +194,7 @@ preprocess <- function(call, optimize=FALSE) {
 
 pp_internal <- function(
   call, depth, x, argn="", assign=FALSE, call.parent=NULL,
-  call.parent.name="", indent=0L, passive=TRUE
+  call.parent.name="", par.validate=function(x) TRUE, indent=0L, passive=TRUE
 ) {
   if(depth == .Machine$integer.max)
     stop("Expression max depth exceeded.") # exceedingly unlikely
@@ -208,9 +208,13 @@ pp_internal <- function(
     par.ext <- VALID_FUNS[[c(func, "extern")]]
     par.ext.names <- names(par.ext)
     par.ext.types <- vapply(par.ext, "[[", "", "type")
+    par.ext.validate <- lapply(par.ext, "[[", "validate")
 
+    par.ext.loc <- match(par.ext.names, names(args), nomatch=0)
     par.types <- rep("internal", length(args))
-    par.types[match(par.ext.names, names(args), nomatch=0)] <- par.ext.types
+    par.types[par.ext.loc] <- par.ext.types
+    par.validate <- replicate(length(args), function(x) TRUE, simplify=FALSE)
+    par.validate[par.ext.loc] <- par.ext.validate
 
     passive <- passive && func %in% c(PASSIVE.SYM, 'vcopy')
 
@@ -233,14 +237,14 @@ pp_internal <- function(
         if(next.assign) stop("Internal error: controls/flag on assignment.")
         x <- record_call_dat(
           x, call=args[[i]], depth=depth + 1L, argn=names(args)[i],
-          par.type=par.types[i], code=code_blank(), assign=FALSE, indent=indent,
-          rec=FALSE
+          par.type=par.types[i], par.validate=par.validate[i],
+          code=code_blank(), assign=FALSE, indent=indent, rec=FALSE
         )
       } else if(par.types[i] == "internal") {  # not yet one of PAR.INT values
         x <- pp_internal(
           call=args[[i]], depth=depth + 1L, x=x, argn=names(args)[i],
           assign=i == 1L && next.assign,
-          call.parent=call, call.parent.name=func,
+          call.parent=call, call.parent.name=func, par.validate=par.validate[i],
           indent=indent +
             (func %in% c(CTRL.SUB.SYM, 'for_iter', 'r2c_for')) * 2L,
           passive=passive
@@ -260,7 +264,8 @@ pp_internal <- function(
 
     # Record linearized call data
     record_call_dat(
-      x, call=call, depth=depth, argn=argn, par.type=PAR.INT.CALL, code=code,
+      x, call=call, depth=depth, argn=argn,
+      par.type=PAR.INT.CALL, par.validate=par.validate, code=code,
       assign=assign, indent=indent, rec=rec
     )
   } else {
@@ -285,8 +290,9 @@ pp_internal <- function(
       }
     }
     record_call_dat(
-      x, call=call, depth=depth, argn=argn, par.type=par.type, code=code,
-      assign=assign, indent=indent, rec=FALSE
+      x, call=call, depth=depth, argn=argn,
+      par.type=par.type, par.validate=par.validate,
+      code=code, assign=assign, indent=indent, rec=FALSE
     )
 } }
 
@@ -314,7 +320,11 @@ pp_internal <- function(
 #' $par.type: argument type, one of "ext.num", "ext.any", "int.call",
 #'   "int.leaf".  The first two are "external", and the last two are
 #'   respectively non-terminal and terminal "internal" tokens.  See `?r2cq` for
-#'   details on internal/external..
+#'   details on internal/external.
+#' $par.validate: a list of functions, each will validate the result of
+#'   evaluating the corresponding external parameters at allocation time. For
+#'   simplicity there is an entry for every parameter, but we only really use
+#'   the external ones.
 #' $rec: whether current call is a part of a chain that ends with a `rec`
 #'
 #' @noRd
@@ -323,6 +333,7 @@ init_call_dat <- function()
   list(
     call=list(),
     code=list(),
+    par.validate=list(),
     sym.free=character(),
     dot.arg.i=1L,
 
@@ -345,7 +356,7 @@ init_call_dat <- function()
 ## See `init_call_dat` for parameter details.
 
 record_call_dat <- function(
-  x, call, depth, argn, par.type, code, assign, indent, rec
+  x, call, depth, argn, par.type, par.validate, code, assign, indent, rec
 ) {
   # list data
   x[['call']] <- c(
@@ -354,6 +365,7 @@ record_call_dat <- function(
     list(if(identical(call, quote(.R2C.DOTS))) QDOTS else call)
   )
   x[['code']] <- c(x[['code']], list(code))
+  x[['par.validate']] <- c(x[['par.validate']], par.validate)
 
   # vec data, if we add any here, be sure to add them to `exp.fields` in
   # `expand_dots`.

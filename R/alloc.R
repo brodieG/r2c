@@ -234,7 +234,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
       stack.input <- stack_inputs(stack, depth)
       input.type <- alloc[['typeof']][stack.input['id', ]]
       names(input.type) <- colnames(stack.input)
-      VALID_FUNS[[c(name, "input.validate")]](input.type)
+      VALID_FUNS[[c(name, "in.type.validate")]](input.type)
 
       # Preserve input type of logical/integer if inputs and function allow it
       res.type.mode <- VALID_FUNS[[c(name, "res.type")]]
@@ -342,6 +342,17 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
                 call.outer
           ) ) }
         )
+        # External params need to be validated
+        if(
+          par.type %in% PAR.EXT &&
+          !isTRUE(err.msg <- x[['par.validate']][[i]](arg.e))
+        ) {
+          stop(
+            simpleError(
+              paste0("Invalid external parameter: ", err.msg), call.outer
+          ) )
+        }
+        # Other post processing/recording.
         if(par.type == PAR.EXT.ANY) {
           if(!nzchar(argn))
             stop("Internal Error: missing arg name for non-num external")
@@ -349,7 +360,8 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
           names(ext.any) <- argn
           stack.ext.any <- c(stack.ext.any, ext.any)
         } else {
-          # Validate external args after eval, and add to vec.dat
+          # These must all be naked numeric; it does result in double validation
+          # for external evals that correspond to external parameters.
           if(!par.type %in% PAR.INT && !nzchar(argn))
             stop("Internal Error: missing arg name for external param")
           validate_ext(x, i, par.type, arg.e, name, call, .CALL)

@@ -178,7 +178,7 @@ valid_length <- function(length) vet(NUM.1.POS, length)
 #'   function and calls to it look like.  Almost all of the handling of
 #'   internal/external parameters is done at the allocation step.
 #'
-#' @param input.validate a function to validate input types.  Will be given a
+#' @param in.type.validate a function to validate input types.  Will be given a
 #'   named character vector with the values the possible types (e.g. "double",
 #'   "logical") and the names the parameter names they were matched to.
 #'   It's possible to have duplicate names with "...".
@@ -199,7 +199,7 @@ cgen <- function(
   name, fun=get(name, baseenv(), mode="function"),
   defn=if(typeof(fun) == 'closure') fun,
   extern=list(), type, code.gen,
-  input.validate=function(types) TRUE,
+  in.type.validate=function(types) TRUE,
   transform=identity,
   res.type="double", res.type.which=1L
 ) {
@@ -211,7 +211,7 @@ cgen <- function(
     extern=list(),
     type=list() && length(.) %in% 1:3,
     code.gen=is.function(.),
-    input.validate=is.function(.),
+    in.type.validate=is.function(.),
     transform=is.function(.),
     res.type=CHR.1 &&
       . %in% c(
@@ -259,7 +259,7 @@ cgen <- function(
     name=name, fun=fun, defn=defn, extern=extern,
     type=type, code.gen=code.gen,
     transform=transform, res.type=res.type, res.type.which=res.type.which,
-    input.validate=input.validate
+    in.type.validate=in.type.validate
   )
 }
 ## Specialized for binops
@@ -367,14 +367,14 @@ VALID_FUNS <- c(
       "[", defn=function(x, i) NULL,
       type=list("arglen", "i"), code.gen=code_gen_subset,
       res.type="preserve.which", res.type.which=1L,
-      input.validate=subset_input_val
+      in.type.validate=subset_input_val
     ),
     # assign uses transform to generate subassign calls when child is `[`
     cgen(
       "subassign", fun=subassign,
       type=list("arglen", "x"), code.gen=code_gen_subassign,
       res.type="preserve.which", res.type.which=c(1L,3L),
-      input.validate=subset_input_val
+      in.type.validate=subset_input_val
     )
   ),
 
