@@ -326,7 +326,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
       # add a child environment?  What about branches and nested functions?
       if(!id) {
         tryCatch(
-          arg.e <- eval(call, envir=data, enclos=env),
+          arg.e <- eval(call, envir=data, enclos=env.ext),
           error=function(e) stop(simpleError(conditionMessage(e), call.outer)),
           internalSymbolAccess=function(e) {
             call.dep <- deparseLines(call)
