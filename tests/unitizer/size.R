@@ -56,3 +56,6 @@ unitizer_sect("valid size", {
   r2c:::valid_size_input(list(list(-1), list(1:2)))
 })
 
+unitizer_sect("display as strings", {
+  r2c:::size_coefs_as_string(list(list(1, 2:1), list(1:2), list(c(0,1,0,4))))
+})

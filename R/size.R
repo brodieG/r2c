@@ -358,19 +358,25 @@ poly_mult <- function(a, b) {
   poly <- row(factors) + col(factors)
   as.vector(tapply(factors, poly, sum))
 }
+# Express complex size coefficients as strings (for errors)
 
-size_coef_as_string <- function(x) {
-  if(length(x) == 1) x
-  else if(length(x) == 2)
-    paste0(x, c("", "g"), collapse=" + ")
-  else if(length(x) > 2)
-    paste0(
-      x,
-      c("", "g", paste0(rep("g^", length(x) - 2), (seq_along(x) - 1)[-(1:2)])),
-      collapse=" + "
+size_coef_el_as_string <- function(x) {
+  if(length(x) == 1) as.character(x)
+  else if(length(x) >= 2) {
+    xc <- as.character(x)
+    xc[x == 1 & seq_along(x) > 1] <- ""
+    base <- paste0(
+      xc,
+      c("", "g", paste0(rep("g^", length(x) - 2), (seq_along(x) - 1)[-(1:2)]))
     )
+    if(!any(x != 0)) "0"
+    else paste0(base[x != 0], collapse=" + ")
+  }
   else stop("Internal Error: zero len size coef")
 }
+size_coef_as_string <- function(x) {
+  paste0(vapply(x, size_coef_el_as_string, ""), collapse=", or ")
+}
 size_coefs_as_string <- function(size.args)
-  vapply(size.args, size_coef_as_string, "")
+  unlist(lapply(size.args, size_coef_as_string))
 

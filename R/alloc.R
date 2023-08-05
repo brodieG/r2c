@@ -827,18 +827,19 @@ reconcile_control_flow <- function(
       length(size_eqlen(list(size.coef.F[[i]], size.coef.T[[i]]), gmax, gmin)),
     0L
   )
-  if(!all(size.eq == 1L)) {
+  if(any(size.neq <- size.eq != 1L)) {
     # Reconstitute the call
     call.rec <- clean_call(call("{", call[[1L]], call[[2L]]), level=2L)
+    # this is going to make zero sense to the user since we don't expose the
+    # univariate polynomial business in docs anywhere.
+    ssT <- paste0(size_coefs_as_string(size.coef.T[size.neq]), collapse="; ")
+    ssF <- paste0(size_coefs_as_string(size.coef.F[size.neq]), collapse="; ")
     stop(
       "Assigned variables and return value must be same size across branches; ",
       "potential size discrepancy for ",
       toString(
         sprintf(
-          "`%s` (TRUE: %s vs FALSE: %s)",
-          rc.sym.names[!size.eq],
-          toString(size_coefs_as_string(size.coef.T[!size.eq])),
-          toString(size_coefs_as_string(size.coef.F[!size.eq]))
+          "`%s` (TRUE: %s vs FALSE: %s)", rc.sym.names[size.neq], ssT, ssF
       ) ),
       " in:\n", deparseLines(call.rec)
     )
