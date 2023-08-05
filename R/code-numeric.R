@@ -15,7 +15,7 @@
 
 f_numeric <- '
 static void %s(%s) {
-  if(lens[0] != 1) Rf_error("invalid length argument");
+  if(lens[di[0]] != 1) Rf_error("invalid length argument");
   double lend = data[di[0]][0];
   double * res = data[di[1]];
 
@@ -48,7 +48,7 @@ code_gen_numeric <- function(fun, pars, par.types) {
   vetr(
     identical(., "numeric"),
     pars=list(NULL),
-    par.types=character() && all(. %in% PAR.INT)
+    par.types=character(1) && all(. %in% PAR.EXT.NUM)
   )
   name <- FUN.NAMES[fun]
   defn <- sprintf(f_numeric, name, toString(F.ARGS.BASE))
