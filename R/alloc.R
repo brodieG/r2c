@@ -567,7 +567,7 @@ append_dat <- function(
   if(type != "tmp" && (length(size.coef) != 1L || any(lengths(size.coef)) > 2L))
     stop("Internal Eror: complex sizes only for computed allocs.") # and res?
 
-  if(any(lengths(size.coef) > 1L && !type %in% c("grp", "tmp")))
+  if(any(lengths(size.coef) > 1L) && !type %in% c("grp", "tmp"))
     stop("Internal Eror: complex sizes only for temporary allocs or group.")
 
   new.num <- if(is.integer(new) || is.logical(new)) as.numeric(new) else new
