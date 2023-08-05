@@ -102,8 +102,6 @@ SEXP R2C_vecrec_pmax(SEXP sizes) {
   if(TYPEOF(sizes) != VECSXP)
     Rf_error("Internal Error: `sizes` should be a list.");
 
-  Rf_warning("Remember interrupts.");
-
   R_xlen_t slen = XLENGTH(sizes);
   SEXP elt0 = VECTOR_ELT(sizes, 0);
   if(TYPEOF(elt0) != REALSXP)
