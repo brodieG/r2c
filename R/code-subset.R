@@ -38,7 +38,7 @@ static void %s(%s) {
   lens[di[2]] = len;
 }'
 
-code_gen_subset <- function(fun, par, par.types) {
+code_gen_subset <- function(fun, pars, par.types) {
   vetr(
     identical(., "["),
     pars=list(NULL, NULL),
