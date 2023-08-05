@@ -43,7 +43,7 @@ input_args <- function(stack, depth, ftype, call, .CALL) {
 
   # Arglen needs to disambiguate multiple params (e.g. `...` may show up
   # multiple times in `colnames(stack)` for any given depth).
-  if(length(ftype) > 2L && is.function(ftype[[3L]])) {
+  if(ftype[[1L]] == "arglen" && length(ftype) > 2L && is.function(ftype[[3L]])) {
     param.cand.tmp <- ftype[[3L]](param.cand)
     if(
       !is.integer(param.cand.tmp) ||
@@ -154,7 +154,7 @@ compute_size <- function(alloc, stack, depth, gmax, gmin, ftype, call, .CALL) {
     # Compute group/iteration dependent size
     size.coef <- switch(
       ftype[[1L]],
-      external={
+      extern={
         if(!is.function(ftype[[3L]]))
           stop("Internal error: no function to resolve external size.")
         if(!all(alloc[['type']][inputs] == 'ext'))
@@ -164,8 +164,9 @@ compute_size <- function(alloc, stack, depth, gmax, gmin, ftype, call, .CALL) {
             deparseLines(clean_call(call, level=2L))
           )
         size <- ftype[[3L]](alloc[['dat']][inputs])
-        if(!valid_size_input(size, error=FALSE))
+        if(!is.size_coef(size))
           stop("Internal Error: external parameter size comp invalid.")
+        size
       },
       eqlen={
         size <- size_eqlen(in.size, gmax, gmin)
