@@ -194,7 +194,7 @@ preprocess <- function(call, optimize=FALSE) {
 
 pp_internal <- function(
   call, depth, x, argn="", assign=FALSE, call.parent=NULL,
-  call.parent.name="", par.validate=function(x) TRUE, indent=0L, passive=TRUE
+  call.parent.name="", par.validate=NULL, indent=0L, passive=TRUE
 ) {
   if(depth == .Machine$integer.max)
     stop("Expression max depth exceeded.") # exceedingly unlikely
@@ -213,7 +213,7 @@ pp_internal <- function(
     par.ext.loc <- match(par.ext.names, names(args), nomatch=0)
     par.types <- rep("internal", length(args))
     par.types[par.ext.loc] <- par.ext.types
-    par.validate <- replicate(length(args), function(x) TRUE, simplify=FALSE)
+    par.validate <- vector(mode='list', length(args))
     par.validate[par.ext.loc] <- par.ext.validate
 
     passive <- passive && func %in% c(PASSIVE.SYM, 'vcopy')
@@ -265,7 +265,9 @@ pp_internal <- function(
     # Record linearized call data
     record_call_dat(
       x, call=call, depth=depth, argn=argn,
-      par.type=PAR.INT.CALL, par.validate=par.validate, code=code,
+      par.type=PAR.INT.CALL,
+      par.validate=par.validate[1L],  # this is never used as its a call
+      code=code,
       assign=assign, indent=indent, rec=rec
     )
   } else {
@@ -322,9 +324,9 @@ pp_internal <- function(
 #'   respectively non-terminal and terminal "internal" tokens.  See `?r2cq` for
 #'   details on internal/external.
 #' $par.validate: a list of functions, each will validate the result of
-#'   evaluating the corresponding external parameters at allocation time. For
-#'   simplicity there is an entry for every parameter, but we only really use
-#'   the external ones.
+#'   evaluating the corresponding external parameters at allocation time.
+#'   Entries that belong to internal parameters or the call themselves are set
+#'   to NULL.
 #' $rec: whether current call is a part of a chain that ends with a `rec`
 #'
 #' @noRd
@@ -358,6 +360,7 @@ init_call_dat <- function()
 record_call_dat <- function(
   x, call, depth, argn, par.type, par.validate, code, assign, indent, rec
 ) {
+  vetr(par.validate=list(NULL))
   # list data
   x[['call']] <- c(
     x[['call']],
@@ -366,6 +369,8 @@ record_call_dat <- function(
   )
   x[['code']] <- c(x[['code']], list(code))
   x[['par.validate']] <- c(x[['par.validate']], par.validate)
+  if(length(unique(lengths(x[c('call', 'code', 'par.validate')]))) != 1L)
+    stop("Internal Error: list component irregular size.")
 
   # vec data, if we add any here, be sure to add them to `exp.fields` in
   # `expand_dots`.

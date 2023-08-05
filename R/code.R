@@ -208,7 +208,7 @@ cgen <- function(
     name=CHR.1,
     fun=is.function(.),
     # really should have put some parens to resolve ambiguity below
-    defn=typeof(.) == "closure" || NULL,
+    defn=(typeof(.) == "closure" || NULL),
     extern=list(),
     type=list() && length(.) %in% 1:3,
     code.gen=is.function(.),
@@ -228,11 +228,15 @@ cgen <- function(
   )
     stop("Internal Error: badly specified external parameter names.")
 
-  if(
-    !is.null(defn) &&
-    (!all(names(extern) %in% names(formals(defn))) || "..." %in% names(extern))
-  )
-    stop("Internal Error: external params missing from defn or include '...'.")
+  # Check-reorder external formal params
+  if(length(extern)) {
+    formals <- if(typeof(defn) == 'closure') formals(defn) else formals(closure)
+    if(
+      (!all(names(extern) %in% names(formals)) || "..." %in% names(extern))
+    )
+      stop("Internal Error: external params missing from defn or include '...'.")
+    extern <- extern[order(match(names(extern), names(formals)))]
+  }
 
   stopifnot(
     is.character(type[[1L]]) && length(type[[1L]]) == 1L && !is.na(type[[1L]]),
@@ -299,7 +303,10 @@ VALID_FUNS <- c(
       type=list("constant", 1),
       code.gen=code_gen_summary
     ),
-    cgen("length", type=list("constant", 1), code.gen=code_gen_length),
+    cgen(
+      "length", defn=function(x) NULL, type=list("constant", 1),
+      code.gen=code_gen_length
+    ),
     cgen(
       "all", defn=function(..., na.rm=FALSE) NULL,
       extern=list(na.rm=ext_par("num", valid_narm)),
