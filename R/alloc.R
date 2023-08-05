@@ -939,7 +939,7 @@ reconcile_env_ext <- function(env.ext.T, env.ext.F) {
   if(!identical(par.env, parent.env(env.ext.F)))
     stop("Internal Error: corrupted external tracking envs.")
   new.names <- intersect(names(env.ext.T), names(env.ext.F))
-  for(i in new.names) par.env[[i]] <- env.ext.T[[i]]
+  for(i in new.names) guard_symbol(i, par.env)
   par.env
 }
 #
