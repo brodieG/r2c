@@ -24,7 +24,7 @@ static void %s(%s) {
   lens[1] = len0;
 }'
 
-code_gen_seq_along <- function(fun, par, par.types) {
+code_gen_seq_along <- function(fun, pars, par.types) {
   vetr(
     identical(., "seq_along"),
     pars=list(NULL),
