@@ -866,7 +866,7 @@ reconcile_control_flow <- function(
   if(any(alloc.i.F <= i.call.T | alloc.i.F > i.call.F))
     stop("Internal Error: reconcile allocation not branch local in FALSE.")
   if(any(alloc.i.T <= if.cur.start.i | alloc.i.T > i.call.T))
-    stop("Internal Error: reconcile allocation not branch local in TRUE")
+    stop("Internal Error: reconcile allocation not branch local in TRUE.")
 
   # Reconcile allocations so they point to the same id.  We must use entirely
   # new allocations because we are not tracking how and where the currently
@@ -874,6 +874,8 @@ reconcile_control_flow <- function(
   # to create the allocations, Step 2 is to re-point the call data to them.
   typeof.F <- alloc[['typeof']][id.rc.F]
   typeof.T <- alloc[['typeof']][id.rc.T]
+  alloc.i.old <- alloc[['i']]
+
   for(i in seq_along(id.rc.F)) {
     # Size and generate allocation
     size.coef <- size.coef.T[[i]]
@@ -925,6 +927,9 @@ reconcile_control_flow <- function(
     stack[stack.up, stack['id',] == id.rc.F[i]] <- stack.up.val
     stack[stack.up, stack['id',] == id.rc.T[i]] <- stack.up.val
   }
+  # In the case of no result reconciliation, reset the alloc.id
+  if(!rec.ret) alloc[['i']] <- alloc.i.old
+
   # Undo branch hiding
   hidden <- alloc[['names']]['br.hide', ] == branch.lvl
   alloc[['names']]['br.hide', hidden] <- branch.lvl - 1L
