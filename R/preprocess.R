@@ -296,7 +296,7 @@ pp_internal <- function(
       }
     }
     record_call_dat(
-      x, call=call, depth=depth, linfo=blank_lang_info(), argn=argn,
+      x, call=call, depth=depth, linfo=get_lang_info(call), argn=argn,
       par.type=par.type, par.validate=par.validate,
       code=code, assign=assign, indent=indent, rec=FALSE
     )

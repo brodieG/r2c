@@ -203,7 +203,6 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
   call.names <- vapply(x[['linfo']], "[[", "", "name")
   call.pkgs <- vapply(x[['linfo']], "[[", "", "pkg")
 
-
   for(i in seq_along(x[['call']])) {
     ext.id <- ""
     par.type <- x[['par.type']][[i]]
