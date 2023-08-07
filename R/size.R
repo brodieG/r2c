@@ -140,7 +140,9 @@ stack_param_missing <- function(params, stack.avail, call, .CALL) {
 # * "asize": an integer-like number describing max allocation size to hold the
 #   result of the current call for any iteration.
 
-compute_size <- function(alloc, stack, depth, gmax, gmin, ftype, call, .CALL) {
+compute_size <- function(
+  alloc, stack, depth, gmax, gmin, ftype, waive.eqlen, call, .CALL
+) {
   # Compute result size
   if(ftype[[1L]] == "constant") {
     # Always constant size, e.g. 1 for `sum`
@@ -170,14 +172,14 @@ compute_size <- function(alloc, stack, depth, gmax, gmin, ftype, call, .CALL) {
       },
       eqlen={
         size <- size_eqlen(in.size, gmax, gmin)
-        if(length(size) != 1L) {
+        if(length(size) != 1L && !waive.eqlen) {
           stop(
             "Potentially unequal sizes for parameters ",
             toString(ftype[[2L]]), " in a function that requires them ",
             "to be equal sized:\n", deparseLines(clean_call(call, level=2L))
           )
         }
-        size
+        size[1L]
       },
       arglen=size_arglen(in.size),
       vecrec=size_vecrec(in.size, gmax, gmin),

@@ -249,11 +249,39 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
           NUM.TYPES[max(c(match(input.type, NUM.TYPES), min.type))]
         }
       } else VALID_FUNS[[c(name, "res.type")]]
+      # For control structures, determine if result is used so that we know
+      # whether to enforce eqlen or not.  Alternatively we could try to mark
+      # this at the `copy_branchdat` level to keep this branch result use
+      # detection in one place, but that requires marking the call tree.
+      waive.eqlen <- !branch_used(i, call.names, x[['depth']])
 
+      if(name %in% BRANCH.EXEC.SYM) {
+        # Peek ahead to see what the parent calls are and determine whether any
+        # of them are assignment or non-passive.
+        parent.cand <- seq_along(x[['depth']]) > i & x[['depth']] < depth
+        parent.cand.depths <- seq(depth - 1L, 1L, 1L)
+        parent.cand.ids <- seq_along(parent.cand)[parent.cand][
+          # match gets the *first* parent at each decreasing depth
+          match(parent.cand.depths, x[['depth']][parent.cand])
+        ]
+        parent.names <- call.names[parent.cand.ids]
+        # Branch res not used either if parent is a brace and not at last
+        # position, or if parent is BRANCH.EXEC.SYM or `{` and recurse.
+
+        waive.eqlen <- !any(parent.names)
+
+        if(length(parent.cand)) {
+          parent.id <- min(which(parent.cand))
+          parent.name <- get_lang_name(x[['call']][[parent.id]])
+          # Branch result used if parent call is not "{", or if it is and this
+          # is the last call.
+          !(parent.id == i + 1L && parent.name == "{" || parent.name != "{")
+        } else i == length(x[['call']])
+      }
       # Compute expression result size
       size.tmp <- compute_size(
-        alloc, stack, depth, gmax=gmax, gmin=gmin, ftype=ftype, call=call,
-        .CALL=.CALL
+        alloc, stack, depth, gmax=gmax, gmin=gmin, ftype=ftype,
+        waive.eqlen=waive.eqlen, call=call, .CALL=.CALL
       )
       size.coef <- size.tmp[['size.coef']] # iteration/group dependant size
       asize <- size.tmp[['asize']]         # required allocation size
