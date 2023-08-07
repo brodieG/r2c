@@ -345,7 +345,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
                   if(grepl("\n", call.dep)) paste0("\n:", call.dep, "\n")
                   else paste0(" `", call.dep, "` "),
                   "attempted to access internal symbol `",
-                  conditionMessage(e), "`.",
+                  conditionMessage(e), "`."
                 ),
                 call.outer
           ) ) }
@@ -498,35 +498,6 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
   alloc.fin[['i']] <- match(alloc[['i']], ids.keep)
   list(alloc=alloc.fin, call.dat=call.dat, stack=stack)
 }
-# Retrieve parent id from linearized call list
-#
-# @param depths the call depth of every sub-call
-# @param i the current call index in the linearized call list
-
-linear_parent <- function(i, depths) {
-  depth <- depths[i]
-  parent.cand <- which(seq_along(depths) > i & depths < depth)
-  if(length(parent.cand)) min(parent.cand) else 0L
-}
-# Determine if a branch return value is used
-
-branch_used <- function(i, call.names, depths) {
-  name <- call.names[i]
-  used <- TRUE
-  if(name %in% BRANCH.EXEC.SYM) {
-    i.par <- linear_parent(i, depths)
-    if(i.par) {
-      name.par <- call.names[i.par]
-      if(name.par == "{" && i.par > i + 1L) {
-        used <- FALSE
-      } else if (name.par %in% c(BRANCH.EXEC.SYM, "{")) {
-        used <- branch_used(i.par, call.names, depths)
-      } else TRUE
-    }
-  }
-  used
-}
-
 # - Data Structures ------------------------------------------------------------
 
 ## Track Required Allocations for Intermediate vectors
@@ -1043,6 +1014,37 @@ update_cdat_alloc <- function(call.dat, old, new, start, end) {
 
 
 # - Other Helper Functions -----------------------------------------------------
+
+# Retrieve parent id from linearized call list
+#
+# @param depths the call depth of every sub-call
+# @param i the current call index in the linearized call list
+
+linear_parent <- function(i, depths) {
+  depth <- depths[i]
+  parent.cand <- which(seq_along(depths) > i & depths < depth)
+  if(length(parent.cand)) min(parent.cand) else 0L
+}
+# Determine if a branch return value is used, can only ever return FALSE if a
+# branch is involved.
+
+branch_used <- function(i, call.names, depths) {
+  name <- call.names[i]
+  used <- TRUE
+  if(name %in% BRANCH.EXEC.SYM) {
+    i.par <- linear_parent(i, depths)
+    if(i.par) {
+      name.par <- call.names[i.par]
+      if(name.par == "{" && i.par > i + 1L) {
+        used <- FALSE
+      } else if (name.par %in% c(BRANCH.EXEC.SYM, "{")) {
+        used <- branch_used(i.par, call.names, depths)
+      } else TRUE
+    }
+  }
+  used
+}
+
 
 #' Find Latest Symbol Instance
 #'
