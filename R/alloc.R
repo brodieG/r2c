@@ -255,7 +255,10 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
       # whether to enforce eqlen or not.  Alternatively we could try to mark
       # this at the `copy_branchdat` level to keep this branch result use
       # detection in one place, but that requires marking the call tree.
-      waive.eqlen <- !branch_used(i, call.names, x[['depth']])
+
+      waive.eqlen <-
+        if(name %in% BRANCH.EXEC.SYM) !branch_used(i, call.names, x[['depth']])
+        else FALSE
 
       # Compute expression result size
       size.tmp <- compute_size(
@@ -1026,17 +1029,20 @@ linear_parent <- function(i, depths) {
 }
 # Determine if a branch return value is used, can only ever return FALSE if a
 # branch is involved.
+#
+# This should be used conditional on the first call being a BRANCH.EXEC.SYM.
 
 branch_used <- function(i, call.names, depths) {
+  continue.syms <- c(BRANCH.EXEC.SYM, BRANCH.MID.SYM, BRANCH.END.SYM, "{")
   name <- call.names[i]
   used <- TRUE
-  if(name %in% BRANCH.EXEC.SYM) {
+  if(name %in% continue.syms) {
     i.par <- linear_parent(i, depths)
     if(i.par) {
       name.par <- call.names[i.par]
       if(name.par == "{" && i.par > i + 1L) {
         used <- FALSE
-      } else if (name.par %in% c(BRANCH.EXEC.SYM, "{")) {
+      } else if (name.par %in% continue.syms) {
         used <- branch_used(i.par, call.names, depths)
       } else TRUE
     }
