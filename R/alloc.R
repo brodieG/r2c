@@ -824,7 +824,7 @@ reconcile_control_flow <- function(
 
   # All ids that need to be reconciled (tack return at end if needed)
   id.rc.F <- c(names.rc.F['ids',], id.ret.F)
-  id.rc.T <- c(names.rc.T['ids',],  id.ret.T)
+  id.rc.T <- c(names.rc.T['ids',], id.ret.T)
   rc.sym.names <- c(colnames(names.rc.F), if(rec.ret) "<return-value>")
 
   # Find sizes (they should be the same).  Compare pair wise.
@@ -863,9 +863,7 @@ reconcile_control_flow <- function(
   call.names <- vapply(call.dat, "[[", "", "name")
   if.lvl <- cumsum(call.names == 'if_test') -  cumsum(call.names == 'if_false')
   if.cur <- if.lvl[call.i.T]
-  if.lvl.cur <- if.lvl == if.cur
-  if.lvl.run <- cumsum(c(0L, if.lvl.cur[-1] != if.lvl.cur[-length(if.lvl.cur)]))
-  if.cur.start <- min(which(if.lvl.run == if.lvl.run[call.i.T]))
+  if.cur.start <- min(which(if.lvl == if.cur))
   if(!is.finite(if.cur.start))
     stop("Internal Error: mismatched `if_test` `if_false`.")
   if.cur.start.i <- call.dat.i[if.cur.start]
