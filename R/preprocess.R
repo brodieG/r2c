@@ -207,7 +207,8 @@ pp_internal <- function(
     # Classify Params
     args <- as.list(call[-1L])
     if(is.null(names(args))) names(args) <- character(length(args))
-    func <- get_lang_name(call)
+    linfo <- get_lang_info(call)
+    func <- linfo[['name']]
     par.ext <- VALID_FUNS[[c(func, "extern")]]
     par.ext.names <- names(par.ext)
     par.ext.types <- vapply(par.ext, "[[", "", "type")
@@ -222,8 +223,7 @@ pp_internal <- function(
     passive <- passive && func %in% c(PASSIVE.SYM, 'vcopy')
 
     # Check if we're in assignment call
-    name <- get_lang_name(call) # should this just be `func`?
-    next.assign <- name %in% ASSIGN.SYM  # not MODIFY.SYM
+    next.assign <- func %in% ASSIGN.SYM  # not MODIFY.SYM
     # Assignments only allowed at brace level or top level because we cannot
     # assure the order of evaluation so safer to just disallow.  We _could_
     # allow it but it just seems dangerous.
@@ -239,7 +239,8 @@ pp_internal <- function(
         # Do not recurse into externals; shouldn't be assign symbol
         if(next.assign) stop("Internal error: controls/flag on assignment.")
         x <- record_call_dat(
-          x, call=args[[i]], depth=depth + 1L, argn=names(args)[i],
+          x, call=args[[i]], depth=depth + 1L, linfo=blank_lang_info(),
+          argn=names(args)[i],
           par.type=par.types[i], par.validate=par.validate[i],
           code=code_blank(), assign=FALSE, indent=indent, rec=FALSE
         )
@@ -257,8 +258,8 @@ pp_internal <- function(
     }
     # Are we in a rec chain?  Needed for alloc to know which bindings are
     # from rec (see reconcile_control_flow).
-    rec <- name == "rec" || (
-      name %in% PASSIVE.BRANCH.SYM &&
+    rec <- func == "rec" || (
+      func %in% PASSIVE.BRANCH.SYM &&
       length(x[['rec']]) && x[['rec']][length(x[['rec']])]
     )
     # Generate Code
@@ -267,7 +268,7 @@ pp_internal <- function(
 
     # Record linearized call data
     record_call_dat(
-      x, call=call, depth=depth, argn=argn,
+      x, call=call, depth=depth, linfo=linfo, argn=argn,
       par.type=PAR.INT.CALL,
       par.validate=par.validate[1L],  # this is never used as its a call
       code=code,
@@ -295,7 +296,7 @@ pp_internal <- function(
       }
     }
     record_call_dat(
-      x, call=call, depth=depth, argn=argn,
+      x, call=call, depth=depth, linfo=blank_lang_info(), argn=argn,
       par.type=par.type, par.validate=par.validate,
       code=code, assign=assign, indent=indent, rec=FALSE
     )
@@ -306,6 +307,7 @@ pp_internal <- function(
 #' $call: linearized call tree with parameters preceeding calls (recall that a
 #'   call can itself be a parameter to another call nearer the root).
 #' $depth: tree depth of each call or parameter
+#' $linfo: result of calling get_lang_info on call, or NULL for terminals.
 #' $argn: parameter name argument is bound to.
 #' $code: the generated C code
 #' $sym.free: symbols that were used without first being defined.
@@ -338,6 +340,7 @@ init_call_dat <- function()
   list(
     call=list(),
     code=list(),
+    linfo=list(),
     par.validate=list(),
     sym.free=character(),
     dot.arg.i=1L,
@@ -361,7 +364,7 @@ init_call_dat <- function()
 ## See `init_call_dat` for parameter details.
 
 record_call_dat <- function(
-  x, call, depth, argn, par.type, par.validate, code, assign, indent, rec
+  x, call, depth, linfo, argn, par.type, par.validate, code, assign, indent, rec
 ) {
   vetr(par.validate=list(NULL))
   # list data
@@ -372,10 +375,11 @@ record_call_dat <- function(
   )
   x[['code']] <- c(x[['code']], list(code))
   x[['par.validate']] <- c(x[['par.validate']], par.validate)
+  x[['linfo']] <- c(x[['linfo']], list(linfo))
   if(length(unique(lengths(x[c('call', 'code', 'par.validate')]))) != 1L)
     stop("Internal Error: list component irregular size.")
 
-  # vec data, if we add any here, be sure to add them to `exp.fields` in
+  # arg data, if we add any here, be sure to add them to `exp.fields` in
   # `expand_dots`.
   x[['argn']] <- c(x[['argn']], argn)
   x[['depth']] <- c(x[['depth']], depth)

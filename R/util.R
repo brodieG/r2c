@@ -254,6 +254,7 @@ get_lang_name <- function(call) {
   if(is.language(call)) get_lang_info(call)[['name']]
   else ""
 }
+blank_lang_info <- function() list(name="", pkg="")
 
 # deparse but concatenate multi-element results with newlines
 

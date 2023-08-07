@@ -200,6 +200,9 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
   call.dat <- list()
   branch.lvl <- 0L
   external.evals <- list()
+  call.names <- vapply(x[['linfo']], "[[", "", "name")
+  call.pkgs <- vapply(x[['linfo']], "[[", "", "pkg")
+
 
   for(i in seq_along(x[['call']])) {
     ext.id <- ""
@@ -211,9 +214,8 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
     argn <- x[['argn']][[i]]
     pkg <- name <- ""
     if(par.type != PAR.EXT.ANY) {
-      tmp <- get_lang_info(call)
-      name <- tmp[['name']]
-      pkg <- tmp[['pkg']]
+      name <- call.names[i]
+      pkg <- pkg.names[i]
     }
     id <- if(par.type != PAR.INT.CALL) name_to_id(alloc, name) else 0L
     vec.dat <- init_vec_dat()
@@ -517,6 +519,34 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
   )
   alloc.fin[['i']] <- match(alloc[['i']], ids.keep)
   list(alloc=alloc.fin, call.dat=call.dat, stack=stack)
+}
+# Retrieve parent id from linearized call list
+#
+# @param depths the call depth of every sub-call
+# @param i the current call index in the linearized call list
+
+linear_parent <- function(i, depths) {
+  depth <- depths[i]
+  parent.cand <- which(seq_along(depths) > i & depths < depth)
+  if(length(parent.cand)) min(parent.cand) else 0L
+}
+# Determine if a branch return value is used
+
+branch_used <- function(i, call.names, depths) {
+  name <- call.names[i]
+  used <- TRUE
+  if(name %in% BRANCH.EXEC.SYM) {
+    i.par <- linear_parent(i, depths)
+    if(i.par) {
+      name.par <- call.names[i.par]
+      if(name.par == "{" && i.par > i + 1L) {
+        used <- FALSE
+      } else if (name.par %in% c(BRANCH.EXEC.SYM, "{")) {
+        used <- branch_used(i.par, call.names, depths)
+      } else TRUE
+    }
+  }
+  used
 }
 
 # - Data Structures ------------------------------------------------------------
