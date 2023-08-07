@@ -106,7 +106,8 @@ PASSIVE.BRANCH.SYM <- setdiff(PASSIVE.SYM, BRANCH.EXEC.SYM)
 # For `record_call_dat` and `alloc_dat`, fields that are supposed to be scalar
 # for each allocation/call
 CALL.DAT.VEC <- c(
-  'argn', 'depth', 'par.type', 'assign', 'indent', 'rec', 'par.validate'
+  'argn', 'depth', 'par.type', 'assign', 'indent', 'rec', 'par.validate',
+  'linfo'
 )
 ALLOC.DAT.VEC <- c(
   'ids0', 'alloc', 'size.coefs', 'depth', 'type', 'typeof'

@@ -374,13 +374,13 @@ record_call_dat <- function(
     list(if(identical(call, quote(.R2C.DOTS))) QDOTS else call)
   )
   x[['code']] <- c(x[['code']], list(code))
-  x[['par.validate']] <- c(x[['par.validate']], par.validate)
-  x[['linfo']] <- c(x[['linfo']], list(linfo))
-  if(length(unique(lengths(x[c('call', 'code', 'par.validate')]))) != 1L)
+  if(length(unique(lengths(x[c('call', 'code')]))) != 1L)
     stop("Internal Error: list component irregular size.")
 
   # arg data, if we add any here, be sure to add them to `exp.fields` in
   # `expand_dots`.
+  x[['par.validate']] <- c(x[['par.validate']], par.validate)
+  x[['linfo']] <- c(x[['linfo']], list(linfo))
   x[['argn']] <- c(x[['argn']], argn)
   x[['depth']] <- c(x[['depth']], depth)
   x[['par.type']] <- c(x[['par.type']], par.type)
