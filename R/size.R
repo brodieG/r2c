@@ -208,9 +208,9 @@ iter_result_sizes <- function(x, base) {
     stop("Internal Error: size.coef expected to contain at least one entry.")
   else if(length(x) == 1L || all(x[-1L] == 0)) {
     # constant size
-    rep(x[1L], length(base))
+    rep(as.numeric(x[1L]), length(base))
   } else {
-    Reduce("+", lapply(seq_along(x), function(xi) x[xi] * base ^ (xi - 1L)))
+    Reduce("+", lapply(seq_along(x), function(xi) x[xi] * base ^ (xi - 1)))
   }
 }
 
