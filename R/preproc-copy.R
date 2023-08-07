@@ -949,29 +949,19 @@ inject_copy_in_brace_at <- function(x, ptr) {
     # Inject call back
     if(length(par.idx)) x[[par.idx]] <- new.call else x <- new.call
 
-    # Remove possibly redundant nested braces.
-    brace.collapse <- FALSE
+    # Remove possibly redundant nested braces (not sure if this is necessary
+    # anymore now that we do so in `preprocess`.
     if(length(par.idx)) {
       gpar.idx <- par.idx[-length(par.idx)]
       gpar.call <- if(!length(gpar.idx)) x else x[[gpar.idx]]
 
       if(get_lang_name(gpar.call) == "{") {
-        brace.collapse <- TRUE
         merge.point <- par.idx[length(par.idx)]
         if(merge.point < 2L) {
           # if gpar is a "{", then parent must be at least 2nd element
           stop("Internal Error: unexpected index structure.")
         }
-        gpar.list <- as.list(gpar.call)
-        gpar.list <- c(
-          gpar.list[1L:(merge.point - 1L)],
-          as.list(gpar.list[[merge.point]])[-1L],
-          if(merge.point < length(gpar.list))
-            gpar.list[(merge.point + 1L):length(gpar.list)]
-        )
-        # in order to look match-called we need names on the call
-        gpar.call <- as.call(gpar.list)
-        names(gpar.call) <- c("", rep("...", length(gpar.call) - 1L))
+        gpar.call <- merge_braces(gpar.call, merge.point)
         if(!length(gpar.idx)) x <- gpar.call else x[[gpar.idx]] <- gpar.call
       }
     }
@@ -1047,4 +1037,27 @@ inject_rec_and_copy <- function(x, branch.dat) {
     }
   }
   x
+}
+# Given the location of a child brace call, splice it into the parent call.
+#
+# Duplicate with collapse_braces in optim.R.  Keeping it for now until we
+# conclude we can remove it from inject_copy_in_brace_at.
+#
+# @param x call assumed to be a brace call.
+# @param id index in x of a sub-call assumed to be a brace call.
+
+merge_braces <- function(x, id) {
+  x.list <- as.list(x)
+  x.child <- as.list(x.list[[id]])[-1L]
+  # Empty braces change semantics of call (`{5;{}}` is not equal to `{5}`),
+  # sub-in numeric(0) as a proxy for NULL like we do with missing branches.
+  x.list <- c(
+    x.list[1L:(id - 1L)],
+    if(!length(x.child)) list(numeric(0)) else x.child,
+    if(id < length(x.list)) x.list[(id + 1L):length(x.list)]
+  )
+  # in order to look match-called we need names on the call
+  x.call <- as.call(x.list)
+  names(x.call) <- c("", rep("...", length(x.call) - 1L))
+  x.call
 }

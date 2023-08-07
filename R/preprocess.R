@@ -70,6 +70,9 @@ preprocess <- function(call, optimize=FALSE) {
   call <- tmp[['call']]
   sym.free <- tmp[['sym.free']]
 
+  # Collapse any added braces
+  call <- collapse_braces(call)
+
   # WARNING: Read warning at top of section before making changes.
 
   # - Code Gen -----------------------------------------------------------------
