@@ -55,12 +55,12 @@ code_gen_subset <- function(fun, pars, par.types) {
 f_subset_assign <- '
 static void %s(%s) {
   double * res = data[di[0]];  // assigns to first input
-  double * dat = data[di[2]];
   double * index = data[di[1]];
+  double * dat = data[di[2]];
 
+  R_xlen_t lenr = lens[di[0]];
   R_xlen_t leni = lens[di[1]];
   R_xlen_t lenv = lens[di[2]];
-  R_xlen_t lenr = lens[di[0]];
   R_xlen_t v = 0;
 
   for(R_xlen_t i = 0; i < leni; ++i, ++v) {
