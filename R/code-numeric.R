@@ -27,7 +27,7 @@ static void %s(%s) {
     // compiler can replace with memset in common case where zero is zeroes.
     // So something to consider here.
     LOOP_W_INTERRUPT1(len, {res[i] = 0;});
-    lens[1] = len;
+    lens[di[1]] = len;
   } else {
     Rf_error("Invalid vector size (got %%f)", data[di[0]][0]);
   }

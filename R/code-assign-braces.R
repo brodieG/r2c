@@ -29,7 +29,7 @@ static void %s(%s) {
   // this should be a debug mode check only
   if(res == input) Rf_error("Internal Error: copying in-place.");
   memcpy(res, input, sizeof(*res) * len0);
-  lens[1] = len0;
+  lens[di[1]] = len0;
 }'
 
 code_gen_copy <- function(fun, pars, par.types) {

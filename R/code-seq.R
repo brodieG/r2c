@@ -21,7 +21,7 @@ static void %s(%s) {
 
   for(R_xlen_t i = 0; i < len0; ++i) res[i] = ++counter;
 
-  lens[1] = len0;
+  lens[di[1]] = len0;
 }'
 
 code_gen_seq_along <- function(fun, pars, par.types) {
