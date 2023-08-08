@@ -36,6 +36,7 @@ R_CallMethodDef callMethods[] = {
 
   {"assumptions", (DL_FUNC) &R2C_assumptions, 0},
   {"constants", (DL_FUNC) &R2C_constants, 0},
+  {"convolve", (DL_FUNC) &R2C_convolve, 2},
 
   {NULL, NULL, 0}
 };

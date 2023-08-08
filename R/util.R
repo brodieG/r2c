@@ -265,3 +265,8 @@ deparseLines <- function(x, ...) paste0(deparse(x, ...), collapse="\n")
 pp_clean <- function(x, optimize=TRUE) {
   clean_call(preprocess(x, optimize=TRUE)[['call.processed']])
 }
+
+convolve <- function(a, b) {
+  stopifnot(is.numeric(a), is.numeric(b))
+  .Call(R2C_convolve, a, b)
+}
