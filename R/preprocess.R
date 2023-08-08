@@ -700,16 +700,24 @@ expand_dots <- function(x, arg.names) {
   is.dots <- vapply(x[['call']], identical, TRUE, QDOTS)
   is.dots.m <- grepl(DOT.ARG.RX, arg.names)
   if(any(is.dots)) {
-    dots.m.names <- lapply(arg.names[is.dots.m], as.name)
+    dots.m.chr <- arg.names[is.dots.m]
+    dots.m.names <- lapply(dots.m.chr, as.name)
     # Could have multiple sets of dots
     for(i in which(is.dots)) {
       x[['call']][[i]] <- NULL
       x[['call']] <- append(x[['call']], dots.m.names, after=i - 1L)
       for(j in exp.fields) {
         exp.val <- x[[j]][i]
+        exp.vals <- if(j == "linfo") {
+          if(!identical(exp.val, list(list(name=".R2C.DOTS", pkg=""))))
+            stop("Internal Error: bad dots lang info.")
+          lapply(dots.m.chr, function(x) list(name=x, pkg=""))
+        } else {
+          rep(exp.val, sum(is.dots.m))
+        }
         x[[j]] <- c(
           x[[j]][seq_len(i - 1L)],
-          rep(exp.val, sum(is.dots.m)),
+          exp.vals,
           x[[j]][seq_len(length(x[[j]]) - i) + i]
   ) } } }
   x

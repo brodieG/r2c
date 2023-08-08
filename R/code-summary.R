@@ -37,7 +37,7 @@ static void %%s(%%s) {
 }'
 loop.base <- '
 long double tmp = 0;
-R_xlen_t i;
+R_xlen_t i = 0;
 if(!narm) LOOP_W_INTERRUPT1(len_n, tmp += dat[i];);
 else LOOP_W_INTERRUPT1(len_n, {if(!ISNAN(dat[i])) tmp += dat[i];%s});
 '
