@@ -594,7 +594,7 @@ transform_control <- function(x, i=0L) {
         {
           r2c::for_init(
             seq=.(call("<-", seq.name, x[[3L]])),
-            seq.i=.(call("<-", seq.i.name, 0))
+            seq.i=.(call("<-", seq.i.name, quote(r2c::vcopy(0))))
           )
           r2c::r2c_for(
             iter=r2c::for_iter(
