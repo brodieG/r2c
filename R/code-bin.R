@@ -73,6 +73,7 @@ static void %1$s(%2$s) {
   // so we cannot play tricks with switching parameter order
   R_xlen_t i, j;
   if(len1 == len2) {
+    // special casing the len1 == len2 == 1 case doesnt seem to improve timings
     LOOP_W_INTERRUPT1(len1, {res[i] = %3$s(e1[i] %4$s e2[i]);});
     lens[dires] = len1;
   } else if (len2 == 1) {
