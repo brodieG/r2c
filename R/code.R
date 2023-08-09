@@ -151,8 +151,8 @@ valid_length <- function(length) vet(NUM.1.POS, length)
 #'   here are considered "internal" (see `?"r2c-compile"`).
 #' @param type list(2:3) containing the length-type of function with at position
 #'   one a scalar character in "constant", "arglen", "vecrec", "eqlen",
-#'   "concat", or "extern", and additional meta data at position two or three
-#'   that can be depending on the value in position one (see size.R for
+#'   "concat", "product", or "extern", and additional meta data at position two
+#'   or three that can be depending on the value in position one (see size.R for
 #'   details):
 #'
 #'   * constant: a positive non-NA integer indicating the constant result size
@@ -161,9 +161,9 @@ valid_length <- function(length) vet(NUM.1.POS, length)
 #'     the result size (e.g. `probs` for [`quantile`]), also allows specifying a
 #'     function at position 3 to e.g. pick which of multiple arguments matching
 #'     `...` to use for the length.
-#'   * vecrec, eqlen, concat, external: character(n) (or integer(n)) the names
-#'     (or indices in the matched call) of the arguments to use to compute
-#'     result size.
+#'   * vecrec, eqlen, concat, product, external: character(n) (or integer(n))
+#'     the names (or indices in the matched call) of the arguments to use to
+#'     compute result size.
 #'
 #' @param code.gen a function that generates the C code corresponding to an R
 #'   function during the preprocessing steps.  Accepts as parameters:
@@ -254,7 +254,9 @@ cgen <- function(
     # positional matching or match.call?
     type[[1L]] %in% c("constant") ||
     (
-      type[[1L]] %in% c('arglen', 'vecrec', 'eqlen', 'extern') && (
+      type[[1L]] %in%
+        c('arglen', 'vecrec', 'eqlen', 'extern', 'prod', 'concat') &&
+      (
         (is.null(defn) && is.integer(type[[2L]])) ||
         (!is.null(defn) && is.character(type[[2L]]))
       )
@@ -480,6 +482,16 @@ VALID_FUNS <- c(
       type=list("extern", "length", numeric_size),
       extern=list(length=ext_par("num", valid_length)),
       code.gen=code_gen_numeric, res.type="double"
+    ),
+    cgen(
+      "numeric_along", fun=numeric_along,
+      type=list("arglen", "along.with"),
+      code.gen=code_gen_numeric_along, res.type="double"
+    ),
+    cgen(
+      "numeric_alongn", fun=numeric_alongn,
+      type=list("prod", "..."),
+      code.gen=code_gen_numeric_alongn, res.type="double"
     )
   ),
   # - r2c funs -----------------------------------------------------------------

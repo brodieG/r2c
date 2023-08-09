@@ -73,14 +73,12 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #'
 #' The lifecycle of an `r2c` function has two stages.
 #'
-#' 1. Compilation with `r2cq` or similar.
-#' 2. Execution, either direct or via [runners].
-#'    a. One time memory allocation for current data / groups.
-#'    b. Iterative execution over groups.
+#' 1. Compilation, with `r2cq` or similar.
+#' 2. Execution, either direct or via [runners], which comprises:
+#'    a. A one time memory allocation sized to largest iteration.
+#'    b. Iterative execution over groups/windows.
 #'
-#' The second stage involves a single allocation step, followed by as many
-#' iterations as there are groups (or windows).  The same set of allocations is
-#' re-used for every iteration.
+#' The second stage reuses the same set of allocations for every iteration.
 #'
 #' Each of the `r2c*` functions addresses different types of input:
 #'
@@ -196,6 +194,10 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' mimic the corresponding R function semantics to the `identical` level, but
 #' there may be corner cases that differ, particularly those involving missing
 #' or infinite values.
+#'
+#' Like R, `r2c` is optimized for vectorized operations.  While you can write
+#' explicit loops with `for`, they will be much slower than a pure C version.
+#' Vectorized operations like `a + b` will be comparable to the pure C version.
 #'
 #' @section Details:
 #'

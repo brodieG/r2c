@@ -91,7 +91,7 @@ stack_param_missing <- function(params, stack.avail, call, .CALL) {
 # * vecrec: e.g. `a + b` produces a result the size of the larger input, except
 #   if either is zero length the result is zero length.
 # * concat: e.g. in `c(a, b)` the result size is the sum of the input sizes.
-# * product: e.g. `r2c::numeric_along(x, y)`. here the result size is
+# * prod: e.g. `r2c::numeric_along(x, y)`. here the result size is
 #   `length(x) * length(y)`.  `numeric_along` is substituted for things like
 #   `numeric(x)` or `numeric(length(x) * length(y))`.
 # * external: e.g. `numeric(x)` where `x` is an external value (i.e. iteration
@@ -183,7 +183,7 @@ compute_size <- function(
       },
       arglen=size_arglen(in.size),
       vecrec=size_vecrec(in.size, gmax, gmin),
-      product=size_prod(in.size),
+      prod=size_prod(in.size),
       concat=size_concat(in.size),
       stop("Internal Error: unknown function size type.")
     )
