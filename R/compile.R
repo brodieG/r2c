@@ -75,10 +75,9 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #'
 #' 1. Compilation, with `r2cq` or similar.
 #' 2. Execution, either direct or via [runners], which comprises:
-#'    a. A one time memory allocation sized to largest iteration.
-#'    b. Iterative execution over groups/windows.
-#'
-#' The second stage reuses the same set of allocations for every iteration.
+#'     * A one time memory allocation sized to largest iteration (this memory
+#'       re-used for every iteration).
+#'     * Iterative execution over groups/windows.
 #'
 #' Each of the `r2c*` functions addresses different types of input:
 #'
@@ -152,14 +151,19 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' * Control Structures: `if/else`, `for`.
 #' * Sequences: `seq_along`.
 #' * Subsetting: `[`, `x[s] <- expr`
+#' * Miscellaneous: `numeric`.
 #'
-#' In general these will behave as in R, with the following exceptions:
+#' In general these will behave as in R.  There are several exceptions, but
+#' except for those involving control structures you will not notice them in
+#' typical usage:
 #'
 #' * `ifelse` and `if` / `else` always return in a common type that can support
 #'   both `yes` and `no` values.
 #' * `if`/`else` returns `numeric(0)` instead of NULL if an empty branch is
 #'   taken.
 #' * `for` return value may not be used unless it is `numeric(0)`.
+#'   Additionally, `for` is relatively slow even in `r2c` so try to use
+#'   vectorized operations instead.
 #' * `&&` and `||` always evaluate all parameters.
 #' * `{` must contain at least one parameter (no empty braces).
 #' * `seq_along` always returns a double vector, never integer.
@@ -169,6 +173,8 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #'       value of the sub-assignment expression may not be used).
 #'     * `s` may only contain values in `seq_along(x)`.
 #'     * `"[<-"(x, s, y)` is considered distinct and disallowed.
+#' * In `numeric(x)`, `x` is an external parameter, i.e. it cannot be iteration
+#'   varying (see "Expression Types", also `?numeric_along`).
 #' * Assignments may only be nested in braces (`{`) or in control structure
 #'   branches.  This is a recursive requirement, so `mean(if(a) x <- y)` is
 #'   disallowed even though `if(a) x <- y` is allowed.

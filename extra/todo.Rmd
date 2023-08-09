@@ -4,8 +4,14 @@
 
 * What about the case where you want to reference another argument in a vetting
   expression?  That gets interpreted as a template because the other parameter
-  name is not `.`.
+  name is not `.`:
+  (function(a, b) vetr::vetr(is.logical(.) || is.logical(b)))(1, 2)
+  Error in (function(a, b) vetr::vetr(is.logical(.) || is.logical(b)))(a = 1,  : 
+    For argument `a` at least one of these should pass:
+    - `1` should be type "logical" (is "double")
+    - `is.logical(1)` is not TRUE (FALSE)
 * Do we need to document that the `&&` and `||` tokens are lazy?
+
 
 ## Unitizer
 
@@ -19,6 +25,8 @@
 * Maybe call numbers should be displayed on right, or status on left by number.
 
 ## Things to test
+
+* Adjust window iteration size calculation.
 
 * Big `group_exec` involving branches.
 
@@ -38,8 +46,25 @@
 
 ## Current
 
-* Go through all the cgen functions and make sure they are okay with the changes
-  in flag, etc.
+* Make sure `reconcile_control_flow` works correctly for for loops.
+
+* Seeing weird reconcile / vcopy of iteration variable with nested loops:
+
+    // r2c::for_iter(var = j, seq = .R2C_for_seq_2, seq.i = r2c::rec(x = r2c::vcopy(x = .R2C_for_seqi_2)))
+
+* Should we just used nested environments for name bindings, where each name
+  just binds the alloc id?  Problem with this is it's not easy to query the data
+  (great for looking up names though).
+
+* Think through implication of saving parameter validation functions in r2c_fun
+  object in terms of environment capture, etc.
+
+* Error message generation for different size in branches when sizes are
+  complex in some way that makes sense to the user that has no idea about the
+  univariate polynomial on g business.
+
+* Are we robust to zero result sizes?  Particularly when not all results are
+  size zero.
 
 * Check what the `ARGS.NM.VAR` variable is, is it the total number of arguments,
   or the total number of `...` arguments.  Important to get this right for the
@@ -129,7 +154,7 @@
 * Identify external only expressions and eval them just once?
 * What do we do about repeated external symbols getting added to the allocation
   table?  See notes "External Symbols".
-  Complication here is what 
+  Complication here is what
 * Reconcile binding of group names and assignment names?  A bit awkward now in
   `append_dat`.  What about `MoreArgs` names (these are treated as external
   symbols, stored in an env ahead of the parent env)?
@@ -141,17 +166,20 @@
 
 * Allow empty formals / no free symbols (e.g. so `1:3` will work).
 
-* Error for size mismatch in `reconcile_cf` need to handle NA size. 
+* Error for size mismatch in `reconcile_cf` need to handle NA size.
 
 * Fix error for invalid literal (not a symbol):
 
-Error in r2cq(x + "a")(5) : 
+Error in r2cq(x + "a")(5) :
   External argument `a` for `x + "a"` is not unclassed numeric (type: character).
 
 * Need better error messaging that provides overall context for the error (i.e.
   from top level r2c call / runner, as well as local context for the specific
   problematic part of code).  Need to review all `stop` and `Rf_error` in the
   code.
+* Particularly for invalid parameter errors, we want to present the call that
+  contains the parameter usage in question (i.e. make `call.outer` the next call
+  at right depth, maybe we can record parent.id in the preprocessed data).
 
 * Move the disallowed assignment error to somewhere that does not use the
   renamed expression as that is then incomprehensible.
@@ -196,7 +224,8 @@ Error in r2cq(x + "a")(5) :
 
 * Empty braces can't just be merged into parent braces, so we need to check the
   empty condition before we simplify them away (`{5;{}}` is not equal to `{5}`).
-  Empty braces should be disallowed anyway.
+  Empty braces should be disallowed anyway (iirc they are now).  But could deal
+  with these by returning `numeric(0)`.
 
 * Ideas to improve preprocessing:
   * Try to simplify `copy_symdat` by removing unused bindings.  Then being used

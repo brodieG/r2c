@@ -12,6 +12,17 @@
 
 ### v0.4.0
 
+*  Does preproc-copy actually fully detect whether a branch return value is
+  used?  Yes, it does seem so.
+
+* Go through all the cgen functions and make sure they are okay with the changes
+  in flag, etc.
+
+* Make sure that parameter type matching doesn't get confused between internal
+  and external when `...` matches to both e.g. `r2cq(sum(x, y, na.rm=TRUE))`.
+  Actually, should never be the case that `...` is an external parameter so it
+  shouldn't matter.
+
 * Do `for` and `while` need to be decomposed?  Yes.
 
 * Remove old reference to `i` from `names_update`.

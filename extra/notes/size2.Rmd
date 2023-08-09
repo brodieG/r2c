@@ -32,6 +32,38 @@ their comparison.
   (x * y)
 * `control`: specified via a control style argument `seq_len(ctrl)`
 
+## Branch Return Value
+
+We need to know whether a branch return value is used or not.  How do we know
+this?  In the preprocess step we can recognize this in `copy_branchdat`, but
+that has no way to communicate back to alloc other than by adding a call layer,
+which we would prefer to avoid.
+
+In alloc, we can check whether the branch call is not the last value of a `{`,
+but in order for this to be fully correct it has to be done recursively?
+
+So we can peek ahead at the calls to find the call that is a `depth - 1`.  If
+the next call is `{` and it is not immediately adjacent, then the expression is
+not used directly.  This is an incomplete check, but maybe with dead code
+removal it is sufficient.  I think at worst it fails to recognize something
+like:
+
+   {
+     {
+       a  # <- unused
+     }
+     b
+   }
+
+But don't we collapse nested things like this anyway?  Even if we don't it will
+give a false positive error message.
+
+## pmax
+
+For result group size computation, we want a fast way to both compute the group
+size, but also take the `vecrec` style `pmax`, where it is the max of all the
+values, but zero if there is a zero.
+
 ## Implementation
 
 We want to generalize the process across all size types.  We need a mechanism to
