@@ -560,7 +560,7 @@ transform_control <- function(x, i=0L) {
     if(call.sym == "if") {
       if(!length(x) %in% 3:4)
         stop("Invalid if/else call:\n", paste0(deparse(x), collapse="\n"))
-      if(length(x) == 3L) x[[4L]] <- quote(numeric(0L))
+      if(length(x) == 3L) x[[4L]] <- quote(numeric(length=0))
       # **DANGER**, read docs if you change this
       x <- bquote(
         {
@@ -593,14 +593,14 @@ transform_control <- function(x, i=0L) {
           r2c::for_init(
             seq=.(call("<-", seq.name, x[[3L]])),
             # Using just 0 here causes reference issue; it needs a fresh alloc.
-            seq.i=.(call("<-", seq.i.name, quote(numeric(0))))
+            seq.i=.(call("<-", seq.i.name, quote(numeric(length=0))))
           )
           r2c::r2c_for(
             iter=r2c::for_iter(
               var=.(x[[2L]]), seq=.(seq.name), seq.i=.(seq.i.name)
             ),
             for.n=r2c::for_n(expr=.(x[[4L]])),
-            for.0=r2c::for_0(expr=numeric(0))
+            for.0=r2c::for_0(expr=numeric(length=0))
           )
         }
       )
@@ -657,8 +657,9 @@ recompose_control <- function(x) {
           x[[i + 1L]][[c(2L, 2L)]],     # true
           x[[i + 1L]][[c(3L, 2L)]]      # false
         )
-        # Undo empty else (this might undo a legit numeric(0L))
-        if(identical(if.call[[3L]], numeric(0L))) if.call[[3L]] <- NULL
+        # Undo empty else (this might undo a legit numeric(0))
+        if(identical(if.call[[3L]], quote(numeric(length=0))))
+          if.call[[3L]] <- NULL
 
         # Add back the `rec` around the entire if
         if(is.rec) if.call <- en_rec(if.call, clean=TRUE)
