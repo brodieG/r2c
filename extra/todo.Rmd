@@ -64,7 +64,8 @@
   univariate polynomial on g business.
 
 * Are we robust to zero result sizes?  Particularly when not all results are
-  size zero.
+  size zero.  Is it possible to have varying number of zero length results
+  (probably not)?
 
 * Check what the `ARGS.NM.VAR` variable is, is it the total number of arguments,
   or the total number of `...` arguments.  Important to get this right for the
@@ -74,7 +75,7 @@
   give it at least one arg to be consistent.
 
 * Add the capability to convert a non-numeric external into a numeric external
-  with the validation function.
+  with the validation function, e.g. character vector with levels, etc.
 
 * In alloc.R what's the deal with call.outer vs .CALL?
 
@@ -91,39 +92,9 @@
   that even possible?  R semi guarantees 32 bit integers.  What if double was 32
   bits?  Probably do need a similar assumption check.
 
-* Simplify flags to make them part of the data array?  This would remove one
-  parameter from parameter list since we're already squeezed there.  Something
-  to think about, could be nice.  Then numeric external and flag external can
-  have the same logic.  Implementation can still use "bitwise" comparison on the
-  double values and now can go up to 2^53 (but is this slow?).  Looks like this
-  would require coercion.
-
-* What's up with the `args.ctrl`, `args.flags`, etc in the code gen functions
-  where we don't seem to use those anywhere?
-
 * Where do we check the validity of size vectors?
 
 * Clearly document `ftype[[3L]]` function format.
-
-* For control / flag parameters, do we evaluate sub-components?
-
-* Rename control parameter to external parameter so that e.g. `numeric(x)` makes
-  sense.
-
-* Do we disallow using group vectors as control variables?  Probably makes sense
-  to do this.  Very confusing / weird otherwise, straight up error message
-  better.  I'm not sure there is a use case that makes sense.  Also need to
-  resolve the complexity of an external variable getting masked by a binding.
-  This should just be disallowed.  Need to consider the case where control
-  parameters include expressions.  Do we just defer evaluation on those?  How
-  complex an expression do we allow?  Do we allow binding symbols in them?
-
-* Think through implications of `x <- numeric(n)`, any problems with
-  re-allocation vs just rewriting with zeros?  Should be okay, but we do need to
-  rewrite with zeros every iteration.
-
-* Resolve confusing naming around control parameters and control flow
-  structures.
 
 * Make sure we can't overflow `R_xlen_t` with `seq.i` in `for`.
 
@@ -154,7 +125,6 @@
 * Identify external only expressions and eval them just once?
 * What do we do about repeated external symbols getting added to the allocation
   table?  See notes "External Symbols".
-  Complication here is what
 * Reconcile binding of group names and assignment names?  A bit awkward now in
   `append_dat`.  What about `MoreArgs` names (these are treated as external
   symbols, stored in an env ahead of the parent env)?
