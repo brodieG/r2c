@@ -153,17 +153,16 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' * Subsetting: `[`, `x[s] <- expr`
 #' * Miscellaneous: `numeric`.
 #'
-#' In general these will behave as in R.  There are several exceptions, but
-#' except for those involving control structures you will not notice them in
-#' typical usage:
+#' Calls must be in the form `fun(...)` (`a fun b` for operators)  where `fun`
+#' is the name of the function, optionally in `pkg::fun` format.  Functions must
+#' be bound to their original symbols for them to be recognized.
 #'
-#' * `ifelse` and `if` / `else` always return in a common type that can support
+#' In general the r2c implementations will behave as in R.  There are several
+#' exceptions, but outside of those involving control structures you will not
+#' notice them in typical usage:
+#'
+#' * `ifelse` always return in a common type that can support
 #'   both `yes` and `no` values.
-#' * `if`/`else` returns `numeric(0)` instead of NULL if an empty branch is
-#'   taken.
-#' * `for` return value may not be used unless it is `numeric(0)`.
-#'   Additionally, `for` is relatively slow even in `r2c` so try to use
-#'   vectorized operations instead.
 #' * `&&` and `||` always evaluate all parameters.
 #' * `{` must contain at least one parameter (no empty braces).
 #' * `seq_along` always returns a double vector, never integer.
@@ -178,23 +177,23 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' * Assignments may only be nested in braces (`{`) or in control structure
 #'   branches.  This is a recursive requirement, so `mean(if(a) x <- y)` is
 #'   disallowed even though `if(a) x <- y` is allowed.
-#' * Additional constraints detailed next.
-#'
-#' Calls must be in the form `fun(...)` (`a fun b` for operators)  where `fun`
-#' is the name of the function.  Functions must be bound to their original
-#' symbols for them to be recognized.  For `r2c` provided functions like
-#' [`mean1`] you may use the `::` form to compile expressions that contain them
-#' without attaching the `{r2c}` package.
 #'
 #' Control structures include `if` / `else` statements and loops.  All of these
 #' have branches; the loop branches are loop not taken (0 iterations) vs loop
-#' taken (1+ iterations).  Control structures add additional constraints:
+#' taken (1+ iterations).  Control structures add additional constraints and
+#' semantic differences to R:
 #'
 #' * Control structure return values must be guaranteed to be the same
-#'   size irrespective of the branch taken if they are subsequently used.
+#'   size irrespective of the branch taken, if they are subsequently used.
+#'   Additionally return values are coerced to a common type.
 #' * Assignments made within control structure branches must be guaranteed to be
-#'   the same size irrespective of branch taken if the corresponding bindings
+#'   the same size irrespective of branch taken, if the corresponding bindings
 #'   are subsequently used.
+#' * `if`/`else` and `for` both return `numeric(0)` instead of NULL if an empty
+#'   branch is taken (i.e. a missing `else` branch, or with `for` a zero
+#'   iteration loop).  Combined with the need for return values to be the same
+#'   irrespective of branch taken, this makes the return value of `for` rather
+#'   useless.
 #'
 #' Outside of the aforementioned constraints and exceptions, `r2c` attempts to
 #' mimic the corresponding R function semantics to the `identical` level, but
