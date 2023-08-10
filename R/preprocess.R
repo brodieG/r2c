@@ -560,9 +560,7 @@ transform_control <- function(x, i=0L) {
     if(call.sym == "if") {
       if(!length(x) %in% 3:4)
         stop("Invalid if/else call:\n", paste0(deparse(x), collapse="\n"))
-      # Can't use `quote(numeric(0L))` because we don't (and can't? Err we
-      # could since it's constant alloc) implement `numeric`.
-      if(length(x) == 3L) x[[4L]] <- numeric(0L)
+      if(length(x) == 3L) x[[4L]] <- quote(numeric(0L))
       # **DANGER**, read docs if you change this
       x <- bquote(
         {
@@ -594,14 +592,15 @@ transform_control <- function(x, i=0L) {
         {
           r2c::for_init(
             seq=.(call("<-", seq.name, x[[3L]])),
-            seq.i=.(call("<-", seq.i.name, quote(r2c::vcopy(0))))
+            # Using just 0 here causes reference issue; it needs a fresh alloc.
+            seq.i=.(call("<-", seq.i.name, quote(numeric(0))))
           )
           r2c::r2c_for(
             iter=r2c::for_iter(
               var=.(x[[2L]]), seq=.(seq.name), seq.i=.(seq.i.name)
             ),
             for.n=r2c::for_n(expr=.(x[[4L]])),
-            for.0=r2c::for_0(expr=.(numeric(0)))
+            for.0=r2c::for_0(expr=numeric(0))
           )
         }
       )
