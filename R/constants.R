@@ -120,6 +120,7 @@ PAR.EXT <- c(num=PAR.EXT.NUM, any=PAR.EXT.ANY)
 PAR.INT.LEAF <- "int.leaf"
 PAR.INT.CALL <- "int.call"
 PAR.INT <- c(PAR.INT.LEAF, PAR.INT.CALL)
+PAR.TYPES <- c(PAR.INT, PAR.EXT)
 
 # Packages allowable in `::`
 VALID.PKG <- c('base', 'r2c')

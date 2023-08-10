@@ -145,7 +145,7 @@ code_gen_summary <- function(fun, pars, par.types) {
     pars=list(),
     par.types=
       character() && length(.) == length(pars) &&
-      all(. %in% c(PAR.INT, PAR.EXT))
+      all(. %in% PAR.TYPES)
   )
   pars.int <- pars[par.types %in% PAR.INT]
 
