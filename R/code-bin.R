@@ -73,6 +73,7 @@ static void %1$s(%2$s) {
   // so we cannot play tricks with switching parameter order
   R_xlen_t i, j;
   if(len1 == len2) {
+    // special casing the len1 == len2 == 1 case doesnt seem to improve timings
     LOOP_W_INTERRUPT1(len1, {res[i] = %3$s(e1[i] %4$s e2[i]);});
     lens[dires] = len1;
   } else if (len2 == 1) {
@@ -91,12 +92,11 @@ static void %1$s(%2$s) {
     lens[dires] = len2;
   }
 }')
-code_gen_bin <- function(fun, args.reg, args.ctrl, args.flags) {
+code_gen_bin <- function(fun, pars, par.types) {
   vetr(
     CHR.1 && . %in% setdiff(names(OP.OP), names(OP.DEFN)),
-    args.reg=list(NULL, NULL),
-    args.ctrl=list() && length(.) == 0L,
-    args.flags=list() && length(.) == 0L
+    pars=list(NULL, NULL),
+    par.types=character() && all(. %in% PAR.INT)
   )
   name <- FUN.NAMES[fun]
   op <- OP.OP[fun]      # needed for modulo
@@ -107,12 +107,11 @@ code_gen_bin <- function(fun, args.reg, args.ctrl, args.flags) {
   code_res(defn=defn, name=name, headers=character())
 }
 # For the ones that need the defined macro
-code_gen_bin2 <- function(fun, args.reg, args.ctrl, args.flags) {
+code_gen_bin2 <- function(fun, pars, par.types) {
   vetr(
     CHR.1 && . %in% names(OP.DEFN),
-    args.reg=list(),
-    args.ctrl=list() && length(.) == 0L,
-    args.flags=list() && length(.) == 0L
+    pars=list(),
+    par.types=character() && all(. %in% PAR.INT)
   )
   name <- FUN.NAMES[fun]
   op <- OP.OP[fun]      # needed for modulo

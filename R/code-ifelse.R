@@ -29,12 +29,11 @@ f_ifother <- '
 // if/else does not generate a definition
 // static void %s(%s) { /* NOOP */ }'
 
-code_gen_if_test <- function(fun, args.reg, args.ctrl, args.flags) {
+code_gen_if_test <- function(fun, pars, par.types) {
   vetr(
     identical(., "if_test"),
-    args.reg=list(NULL),
-    args.ctrl=list() && length(.) == 0L,
-    args.flags=list() && length(.) == 0L
+    pars=list(NULL),
+    par.types=character() && all(. %in% PAR.INT)
   )
   name <- FUN.NAMES[fun]
   defn <- sprintf(f_iftest, name, toString(F.ARGS.BASE))
@@ -44,12 +43,11 @@ code_gen_if_test <- function(fun, args.reg, args.ctrl, args.flags) {
       paste0("if(", sub(";$", "", c_call_gen(...)), ") {")
   )
 }
-code_gen_if_true <- function(fun, args.reg, args.ctrl, args.flags) {
+code_gen_if_true <- function(fun, pars, par.types) {
   vetr(
     identical(., "if_true"),
-    args.reg=list(NULL),
-    args.ctrl=list() && length(.) == 0L,
-    args.flags=list() && length(.) == 0L
+    pars=list(NULL),
+    par.types=character() && all(. %in% PAR.INT)
   )
   name <- FUN.NAMES[fun]
   defn <- sprintf(f_ifother, name, toString(F.ARGS.BASE))
@@ -58,12 +56,11 @@ code_gen_if_true <- function(fun, args.reg, args.ctrl, args.flags) {
     out.ctrl=CGEN.OUT.CALL
   )
 }
-code_gen_if_false <- function(fun, args.reg, args.ctrl, args.flags) {
+code_gen_if_false <- function(fun, pars, par.types) {
   vetr(
     identical(., "if_false"),
-    args.reg=list(NULL),
-    args.ctrl=list() && length(.) == 0L,
-    args.flags=list() && length(.) == 0L
+    pars=list(NULL),
+    par.types=character() && all(. %in% PAR.INT)
   )
   name <- FUN.NAMES[fun]
   defn <- sprintf(f_ifother, name, toString(F.ARGS.BASE))
@@ -71,12 +68,11 @@ code_gen_if_false <- function(fun, args.reg, args.ctrl, args.flags) {
     defn=defn, name=name, c.call.gen=function(...) "}", out.ctrl=CGEN.OUT.CALL
   )
 }
-code_gen_r2c_if <-function(fun, args.reg, args.ctrl, args.flags) {
+code_gen_r2c_if <- function(fun, pars, par.types) {
   vetr(
     identical(., "r2c_if"),
-    args.reg=list(NULL, NULL),
-    args.ctrl=list() && length(.) == 0L,
-    args.flags=list() && length(.) == 0L
+    pars=list(NULL, NULL),
+    par.types=character() && all(. %in% PAR.INT)
   )
   name <- FUN.NAMES[fun]
   defn <- sprintf(f_ifother, name, toString(F.ARGS.BASE))

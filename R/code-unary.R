@@ -67,12 +67,11 @@ static void %1$s(%2$s) {
 
   lens[dires] = len;
 }')
-code_gen_unary <- function(fun, args.reg, args.ctrl, args.flags) {
+code_gen_unary <- function(fun, pars, par.types) {
   vetr(
     CHR.1 && . %in% c("!", "uplus", "uminus"),
-    args.reg=list(NULL),
-    args.ctrl=list() && length(.) == 0L,
-    args.flags=list() && length(.) == 0L
+    pars=list(NULL),
+    par.types=character() && all(. %in% PAR.INT)
   )
   is.neg <- fun == "!"
   name <- FUN.NAMES[fun]

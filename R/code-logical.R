@@ -42,12 +42,11 @@ LGL.OP <- c("&&"="AND", "||"="OR")
 LGL.DEFN <- c("&&"=unname(OP.DEFN['&']), "||"=unname(OP.DEFN['|']))
 stopifnot(all(names(LGL.OP) %in% names(FUN.NAMES)))
 
-code_gen_lgl2 <- function(fun, args.reg, args.ctrl, args.flags) {
+code_gen_lgl2 <- function(fun, pars, par.types) {
   vetr(
     . %in% c("&&", "||"),
-    args.reg=list(NULL, NULL),
-    args.ctrl=list() && length(.) == 0L,
-    args.flags=list() && length(.) == 0L
+    pars=list(NULL, NULL),
+    par.types=character() && all(. %in% PAR.INT)
   )
   name <- FUN.NAMES[fun]
   defn <- sprintf(f_lgl2, name, toString(F.ARGS.BASE), LGL.OP[fun], fun)
@@ -97,12 +96,11 @@ static void %s(%s) {
   } else LOOP_W_INTERRUPT1(cond_len, res[i] = NA_REAL;);
   lens[dires] = cond_len;
 }'
-code_gen_ifelse <- function(fun, args.reg, args.ctrl, args.flags) {
+code_gen_ifelse <- function(fun, pars, par.types) {
   vetr(
     identical(., "ifelse"),
-    args.reg=list(NULL, NULL, NULL),
-    args.ctrl=list() && length(.) == 0L,
-    args.flags=list() && length(.) == 0L
+    pars=list(NULL, NULL, NULL),
+    par.types=character() && all(. %in% PAR.INT)
   )
   name <- fun
   defn <- sprintf(f_ifelse, name, toString(F.ARGS.BASE))

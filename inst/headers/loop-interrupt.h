@@ -17,28 +17,35 @@
 
 // Loosely inspired by the R_ext/Itermacros.h from the GNU R sources
 
-// Assumed this is smaller than R_XLEN_T_MAX
-#define INTERRUPT_AT 10000000 /* keep synced with group.c */
+// See headers/r2c-const.h for some context.
 
-// Repeat EXPR in for loop I_MAX times checking for interrupts every
-// INTERRUPT_AT iterations.  Loosely inspired by the R macros in
-// R_ext/itermacros.h (as of 4.2).  We could use size_t like they do and save
-// the overflow check assuming R_xlen_t is small enough in relation to size_t.
-// This also carries over the point of the last check as we don't want to
-// trigger the interrupt for every group/iteration unless they are bigger than
-// INTERRUPT_AT.
+// Implement interrupts at r2c Expression Level
 //
-// Is there a more efficient way to implement 2 and 3?
+// CURRENTLY INTERRUPTS AS IMPLEMENTED IN THIS HEADER ARE DISABLED!  Instead the
+// interrupts are checked between groups / windows by the runner code.
+//
+// When enabled, these macros count iterations at the r2c sub-expression level
+// and do so across groups so that interrupts are only triggered every
+// INTERRUPT_AT iterations across every sub-expression and groups.  Each r2c
+// sub-expression will provide EXPR and iteration counter variables limits like
+// I_MAX.  Loosely inspired by the R macros in R_ext/itermacros.h (as of 4.2).
+// We could use size_t like they do and save the overflow check assuming
+// R_xlen_t is small enough in relation to size_t.  This also carries over the
+// point of the last check as we don't want to trigger the interrupt for every
+// group/iteration unless they are bigger than INTERRUPT_AT.
 //
 // The following must be defined in the code using the macro:
 // * R_xlen_t i (b/c some loops need to know the `i` value on early exit)
 // * double ** data
-// * R_xlen_t k and j for INTERRUPT1.
-
+// * R_xlen_t k and/or j for higher order INTERRUPTN
+//
 // For whatever reason using this interrupt method causes slowdowns for small
 // groups.  See extra/bench-interrupt.Rmd for details.  For now we're turning
 // this off and relying on per-group/window checks instead of a more
 // sophisticated version that check per-op as LOOP_W_INTERRUPT0 does here.
+// The turning off is done by subbing in a dummy version of LOOP_W_INTERRUPT0
+// which allows us to leave the interrupt code in the functions should we decide
+// to switch back to this later.
 
 // #define LOOP_W_INTERRUPT0(I_MAX, LOOP) do {                          \
 //   R_xlen_t i_stop, next_interrupt;                                   \
@@ -69,6 +76,9 @@
   R_xlen_t i_stop = I_MAX;                               \
   LOOP                                                   \
 } while(0)
+
+// Each _INTERRUPTN version below supports N iteration variables, each with it's
+// own maximum limit to reset counters when hit.
 
 #define LOOP_W_INTERRUPT1(I_MAX, EXPR) do {                          \
   LOOP_W_INTERRUPT0((I_MAX), for(; i < i_stop; ++i) EXPR);           \

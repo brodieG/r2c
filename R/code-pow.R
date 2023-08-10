@@ -13,12 +13,11 @@
 ##
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
-code_gen_pow <-  function(fun, args.reg, args.ctrl, args.flags) {
+code_gen_pow <-  function(fun, pars, par.types) {
   vetr(
     identical(., "^"),
-    args.reg=list(NULL, NULL),
-    args.ctrl=list() && length(.) == 0L,
-    args.flags=list() && length(.) == 0L
+    pars=list(NULL, NULL),
+    par.types=character() && all(. %in% PAR.INT)
   )
   name <- FUN.NAMES[fun]
   defn <- sprintf(
@@ -46,12 +45,11 @@ static void %1$s(%2$s) {
   LOOP_W_INTERRUPT1(len, res[i] = e1[i] * e1[i];);
   lens[dires] = len;
 }'
-code_gen_square <- function(fun, args.reg, args.ctrl, args.flags) {
+code_gen_square <- function(fun, pars, par.types) {
   vetr(
     identical(., "square"),
-    args.reg=list(NULL),
-    args.ctrl=list() && length(.) == 0L,
-    args.flags=list() && length(.) == 0L
+    pars=list(NULL),
+    par.types=character() && all(. %in% PAR.INT)
   )
   name <- FUN.NAMES[fun]
   defn <- sprintf(square_code, name, toString(F.ARGS.BASE))

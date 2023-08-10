@@ -174,4 +174,16 @@ unitizer_sect("nesting", {
   f5c(1:3, 5:7, 1, 0)
   f5c(1:3, 5:7, 2, 0)
   f5c(1:3, 5:7, 3, 0)
+
+  # Direct nesting
+  f6a.r <- function(a, b, c, d) {
+    x <- b
+    if(c) if(d) x <- a
+    x
+  }
+  f6a <- r2cf(f6a.r)
+  f6a(2:3, 3:4, TRUE, TRUE)
+  f6a(2:3, 3:4, FALSE, TRUE)
+  f6a(2:3, 3:4, FALSE, FALSE)
+  f6a(2:3, 3:4, TRUE, FALSE)
 })

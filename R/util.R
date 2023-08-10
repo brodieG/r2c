@@ -254,6 +254,7 @@ get_lang_name <- function(call) {
   if(is.language(call)) get_lang_info(call)[['name']]
   else ""
 }
+blank_lang_info <- function() list(name="", pkg="")
 
 # deparse but concatenate multi-element results with newlines
 
@@ -263,4 +264,9 @@ deparseLines <- function(x, ...) paste0(deparse(x, ...), collapse="\n")
 # preprocessing
 pp_clean <- function(x, optimize=TRUE) {
   clean_call(preprocess(x, optimize=TRUE)[['call.processed']])
+}
+
+convolve <- function(a, b) {
+  stopifnot(is.numeric(a), is.numeric(b))
+  .Call(R2C_convolve, a, b)
 }

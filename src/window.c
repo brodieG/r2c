@@ -74,7 +74,7 @@
         dp.data[j] = dat_base[j] + start;                                      \
         dp.lens[j] = len;                                                      \
       }                                                                        \
-      (*(dp.fun))(dp.data, dp.lens, dp.datai, dp.narg, dp.flags, dp.ctrl);     \
+      (*(dp.fun))(dp.data, dp.lens, dp.datai, dp.narg, dp.extn);               \
       /* Windows can have varying number of elements */                        \
       if(!recycle_warn && *recycle_flag) recycle_warn = (double)i + 1;         \
       if(dp.lens[I_RES] != 1)                                                  \
@@ -94,8 +94,7 @@ SEXP R2C_run_window(
   SEXP dat,
   SEXP dat_cols,
   SEXP ids,
-  SEXP flag,
-  SEXP ctrl,
+  SEXP extn,
   // ^^ See group.c, paramaters above shared with group_exec
   SEXP n_sxp,
   SEXP offset,
@@ -118,7 +117,7 @@ SEXP R2C_run_window(
   // This should be validated R level, but bad if wrong
   if(by < 1) Rf_error("Internal Error: by less than 1 (%d).", by);
 
-  struct R2C_dat dp = prep_data(dat, dat_cols, ids, flag, ctrl, so);
+  struct R2C_dat dp = prep_data(dat, dat_cols, ids, extn, so);
 
   // Make a copy of the base data pointers
   double ** dat_base = (double **) R_alloc(dp.dat_end + 1, sizeof(double *));
@@ -294,7 +293,7 @@ static double ** copy_dat(struct R2C_dat dp) {
     for(int j = dp.dat_start; j <= dp.dat_end; ++j) dp.lens[j] = 0;         \
   }                                                                         \
   /* RUN r2c FUN */                                                         \
-  (*(dp.fun))(dp.data, dp.lens, dp.datai, dp.narg, dp.flags, dp.ctrl);      \
+  (*(dp.fun))(dp.data, dp.lens, dp.datai, dp.narg, dp.extn);      \
   /* Should be debug-mode only check */                                     \
   if(dp.lens[I_RES] != 1)                                                   \
     Rf_error("Window result size is not 1 (is %jd).", dp.lens[I_RES]);      \
@@ -352,7 +351,7 @@ static double ** copy_dat(struct R2C_dat dp) {
     }                                                                        \
     /* ileft max is R_XLEN_T_MAX - 1, so + 1 cannot overflow */              \
     R_xlen_t len = iright - ileft + 1;                                       \
-    /* Check for interrupts */                                               \
+    /* Check for interrupts (too complicated for _INTERRUPT_BASIC) */        \
     if(                                                                      \
       len <= INTERRUPT_AT &&  /* we don't know what R_XLEN_T_MIN is */       \
       interrupt_i <= INTERRUPT_AT - len && interrupt_i <= R_XLEN_T_MAX - len \
@@ -446,7 +445,7 @@ static double ** copy_dat(struct R2C_dat dp) {
 // ROLL_XX: one of ROLL_BY, ROLL_AT, ROLL_BW
 
 #define ROLL(ROLL_XX) do{                                                \
-  struct R2C_dat dp = prep_data(dat, dat_cols, ids, flag, ctrl, so);     \
+  struct R2C_dat dp = prep_data(dat, dat_cols, ids, extn, so);           \
   double ** dbase = copy_dat(dp);                                        \
   ROLL_XX;                                                               \
 } while(0)
@@ -466,7 +465,7 @@ static double ** copy_dat(struct R2C_dat dp) {
 // R2C_run_window_xx and R2C_size_window_xx.
 //
 // Both actions share the same window seeking code (i.e. identifying which data
-// elements fall within a window).  We use two passes (size and calc) rather
+// elements fall within a window).  We use two passes (size and calc)
 // because we need to know max rolling window for our temporary vector memory
 // allocations.  We could just guess and then grow when we're wrong, which might
 // be worth it given our currently dumb seeking algorithm could be the bottlneck
@@ -499,7 +498,7 @@ static double ** copy_dat(struct R2C_dat dp) {
 } while (0)
 
 SEXP R2C_run_window_by(
-  SEXP so, SEXP dat, SEXP dat_cols, SEXP ids, SEXP flag, SEXP ctrl,
+  SEXP so, SEXP dat, SEXP dat_cols, SEXP ids, SEXP extn,
   SEXP width, SEXP offset, SEXP by_sxp, SEXP x_sxp, SEXP start_sxp,
   SEXP end_sxp, SEXP bounds_sxp
 ) {
@@ -525,7 +524,7 @@ SEXP R2C_size_window_by(
 } while (0)
 
 SEXP R2C_run_window_at(
-  SEXP so, SEXP dat, SEXP dat_cols, SEXP ids, SEXP flag, SEXP ctrl,
+  SEXP so, SEXP dat, SEXP dat_cols, SEXP ids, SEXP extn,
   SEXP width, SEXP offset, SEXP at_sxp, SEXP x_sxp,
   SEXP bounds_sxp
 ) {
@@ -550,7 +549,7 @@ SEXP R2C_size_window_at(
 } while (0)
 
 SEXP R2C_run_window_bw(
-  SEXP so, SEXP dat, SEXP dat_cols, SEXP ids, SEXP flag, SEXP ctrl,
+  SEXP so, SEXP dat, SEXP dat_cols, SEXP ids, SEXP extn,
   SEXP left_sxp, SEXP right_sxp, SEXP x_sxp, SEXP bounds_sxp
 ) {
   ROLL(ROLL_BW(ROLL_WINDOW, dp.lens[I_RES]));

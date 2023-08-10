@@ -21,15 +21,14 @@ static void %s(%s) {
 
   for(R_xlen_t i = 0; i < len0; ++i) res[i] = ++counter;
 
-  lens[1] = len0;
+  lens[di[1]] = len0;
 }'
 
-code_gen_seq_along <- function(fun, args.reg, args.ctrl, args.flags) {
+code_gen_seq_along <- function(fun, pars, par.types) {
   vetr(
     identical(., "seq_along"),
-    args.reg=list(NULL),
-    args.ctrl=list() && length(.) == 0L,
-    args.flags=list() && length(.) == 0L
+    pars=list(NULL),
+    par.types=character() && all(. %in% PAR.INT)
   )
   name <- FUN.NAMES[fun]
   defn <- sprintf(f_seq_along, name, toString(F.ARGS.BASE))

@@ -151,8 +151,7 @@ prep_alloc <- function(alloc, res.size) {
 
   # Extract control parameters, and run sanity checks (not fool proof)
   dat <- alloc[['alloc']][['dat']]
-  control <- lapply(alloc[['call.dat']], "[[", "ctrl")
-  flag <- vapply(alloc[['call.dat']], "[[", 0L, "flag")
+  extern <- lapply(alloc[['call.dat']], "[[", "extern")
   # Ids into call.dat, last one will be the result
   ids <- lapply(alloc[['call.dat']], "[[", "ids")
   if(!all(unlist(ids) %in% seq_along(dat)))
@@ -160,8 +159,6 @@ prep_alloc <- function(alloc, res.size) {
   ids <- lapply(ids, "-", 1L) # 0-index for C
 
   dat_cols <- sum(alloc[['alloc']][['type']] == "grp")
-  list(
-    dat=dat, dat_cols=dat_cols, ids=ids, control=control, flag=flag, alloc=alloc
-  )
+  list(dat=dat, dat_cols=dat_cols, ids=ids, extern=extern, alloc=alloc)
 }
 

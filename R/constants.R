@@ -17,9 +17,8 @@
 
 ARGS.NM.BASE <- c('data', 'lens', 'di')
 ARGS.NM.VAR <- 'narg'
-ARGS.NM.CTRL <- 'ctrl'
-ARGS.NM.FLAG <- 'flag'
-ARGS.NM.ALL <- c(ARGS.NM.BASE, ARGS.NM.VAR, ARGS.NM.FLAG, ARGS.NM.CTRL)
+ARGS.NM.EXTERN <- 'extn'
+ARGS.NM.ALL <- c(ARGS.NM.BASE, ARGS.NM.VAR, ARGS.NM.EXTERN)
 
 ARGS.TYPE.F <- c('double **', 'R_xlen_t *', 'int *')
 ARGS.TYPE.R <- c('double **', 'R_xlen_t *', 'int **')
@@ -31,20 +30,16 @@ R.ARGS.BASE <- paste(ARGS.TYPE.R, ARGS.NM.BASE)
 F.ARGS.VAR <- paste('int', ARGS.NM.VAR)
 R.ARGS.VAR <- paste('int *', ARGS.NM.VAR)
 
-F.ARGS.FLAG <- paste('int', ARGS.NM.FLAG)
-R.ARGS.FLAG <- paste('int *', ARGS.NM.FLAG)
+F.ARGS.EXTERN <- R.ARGS.EXTERN <- 'SEXP extn'
 
-F.ARGS.CTRL <- R.ARGS.CTRL <- 'SEXP ctrl'
-
-F.ARGS.ALL <- c(F.ARGS.BASE, F.ARGS.VAR, F.ARGS.FLAG, F.ARGS.CTRL)
-R.ARGS.ALL <- c(R.ARGS.BASE, R.ARGS.VAR, R.ARGS.FLAG, R.ARGS.CTRL)
+F.ARGS.ALL <- c(F.ARGS.BASE, F.ARGS.VAR, F.ARGS.EXTERN)
+R.ARGS.ALL <- c(R.ARGS.BASE, R.ARGS.VAR, R.ARGS.EXTERN)
 
 CALL.BASE <- c(ARGS.NM.BASE[1L:2L], paste0(ARGS.NM.BASE[3L], "[%1$d]"))
 CALL.VAR <- paste0(ARGS.NM.VAR, "[%1$d]")
 # this should be length 1 (see checks)
-CALL.CTRL <- paste0("VECTOR_ELT(", ARGS.NM.CTRL, ", %1$d)")
-CALL.FLAG <- paste0(ARGS.NM.FLAG, "[%1$d]");
-CALL.ALL <- c(CALL.BASE, CALL.VAR, CALL.FLAG, CALL.CTRL)
+CALL.EXTERN <- paste0("VECTOR_ELT(", ARGS.NM.EXTERN, ", %1$d)")
+CALL.ALL <- c(CALL.BASE, CALL.VAR, CALL.EXTERN)
 
 ## Sanity checks
 pat <- "\\[%1\\$d\\]|\\bSEXP\\b|\\bdouble\\b|\\bint\\b|\\bR_xlen_t\\b|[ +*]"
@@ -52,8 +47,8 @@ stopifnot(
   identical(gsub(pat, "", F.ARGS.ALL), ARGS.NM.ALL),
   identical(gsub(pat, "", R.ARGS.ALL), ARGS.NM.ALL),
   identical(
-    gsub(pat, "", c(CALL.BASE, CALL.VAR, CALL.FLAG)),
-    ARGS.NM.ALL[-length(ARGS.NM.ALL)] # CALL.CTRL hard to compare
+    gsub(pat, "", c(CALL.BASE, CALL.VAR)),
+    ARGS.NM.ALL[-length(ARGS.NM.ALL)] # CALL.EXTERN hard to compare
   )
 )
 
@@ -110,13 +105,21 @@ PASSIVE.BRANCH.SYM <- setdiff(PASSIVE.SYM, BRANCH.EXEC.SYM)
 
 # For `record_call_dat` and `alloc_dat`, fields that are supposed to be scalar
 # for each allocation/call
-CALL.DAT.VEC <- c('argn', 'depth', 'type', 'assign', 'indent', 'rec')
+CALL.DAT.VEC <- c(
+  'argn', 'depth', 'par.type', 'assign', 'indent', 'rec', 'par.validate',
+  'linfo'
+)
 ALLOC.DAT.VEC <- c(
-  'ids0', 'alloc', 'size', 'depth', 'type', 'typeof', 'group'
+  'ids0', 'alloc', 'size.coefs', 'depth', 'type', 'typeof'
 )
 
-# To avoid typos
-CTRL.FLAG <- c("control", "flag")
+# Parameter types
+PAR.EXT.ANY <- "ext.any"
+PAR.EXT.NUM <- "ext.num"
+PAR.EXT <- c(num=PAR.EXT.NUM, any=PAR.EXT.ANY)
+PAR.INT.LEAF <- "int.leaf"
+PAR.INT.CALL <- "int.call"
+PAR.INT <- c(PAR.INT.LEAF, PAR.INT.CALL)
 
 # Packages allowable in `::`
 VALID.PKG <- c('base', 'r2c')
@@ -157,7 +160,10 @@ FUN.NAMES <- c(
   seq_along="seq_along",
 
   "["="subset",
-  subassign="subassign"   # this is [<-
+  subassign="subassign",   # this is [<-
+
+  numeric="numeric", numeric_along="numeric_along",
+  numeric_alongn="numeric_alongn"
 )
 # C Generator Output Types
 CGEN.OUT.CALL <- 1L   # output call to C fun e.g. `mean(data, lens, di[5])`

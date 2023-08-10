@@ -41,9 +41,9 @@ roll_prep <- function(
     gmax=wmax, gmin=wmin
   )
   stack <- alloc[['stack']]
-
   if(ncol(stack) != 1L) stop("Internal Error: unexpected stack state at exit.")
-  if(stack['size', 1L] != 1L || stack['group', 1L] != 0L)
+  res.size.coef <- alloc[['alloc']][['size.coefs']][[stack['id', 1L]]]
+  if(!identical(res.size.coef, list(1)))
     stop("`fun` must be guaranteed to return scalar values.")
 
   # - Run ----------------------------------------------------------------------
@@ -96,8 +96,7 @@ roll_call <- function(
       prep[['dat']],
       prep[['dat_cols']],
       prep[['ids']],
-      prep[['flag']],
-      prep[['control']],
+      prep[['extern']],
       ...
     )
     # Result vector is modified by reference

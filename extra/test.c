@@ -27,3 +27,6 @@ int main(int argc, char **argv) {
   // printf("Result %d %d %f\n", i, j, 0. & (double) (1 << 10));
   exit(0);
 }
+
+
+

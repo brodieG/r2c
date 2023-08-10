@@ -1,5 +1,83 @@
 # Current
 
+# Loop Performance
+
+Pretty terrible.  With the convolution example:
+
+    f1a <- function(a, b, c) {
+      ab <- numeric(c)
+      for(i in seq_along(a)) {
+        for(j in seq_along(b)) {
+          ab[i + j - 1] <- ab[i + j - 1] + a[i] * b[j]
+        }
+      }
+      ab
+    }
+    r2c_f1a <- r2cf(f1a, dir=".")
+    ## Warning message:
+    ## In dir.create(dir) : './.' already exists
+    a <- runif(10000)
+    b <- runif(10000)
+    system.time(res0 <- r2c_f1a(a, b, length(a) + length(b) - 1))
+    ##   user  system elapsed 
+    ##  4.300   0.035   4.471 
+    system.time(res1 <- r2c:::convolve(a, b))
+    ##   user  system elapsed 
+    ##  0.036   0.000   0.038 
+    system.time(res2 <- f1a(a, b, length(a) + length(b) - 1))
+    ##   user  system elapsed 
+    ## 12.782   0.106  13.419 
+    identical(res0, res1)
+    ## [1] TRUE
+    identical(res0, res2)
+    ## [1] TRUE
+
+    enableJIT(0)
+    ... rebuild f1a ...
+    system.time(res2 <- f1a(a, b, length(a) + length(b) - 1))
+    ##    user  system elapsed 
+    ## 167.941   2.021 178.702 
+
+3x faster than R with compilation, but 100 times slower than the straight up C
+code.  Nothing seems too weird from examining the profiler data:
+
+    5.34 s      96.4%	325.00 ms        run
+    1.26 s      22.7%	1.26 s           add
+    902.00 ms   16.2%	902.00 ms        subtract
+    791.00 ms   14.2%	791.00 ms        subset
+    766.00 ms   13.8%	766.00 ms        subassign
+    355.00 ms    6.4%	355.00 ms        subset
+    309.00 ms    5.5%	309.00 ms        multiply
+    253.00 ms    4.5%	253.00 ms        subset
+    238.00 ms    4.2%	238.00 ms        for_iter
+    143.00 ms    2.5%	143.00 ms        seq_along
+    7.00 ms      0.1%	0 s              <Unknown Address>
+    6.00 ms      0.1%	6.00 ms          add
+    1.00 ms      0.0%	1.00 ms          subtract
+
+Issue is probably each of the above has it's own call/loop overhead, where the
+pure C version just has (tight part of the loop):
+
+    ;     for(int j = 1; j <= nb; j++) xab[i + j - 2] += xa[i - 1] * xb[j -1];
+         210: 66 0f 10 0c f3                movupd  (%rbx,%rsi,8), %xmm1
+         215: 66 0f 10 54 f3 10             movupd  16(%rbx,%rsi,8), %xmm2
+         21b: 48 89 cf                      movq    %rcx, %rdi
+         21e: 48 c1 ff 1d                   sarq    $29, %rdi
+         222: 66 41 0f 10 1c 3f             movupd  (%r15,%rdi), %xmm3
+         228: 66 41 0f 10 64 3f 10          movupd  16(%r15,%rdi), %xmm4
+         22f: 66 0f 59 c8                   mulpd   %xmm0, %xmm1
+         233: 66 0f 58 cb                   addpd   %xmm3, %xmm1
+         237: 66 0f 59 d0                   mulpd   %xmm0, %xmm2
+         23b: 66 0f 58 d4                   addpd   %xmm4, %xmm2
+         23f: 66 41 0f 11 0c 3f             movupd  %xmm1, (%r15,%rdi)
+         245: 66 41 0f 11 54 3f 10          movupd  %xmm2, 16(%r15,%rdi)
+         24c: 48 83 c6 04                   addq    $4, %rsi
+         250: 4c 01 e1                      addq    %r12, %rcx
+         253: 48 39 f0                      cmpq    %rsi, %rax
+         256: 75 b8                         jne     0x210 <_R2C_convolve+0x210>
+
+We can try to special case the length 1 scenario?
+
 # Loop Decomposition
 
     for(i in seq_long(x)) {

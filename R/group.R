@@ -80,21 +80,28 @@ group_exec_int <- function(
 
   empty.res <- FALSE
   gsizes <- group.sizes[['gsizes']]
-  res.size.type <- "variable"
+  res.size.coef <- alloc[['alloc']][['size.coefs']][[stack['id', 1L]]]
 
-  if(!stack['group', 1L]) { # constant group size
-    group.res.sizes <- rep(stack['size', 1L], length(gsizes))
-    res.size.type <- if(stack['size', 1L] == 1L) "scalar" else "constant"
-  } else if (is.na(stack['size', 1L])) {
-    group.res.sizes <- gsizes
-  } else if (stack['size', 1L]) {
-    group.res.sizes <- gsizes
-    group.res.sizes[
-      group.res.sizes < stack['size', 1L] & group.res.sizes != 0
-    ] <- stack['size', 1L]
-  } else {
-    group.res.sizes <- numeric()
-  }
+  # Compute sizes for each size coefs element across all groups; skip
+  # pmax for single element case for speed.
+  iter.sizes.in <- lapply(res.size.coef, iter_result_sizes, base=gsizes)
+  group.res.sizes <- if(length(iter.sizes.in) > 1) {
+    # Like pmax, except 0 dominates
+    .Call(R2C_vecrec_pmax, iter.sizes.in)
+  } else iter.sizes.in[[1L]]
+
+  # Identify obvious cases for optimizing result label generation.  size_vecrec
+  # should have collapsed to obvious cases if possible.
+  res.size.type <- "variable"
+  if(length(res.size.coef) == 1L) {
+    rsc1 <- res.size.coef[[1L]]
+    lrsc1 <- length(rsc1)
+    if(lrsc1 == 1L || lrsc1 > 1L && all(rsc1[-1L] == 0)) {
+      # constant size
+      res.size.type <-
+        if(rsc1[1L] == 1L) "scalar"
+        else "constant"
+  } }
   # - Run ----------------------------------------------------------------------
 
   status <- numeric(1)
@@ -114,8 +121,7 @@ group_exec_int <- function(
       alp[['dat']],
       alp[['dat_cols']],
       alp[['ids']],
-      alp[['flag']],
-      alp[['control']],
+      alp[['extern']],
       gsizes,
       group.res.sizes
     )
@@ -354,7 +360,7 @@ group_exec <- function(fun, data, groups, MoreArgs=list()) {
 }
 
 run_group_int <- function(
-  handle, dat, dat_cols, ids, flag, control, group.sizes, group.res.sizes
+  handle, dat, dat_cols, ids, extern, group.sizes, group.res.sizes
 ) {
   .Call(
     R2C_run_group,
@@ -362,8 +368,7 @@ run_group_int <- function(
     dat,
     dat_cols,
     ids,
-    flag,
-    control,
+    extern,
     group.sizes,
     group.res.sizes
   )
