@@ -545,7 +545,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
 ##   that beyond that the name binding need not prevent release of memory),
 ##   `i.assign` the index in which the symbol was bound, and `br.hide` is the
 ##   branch level the symbols assigned in the TRUE branch need to be hidden from
-##   (so the FALSE branch can't see them)..
+##   (so the FALSE branch can't see them).
 ## * rec: see `rec` parameter.
 ##
 ## We're mixing return value elements and params, a bit, but there are some
@@ -776,17 +776,19 @@ alloc_result <- function(alloc, vdat){
 # the same allocation.  The `rec`ed symbols are those that are used later in
 # the call.
 #
-# We compare the snapshot of bindings at the end of the `if_true` call to that
-# at the end of the `if_false` call.  Every time we encounter and `if_false`
-# call we can look at the end of `binding_stack` as that will be the snapshot
-# from the most recent prior `if_true`, and the preprocessor ensures that
-# `if_true` and `if_false` are always paired (injecting "empty" branches as
+# We compare the snapshot of bindings at the end of the "TRUE" branch (recall
+# for loops this is the body of the loop) to that at the end of the "FALSE"
+# branch (for loops this is the r2c generated for0 (i.e. loop not taken/0
+# iteration loop) branch).  Every time we encounter the FALSE branch call we can
+# look at the end of `binding_stack` as that will be the snapshot from the most
+# recent prior "TRUE" branch, and the preprocessor ensures that "TRUE" and
+# "FALSE" branches are always paired (injecting "empty" branches as
 # necessary).
 #
 # See "preproc-copy.R" for context.
 #
 # @param binding.stack list of snapshots of bindings as of the completion of the
-#   `if_true` branches.  See details.
+#   "TRUE" branches.  See details.
 
 reconcile_control_flow <- function(
   alloc, call.dat, stack, binding.stack, i.call, call, depth, gmax, gmin,
@@ -861,18 +863,20 @@ reconcile_control_flow <- function(
   # 'if_test' and confirm all allocs are inside.
   call.i.T <- which(call.dat.i == i.call.T)
   call.names <- vapply(call.dat, "[[", "", "name")
-  if.lvl <- cumsum(call.names == 'if_test') -  cumsum(call.names == 'if_false')
-  if.cur <- if.lvl[call.i.T]
-  if.cur.start <- min(which(if.lvl == if.cur))
-  if(!is.finite(if.cur.start))
-    stop("Internal Error: mismatched `if_test` `if_false`.")
-  if.cur.start.i <- call.dat.i[if.cur.start]
+  branch.levels <-
+    cumsum(call.names %in% BRANCH.START.SYM) -
+    cumsum(call.names %in% BRANCH.END.SYM)
+  branch.cur <- branch.levels[call.i.T]
+  branch.cur.start <- min(which(branch.levels == branch.cur))
+  if(!is.finite(branch.cur.start) || branch.cur == 0L)
+    stop("Internal Error: mismatched branch start and end symbols.")
+  branch.cur.start.i <- call.dat.i[branch.cur.start]
 
   alloc.i.F <- c(names.rc.F['i.assign',], i.call.F)
   alloc.i.T <- c(names.rc.T['i.assign',], i.call.T)
   if(any(alloc.i.F <= i.call.T | alloc.i.F > i.call.F))
     stop("Internal Error: reconcile allocation not branch local in FALSE.")
-  if(any(alloc.i.T <= if.cur.start.i | alloc.i.T > i.call.T))
+  if(any(alloc.i.T <= branch.cur.start.i | alloc.i.T > i.call.T))
     stop("Internal Error: reconcile allocation not branch local in TRUE.")
 
   # Reconcile allocations so they point to the same id.  We must use entirely
@@ -903,7 +907,7 @@ reconcile_control_flow <- function(
     new.id0 <- alloc[['ids0']][new.i] # might be the same as new.i always?
     call.dat <- update_cdat_alloc(  # true branch
       call.dat, old=id.rc.T[i], new=new.i,
-      start=if.cur.start.i + 1L, end=i.call.T
+      start=branch.cur.start.i + 1L, end=i.call.T
     )
     call.dat <- update_cdat_alloc(  # false branch
       call.dat, old=id.rc.F[i], new=new.i,
