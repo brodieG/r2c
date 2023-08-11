@@ -359,6 +359,7 @@ copy_branchdat_rec <- function(
     cand.prom.i <- which(names(cand) == sym.name & !sym.local)
 
     # Effect promotions, and clear promoted candidates from candidate list.
+    if(length(cand.prom.i)) browser()
     data[[ACT]] <- c(data[[ACT]], cand[cand.prom.i])
     data[[CAND]] <- clear_candidates(data[[CAND]], cand.prom.i)
 
@@ -369,8 +370,8 @@ copy_branchdat_rec <- function(
     }
   } else if(!is.call(x)) {
     # These are literal objects in the call.  They will be checked for
-    # numeric-ness by the allocator.  It should never be the case that a
-    # control/flag parameters gets turned into a candidate.
+    # numeric-ness by the allocator.  It should never be the case that
+    # external parameters gets turned into a candidate.
     leaf <- passive <- TRUE
     data[['leaf.name']] <- ""
   } else if(is.call(x)) {
@@ -625,7 +626,7 @@ generate_candidate <- function(
   }
   if(in.branch) {
     # Symbols bound in branches will require rec and/or vcopy of their payload
-    # **if** they are used. vcopy not always needed, e.g:
+    # **if** they are used (after the branch?). vcopy not always needed, e.g:
     #
     #   if(a) x <- rec(vcopy(y)); x     # rec and vcopy
     #   if(a) x <- rec(mean(y)); x      # only rec
@@ -637,8 +638,7 @@ generate_candidate <- function(
         data, index, triggers=triggers, rec=TRUE,
         copy=passive # but only vcopy passive
       )
-      # Locally Computed symbols require copy if used after branch (note
-      # triggers), e.g:
+      # Locally Computed symbols require copy if used after branch e.g:
       #
       #     y <- if(a) {
       #       x <- mean(y)
