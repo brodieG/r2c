@@ -305,7 +305,8 @@ copy_branchdat <- function(x) {
 #   is part of the return value, AND the result of the branch is potentially
 #   used (dead code notwithstanding) so we need to vcopy the return value.
 # @param in.branch whether the parent call (or effective parent call in the case
-#   the parent call is passive) is a branch.
+#   the parent call is passive) is a branch, designated by the call tree index
+#   of the branch.  NULL if not in branch.
 # @param in.compute whether there is some parent call that computes on the
 #   current call (e.g. `mean(x)` where `x` is the current call).  Used to
 #   determine whether the result of a branch is further used.
@@ -327,7 +328,7 @@ copy_branchdat <- function(x) {
 
 copy_branchdat_rec <- function(
   x, index=integer(), assign.to=character(), sub.assign.to="",
-  in.compute=FALSE, in.branch=FALSE, branch.res=FALSE, last=TRUE,
+  in.compute=FALSE, in.branch=NULL, branch.res=FALSE, last=TRUE,
   prev.call="",
   data=list(
     bind=list(
@@ -356,14 +357,21 @@ copy_branchdat_rec <- function(
     }
     # For symbols matching candidate(s): promote candidate if allowed.
     cand <- data[[CAND]]
-    cand.prom.i <- which(names(cand) == sym.name & !sym.local)
-
+    cand.prom.i <- which(
+      names(cand) == sym.name &
+      !(
+        sym.local |
+        # This detects if the symbol is nested within the branch recursively,
+        # whereas sym.ocal only detects if it is directly in the branch.  Maybe
+        # we can get rid of sym.local (below added later).
+        length(in.branch) & all(index[seq_along(in.branch)] == in.branch)
+      )
+    )
     # Effect promotions, and clear promoted candidates from candidate list.
-    if(length(cand.prom.i)) browser()
     data[[ACT]] <- c(data[[ACT]], cand[cand.prom.i])
     data[[CAND]] <- clear_candidates(data[[CAND]], cand.prom.i)
 
-    if(!in.branch && length(assign.to) && sym.local.cmp) {
+    if(is.null(in.branch) && length(assign.to) && sym.local.cmp) {
       # Outside of branches, aliasing a locally computed symbol makes the others
       # also locally computed.
       data[[B.LOC.CMP]] <- union(data[[B.LOC.CMP]], assign.to)
@@ -431,12 +439,12 @@ copy_branchdat_rec <- function(
       prev.T <- get_lang_name(x[[idx.T]])
       data.T <- copy_branchdat_rec(
         x[[c(idx.T, 2L)]], index=c(index, c(idx.T, 2L)), data=data.next,
-        last=last, in.branch=TRUE, branch.res=branch.res.next, prev.call=prev.T
+        last=last, in.branch=idx.T, branch.res=branch.res.next, prev.call=prev.T
       )
       prev.F <- get_lang_name(x[[idx.F]])
       data.F <- copy_branchdat_rec(
         x[[c(idx.F, 2L)]], index=c(index, c(idx.F, 2L)), data=data.next,
-        last=last, in.branch=TRUE, branch.res=branch.res.next, prev.call=prev.F
+        last=last, in.branch=idx.F, branch.res=branch.res.next, prev.call=prev.F
       )
       # Recombine branch data and the pre-branch data
       data <- merge_copy_dat(data, data.T, data.F, index, idx.offset)
@@ -568,7 +576,8 @@ copy_branchdat_rec <- function(
 # @param branch.res whether `x` could be the return value of a branch, **and**
 #   the return value could be further used. This status carries through to
 #   sub-expressions. See details.
-# @param in.branch whether `x` is nested inside a branch.
+# @param in.branch whether `x` is nested inside a branch, see
+#   `copy_branchdat_rec`.
 # @param last whether `x` could be the return value of the entire `r2c`
 #   expression.  It is possible but not required for `branch.res` and `last` to
 #   both be true.  Like `branch.res` this status carries to sub-expressions.
@@ -624,7 +633,7 @@ generate_candidate <- function(
     ##   data <-
     ##     add_candidate_callptr(data, s.cpy.idx, copy=FALSE, triggers=tar.sym)
   }
-  if(in.branch) {
+  if(length(in.branch)) {
     # Symbols bound in branches will require rec and/or vcopy of their payload
     # **if** they are used (after the branch?). vcopy not always needed, e.g:
     #
@@ -710,7 +719,7 @@ generate_candidate <- function(
       }
     } else if(call.assign) {
       data[[B.LOC]] <- union(data[[B.LOC]], tar.sym)
-      if(in.branch) {
+      if(length(in.branch)) {
         # non-computing local expressions make global bindings non-global
         data[[B.ALL]] <- setdiff(data[[B.ALL]], tar.sym)
       }
