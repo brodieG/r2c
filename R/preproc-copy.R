@@ -357,16 +357,23 @@ copy_branchdat_rec <- function(
     }
     # For symbols matching candidate(s): promote candidate if allowed.
     cand <- data[[CAND]]
-    cand.prom.i <- which(
-      names(cand) == sym.name &
-      !(
-        sym.local |
-        # This detects if the symbol is nested within the branch recursively,
-        # whereas sym.ocal only detects if it is directly in the branch.  Maybe
-        # we can get rid of sym.local (below added later).
-        length(in.branch) & all(index[seq_along(in.branch)] == in.branch)
-      )
+    cand.match <- names(cand) == sym.name & !sym.local
+    cand.match.source <- lapply(cand[cand.match], "[[", "br.index")
+    cand.after.branch <- vapply(
+      cand.match.source,
+      function(a, b) {
+        # Definitely after branch if not in branch but symbol is from branch
+        if(is.null(b)) length(a) > 0
+        # Otherwise check if current branch is later than symbol branch
+        else {
+          if(length(b) > length(a)) length(b) <- length(a)
+          index_greater(a, b)
+        }
+      },
+      TRUE, b=in.branch
     )
+    cand.prom.i <- seq_along(cand)[cand.match][cand.after.branch]
+
     # Effect promotions, and clear promoted candidates from candidate list.
     data[[ACT]] <- c(data[[ACT]], cand[cand.prom.i])
     data[[CAND]] <- clear_candidates(data[[CAND]], cand.prom.i)
@@ -425,6 +432,8 @@ copy_branchdat_rec <- function(
       }
       idx.T <- 2L + idx.offset
       idx.F <- 3L + idx.offset
+      idx.T.all <- c(index, idx.T)
+      idx.F.all <- c(index, idx.F)
 
       # New branch context resets all local bindings
       data.next <- data
@@ -438,13 +447,13 @@ copy_branchdat_rec <- function(
       # not-taken branch is the FALSE branch (see code-ifelse.R, code-loop.R).
       prev.T <- get_lang_name(x[[idx.T]])
       data.T <- copy_branchdat_rec(
-        x[[c(idx.T, 2L)]], index=c(index, c(idx.T, 2L)), data=data.next,
-        last=last, in.branch=idx.T, branch.res=branch.res.next, prev.call=prev.T
+        x[[c(idx.T, 2L)]], index=c(idx.T.all, 2L), data=data.next, last=last,
+        in.branch=idx.T.all, branch.res=branch.res.next, prev.call=prev.T
       )
       prev.F <- get_lang_name(x[[idx.F]])
       data.F <- copy_branchdat_rec(
-        x[[c(idx.F, 2L)]], index=c(index, c(idx.F, 2L)), data=data.next,
-        last=last, in.branch=idx.F, branch.res=branch.res.next, prev.call=prev.F
+        x[[c(idx.F, 2L)]], index=c(idx.F.all, 2L), data=data.next, last=last,
+        in.branch=idx.F.all, branch.res=branch.res.next, prev.call=prev.F
       )
       # Recombine branch data and the pre-branch data
       data <- merge_copy_dat(data, data.T, data.F, index, idx.offset)
@@ -479,6 +488,7 @@ copy_branchdat_rec <- function(
       data[['passive']] <- passive && data[['passive']]
 
       if(call.assign) {  # not call.modify
+        browser()
         # Any prior candidates bound to this symbol are voided by the new
         # assignment.  We need to clear them, except:
         #
@@ -628,10 +638,6 @@ generate_candidate <- function(
     s.cpy.idx <- -1L
     data <-
       add_actual_callptr(data, s.cpy.idx, name=tar.sym, rec=FALSE, copy=TRUE)
-    # Self-copy could require reconciliation, but not a given.
-    ## if(in.branch)
-    ##   data <-
-    ##     add_candidate_callptr(data, s.cpy.idx, copy=FALSE, triggers=tar.sym)
   }
   if(length(in.branch)) {
     # Symbols bound in branches will require rec and/or vcopy of their payload
@@ -644,7 +650,7 @@ generate_candidate <- function(
       # Always reconcile
       triggers <- if(call.assign) assign.to[-length(assign.to)] else assign.to
       data <- add_candidate_callptr(
-        data, index, triggers=triggers, rec=TRUE,
+        data, index, br.index=in.branch, triggers=triggers, rec=TRUE,
         copy=passive # but only vcopy passive
       )
       # Locally Computed symbols require copy if used after branch e.g:
@@ -658,7 +664,8 @@ generate_candidate <- function(
       # Notice `triggers=sym.name`:
       if(!passive && is.symbol(x)) {
         data <- add_candidate_callptr(
-          data, index, triggers=sym.name, rec=FALSE, copy=TRUE
+          data, index, br.index=in.branch, triggers=sym.name,
+          rec=FALSE, copy=TRUE
         )
       }
     }
@@ -676,7 +683,8 @@ generate_candidate <- function(
         # See "Locally computed Symbols require copy" in prior branch
         if(!passive && is.symbol(x)) {
           data <- add_candidate_callptr(
-            data, index, triggers=sym.name, rec=FALSE, copy=TRUE
+            data, index, br.index=in.branch, triggers=sym.name,
+            rec=FALSE, copy=TRUE
           )
         }
       } else if (first.assign) {
@@ -689,7 +697,8 @@ generate_candidate <- function(
           # Computed require outer vcopy if symbols they are bound to are used.
           # data[['assigned.to']]: all nested assignments (e.g. x <- y <- z...)
           data <- add_candidate_callptr(
-            data, index, triggers=data[['assigned.to']], rec=FALSE, copy=TRUE
+            data, index, br.index=in.branch, triggers=data[['assigned.to']],
+            rec=FALSE, copy=TRUE
           )
         }
       }
@@ -766,29 +775,37 @@ generate_candidate <- function(
 #   -1L then a `sym <- vcopy(sym)` is prepended to the expression pointed at
 #   by `index`, possibly wrapping the expression in braces first if it isn't
 #   already.
+# @param br.index like `index`, except this points to the nearest enclosing
+#   branch if any, or NULL if there is no parent branch.  This is to detect out
+#   of branch uses when we trigger the candidates.
 # @param rec whether this is a value that will require reconciliation across
 #   branches.
 # @param copy whether this is a value that need to be `vcopy`ed (see
 #   copy_branchdat`).
 
-callptr <- function(name, index, rec=TRUE, copy=FALSE) {
-  list(name=name, index=index, rec=rec, copy=copy)
+callptr <- function(name, index, br.index, rec=TRUE, copy=FALSE) {
+  list(name=name, index=index, br.index=br.index, rec=rec, copy=copy)
 }
 add_actual_callptr  <- function(
   data, index, rec=TRUE, copy=TRUE, name=NA_character_
 ) {
-  new.act <- callptr(name, index, copy=copy, rec=rec)
+  new.act <- callptr(name, index, br.index=NULL, copy=copy, rec=rec)
   data[[ACT]] <- c(data[[ACT]], list(new.act))
   data[['passive']] <- !copy
   data
 }
-add_candidate_callptr <- function(data, index, triggers, rec=TRUE, copy=TRUE) {
-  new.cand <- gen_callptrs(triggers, index, copy=copy, rec=rec)
+add_candidate_callptr <- function(
+  data, index, br.index, triggers, rec=TRUE, copy=TRUE
+) {
+  new.cand <- gen_callptrs(triggers, index, br.index, copy=copy, rec=rec)
   data[[CAND]] <- c(data[[CAND]], new.cand)
   data
 }
-gen_callptrs <- function(names, index, rec, copy)
-  sapply(names, callptr, copy=copy, rec=rec, index=index, simplify=FALSE)
+gen_callptrs <- function(names, index, br.index, rec, copy)
+  sapply(
+    names, callptr, copy=copy, rec=rec, index=index, br.index=br.index,
+    simplify=FALSE
+  )
 
 # Remove Promoted Candidates
 #
@@ -876,10 +893,16 @@ merge_copy_dat <- function(old, a, b, idx, idx.offset) {
   a.miss <- setdiff(b.names, a.names)
   b.miss <- setdiff(a.names, b.names)
   # Inject at start (hence -1L; so branch return value unchanged).
-  a.miss.list <-
-    gen_callptrs(a.miss, c(idx, 2L + idx.offset, 2L, -1L), copy=TRUE, rec=TRUE)
-  b.miss.list <-
-    gen_callptrs(b.miss, c(idx, 3L + idx.offset, 2L, -1L), copy=TRUE, rec=TRUE)
+  a.miss.list <- gen_callptrs(
+    a.miss, c(idx, 2L + idx.offset, 2L, -1L),
+    br.index=c(idx, 2L + idx.offset),
+    copy=TRUE, rec=TRUE
+  )
+  b.miss.list <- gen_callptrs(
+    b.miss, c(idx, 3L + idx.offset, 2L, -1L),
+    br.index=c(idx, 3L + idx.offset),
+    copy=TRUE, rec=TRUE
+  )
 
   # Combine all found free symbols
   prev.bound <- c(old[[B.LOC.CMP]], old[[B.LOC]], old[[B.ALL]], old[[B.ALL]])
