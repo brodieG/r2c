@@ -363,14 +363,14 @@ copy_branchdat_rec <- function(
       cand.match.source,
       function(a, b) {
         # Definitely after branch if not in branch but symbol is from branch
-        if(is.null(b)) length(a) > 0
+        if(is.null(a)) length(b) > 0
         # Otherwise check if current branch is later than symbol branch
         else {
-          if(length(b) > length(a)) length(b) <- length(a)
+          if(length(a) > length(b)) length(a) <- length(b)
           index_greater(a, b)
         }
       },
-      TRUE, b=in.branch
+      TRUE, a=in.branch  # in.branch is current position
     )
     cand.prom.i <- seq_along(cand)[cand.match][cand.after.branch]
 
@@ -488,7 +488,6 @@ copy_branchdat_rec <- function(
       data[['passive']] <- passive && data[['passive']]
 
       if(call.assign) {  # not call.modify
-        browser()
         # Any prior candidates bound to this symbol are voided by the new
         # assignment.  We need to clear them, except:
         #
@@ -497,7 +496,7 @@ copy_branchdat_rec <- function(
         #   computation of the assignment (so we do it after recursion above).
         #
         #  Start by finding the first candidate earlier than this assignment
-        indices <- lapply(data[[CAND]], "[[", 2L)
+        indices <- lapply(data[[CAND]], "[[", "index")
         indices.gt <- vapply(indices, index_greater, TRUE, index)
         # Clear those candidates
         data[[CAND]] <-
@@ -734,7 +733,7 @@ generate_candidate <- function(
       }
     }
   }
-  # Anytime a symbol is assigned to track for free symbol checks for formals
+  # Track anytime a symbol is assigned to for free symbols for formals
   if(call.assign) data[[B.NAMED]] <- union(data[[B.NAMED]], tar.sym)
 
   data[['assigned.to']] <- assign.to
@@ -837,7 +836,7 @@ clear_candidates <- function(cand, ii) {
 }
 # Compare Two `callptr` Indices
 #
-# TRUE if the index a points to `a` position later in the tree than `b` in a
+# TRUE if the index `a` points to a position later in the tree than `b` in a
 # depth-first traversal order.
 #
 # @param a a integer vector of the form of `index` from `callptr`.
@@ -847,8 +846,10 @@ clear_candidates <- function(cand, ii) {
 index_greater <- function(a, b) {
   if(length(a) > length(b)) length(b) <- length(a)
   else length(a) <- length(b)
-  a[is.na(a)] <- 0L
-  b[is.na(b)] <- 0L
+  # c(3,3) is greater than c(3,3,1) b/c it is evaluated after
+  max.i <- max(c(a, b, 0), na.rm=TRUE)
+  a[is.na(a)] <- max.i
+  b[is.na(b)] <- max.i
   all(a >= b) & any(a > b)
 }
 # Merge Candidates between Branches
