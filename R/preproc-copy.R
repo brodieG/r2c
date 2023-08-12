@@ -497,10 +497,10 @@ copy_branchdat_rec <- function(
         #
         #  Start by finding the first candidate earlier than this assignment
         indices <- lapply(data[[CAND]], "[[", "index")
-        indices.gt <- vapply(indices, index_greater, TRUE, index)
+        indices.gtoc <- vapply(indices, index_greater_or_child, TRUE, index)
         # Clear those candidates
         data[[CAND]] <-
-          data[[CAND]][names(data[[CAND]]) != tar.sym | indices.gt]
+          data[[CAND]][names(data[[CAND]]) != tar.sym | indices.gtoc]
       }
     }
   } else stop("Internal Error: disallowed token type ", typeof(x))
@@ -848,10 +848,18 @@ index_greater <- function(a, b) {
   else length(a) <- length(b)
   # c(3,3) is greater than c(3,3,1) b/c it is evaluated after
   max.i <- max(c(a, b, 0), na.rm=TRUE)
-  a[is.na(a)] <- max.i
-  b[is.na(b)] <- max.i
+  a[is.na(a)] <- max.i + 1L
+  b[is.na(b)] <- max.i + 1L
   all(a >= b) & any(a > b)
 }
+# TRUE if a is a callptr that is child to b.  See index_greater
+index_child <- function(a, b) {
+  if(length(a) <= length(b)) FALSE
+  else all(b == a[seq_along(b)])
+}
+index_greater_or_child <- function(a, b)
+  index_greater(a, b) || index_child(a, b)
+
 # Merge Candidates between Branches
 #
 # `a` corresponds to the TRUE branch, and `b` to the FALSE branch.
