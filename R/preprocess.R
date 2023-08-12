@@ -593,7 +593,7 @@ transform_control <- function(x, i=0L) {
           r2c::for_init(
             seq=.(call("<-", seq.name, x[[3L]])),
             # Using just 0 here causes reference issue; it needs a fresh alloc.
-            seq.i=.(call("<-", seq.i.name, quote(numeric(length=1))))
+            seq.i=.(call("<-", seq.i.name, en_vcopy(0)))
           )
           r2c::r2c_for(
             iter=r2c::for_iter(
