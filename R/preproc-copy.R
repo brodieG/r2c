@@ -850,7 +850,9 @@ index_greater <- function(a, b) {
   max.i <- max(c(a, b, 0), na.rm=TRUE)
   a[is.na(a)] <- max.i + 1L
   b[is.na(b)] <- max.i + 1L
-  all(a >= b) & any(a > b)
+  neq <- which(a != b)
+  # First non-equal subindex determins which is greater
+  any(length(neq)) && a[neq[1L]] > b[neq[1L]]
 }
 # TRUE if a is a callptr that is child to b.  See index_greater
 index_child <- function(a, b) {
