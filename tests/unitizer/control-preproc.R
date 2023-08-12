@@ -252,7 +252,7 @@ unitizer_sect("Basic if/else", {
     } else {
       x <- mean(x) # `x` is branch local computation.
       z <- mean(y) # `z` is reset by if/else return value, so do nothing.
-      y <- x       # `x` unused: only reconcile.  Return needs copy.
+      y <- x       # `x` branch local: only reconcile. Return needs copy.
     }
     y + z
   })

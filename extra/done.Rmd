@@ -12,6 +12,14 @@
 
 ### v0.4.0
 
+* Is the new use of `in.branch` with the index a good way to deal with
+  `sym.local` (i.e do we need both)?  Yes, it is.  But can't get rid of B.LOC or
+  sym.local computed without further analysis.  Would be nice to be able to make
+  the computed thing a property of the candidate, but not entirely sure it can
+  be.
+
+* Make sure `reconcile_control_flow` works correctly for for loops.
+
 * Do we disallow using group vectors as control variables?  Probably makes sense
   to do this.  Very confusing / weird otherwise, straight up error message
   better.  I'm not sure there is a use case that makes sense.  Also need to
