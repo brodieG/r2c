@@ -203,17 +203,16 @@ The following functions are supported in \code{x} (or in the body of \code{x} fo
 \item Miscellaneous: \code{numeric}.
 }
 
-In general these will behave as in R.  There are several exceptions, but
-except for those involving control structures you will not notice them in
-typical usage:
+Calls must be in the form \code{fun(...)} (\verb{a fun b} for operators)  where \code{fun}
+is the name of the function, optionally in \code{pkg::fun} format.  Functions must
+be bound to their original symbols for them to be recognized.
+
+In general the r2c implementations will behave as in R.  There are several
+exceptions, but outside of those involving control structures you will not
+notice them in typical usage:
 \itemize{
-\item \code{ifelse} and \code{if} / \verb{else} always return in a common type that can support
+\item \code{ifelse} always return in a common type that can support
 both \code{yes} and \code{no} values.
-\item \code{if}/\verb{else} returns \code{numeric(0)} instead of NULL if an empty branch is
-taken.
-\item \code{for} return value may not be used unless it is \code{numeric(0)}.
-Additionally, \code{for} is relatively slow even in \code{r2c} so try to use
-vectorized operations instead.
 \item \code{&&} and \code{||} always evaluate all parameters.
 \item \verb{\{} must contain at least one parameter (no empty braces).
 \item \code{seq_along} always returns a double vector, never integer.
@@ -230,24 +229,25 @@ varying (see "Expression Types", also \code{?numeric_along}).
 \item Assignments may only be nested in braces (\verb{\{}) or in control structure
 branches.  This is a recursive requirement, so \code{mean(if(a) x <- y)} is
 disallowed even though \code{if(a) x <- y} is allowed.
-\item Additional constraints detailed next.
 }
-
-Calls must be in the form \code{fun(...)} (\verb{a fun b} for operators)  where \code{fun}
-is the name of the function.  Functions must be bound to their original
-symbols for them to be recognized.  For \code{r2c} provided functions like
-\code{\link{mean1}} you may use the \code{::} form to compile expressions that contain them
-without attaching the \code{{r2c}} package.
 
 Control structures include \code{if} / \verb{else} statements and loops.  All of these
 have branches; the loop branches are loop not taken (0 iterations) vs loop
-taken (1+ iterations).  Control structures add additional constraints:
+taken (1+ iterations).  Control structures add additional constraints and
+semantic differences to R:
 \itemize{
 \item Control structure return values must be guaranteed to be the same
-size irrespective of the branch taken if they are subsequently used.
+size irrespective of the branch taken, if they are subsequently used.
+Additionally return values are coerced to a common type.
 \item Assignments made within control structure branches must be guaranteed to be
-the same size irrespective of branch taken if the corresponding bindings
+the same size irrespective of branch taken, if the corresponding bindings
 are subsequently used.
+\item \code{if}/\verb{else} and \code{for} both return \code{numeric(0)} instead of NULL if an empty
+branch is taken (i.e. a missing \verb{else} branch, or with \code{for} a zero
+iteration loop).  Combined with the need for return values to be the same
+irrespective of branch taken, this makes the return value of \code{for} rather
+useless.
+\item Control structures can be nested at most 999 levels.
 }
 
 Outside of the aforementioned constraints and exceptions, \code{r2c} attempts to

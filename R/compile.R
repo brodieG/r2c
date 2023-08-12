@@ -194,6 +194,7 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #'   iteration loop).  Combined with the need for return values to be the same
 #'   irrespective of branch taken, this makes the return value of `for` rather
 #'   useless.
+#' * Control structures can be nested at most 999 levels.
 #'
 #' Outside of the aforementioned constraints and exceptions, `r2c` attempts to
 #' mimic the corresponding R function semantics to the `identical` level, but
