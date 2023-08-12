@@ -346,7 +346,6 @@ copy_branchdat_rec <- function(
 
   if (is.symbol(x)) {
     sym.local.cmp <- sym.name %in% data[[B.LOC.CMP]]
-    sym.local <- sym.name %in% data[[B.LOC]]
     sym.global <- sym.name %in% c(data[[B.ALL]], data[[B.ALL0]])
     passive <- !sym.local.cmp
     leaf <- TRUE
@@ -357,7 +356,7 @@ copy_branchdat_rec <- function(
     }
     # For symbols matching candidate(s): promote candidate if allowed.
     cand <- data[[CAND]]
-    cand.match <- names(cand) == sym.name & !sym.local
+    cand.match <- names(cand) == sym.name
     cand.match.source <- lapply(cand[cand.match], "[[", "br.index")
     cand.after.branch <- vapply(
       cand.match.source,
@@ -495,12 +494,19 @@ copy_branchdat_rec <- function(
         # * We need to allow candidates that will be cleared to be used during
         #   computation of the assignment (so we do it after recursion above).
         #
-        #  Start by finding the first candidate earlier than this assignment
+        # Essentially any candidates that are part of the current assignment
+        # chain are kept, but others are dropped.
         indices <- lapply(data[[CAND]], "[[", "index")
+        indices.br <- lapply(data[[CAND]], "[[", "br.index")
         indices.gtoc <- vapply(indices, index_greater_or_child, TRUE, index)
+        # We know candidates from a different (child) branch are not part of the
+        # same assignment chain, so clear those.  Might be missing some other
+        # condtion that also requires clearing children.
+        indices.br.same <- vapply(indices.br, identical, TRUE, in.branch)
         # Clear those candidates
-        data[[CAND]] <-
-          data[[CAND]][names(data[[CAND]]) != tar.sym | indices.gtoc]
+        data[[CAND]] <- data[[CAND]][
+          names(data[[CAND]]) != tar.sym | indices.gtoc & indices.br.same
+        ]
       }
     }
   } else stop("Internal Error: disallowed token type ", typeof(x))
@@ -914,7 +920,6 @@ merge_copy_dat <- function(old, a, b, idx, idx.offset) {
     br.index=c(idx, 3L + idx.offset),
     copy=TRUE, rec=TRUE
   )
-
   # Combine all found free symbols
   prev.bound <- c(old[[B.LOC.CMP]], old[[B.LOC]], old[[B.ALL]], old[[B.ALL]])
   old[['free']] <- unique(
