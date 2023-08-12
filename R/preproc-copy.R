@@ -464,6 +464,9 @@ copy_branchdat_rec <- function(
       rec.skip <- 1L
       if(call.assign) {
         assign.to <- union(assign.to, tar.sym)
+        # Potentially this could be 1:3 for `for_iter`?  Right now both `seq`
+        # and `seq.1` get treated as payloads for the iteration variable, but it
+        # shouldn't matter since never used after branch.
         rec.skip <- 1:2
       }
       # Recurse on language subcomponents
