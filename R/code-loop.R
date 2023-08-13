@@ -111,31 +111,29 @@ code_gen_for <- function(...) {
   )
 }
 
-#' Loop Stub Functions
-#'
-#' @keywords internal
+#' @rdname control-counterpart
 #' @export
 
 r2c_for <- function(iter, for.n, for.0) NULL
 
-#' @rdname r2c_for
+#' @rdname control-counterpart
 #' @export
 
 for_init <- function(seq, seq.i) NULL
 
-#' @rdname r2c_for
+#' @rdname control-counterpart
 #' @export
 
 for_iter <- function(var, seq, seq.i) NULL
 
-#' @rdname r2c_for
+#' @rdname control-counterpart
 #' @export
 
-for_n <- function(expr.n) NULL
+for_n <- function(expr) expr
 
-#' @rdname r2c_for
+#' @rdname control-counterpart
 #' @export
 
-for_0 <- function(expr.0) NULL
+for_0 <- function(expr) expr
 
 

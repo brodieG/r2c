@@ -12,11 +12,33 @@
 
 ### v0.4.0
 
+* Document for:
+  * Limit to number of for loops. - done.
+  * Limit for parameter size permutations. - done.
+
+* Whitespace not great for generated C code for loops.  Meh, it's okay.
+
+* Braces not getting fully collapsed anymore after processing for `for`.  We
+  added a brace collapse pass after initial preprocessing.
+
+* Make sure we can't overflow `R_xlen_t` with `seq.i` in `for`.  We can't,
+  `seq.i` is checked against a value from `lens[]`, which is `R_xlen_t*`.
+
+* Check that we can't do stuff like `for(a + 2 in ...)` (i.e. symbol must be
+  target).  This is actually a parse error.
+
 * Is the new use of `in.branch` with the index a good way to deal with
   `sym.local` (i.e do we need both)?  Yes, it is.  But can't get rid of B.LOC or
   sym.local computed without further analysis.  Would be nice to be able to make
   the computed thing a property of the candidate, but not entirely sure it can
   be.
+
+* Seeing weird reconcile / vcopy of iteration variable with nested loops.  One
+  weirdness is that the "assign" from `for_iter` has two payloads (the latter we
+  just added a comment for).
+
+    // r2c::for_iter(var = j, seq = .R2C_for_seq_2, seq.i = r2c::rec(x = r2c::vcopy(x = .R2C_for_seqi_2)))
+
 
 * Make sure `reconcile_control_flow` works correctly for for loops.
 

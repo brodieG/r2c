@@ -13,6 +13,8 @@
 ##
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
+#' @include r2c-package.R
+
 f_iftest <- '
 // Check a test condition, mostly enforces length
 static int %s(%s) {
@@ -84,60 +86,48 @@ code_gen_if <- function(...) {
     "instead of decomposed one."
   )
 }
-#' If / Else Counterparts
+#' Control Structure Preprocessing Counterpart Functions
 #'
-#' "Internal" functions that integrate the `if / else` construct between the R
-#' and C level.  These are purely an implementation detail and not intended to
-#' be used directly, but are documented so users can understand what they are if
-#' they encounter them when inspect "r2c_fun" objects.
+#' Functions used by the `r2c` preprocessor to represent control structures in a
+#' format that facilitates translation to C code.
 #'
-#' Most R level calls are converted 1-1 into C level calls.  Control structures
-#' are more complicated because we need to generate the call structure itself
-#' without a direct correspondence of R call to structural element.  The
-#' preprocessor decomposes regular `if / else` calls such as:
-#'
-#' ```
-#' if(a) x else y
-#' ```
-#' Into:
-#' ```
-#' if_test(a)
-#' r2c_if(if_true(x), if_false(y))
-#' ```
-#'
-#' The decomposition creates a 1-1 R-C correspondence without changing the
-#' overall semantics (although the intermediate semantics are not the same due
-#' to the use of implicit state to decide what branch to evaluate).  You can
-#' run these functions as R functions, but there is no reason to do so, and
-#' further `r2c_if` will always return the true branch as the state from
-#' `if_test` is not recorded in pure R evaluation.  There is only a loose
-#' correspondence between the R function names and the C code they cause to be
-#' generated as we exploit how `r2c` linearizes the AST to cause the pieces of
-#' the control structure to be emitted at the right spots (i.e.  this is a hack
-#' to get control flow to fit into an implementation that originally did not
-#' intend to allow them).
-#'
-#' @export
+#' @param cond expression to evaluate to determine which branch is taken.
 #' @param true expression to evaluate if previous `if_test` is TRUE.
 #' @param false expression to evaluate if previous `if_test` is FALSE
-#' @param expr an expression to evaluate
-#' @return for `if_true` and `if_false`, the result of evaluating `expr`, for
-#'   `if_test` the result of evaluating `test` if that is length 1 (otherwise an
-#'   error) 
-#' @examples
-#' get_r_code(r2cq(if(a) b else c), raw=TRUE)
+#' @param expr branch expression to evaluate.
+#' @param iter expression that increments the loop iteration variable.
+#' @param for.n expression to evaluate if there is at least one loop iteration.
+#' @param for.0 expression to evaluate if there are no loop iterations.
+#' @param seq expression that generates vector to loop over.
+#' @param seq.i position in `seq` the loop is at.
+#' @param var variable to hold the loop iteration value.
+#' @return These functions are not intended for use at the R level thus their
+#'   return values are undocumented.
+#'
+#' @seealso [Preprocessing][r2c-preprocess]
+#' @export
+#' @keywords internal
+#' @rdname control-counterpart
+#' @aliases r2c_if if_true if_false if_test r2c_for for_init for_iter for_n
+#'   for_0
 
 r2c_if <- function(true, false) true
 
 #' @export
-#' @rdname r2c_if
+#' @keywords internal
+#' @rdname control-counterpart
+
 if_true <- function(expr) expr
 
 #' @export
-#' @rdname r2c_if
+#' @keywords internal
+#' @rdname control-counterpart
+
 if_false <- function(expr) expr
 
 #' @export
-#' @rdname r2c_if
+#' @keywords internal
+#' @rdname control-counterpart
+
 if_test <- function(cond) expr
 

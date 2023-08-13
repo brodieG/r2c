@@ -99,7 +99,7 @@ stack_param_missing <- function(params, stack.avail, call, .CALL) {
 #
 # Because the size of an output may depend on iteration/group size, we express
 # size as a univariate polynomial of the iteration/group size (we'll call that
-# size `g` going forward).  The polynomial is encoded as a vector of positive
+# size `i` going forward).  The polynomial is encoded as a vector of positive
 # integer coefficients, so that the size of e.g.:
 #
 #     c(mean(x), c(x, x))
@@ -108,7 +108,7 @@ stack_param_missing <- function(params, stack.avail, call, .CALL) {
 #
 #     c(1L, 2L)
 #
-# Where 1L is the `g^0` (i.e. constant) coefficient, 2L the `g^1` coefficient,
+# Where 1L is the `i^0` (i.e. constant) coefficient, 2L the `i^1` coefficient,
 # and so on.  Higher degree polynomials are possible in situations like
 # `numeric_along(x, y)` where a length is the product of two input lenghts.
 #
@@ -314,7 +314,7 @@ size_prod <- function(size.args) {
 # possible permutation of input sizes and will have as many integer elements as
 # there were sub-lists in `size.args`.  The result will have
 # `prod(lengths(size.args))` elements, and will be zero-right-padded so that all
-# integer vectors are the lenght of the longest integer vector in the input.
+# integer vectors are the length of the longest integer vector in the input.
 #
 # @example
 # arg1 <- list(c(1, 0, 2))
@@ -325,7 +325,7 @@ expand_sizes <- function(size.args) {
   valid_size_input(size.args)
   if(perms <- prod(lengths(size.args)) > 1024)
     stop(
-      "Too many possible parameter size permutations (", perms, ")."
+      "Exceeded size expression complexity limit (", perms, ")."
     )
   size.ids <- lapply(size.args, seq_along)
   size.perm <- as.matrix(do.call(expand.grid, size.ids))
@@ -370,7 +370,7 @@ size_coef_el_as_string <- function(x) {
     xc[x == 1 & seq_along(x) > 1] <- ""
     base <- paste0(
       xc,
-      c("", "g", paste0(rep("g^", length(x) - 2), (seq_along(x) - 1)[-(1:2)]))
+      c("", "i", paste0(rep("i^", length(x) - 2), (seq_along(x) - 1)[-(1:2)]))
     )
     if(!any(x != 0)) "0"
     else paste0(base[x != 0], collapse=" + ")
