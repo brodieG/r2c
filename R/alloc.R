@@ -410,6 +410,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
         stack=stack, stack.ext.any=stack.ext.any, depth=depth,
         alloc=alloc, call.i=i
       )
+      if(name == "for_n") browser()
       # Handle name reconciliation for control flow calls.  Recall that call
       # linearization causes paramters to be seen before the call that computes
       # on them.  Also, because we make the control flow test a separate
@@ -1080,7 +1081,9 @@ latest_symbol_instance <- function(x) {
 
   # Unfortunately loops complicate matters as an early symbol can be re-used
   # after first loop iteration, so get all the loops, and extract all the leaf
-  # symbols used by each loop.
+  # symbols used by each loop.  We will pretend each of these is potentially
+  # used up to the last point of the loop.  DO NOT CHANGE this assumption
+  # lightly as we depend on it for bindings that are used before write in loops.
   loop.syms <- lapply(call, collect_loop_call_symbols)
   loop.reps <- rep(seq_along(loop.syms), lengths(loop.syms))
   loop.max <- tapply(loop.reps, unlist(loop.syms), max)

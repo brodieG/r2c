@@ -1112,3 +1112,71 @@ merge_braces <- function(x, id) {
   names(x.call) <- c("", rep("...", length(x.call) - 1L))
   x.call
 }
+
+# Prepare For Loop
+#
+# Using name `copy` b/c that's what we did for branchdat, but there is more
+# going on.
+#
+# @param x call tree
+# @param index integer index into call tree we're currently at
+# @param loop.stack list of call tree indices, each one the location of an
+#   `r2c_for` encountered.  Length of the list represents depth of for nesting.
+# @param symbols list with equal-length elements:
+#   * name: name of symbol.
+#   * level: integer nesting `for` depth.
+#   * index.first.use: list of `index` values.
+#   * index.first.assign: list of `index` values.
+#   * index.last.assign: list of `index` values.
+# @param first.assign character vector of names of symbols assigned before use.
+# @param last.assign list of lists of same structure as `first.use` with each
+#   sub-element pointing to last assign to a symbol in `first.use`.
+
+copy_fordat <- function(
+  x, index=integer(), loop.stack=list(), first.use=list(),
+  first.assign=character(), last.assign=list(), assign.to=character()
+) {
+  llvl <- length(loop.stack)
+  if (is.symbol(x) && llvl) {
+    # Record use before set (without knowing yet if it is loop set)
+    name <- as.character(x)
+    if(
+      !sym.name %in% names(first.use[[llvl]]) &&
+      !sym.name %in% names(last.assign[[llvl]])
+    ) {
+      first.use[[llvl]][name] <- index
+    }
+  } else if(is.call_w_args(x)) {
+    name <- get_lang_name(x)
+    is.loop <- name == R2C.FOR
+    rec.skip <- 1L
+    if(llvl) {
+      if(name %in% ASSIGN.SYM) { # includes for_iter
+        # We only record target symbol so if there is an assign chain they can
+        # all be set to point to the same element.
+        assign.to <- union(assign.to, get_target_symbol(x))
+        rec.skip <- if(name == FOR.ITER) 1:3 else 1:2
+      } else if (length(assign.to)) {
+        # record last assign to all accumulated symbols
+        last.assign[[llvl]][assign.to] <- list(index)
+        assign.to <- character()
+    } }
+    # Recurse
+    for(i in seq_along(x)[-rec.skip]) {
+      sub.index <- c(index, i)
+      copy_fordat(
+        x[[i]], index=sub.index,
+        loop.stack=c(loop.stack, if(is.loop) list(index)),
+        first.use=c(first.use, if(is.loop) list(list())),
+        last.assign=c(last.assign, if(is.loop) list(list())),
+        assign.to
+      )
+    }
+    # Modify loop on exit to handle use before set
+    if(is.loop) {
+      # Find uses that are subsequently set in 
+
+
+
+    }
+  }

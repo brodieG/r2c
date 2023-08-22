@@ -46,7 +46,41 @@
 
 ## Current
 
-* Fill out for stub functions.
+* What happens when we use the counter from a loop either outside of the loop as
+  part of a use before set?  It should be reset at beginning of loop each time?
+  So shouldn't matter.  If we read from it it's set.  If we write to it it was
+  already set beforehand.
+
+* Why do we not need to worry about sub-assign in loops?  Is it because we
+  already directly modify in memory, and we don't allow use of return value?
+
+* Need to make sure that alloc doesn't release `for` bindings until end of loop.
+  We do check for it by getting all the symbols in a `for` call in the
+  linearized call list (which will be after all the loop calls), but big problem
+  there is we're using the original loop names, not the rebuilt ones.
+  Need to add a test that confirms this works.
+
+* What happens if we try to return/reconcile the iteration variable (`i` in
+  `for(i in ...)`?  Either from the loop, or the loop nested inside an if/else.
+
+* Make sure that the result slot is compatible with the `asize`.  When we remap
+  an allocation to the result, it can only be the instance that will be written
+  to the result itself.  This is particularly the case if intermediate results
+  use that slot.
+* Make sure that when we reconcile sizes we account for the size of the
+  allocation, not just the size of the objects being reconciled.  Otherwise when
+  we repoint everything some of the interim stuff might not fit anymore.  This
+  probably hasn't been an issue so far because we cause all reconciliation to be
+  branch-local memory allocations, but I think the problem can still happen.
+  The size should be max of existing asize and what we need, in addition to
+  ensuring that the two objects being reconciled have the same size expression.
+  **UPDATE**: maybe this doesn't matter so long as when we reconcile, we
+  generate an entirely new allocation that isn't shared with anything else?
+  Confirm it is actually entirely new and not a potential re-use of a freed one!
+
+* What happens when we subassign in a branch?  This should be handled?
+
+* Fill out `for` stub functions.
 
 * r2c.for example clearly broken.
 

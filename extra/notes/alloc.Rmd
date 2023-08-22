@@ -1,5 +1,15 @@
 # Allocation
 
+## Abstracting the Allocator?
+
+It would be nice if there was some way of designing the allocator such that we
+can express to it the memory requirements and it would figure out all the
+reconciliations itself.  How is this different from what we are attempting to
+do?  Maybe how we express the memory requirements?  A naive allocator would
+re-allocate each loop iteration so wouldn't have to worry about tracking
+anything.  Blergh.
+
+
 ## External vs. Control
 
 For functions that rely on an external input (we don't have any at the moment),

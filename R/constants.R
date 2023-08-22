@@ -64,8 +64,10 @@ MISSING <- list(formals(base::identical)[[1L]])
 
 # `for` assigns to the counter variable.  `->` becomes `<-` on parsing.
 
+R2C.FOR <- "r2c_for"
+FOR.ITER <- "for_iter"
 ASSIGN.SYM.BASE <- c("<-", "=")
-ASSIGN.SYM <- c(ASSIGN.SYM.BASE, "for", "for_iter")
+ASSIGN.SYM <- c(ASSIGN.SYM.BASE, "for", FOR.ITER)
 MODIFY.SYM <- c(ASSIGN.SYM, "subassign")
 LOOP.SYM <- c("for", "while", "repeat")
 LOOP.SUB.SYM <- c("for_0", "for_n")
@@ -75,10 +77,10 @@ CTRL.SUB.SYM <- c(IF.SUB.SYM, LOOP.SUB.SYM)
 # `for_iter` and `if_test` are not quite the same because for_iter is nested
 # inside `r2c_for`.  Works out the same though in terms of sandwiching the
 # branches.
-BRANCH.START.SYM <- c("if_test", "for_iter")
+BRANCH.START.SYM <- c("if_test", FOR.ITER)
 BRANCH.MID.SYM <- c("if_true", "for_n")
 BRANCH.END.SYM <- c("if_false", "for_0")
-BRANCH.EXEC.SYM <- c("r2c_if", "r2c_for")
+BRANCH.EXEC.SYM <- c("r2c_if", R2C.FOR)
 REC.FUNS <- c('vcopy', 'rec')
 
 INTERNAL.FUNS <- c(
@@ -156,7 +158,7 @@ FUN.NAMES <- c(
   "if"="if",
 
   for_init="for_init", for_iter="for_iter", for_n="for_n", for_0="for_0",
-  r2c_for="r2c_for", "for"="for",
+  r2c_for=R2C.FOR, "for"="for",
 
   seq_along="seq_along",
 

@@ -466,7 +466,7 @@ VALID_FUNS <- c(
     ),
     # `res.type` gets special handling in `reconcile_control_flow` for `r2c_if`.
     cgen(
-      "r2c_for", type=list("eqlen", c("for.n", "for.0")),
+      R2C.FOR, type=list("eqlen", c("for.n", "for.0")),
       code.gen=code_gen_r2c_for, fun=r2c_for, res.type="preserve"
     ),
     # This is a stub function like `if`.

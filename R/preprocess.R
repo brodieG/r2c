@@ -250,7 +250,7 @@ pp_internal <- function(
           assign=i == 1L && next.assign,
           call.parent=call, call.parent.name=func, par.validate=par.validate[i],
           indent=indent +
-            (func %in% c(CTRL.SUB.SYM, 'for_iter', 'r2c_for')) * 2L,
+            (func %in% c(CTRL.SUB.SYM, FOR.ITER, R2C.FOR)) * 2L,
           passive=passive
         )
         par.types[i] <- x[['par.type']][length(x[['par.type']])]
@@ -599,7 +599,8 @@ transform_control <- function(x, i=0L) {
             iter=r2c::for_iter(
               var=.(x[[2L]]), seq=.(seq.name), seq.i=.(seq.i.name)
             ),
-            for.n=r2c::for_n(expr=.(x[[4L]])),
+            # implement append_null to add a `numeric(0)` at end.
+            for.n=r2c::for_n(expr=.(append_null(x[[4L]]))),
             for.0=r2c::for_0(expr=numeric(length=0))
           )
         }
