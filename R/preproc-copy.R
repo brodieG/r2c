@@ -958,8 +958,8 @@ merge_copy_dat <- function(old, a, b, idx, idx.offset) {
 
   old
 }
-# Wrap a Symbol in vcopy / rec
 
+# Marker functions for singalling to `alloc` for branches
 VCOPY.FUN.NAME <- call("::", as.name("r2c"), as.name("vcopy"))
 en_vcopy <- function(x) as.call(list(VCOPY.FUN.NAME, x=x))
 
@@ -969,6 +969,13 @@ en_rec <- function(x, clean=FALSE) {
   if(clean) names(tmp) <- NULL  # recompose_ifelse uses en_rec, hence this option
   tmp
 }
+
+# Marker functions for signalling to `alloc` for use before set in loops
+LUSE.FUN.NAME <- call("::", as.name("r2c"), as.name("luse"))
+LSET.FUN.NAME <- call("::", as.name("r2c"), as.name("lset"))
+LREC.FUN.NAME <- call("::", as.name("r2c"), as.name("lrec"))
+en_luse <- function(x) as.call(list(LUSE.FUN.NAME), )
+
 # Inject Self-vcopy
 #
 # Injects a self vcopy (e.g. `x <- vcopy(x)`) just prior to the position pointed
@@ -1112,6 +1119,7 @@ merge_braces <- function(x, id) {
   names(x.call) <- c("", rep("...", length(x.call) - 1L))
   x.call
 }
+
 
 # Prepare For Loop
 #

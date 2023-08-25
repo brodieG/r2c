@@ -86,11 +86,13 @@ code_gen_if <- function(...) {
     "instead of decomposed one."
   )
 }
-#' Control Structure Preprocessing Counterpart Functions
+#' Intermediate Representation Functions
 #'
 #' Functions used by the `r2c` preprocessor to represent control structures in a
 #' format that facilitates translation to C code.
 #'
+#' @param x language to wrap in markers that designate it for special treatment
+#'   by the memory allocator at run time.
 #' @param cond expression to evaluate to determine which branch is taken.
 #' @param true expression to evaluate if previous `if_test` is TRUE.
 #' @param false expression to evaluate if previous `if_test` is FALSE
@@ -107,27 +109,27 @@ code_gen_if <- function(...) {
 #' @seealso [Preprocessing][r2c-preprocess]
 #' @export
 #' @keywords internal
-#' @rdname control-counterpart
+#' @rdname intermediate-representation
 #' @aliases r2c_if if_true if_false if_test r2c_for for_init for_iter for_n
-#'   for_0
+#'   for_0 vcopy rec luse lset lrec
 
 r2c_if <- function(true, false) true
 
 #' @export
 #' @keywords internal
-#' @rdname control-counterpart
+#' @rdname intermediate-representation
 
 if_true <- function(expr) expr
 
 #' @export
 #' @keywords internal
-#' @rdname control-counterpart
+#' @rdname intermediate-representation
 
 if_false <- function(expr) expr
 
 #' @export
 #' @keywords internal
-#' @rdname control-counterpart
+#' @rdname intermediate-representation
 
 if_test <- function(cond) expr
 

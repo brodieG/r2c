@@ -111,29 +111,44 @@ code_gen_for <- function(...) {
   )
 }
 
-#' @rdname control-counterpart
+#' @rdname intermediate-representation
 #' @export
 
 r2c_for <- function(iter, for.n, for.0) NULL
 
-#' @rdname control-counterpart
+#' @rdname intermediate-representation
 #' @export
 
 for_init <- function(seq, seq.i) NULL
 
-#' @rdname control-counterpart
+#' @rdname intermediate-representation
 #' @export
 
 for_iter <- function(var, seq, seq.i) NULL
 
-#' @rdname control-counterpart
+#' @rdname intermediate-representation
 #' @export
 
 for_n <- function(expr) expr
 
-#' @rdname control-counterpart
+#' @rdname intermediate-representation
 #' @export
 
 for_0 <- function(expr) expr
+
+#' @rdname intermediate-representation
+#' @export
+
+luse <- function(x) x
+
+#' @rdname intermediate-representation
+#' @export
+
+lset <- function(x) x
+
+#' @rdname intermediate-representation
+#' @export
+
+lrec <- function(x) x
 
 
