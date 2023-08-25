@@ -70,7 +70,7 @@ code_gen_for_iter <- function(fun, pars, par.types) {
 }
 code_gen_for_n <- function(fun, pars, par.types) {
   vetr(
-    identical(., "for_n"),
+    identical(., FOR.N),
     pars=list(NULL),
     par.types=character() && all(. %in% PAR.INT)
   )

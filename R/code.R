@@ -457,7 +457,7 @@ VALID_FUNS <- c(
       res.type="preserve.which", res.type.which=2L, fun=for_iter
     ),
     cgen(
-      "for_n", type=list("arglen", "expr"), code.gen=code_gen_for_n,
+      FOR.N, type=list("arglen", "expr"), code.gen=code_gen_for_n,
       fun=for_n, res.type="preserve"
     ),
     cgen(

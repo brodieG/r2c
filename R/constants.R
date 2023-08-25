@@ -70,7 +70,8 @@ ASSIGN.SYM.BASE <- c("<-", "=")
 ASSIGN.SYM <- c(ASSIGN.SYM.BASE, "for", FOR.ITER)
 MODIFY.SYM <- c(ASSIGN.SYM, "subassign")
 LOOP.SYM <- c("for", "while", "repeat")
-LOOP.SUB.SYM <- c("for_0", "for_n")
+FOR.N <- "for_n"
+LOOP.SUB.SYM <- c("for_0", FOR.N)
 IF.SUB.SYM <- c("if_true", "if_false")
 CTRL.SYM <- c("if", LOOP.SYM)
 CTRL.SUB.SYM <- c(IF.SUB.SYM, LOOP.SUB.SYM)
@@ -78,7 +79,7 @@ CTRL.SUB.SYM <- c(IF.SUB.SYM, LOOP.SUB.SYM)
 # inside `r2c_for`.  Works out the same though in terms of sandwiching the
 # branches.
 BRANCH.START.SYM <- c("if_test", FOR.ITER)
-BRANCH.MID.SYM <- c("if_true", "for_n")
+BRANCH.MID.SYM <- c("if_true", "FOR.N")
 BRANCH.END.SYM <- c("if_false", "for_0")
 BRANCH.EXEC.SYM <- c("r2c_if", R2C.FOR)
 REC.FUNS <- c('vcopy', 'rec')
@@ -157,7 +158,7 @@ FUN.NAMES <- c(
   if_test="if_test", if_true="if_true", if_false="if_false", r2c_if="r2c_if",
   "if"="if",
 
-  for_init="for_init", for_iter="for_iter", for_n="for_n", for_0="for_0",
+  for_init="for_init", for_iter="for_iter", for_n=FOR.N, for_0="for_0",
   r2c_for=R2C.FOR, "for"="for",
 
   seq_along="seq_along",
