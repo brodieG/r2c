@@ -139,16 +139,16 @@ for_0 <- function(expr) expr
 #' @rdname intermediate-representation
 #' @export
 
-luse <- function(x) x
+luse <- function(x, indrec) x
 
 #' @rdname intermediate-representation
 #' @export
 
-lset <- function(x) x
+lset <- function(x, indrec) x
 
 #' @rdname intermediate-representation
 #' @export
 
-lrec <- function(x) x
+lrec <- function(x, indrec) x
 
 

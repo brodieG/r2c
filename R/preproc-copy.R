@@ -313,7 +313,8 @@ copy_branchdat <- function(x) {
 # @param data list with named elements:
 #   * "bind": a list containing branch-local bindings, branch-local computed
 #     bindings, global bindings (all, and all0 for those re-injected at
-#     beginning of call by e.g. subassign), and every encountered binding (named).
+#     beginning of call by e.g. subassign), and every encountered binding
+#     (named).
 #   * "copy": a list with elements "cand", and "act". Each is a list
 #     of `callptr` generated objects used to track calls that need to be
 #     reconciled and/or vcopied (potentially for "cand", definitively).
@@ -974,7 +975,9 @@ en_rec <- function(x, clean=FALSE) {
 LUSE.FUN.NAME <- call("::", as.name("r2c"), as.name("luse"))
 LSET.FUN.NAME <- call("::", as.name("r2c"), as.name("lset"))
 LREC.FUN.NAME <- call("::", as.name("r2c"), as.name("lrec"))
-en_luse <- function(x) as.call(list(LUSE.FUN.NAME), )
+en_luse <- function(x, indrec) as.call(list(LUSE.FUN.NAME, x=x, indrec=indrec))
+en_lset <- function(x, indrec) as.call(list(LSET.FUN.NAME, x=x, indrec=indrec))
+en_lrec <- function(x, indrec) as.call(list(LREC.FUN.NAME, x=x, indrec=indrec))
 
 # Inject Self-vcopy
 #
@@ -1131,60 +1134,182 @@ merge_braces <- function(x, id) {
 # @param loop.stack list of call tree indices, each one the location of an
 #   `r2c_for` encountered.  Length of the list represents depth of for nesting.
 # @param symbols list with equal-length elements:
-#   * name: name of symbol.
 #   * level: integer nesting `for` depth.
-#   * index.first.use: list of `index` values.
-#   * index.first.assign: list of `index` values.
-#   * index.last.assign: list of `index` values.
+#   * indices: 3 row list-matrix of `index` values, with rows first.use,
+#     first.assign, last.assign, and for column names the symbol names (these
+#     will contain duplicates, deduplicated by 'level'.
 # @param first.assign character vector of names of symbols assigned before use.
 # @param last.assign list of lists of same structure as `first.use` with each
 #   sub-element pointing to last assign to a symbol in `first.use`.
+# @param prior.name name of parent call for purposes of detecting illegal nested
+#   braces (not sure there is any gurantee these won't exist).  This is to avoid
+#   issues like `a <- {b <- c; d}` in composing assignment chains.
 
 copy_fordat <- function(
-  x, index=integer(), loop.stack=list(), first.use=list(),
-  first.assign=character(), last.assign=list(), assign.to=character()
+  x, index=integer(), symbols=init_sym_idx(), assign.to=character(),
+  prior.name="", llvl=0L
 ) {
-  llvl <- length(loop.stack)
+  name <- get_lang_name(x)
   if (is.symbol(x) && llvl) {
-    # Record use before set (without knowing yet if it is loop set)
-    name <- as.character(x)
-    if(
-      !sym.name %in% names(first.use[[llvl]]) &&
-      !sym.name %in% names(last.assign[[llvl]])
-    ) {
-      first.use[[llvl]][name] <- index
-    }
+    # Record symbol uses; we'll determine which ones are use before set later
+    symbols <- append_foruse_dat(
+      symbols, names=name, index=index, llvl=llvl
+    )
   } else if(is.call_w_args(x)) {
-    name <- get_lang_name(x)
-    is.loop <- name == R2C.FOR
+    if(name == "{" && prior.name == name)
+      stop("Internal Error: nested braces disallowed.")
+    # Modify for_n branch since other one doesn't do anything.
+    is.loop <- name == FOR.N
     rec.skip <- 1L
-    if(llvl) {
-      if(name %in% ASSIGN.SYM) { # includes for_iter
-        # We only record target symbol so if there is an assign chain they can
-        # all be set to point to the same element.
-        assign.to <- union(assign.to, get_target_symbol(x))
-        rec.skip <- if(name == FOR.ITER) 1:3 else 1:2
-      } else if (length(assign.to)) {
-        # record last assign to all accumulated symbols
-        last.assign[[llvl]][assign.to] <- list(index)
-        assign.to <- character()
-    } }
+
+    if(name %in% ASSIGN.SYM && llvl) {
+      # We only record target symbol so if there is an assign chain they can
+      # all be set to point to the same element.  ASSIGN.SYM includes `for_iter`
+      # which will never form anything but a length 1 chain.
+      assign.to <- union(assign.to, get_target_symbol(x))
+      rec.skip <- if(name == FOR.ITER) 1:3 else 1:2
+    } else assign.to <- character()
+
     # Recurse
     for(i in seq_along(x)[-rec.skip]) {
       sub.index <- c(index, i)
       copy_fordat(
         x[[i]], index=sub.index,
         loop.stack=c(loop.stack, if(is.loop) list(index)),
-        first.use=c(first.use, if(is.loop) list(list())),
-        last.assign=c(last.assign, if(is.loop) list(list())),
-        assign.to
+        symbols=symbols,
+        assign.to=assign.to, prior.name=name
+      )
+    }
+    if(length(assign.to) && llvl) {
+      symbols <- append_forassign_dat(
+        symbols, names=assign.to, index=index, llvl=llvl
       )
     }
     # Modify loop on exit to handle use before set
     if(is.loop) {
-      # Find uses that are subsequently set in 
+      # Collect all first use at this level (earlier loops of equal level that
+      # we've exited from previously have first use symbols removed).
+      at.lvl <- symbols[['level']] == llvl
+      target <- at.lvl & lengths(ind['first.use',])
+      ind <- symbols[['indices']][, target]
+      use.b4.set <- vapply(
+        seq_len(ncol(ind)),
+        function(i) index_greater(ind['first.use', i], ind['first.assign', i])
+        TRUE
+      )
+      # For each use before set:
+      # * Add a `lrec` call at end of loop for `alloc` to remap memory.
+      # * Tag the use with a unique id.
+      # * Tag the set with a matching unique id.
+      # * Add a vcopy for the symbol right outside of the loop to ensure memory
+      #   is not shared, and add a proxy binding to ensure memory not released.
+      # Order above important so coords in `ind` still match the call tree.
+      ind.rec <- ind[, use.b4.set, drop=FALSE]
+      if(!is.brace_call(x[[2L]][[1L]]))
+        stop("Internal Error: expected braces nested in ", FOR.N)
+      braces <- as.list(x[[2L]])
+
+      lrec.id. start <- symbols[['lrec.id']]
+      # Start with the modifications that don't affect the tree for subsequent
+      # modifications
+      for(i in seq_len(ncol(ind.rec))) {
+        indi <- indrec[, i]
+        lrec.id <- symbols[['lrec.id']] <- symbols[['lrec.id']] + 1L
+        rec.sym <- as.name(sprintf(".R2C.FOR.SYM.%d", symbols[['lrec.id']]))
+        ind.base <- c(index, 2L) # braces inside `for_n`
+        ind.use <- indi[['first.use']]
+        ind.set <- indi[['last.assign']]
+        # Indices are absolute, but we need to make them relative to modify the
+        # current sub-call.
+        if(
+          !identical(ind.use[seq_along(ind.base)], ind.base) ||
+          !identical(ind.set[seq_along(ind.base)], ind.base)
+        )
+          stop("Internal Error: mismatched for and use|set indices.")
+        ind.use <- ind.use[-seq_len(ind.base)]
+        ind.set <- ind.set[-seq_len(ind.base)]
+        braces[[ind.use]] <- en_luse(braces[[ind.use]], lrec.id)
+        braces[[ind.set]] <- en_lset(braces[[ind.set]], lrec.id)
+        braces <- c(
+          braces[seq_len(length(braces) - 1L)],
+          list(bquote(lrec(.(rec.sym), .(lrec.id)))),
+          braces[length(braces)]
+        )
+      }
+      # Add the symbol copies ahead of the loop; these mess up the indices.
+      # This is complicated because they really need to go ahead of the
+      # `r2c_for`, no?
+
+      # Probably can deal with this by intercepting the `r2c_for`, and only
+      # recursing through the `for_n`.
+
+
+
+
+      # Reset first uses for this loop level.  Keep the assigns as nested
+      # assigns are fair game to resolve subsequent uses at a higher level.
+      symbols[['inidices']]['first.use', at.lvl] <- NULL
+
+
+
 
 
 
     }
   }
+}
+
+init_sym_idx <- function(names = character()) {
+  list(
+    lrec.id=0,           # how many loop reconciliations we've made
+    level=integer(),
+    indices=matrix(
+      list(), nrow=3, ncol=n,
+      dimnames=list(c('first.use', 'first.assign', 'last.assign'), names)
+    )
+  )
+}
+init_and_fill_sym_idx <- function(symbols, names, llvl) {
+  # Start by generating a dummy table for all the names we're assigning to
+  new.idx <- init_sym_idx(names)
+
+  # Fill in with existing data
+  existing <-
+    symbols[['level']] == llvl &
+    colnames(symbols[['indices']]) %in% names
+  exist.idx <- symbols[['indices']][, existing, drop=FALSE]
+  new.idx[, names(exist.idx)] <- exist.idx
+  new.idx
+}
+update_sym_dat <- function(symbols, new.idx, llvl) {
+  # Replace existing data with new and retun
+  existing <-
+    symbols[['level']] == llvl &
+    colnames(symbols[['indices']]) %in% colnames(new.idx)
+  symbols[['level']] <-
+    c(symbols[['level']][!existing], rep(llvl, ncol(new.idx)))
+  symbols[['indices']] <-
+    cbind(symbols[['inidices']][, !existing, drop=FALSE], new.idx)
+  symbols
+}
+# We have a primary key of name/level against which we need to be able to insert
+# and update.  In R that means we need to be able remove and replace.
+
+append_forassign_dat <- function(symbols, names, index, llvl) {
+  # Start by generating a dummy table for all the names we're assigning to
+  new.idx <- init_and_fill_sym_idx(symbols, names, llvl)
+
+  # Update with new data; loops are decomposed so should never see a 0 index.
+  new.idx['first.assign', lengths(new.idx['first.assign',]) == 0] <- list(index)
+  new.idx['last.assign', ] <- list(index)
+  update_sym_dat(symbols, new.idx, llvl)
+}
+append_foruse_dat <- function(symbols, names, index, llvl) {
+  # Start by generating a dummy table for all the names we're assigning to
+  new.idx <- init_and_fill_sym_idx(symbols, names, llvl)
+
+  # Update with new data; loops are decomposed so should never see a 0 index.
+  new.idx['first.use', lengths(new.idx['first.use',]) == 0] <- list(index)
+  update_sym_dat(symbols, new.idx, llvl)
+}
+

@@ -410,7 +410,6 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
         stack=stack, stack.ext.any=stack.ext.any, depth=depth,
         alloc=alloc, call.i=i
       )
-      if(name == "for_n") browser()
       # Handle name reconciliation for control flow calls.  Recall that call
       # linearization causes paramters to be seen before the call that computes
       # on them.  Also, because we make the control flow test a separate

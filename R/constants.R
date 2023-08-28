@@ -95,6 +95,9 @@ NUM.TYPES <- c('logical', 'integer', 'double')
 # "compute" the counter value, and `r2c_if` also because it doesn't per-se
 # compute, but if the return value is used, it ensures that both of it's
 # branches either compute or `vcopy` that..
+#
+# Additionaly complexity is some of these are removed (e.g. `if` is expanded
+# into `r2c_if`) so some question if they should even be in here.
 PASSIVE.SYM <- unique(
   c(
     MODIFY.SYM, CTRL.SYM, "{", "uplus",
