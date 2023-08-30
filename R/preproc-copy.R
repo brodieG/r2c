@@ -1188,7 +1188,7 @@ copy_fordat <- function(
       ind <- symbols[['indices']][, target]
       use.b4.set <- vapply(
         seq_len(ncol(ind)),
-        function(i) index_greater(ind['first.use', i], ind['first.assign', i])
+        function(i) index_greater(ind['first.use', i], ind['first.assign', i]),
         TRUE
       )
       # For each use before set:

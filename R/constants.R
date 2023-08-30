@@ -66,15 +66,15 @@ MISSING <- list(formals(base::identical)[[1L]])
 
 # `for` assigns to the counter variable.  `->` becomes `<-` on parsing.
 
-ASSIGN.SYM.BASE <- c("<-", "=")
-ASSIGN.SYM <- c(ASSIGN.SYM.BASE, "for", FOR.ITER)
-MODIFY.SYM <- c(ASSIGN.SYM, "subassign")
-LOOP.SYM <- c("for", "while", "repeat")
 R2C.FOR <- "r2c_for"
 FOR.ITER <- "for_iter"
 FOR.N <- "for_n"
 FOR.0 <- "for_0"
-FOR.SYM.ALL <- C(R2C.FOR, FOR.ITER, FOR.N, FOR.0)
+ASSIGN.SYM.BASE <- c("<-", "=")
+ASSIGN.SYM <- c(ASSIGN.SYM.BASE, "for", FOR.ITER)
+MODIFY.SYM <- c(ASSIGN.SYM, "subassign")
+LOOP.SYM <- c("for", "while", "repeat")
+FOR.SYM.ALL <- c(R2C.FOR, FOR.ITER, FOR.N, FOR.0)
 LOOP.SUB.SYM <- c(FOR.0, FOR.N)
 IF.SUB.SYM <- c("if_true", "if_false")
 CTRL.SYM <- c("if", LOOP.SYM)
