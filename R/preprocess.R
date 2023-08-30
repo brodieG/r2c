@@ -65,6 +65,9 @@ preprocess <- function(call, optimize=FALSE) {
   # `reuse_calls_int` needs to be able to recognize the original control flow
   call <- transform_control(call)
 
+  # Prepare the for loops
+  call <- copy_fordat(call)
+
   # Copy "external" data to r2c alloc mem (see fun docs); must be the last step.
   tmp <- copy_branchdat(call)
   call <- tmp[['call']]

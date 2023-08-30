@@ -461,7 +461,7 @@ VALID_FUNS <- c(
       fun=for_n, res.type="preserve"
     ),
     cgen(
-      "for_0", type=list("arglen", "expr"), code.gen=code_gen_for_0,
+      FOR.0, type=list("arglen", "expr"), code.gen=code_gen_for_0,
       fun=for_0, res.type="preserve"
     ),
     # `res.type` gets special handling in `reconcile_control_flow` for `r2c_if`.
