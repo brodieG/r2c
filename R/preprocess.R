@@ -592,7 +592,7 @@ transform_control <- function(x, i=0L) {
       # iteration variable).  While `for_iter` is declared as passive, it does
       # change the value of `i` and `seq.i` in-place.
       x <- bquote(
-        {
+        { # We rely on these braces in for loop processing
           r2c::for_init(
             seq=.(call("<-", seq.name, x[[3L]])),
             # Using just 0 here causes reference issue; it needs a fresh alloc.
@@ -609,10 +609,6 @@ transform_control <- function(x, i=0L) {
         }
       )
       names(x)[2:3] <- "..."  # needed for alloc logic
-    } else if (call.sym == "{" && length(x) == 2L) {
-      # remove redundant nested braces as could be introduced above.  This could
-      # remove other redundant nested braces.
-      x <- x[[2L]]
     }
   }
   x
