@@ -66,7 +66,8 @@ preprocess <- function(call, optimize=FALSE) {
   call <- transform_control(call)
 
   # Prepare the for loops
-  call <- copy_fordat(call)
+  tmp <- copy_fordat(call)
+  call <- tmp[['call']]
 
   # Copy "external" data to r2c alloc mem (see fun docs); must be the last step.
   tmp <- copy_branchdat(call)
@@ -720,5 +721,13 @@ expand_dots <- function(x, arg.names) {
           exp.vals,
           x[[j]][seq_len(length(x[[j]]) - i) + i]
   ) } } }
+  x
+}
+## Ensure `x` is a brace expression returning "NULL" where "NULL" is proxied by
+## a zero length numeric.
+
+append_null <- function(x) {
+  if(!is.brace_call(x)) x <- call("{", x)
+  x[[length(x) + 1L]] <- quote(numeric(length=0L))
   x
 }

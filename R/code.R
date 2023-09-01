@@ -449,7 +449,7 @@ VALID_FUNS <- c(
     # Result of this one is only used directly in C code, but passive pass
     # through of type so we need to preserve that.
     cgen(
-      "for_init", type=list("constant", 1), code.gen=code_gen_for_init,
+      FOR.INIT, type=list("constant", 1), code.gen=code_gen_for_init,
       res.type="preserve.which", res.type.which=2L, fun=for_init
     ),
     cgen(

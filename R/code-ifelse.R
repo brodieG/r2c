@@ -93,7 +93,7 @@ code_gen_if <- function(...) {
 #'
 #' @param x language to wrap in markers that designate it for special treatment
 #'   by the memory allocator at run time.
-#' @param indrec loop index to reconcile.
+#' @param rec.i identifier for each instance of a use before set loop variable.
 #' @param cond expression to evaluate to determine which branch is taken.
 #' @param true expression to evaluate if previous `if_test` is TRUE.
 #' @param false expression to evaluate if previous `if_test` is FALSE

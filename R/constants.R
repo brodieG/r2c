@@ -61,12 +61,14 @@ QDOTS <- quote(...)
 QBRACE <- as.name("{")
 QR2C.FOR <- quote(r2c::r2c_for)
 QFOR.ITER <- quote(r2c::for_iter)
+QFOR.INIT <- quote(r2c::for_init)
 # need to wrap in list because can't be a top level for R CMD check
 MISSING <- list(formals(base::identical)[[1L]])
 
 # `for` assigns to the counter variable.  `->` becomes `<-` on parsing.
 
 R2C.FOR <- "r2c_for"
+FOR.INIT <- "for_init"
 FOR.ITER <- "for_iter"
 FOR.N <- "for_n"
 FOR.0 <- "for_0"
@@ -89,7 +91,7 @@ BRANCH.EXEC.SYM <- c("r2c_if", R2C.FOR)
 REC.FUNS <- c('vcopy', 'rec')
 
 INTERNAL.FUNS <- c(
-  IF.SUB.SYM, BRANCH.START.SYM, BRANCH.EXEC.SYM, REC.FUNS, "for_init"
+  IF.SUB.SYM, BRANCH.START.SYM, BRANCH.EXEC.SYM, REC.FUNS, FOR.INIT
 )
 
 NUM.TYPES <- c('logical', 'integer', 'double')
@@ -106,7 +108,7 @@ PASSIVE.SYM <- unique(
   c(
     MODIFY.SYM, CTRL.SYM, "{", "uplus",
     CTRL.SUB.SYM, BRANCH.EXEC.SYM, 'rec',
-    'for_init' # so it allows assignments inside
+    FOR.INIT  # so it allows assignments inside
   )
 )
 # In branches, some symbols are not considered passive even though they don't
@@ -165,7 +167,7 @@ FUN.NAMES <- c(
   if_test="if_test", if_true="if_true", if_false="if_false", r2c_if="r2c_if",
   "if"="if",
 
-  for_init="for_init", for_iter="for_iter", for_n=FOR.N, for_0=FOR.0,
+  for_init=FOR.INIT, for_iter=FOR.ITER, for_n=FOR.N, for_0=FOR.0,
   r2c_for=R2C.FOR, "for"="for",
 
   seq_along="seq_along",

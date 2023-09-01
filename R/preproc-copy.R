@@ -847,11 +847,14 @@ clear_candidates <- function(cand, ii) {
 # Compare Two `callptr` Indices
 #
 # TRUE if the index `a` points to a position later in the tree than `b` in a
-# depth-first traversal order.
+# depth-first traversal order.  If `a` is a parent call to `b` it is consider to
+# occur later than `b` (because arguments are evaluated first - well we operate
+# under the assumption they are for our purposes).
 #
 # @param a a integer vector of the form of `index` from `callptr`.
 # @param b same as a.
 # @return TRUE if `a` is a sub-call appearing later in the call tree than `b`.
+#   See details.
 
 index_greater <- function(a, b) {
   if(length(a) > length(b)) length(b) <- length(a)
@@ -975,9 +978,9 @@ en_rec <- function(x, clean=FALSE) {
 LUSE.FUN.NAME <- call("::", as.name("r2c"), as.name("luse"))
 LSET.FUN.NAME <- call("::", as.name("r2c"), as.name("lset"))
 LREC.FUN.NAME <- call("::", as.name("r2c"), as.name("lrec"))
-en_luse <- function(x, indrec) as.call(list(LUSE.FUN.NAME, x=x, indrec=indrec))
-en_lset <- function(x, indrec) as.call(list(LSET.FUN.NAME, x=x, indrec=indrec))
-en_lrec <- function(x, indrec) as.call(list(LREC.FUN.NAME, x=x, indrec=indrec))
+en_luse <- function(x, rec.i) as.call(list(LUSE.FUN.NAME, x=x, rec.i=rec.i))
+en_lset <- function(x, rec.i) as.call(list(LSET.FUN.NAME, x=x, rec.i=rec.i))
+en_lrec <- function(x, rec.i) as.call(list(LREC.FUN.NAME, x=x, rec.i=rec.i))
 
 # Inject Self-vcopy
 #
@@ -1148,31 +1151,31 @@ copy_fordat <- function(
       symbols, names=name, index=index, llvl=llvl
     )
   } else if(is.call_w_args(x)) {
-    if(
+    is.loop <-
       name == "{" && length(x) == 3L &&
-      identical(x[[2L]], QFOR.ITER) && identical(x[[3L]], QR2C.FOR)
-    ) {
-      is.loop <- TRUE
-      llvl <- llvl + 1L
-    }
+      identical(x[[2:1]], QFOR.INIT) && identical(x[[c(3L,1L)]], QR2C.FOR)
+
+    # Use before set only matters inside `for_n`; other components of loop ok
+    llvl <- llvl + (name == FOR.N)
+
     # Modify for_n branch since other one doesn't do anything.
     rec.skip <- 1L
-
     if(name %in% ASSIGN.SYM && llvl) {
       # We only record target symbol so if there is an assign chain they can
       # all be set to point to the same element.  ASSIGN.SYM includes `for_iter`
       # which will never form anything but a length 1 chain.
-      assign.to <- union(assign.to, get_target_symbol(x))
+      assign.to <- union(assign.to, get_target_symbol(x, name))
       rec.skip <- if(name == FOR.ITER) 1:3 else 1:2
     } else assign.to <- character()
 
     # Recurse
     for(i in seq_along(x)[-rec.skip]) {
       sub.index <- c(index, i)
-      copy_fordat(
-        x[[i]], index=sub.index, symbols=symbols,
-        assign.to=assign.to, prior.name=name
+      tmp <- copy_fordat(
+        x[[i]], index=sub.index, symbols=symbols, assign.to=assign.to, llvl=llvl
       )
+      x[[i]] <- tmp[['call']]
+      symbols <- tmp[['symbols']]
     }
     if(length(assign.to) && llvl) {
       symbols <- append_forassign_dat(
@@ -1182,13 +1185,18 @@ copy_fordat <- function(
     # Modify loop on exit to handle use before set
     if(is.loop) {
       # Collect all first use at this level (earlier loops of equal level that
-      # we've exited from previously have first use symbols removed).
-      at.lvl <- symbols[['level']] == llvl
+      # we've exited from previously have first use symbols removed). We need
+      # llvl + 1 b/c llvl is only incremented at for_n and we're at r2c_for
+      at.lvl <- symbols[['level']] == (llvl + 1L)
+      ind <- symbols[['indices']]
       target <- at.lvl & lengths(ind['first.use',])
-      ind <- symbols[['indices']][, target]
       use.b4.set <- vapply(
         seq_len(ncol(ind)),
-        function(i) index_greater(ind['first.use', i], ind['first.assign', i]),
+        function(i)
+          # empty index means no use; special case b/c otherwise it is
+          # interpreted as a parent to any other index
+          length(ind[['first.use', i]]) &&
+          index_greater(ind[['first.use', i]], ind[['first.assign', i]]),
         TRUE
       )
       # For each use before set:
@@ -1203,8 +1211,8 @@ copy_fordat <- function(
         stop("Internal Error: duplicated loop reconcile symbols.")
 
       # We should be at the `{` of `{for_iter(); r2c_for()}`
-      brace.ind <- c(3L, 2L, 2L)
-      if(!is.brace_call(x[[c(brace.ind, 1L)]]))
+      brace.ind <- c(3L, 3L, 2L)
+      if(!is.brace_call(x[[c(brace.ind)]]))
         stop("Internal Error: expected braces nested in ", FOR.N)
 
       # We only worry about the for_n branch, for_0 should just be `numeric(0)`
@@ -1215,7 +1223,7 @@ copy_fordat <- function(
       lrec.id.0 <- symbols[['lrec.id']]
       rec.syms <- list()
       for(i in seq_len(ncol(ind.rec))) {
-        indi <- indrec[, i]
+        indi <- ind.rec[, i]
         lrec.id <- symbols[['lrec.id']] <- symbols[['lrec.id']] + 1L
         rec.sym <- as.name(sprintf(".R2C.FOR.SYM.%d", symbols[['lrec.id']]))
         rec.syms[[colnames(ind.rec)[i]]] <- rec.sym # we'll use these later
@@ -1229,8 +1237,8 @@ copy_fordat <- function(
           !identical(ind.set[seq_along(ind.base)], ind.base)
         )
           stop("Internal Error: mismatched for and use|set indices.")
-        ind.use <- ind.use[-seq_len(ind.base)]
-        ind.set <- ind.set[-seq_len(ind.base)]
+        ind.use <- ind.use[-seq_along(ind.base)]
+        ind.set <- ind.set[-seq_along(ind.base)]
         # luse/lset
         braces[[ind.use]] <- en_luse(braces[[ind.use]], lrec.id)
         braces[[ind.set]] <- en_lset(braces[[ind.set]], lrec.id)
@@ -1250,9 +1258,10 @@ copy_fordat <- function(
         rec.syms
       )
       x.list <- as.list(x)
-      as.call(c(x[1L], sym.copies, x[-1L]))
+      x <- as.call(c(x.list[1L], sym.copies, x.list[-1L]))
     }
   }
+  list(call=x, symbols=symbols)
 }
 # See `symbols` in `copy_fordat`
 init_sym_idx <- function(names = character()) {
@@ -1260,21 +1269,22 @@ init_sym_idx <- function(names = character()) {
     lrec.id=0,           # how many loop reconciliations we've made
     level=integer(),
     indices=matrix(
-      list(), nrow=3, ncol=n,
+      replicate(3 * length(names), integer(0), simplify=FALSE),
+      nrow=3, ncol=length(names),
       dimnames=list(c('first.use', 'first.assign', 'last.assign'), names)
     )
   )
 }
 init_and_fill_sym_idx <- function(symbols, names, llvl) {
   # Start by generating a dummy table for all the names we're assigning to
-  new.idx <- init_sym_idx(names)
+  new.idx <- init_sym_idx(names)[['indices']]
 
   # Fill in with existing data
   existing <-
     symbols[['level']] == llvl &
     colnames(symbols[['indices']]) %in% names
   exist.idx <- symbols[['indices']][, existing, drop=FALSE]
-  new.idx[, names(exist.idx)] <- exist.idx
+  new.idx[, colnames(exist.idx)] <- exist.idx
   new.idx
 }
 update_sym_dat <- function(symbols, new.idx, llvl) {
@@ -1285,7 +1295,7 @@ update_sym_dat <- function(symbols, new.idx, llvl) {
   symbols[['level']] <-
     c(symbols[['level']][!existing], rep(llvl, ncol(new.idx)))
   symbols[['indices']] <-
-    cbind(symbols[['inidices']][, !existing, drop=FALSE], new.idx)
+    cbind(symbols[['indices']][, !existing, drop=FALSE], new.idx)
   symbols
 }
 # We have a primary key of name/level against which we need to be able to insert
