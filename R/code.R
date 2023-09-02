@@ -518,6 +518,24 @@ VALID_FUNS <- c(
       type=list("arglen", 1L),
       code.gen=code_gen_rec,
       res.type="preserve"
+    ),
+    cgen(
+      "luse", fun=luse, defn=NULL,
+      type=list("arglen", 1L),
+      code.gen=code_gen_luse,
+      res.type="preserve"
+    ),
+    cgen(
+      "lset", fun=lset, defn=NULL,
+      type=list("arglen", 1L),
+      code.gen=code_gen_lset,
+      res.type="preserve"
+    ),
+    cgen(
+      "lrec", fun=lrec, defn=NULL,
+      type=list("arglen", 1L),
+      code.gen=code_gen_lrec,
+      res.type="preserve"
     )
   )
 )

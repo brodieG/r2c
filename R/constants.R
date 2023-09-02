@@ -168,7 +168,7 @@ FUN.NAMES <- c(
   "if"="if",
 
   for_init=FOR.INIT, for_iter=FOR.ITER, for_n=FOR.N, for_0=FOR.0,
-  r2c_for=R2C.FOR, "for"="for",
+  r2c_for=R2C.FOR, "for"="for", lrec="lrec", luse="luse", lset="lset",
 
   seq_along="seq_along",
 

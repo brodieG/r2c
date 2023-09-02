@@ -1145,16 +1145,18 @@ copy_fordat <- function(
   x, index=integer(), symbols=init_sym_idx(), assign.to=character(), llvl=0L
 ) {
   name <- get_lang_name(x)
+  is.loop <-
+    name == "{" && length(x) == 3L &&
+    identical(x[[2:1]], QFOR.INIT) && identical(x[[c(3L,1L)]], QR2C.FOR)
+  assign.to.prev <- assign.to
+
   if (is.symbol(x) && llvl) {
     # Record symbol uses; we'll determine which ones are use before set later
     symbols <- append_foruse_dat(
       symbols, names=name, index=index, llvl=llvl
     )
+    assign.to <- character()
   } else if(is.call_w_args(x)) {
-    is.loop <-
-      name == "{" && length(x) == 3L &&
-      identical(x[[2:1]], QFOR.INIT) && identical(x[[c(3L,1L)]], QR2C.FOR)
-
     # Use before set only matters inside `for_n`; other components of loop ok
     llvl <- llvl + (name == FOR.N)
 
@@ -1177,89 +1179,91 @@ copy_fordat <- function(
       x[[i]] <- tmp[['call']]
       symbols <- tmp[['symbols']]
     }
-    if(length(assign.to) && llvl) {
-      symbols <- append_forassign_dat(
-        symbols, names=assign.to, index=index, llvl=llvl
+  }
+  # Reached payload of assignment so record each of them
+  if(!length(assign.to) && length(assign.to.prev) && llvl) {
+    symbols <- append_forassign_dat(
+      symbols, names=assign.to.prev, index=index, llvl=llvl
+    )
+  }
+  # Modify loop on exit to handle use before set
+  if(is.loop) {
+    # Collect all first use at this level (earlier loops of equal level that
+    # we've exited from previously have first use symbols removed). We need
+    # llvl + 1 b/c llvl is only incremented at for_n and we're at r2c_for
+    at.lvl <- symbols[['level']] == (llvl + 1L)
+    ind <- symbols[['indices']]
+    target <- at.lvl & lengths(ind['first.use',])
+    use.b4.set <- vapply(
+      seq_len(ncol(ind)),
+      function(i)
+        # empty index means no use; special case b/c otherwise it is
+        # interpreted as a parent to any other index
+        length(ind[['first.use', i]]) && length(ind[['first.assign', i]]) &&
+        index_greater(ind[['first.assign', i]], ind[['first.use', i]]),
+      TRUE
+    )
+    # For each use before set:
+    # * Add a `lrec` call at end of loop for `alloc` to remap memory.
+    # * Tag the use with a unique id.
+    # * Tag the set with a matching unique id.
+    # * Add a vcopy for the symbol right outside of the loop to ensure memory
+    #   is not shared, and add a proxy binding to ensure memory not released.
+    # Order above important so coords in `ind` still match the call tree.
+    ind.rec <- ind[, use.b4.set, drop=FALSE]
+    if(anyDuplicated(colnames(ind.rec)))
+      stop("Internal Error: duplicated loop reconcile symbols.")
+
+    # We should be at the `{` of `{for_iter(); r2c_for()}`
+    brace.ind <- c(3L, 3L, 2L)
+    if(!is.brace_call(x[[c(brace.ind)]]))
+      stop("Internal Error: expected braces nested in ", FOR.N)
+
+    # We only worry about the for_n branch, for_0 should just be `numeric(0)`
+    braces <- as.list(x[[brace.ind]])
+
+    # Start with the modifications that don't affect the tree for subsequent
+    # modifications
+    lrec.id.0 <- symbols[['lrec.id']]
+    rec.syms <- list()
+    for(i in seq_len(ncol(ind.rec))) {
+      indi <- ind.rec[, i]
+      lrec.id <- symbols[['lrec.id']] <- symbols[['lrec.id']] + 1L
+      rec.sym <- as.name(sprintf(".R2C.FOR.SYM.%d", symbols[['lrec.id']]))
+      rec.syms[[colnames(ind.rec)[i]]] <- rec.sym # we'll use these later
+      ind.base <- c(index, brace.ind) # braces inside `for_n`
+      ind.use <- indi[['first.use']]
+      ind.set <- indi[['last.assign']]
+      # Indices are absolute, but we need to make them relative to modify the
+      # current sub-call.
+      if(
+        !identical(ind.use[seq_along(ind.base)], ind.base) ||
+        !identical(ind.set[seq_along(ind.base)], ind.base)
+      )
+        stop("Internal Error: mismatched for and use|set indices.")
+      ind.use <- ind.use[-seq_along(ind.base)]
+      ind.set <- ind.set[-seq_along(ind.base)]
+      # luse/lset
+      braces[[ind.use]] <- en_luse(braces[[ind.use]], lrec.id)
+      braces[[ind.set]] <- en_lset(braces[[ind.set]], lrec.id)
+      # Add lrec call
+      braces <- c(
+        braces[seq_len(length(braces) - 1L)],
+        en_lrec(rec.sym, lrec.id),
+        braces[length(braces)]  # trailing numeric(0)
       )
     }
-    # Modify loop on exit to handle use before set
-    if(is.loop) {
-      # Collect all first use at this level (earlier loops of equal level that
-      # we've exited from previously have first use symbols removed). We need
-      # llvl + 1 b/c llvl is only incremented at for_n and we're at r2c_for
-      at.lvl <- symbols[['level']] == (llvl + 1L)
-      ind <- symbols[['indices']]
-      target <- at.lvl & lengths(ind['first.use',])
-      use.b4.set <- vapply(
-        seq_len(ncol(ind)),
-        function(i)
-          # empty index means no use; special case b/c otherwise it is
-          # interpreted as a parent to any other index
-          length(ind[['first.use', i]]) &&
-          index_greater(ind[['first.use', i]], ind[['first.assign', i]]),
-        TRUE
-      )
-      # For each use before set:
-      # * Add a `lrec` call at end of loop for `alloc` to remap memory.
-      # * Tag the use with a unique id.
-      # * Tag the set with a matching unique id.
-      # * Add a vcopy for the symbol right outside of the loop to ensure memory
-      #   is not shared, and add a proxy binding to ensure memory not released.
-      # Order above important so coords in `ind` still match the call tree.
-      ind.rec <- ind[, use.b4.set, drop=FALSE]
-      if(anyDuplicated(colnames(ind.rec)))
-        stop("Internal Error: duplicated loop reconcile symbols.")
+    x[[brace.ind]] <- as.call(braces)
 
-      # We should be at the `{` of `{for_iter(); r2c_for()}`
-      brace.ind <- c(3L, 3L, 2L)
-      if(!is.brace_call(x[[c(brace.ind)]]))
-        stop("Internal Error: expected braces nested in ", FOR.N)
-
-      # We only worry about the for_n branch, for_0 should just be `numeric(0)`
-      braces <- as.list(x[[brace.ind]])
-
-      # Start with the modifications that don't affect the tree for subsequent
-      # modifications
-      lrec.id.0 <- symbols[['lrec.id']]
-      rec.syms <- list()
-      for(i in seq_len(ncol(ind.rec))) {
-        indi <- ind.rec[, i]
-        lrec.id <- symbols[['lrec.id']] <- symbols[['lrec.id']] + 1L
-        rec.sym <- as.name(sprintf(".R2C.FOR.SYM.%d", symbols[['lrec.id']]))
-        rec.syms[[colnames(ind.rec)[i]]] <- rec.sym # we'll use these later
-        ind.base <- c(index, brace.ind) # braces inside `for_n`
-        ind.use <- indi[['first.use']]
-        ind.set <- indi[['last.assign']]
-        # Indices are absolute, but we need to make them relative to modify the
-        # current sub-call.
-        if(
-          !identical(ind.use[seq_along(ind.base)], ind.base) ||
-          !identical(ind.set[seq_along(ind.base)], ind.base)
-        )
-          stop("Internal Error: mismatched for and use|set indices.")
-        ind.use <- ind.use[-seq_along(ind.base)]
-        ind.set <- ind.set[-seq_along(ind.base)]
-        # luse/lset
-        braces[[ind.use]] <- en_luse(braces[[ind.use]], lrec.id)
-        braces[[ind.set]] <- en_lset(braces[[ind.set]], lrec.id)
-        # Add lrec call
-        braces <- c(
-          braces[seq_len(length(braces) - 1L)],
-          en_lrec(rec.sym, lrec.id),
-          braces[length(braces)]  # trailing numeric(0)
-        )
-      }
-      x[[brace.ind]] <- as.call(braces)
-
-      # Add the symbol copies ahead of the loop; these mess up the indices.
-      sym.copies <- lapply(
-        names(rec.syms),
-        function(x, syms) bquote(.(syms[[x]]) <- as.name(x) <- en_vcopy(x)),
-        rec.syms
-      )
-      x.list <- as.list(x)
-      x <- as.call(c(x.list[1L], sym.copies, x.list[-1L]))
-    }
+    # Add the symbol copies ahead of the loop; these mess up the indices.
+    sym.copies <- lapply(
+      names(rec.syms),
+      function(x, syms)
+        bquote(.(syms[[x]]) <- .(as.name(x)) <- .(en_vcopy(x))),
+      rec.syms
+    )
+    x.list <- as.list(x)
+    x <- as.call(c(x.list[1L], sym.copies, x.list[-1L]))
   }
   list(call=x, symbols=symbols)
 }

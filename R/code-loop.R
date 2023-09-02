@@ -111,6 +111,75 @@ code_gen_for <- function(...) {
   )
 }
 
+f_luse <- '
+// marker for alloc, so noop
+// static void %s(%s) { /* NOOP */ }'
+
+code_gen_luse <- function(fun, pars, par.types) {
+  vetr(
+    identical(., "luse"),
+    pars=list(NULL, NULL),
+    par.types=character() && all(. %in% PAR.INT)
+  )
+  name <- FUN.NAMES[fun]
+  defn <- sprintf(f_rec, name, toString(F.ARGS.BASE))
+  code_res(defn=defn, name=name, out.ctrl=CGEN.OUT.NONE)
+}
+
+f_lset <- '
+// marker for alloc, so noop
+// static void %s(%s) { /* NOOP */ }'
+
+code_gen_lset <- function(fun, pars, par.types) {
+  vetr(
+    identical(., "lset"),
+    pars=list(NULL, NULL),
+    par.types=character() && all(. %in% PAR.INT)
+  )
+  name <- FUN.NAMES[fun]
+  defn <- sprintf(f_rec, name, toString(F.ARGS.BASE))
+  code_res(defn=defn, name=name, out.ctrl=CGEN.OUT.NONE)
+}
+
+f_lrec <- '
+// marker for alloc, so noop
+// static void %s(%s) { /* NOOP */ }'
+
+code_gen_luse <- function(fun, pars, par.types) {
+  vetr(
+    identical(., "luse"),
+    pars=list(NULL, NULL),
+    par.types=character() && all(. %in% PAR.INT)
+  )
+  name <- FUN.NAMES[fun]
+  defn <- sprintf(f_rec, name, toString(F.ARGS.BASE))
+  code_res(defn=defn, name=name, out.ctrl=CGEN.OUT.NONE)
+}
+
+f_lrec <- '
+// Copy loop value to a use before set variable so that the variable will be
+// updated before beginning each subsequent loop iteration.
+static void %s(%s) {
+  R_xlen_t len0 = lens[di[0]];
+  double * res = data[di[2]];  // skip rec.i used only by alloc
+  double * input = data[di[0]];
+  // this should be a debug mode check only
+  if(res == input) Rf_error("Internal Error: copying in-place.");
+  if(len0 != lens[di[2]]) Rf_error("Internal Error: mismatched copy sizes.");
+  memcpy(res, input, sizeof(*res) * len0);
+}'
+
+code_gen_lrec <- function(fun, pars, par.types) {
+  vetr(
+    identical(., "lrec"),
+    pars=list(NULL, NULL),
+    par.types=character() && all(. %in% PAR.INT)
+  )
+  name <- FUN.NAMES[fun]
+  defn <- sprintf(f_copy, name, toString(F.ARGS.BASE))
+  code_res(defn=defn, name=name)
+}
+
 #' @rdname intermediate-representation
 #' @export
 
