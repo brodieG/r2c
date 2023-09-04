@@ -626,7 +626,9 @@ init_dat <- function(call, meta, scope) {
     dat=list(),
     names=rbind(
       ids=integer(), scope=integer(),
-      i.max=integer(), i.assign=integer(), rec=integer(),
+      i.max=integer(), i.assign=integer(),
+      rec=integer(),     # level after branch reconciliations
+      rec0=integer(),    # branch level at which `rec` originally found
       br.hide=integer()
     ),
 
@@ -785,8 +787,32 @@ alloc_result <- function(alloc, vdat){
 # "FALSE" branches are always paired (injecting "empty" branches as
 # necessary).
 #
+# Reconciliation is automatically nested for assignments.  So in:
+#
+#   if(a) x <- rec(...)
+#   else {
+#     if (b) x <- rec(...) else x <- rec(...)
+#   }
+#   x
+#
+# The reconciliation status of the nested if/else `x` automatically carries
+# to the outer if/else without needing an additional `rec` to explicitly match
+# to it. Then in:
+#
+#   if(a) x <- y
+#   else {
+#     if (b) x <- rec(...) else x <- rec(...)
+#     x
+#   }
+#
+# 
+# problem.
+#
 # See "preproc-copy.R" for context.
 #
+# @param i.call the `call.dat` index of the current call (i.e. the FALSE
+#   branch), so we can find it in `call.dat` by looking at `call.i` values
+#   therein.
 # @param binding.stack list of snapshots of bindings as of the completion of the
 #   "TRUE" branches.  See details.
 
@@ -804,11 +830,23 @@ reconcile_control_flow <- function(
   i.call.T <- binding.stack[[length(binding.stack)]][['i.call']]
   call.dat.i <- vapply(call.dat, '[[', 0L, 'call.i')
 
-  # Identify shared bindings across branches that need to be reconciled.
+  # Identify shared bindings across branches that need to be reconciled.  Okay
+  # to inherit a reconciliation from a child branch set, but also not required
+  # to use it if reconcilation not required at this level.
   names.rc.F <- cand_rec_bind(names.F, branch.lvl)
   names.rc.T <- cand_rec_bind(names.T, branch.lvl)
-  if(!identical(colnames(names.rc.F), colnames(names.rc.T)))
+  must.rc.F <-
+    colnames(names.rc.F[, names.rc.F['rec0',] == branch.lvl, drop=FALSE])
+  must.rc.T <-
+    colnames(names.rc.T[, names.rc.T['rec0',] == branch.lvl, drop=FALSE])
+  if(
+    !all(must.rc.T %in% colnames(names.rc.F)) ||
+    !all(must.rc.F %in% colnames(names.rc.T))
+  )
     stop("Internal Error: mismatched symbols to reconcile.")
+  # Only keep those that must be reconciled at this level (ok to drop inherited)
+  names.rc.F <- names.rc.F[, union(must.rc.F, must.rc.T), drop=FALSE]
+  names.rc.T <- names.rc.T[, union(must.rc.F, must.rc.T), drop=FALSE]
 
   # Drop those that are the same across the branches (set prior to if/else)
   # Not sure if there should be any of these given rec == branch.lvl
@@ -927,7 +965,7 @@ reconcile_control_flow <- function(
       if(length(names.target) != 1L)
         stop('Internal Error: failed to find reconciled name in alloc data.')
 
-      # Reset to the reoncile allocation
+      # Reset to the reconcile allocation
       alloc[['names']]['ids', names.target] <- new.i
       # Update branch level
       alloc[['names']]['rec', names.target] <- branch.lvl - 1L
@@ -1180,7 +1218,7 @@ names_bind <- function(alloc, new.name, call.i, rec) {
     scope=alloc[['scope']],
     i.max=unname(alloc[['meta']][['i.sym.max']][new.name]),
     i.assign=call.i,
-    rec=rec,
+    rec=rec, rec0=rec,
     br.hide=0L
   )
   if(is.na(new.name.dat['i.max'])) new.name.dat['i.max'] <- 0L
