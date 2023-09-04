@@ -1258,8 +1258,10 @@ copy_fordat <- function(
     # Add the symbol copies ahead of the loop; these mess up the indices.
     sym.copies <- lapply(
       names(rec.syms),
-      function(x, syms)
-        bquote(.(syms[[x]]) <- .(as.name(x)) <- .(en_vcopy(x))),
+      function(x, syms) {
+        xn <- as.name(x)
+        bquote(.(syms[[x]]) <- .(xn) <- .(en_vcopy(xn)))
+      },
       rec.syms
     )
     x.list <- as.list(x)
