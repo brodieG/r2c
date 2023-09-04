@@ -1229,6 +1229,7 @@ copy_fordat <- function(
     for(i in seq_len(ncol(ind.rec))) {
       indi <- ind.rec[, i]
       lrec.id <- symbols[['lrec.id']] <- symbols[['lrec.id']] + 1L
+      # rec.sym to ensure we don't release the allocation we alias to it
       rec.sym <- as.name(sprintf(".R2C.FOR.SYM.%d", symbols[['lrec.id']]))
       rec.syms[[colnames(ind.rec)[i]]] <- rec.sym # we'll use these later
       ind.base <- c(index, brace.ind) # braces inside `for_n`
@@ -1249,13 +1250,20 @@ copy_fordat <- function(
       # Add lrec call
       braces <- c(
         braces[seq_len(length(braces) - 1L)],
+        # We reference rec.sym here so it is clear to static analysis the symbol
+        # is in use until the very end of the loop (although right now other
+        # code explicitly assumes any symbol used in loop is in use until end
+        # of loop see `collect_loop_call_symbols`).
         en_lrec(rec.sym, lrec.id),
         braces[length(braces)]  # trailing numeric(0)
       )
     }
     x[[brace.ind]] <- as.call(braces)
 
-    # Add the symbol copies ahead of the loop; these mess up the indices.
+    # Add the symbol copies ahead of the loop; we do it last because these
+    # insertions shift the indices.  We need to copy the symbols we'll reconcile
+    # because we're going to overwrite their values each loop iteration and we
+    # don't want any aliases to get their values changed.
     sym.copies <- lapply(
       names(rec.syms),
       function(x, syms) {
