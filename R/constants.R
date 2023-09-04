@@ -89,9 +89,10 @@ BRANCH.MID.SYM <- c("if_true", FOR.N)
 BRANCH.END.SYM <- c("if_false", FOR.0)
 BRANCH.EXEC.SYM <- c("r2c_if", R2C.FOR)
 REC.FUNS <- c('vcopy', 'rec')
+LREC.FUNS <- c('luse', 'lset', 'lrec')
 
 INTERNAL.FUNS <- c(
-  IF.SUB.SYM, BRANCH.START.SYM, BRANCH.EXEC.SYM, REC.FUNS, FOR.INIT
+  IF.SUB.SYM, BRANCH.START.SYM, BRANCH.EXEC.SYM, REC.FUNS, FOR.INIT, LREC.FUNS
 )
 
 NUM.TYPES <- c('logical', 'integer', 'double')
@@ -107,8 +108,10 @@ NUM.TYPES <- c('logical', 'integer', 'double')
 PASSIVE.SYM <- unique(
   c(
     MODIFY.SYM, CTRL.SYM, "{", "uplus",
-    CTRL.SUB.SYM, BRANCH.EXEC.SYM, 'rec',
-    FOR.INIT  # so it allows assignments inside
+    CTRL.SUB.SYM, BRANCH.EXEC.SYM,
+    'rec',     # vcopy not passive
+    # LREC.FUNS,
+    FOR.INIT   # so it allows assignments inside
   )
 )
 # In branches, some symbols are not considered passive even though they don't
