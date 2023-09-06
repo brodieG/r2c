@@ -400,7 +400,9 @@ copy_branchdat_rec <- function(
     # return value will be computed if used, even though strictly it does not
     # compute itself.
     passive <- sym.name %in% PASSIVE.BRANCH.SYM
-    leaf <- !passive # for candidacy purposes, computing calls are leaves
+    # for candidacy purposes, computing calls are leaves, as are the loop
+    # reconciliation functions.
+    leaf <- !passive || sym.name %in% LREC.FUNS
 
     if(call.modify) tar.sym <- get_target_symbol(x, sym.name)
     sub.assign.to <- if(sym.name == "subassign") {
@@ -603,8 +605,10 @@ copy_branchdat_rec <- function(
 # @param call.assign whether `x` is an assigning call.
 # @param call.modify whether `x` is a modifying call (includes `call.assign`,
 #   and additionally e.g. subassign).
-# @param leaf `x` is a symbol, OR a computing **call** (because we never make
-#   candidates from children of a computing call).
+# @param leaf `x` is a symbol, a computing **call**, or a loop reconciliation
+#   call.  For computing calls, we don't need to `vcopy` them because they are a
+#   fresh value.  For loop recs, they are only ever wrapped directly around a
+#   symbol and always require vcopy.
 #
 # @return data, updated (see copy_branchdat_rec).
 
@@ -1146,7 +1150,8 @@ copy_fordat <- function(
   name <- get_lang_name(x)
   is.loop <-
     name == "{" && length(x) == 3L &&
-    identical(x[[2:1]], QFOR.INIT) && identical(x[[c(3L,1L)]], QR2C.FOR)
+    length(x[[2L]]) > 1L && identical(x[[2:1]], QFOR.INIT) &&
+    length(x[[3L]]) > 1L && identical(x[[c(3L,1L)]], QR2C.FOR)
   assign.to.prev <- assign.to
 
   if (is.symbol(x) && llvl) {

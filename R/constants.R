@@ -110,7 +110,7 @@ PASSIVE.SYM <- unique(
     MODIFY.SYM, CTRL.SYM, "{", "uplus",
     CTRL.SUB.SYM, BRANCH.EXEC.SYM,
     'rec',     # vcopy not passive
-    # LREC.FUNS,
+    LREC.FUNS,
     FOR.INIT   # so it allows assignments inside
   )
 )
