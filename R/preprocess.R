@@ -566,16 +566,16 @@ transform_control <- function(x, i=0L) {
         stop("Invalid if/else call:\n", paste0(deparse(x), collapse="\n"))
       if(length(x) == 3L) x[[4L]] <- quote(numeric(length=0))
       # **DANGER**, read docs if you change this
-      x <- bquote(
-        {
-          r2c::if_test(cond=.(x[[2L]]))
-          r2c::r2c_if(
-            true=r2c::if_true(expr=.(x[[3L]])),
-            false=r2c::if_false(expr=.(x[[4L]]))
-          )
-        }
+      x <- dot_names(
+        bquote(
+          {
+            r2c::if_test(cond=.(x[[2L]]))
+            r2c::r2c_if(
+              true=r2c::if_true(expr=.(x[[3L]])),
+              false=r2c::if_false(expr=.(x[[4L]]))
+            )
+        } )
       )
-      names(x)[2:3] <- "..."  # needed for alloc logic
     } else if (call.sym == "for") {
       # Strategy is to compute the iteration vector into a new variable (_seq_)
       # so that it is immune from subsequent modification.  We then track where
@@ -592,24 +592,24 @@ transform_control <- function(x, i=0L) {
       # `for_iter` is considered an assignment function (b/c it sets the
       # iteration variable).  While `for_iter` is declared as passive, it does
       # change the value of `i` and `seq.i` in-place.
-      x <- bquote(
-        { # We rely on these braces in for loop processing
-          r2c::for_init(
-            seq=.(call("<-", seq.name, x[[3L]])),
-            # Using just 0 here causes reference issue; it needs a fresh alloc.
-            seq.i=.(call("<-", seq.i.name, en_vcopy(0)))
-          )
-          r2c::r2c_for(
-            iter=r2c::for_iter(
-              var=.(x[[2L]]), seq=.(seq.name), seq.i=.(seq.i.name)
-            ),
-            # implement append_null to add a `numeric(0)` at end.
-            for.n=r2c::for_n(expr=.(append_null(x[[4L]]))),
-            for.0=r2c::for_0(expr=numeric(length=0))
-          )
-        }
-      )
-      names(x)[2:3] <- "..."  # needed for alloc logic
+      x <- dot_names(
+        bquote(
+          { # We rely on these braces in for loop processing
+            r2c::for_init(
+              seq=.(call("<-", seq.name, x[[3L]])),
+              # Using just 0 here causes reference issue; it needs a fresh alloc.
+              seq.i=.(call("<-", seq.i.name, en_vcopy(0)))
+            )
+            r2c::r2c_for(
+              iter=r2c::for_iter(
+                var=.(x[[2L]]), seq=.(seq.name), seq.i=.(seq.i.name)
+              ),
+              # implement append_null to add a `numeric(0)` at end.
+              for.n=r2c::for_n(expr=.(append_null(x[[4L]]))),
+              for.0=r2c::for_0(expr=numeric(length=0))
+            )
+          }
+      ) )
     }
   }
   x
@@ -729,5 +729,5 @@ expand_dots <- function(x, arg.names) {
 append_null <- function(x) {
   if(!is.brace_call(x)) x <- call("{", x)
   x[[length(x) + 1L]] <- quote(numeric(length=0L))
-  x
+  dot_names(x)
 }

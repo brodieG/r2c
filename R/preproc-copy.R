@@ -1006,10 +1006,9 @@ inject_copy_in_brace_at <- function(x, ptr) {
     sym.miss <- as.symbol(ptr[["name"]])
     sym.vcopy <- call("<-", sym.miss, en_vcopy(sym.miss))
     call.list <- as.list(par.call)
-    new.call <- as.call(c(call.list[1L], list(sym.vcopy), call.list[-1L]))
-    # in order to look match-called we need names on the call
-    names(new.call) <- c("", rep("...", length(new.call) - 1L))
-
+    new.call <- dot_names(
+      as.call(c(call.list[1L], list(sym.vcopy), call.list[-1L]))
+    )
     # Inject call back
     if(length(par.idx)) x[[par.idx]] <- new.call else x <- new.call
 
@@ -1122,7 +1121,7 @@ merge_braces <- function(x, id) {
   )
   # in order to look match-called we need names on the call
   x.call <- as.call(x.list)
-  names(x.call) <- c("", rep("...", length(x.call) - 1L))
+  names(x.call) <- dot_names(x.call)
   x.call
 }
 # Prepare For Loop
@@ -1248,15 +1247,16 @@ copy_fordat <- function(
       braces[[ind.use]] <- en_luse(braces[[ind.use]], lrec.id)
       braces[[ind.set]] <- en_lset(braces[[ind.set]], lrec.id)
       # Add lrec call
-      braces <- c(
-        braces[seq_len(length(braces) - 1L)],
-        # We reference rec.sym here so it is clear to static analysis the symbol
-        # is in use until the very end of the loop (although right now other
-        # code explicitly assumes any symbol used in loop is in use until end
-        # of loop see `collect_loop_call_symbols`).
-        en_lrec(rec.sym, lrec.id),
-        braces[length(braces)]  # trailing numeric(0)
-      )
+      braces <- dot_names(
+        c(
+          braces[seq_len(length(braces) - 1L)],
+          # We reference rec.sym here so it is clear to static analysis the
+          # symbol is in use until the very end of the loop (although right now
+          # other code explicitly assumes any symbol used in loop is in use
+          # until end of loop see `collect_loop_call_symbols`).
+          en_lrec(rec.sym, lrec.id),
+          braces[length(braces)]  # trailing numeric(0)
+      ) )
     }
     x[[brace.ind]] <- as.call(braces)
 
@@ -1273,7 +1273,7 @@ copy_fordat <- function(
       rec.syms
     )
     x.list <- as.list(x)
-    x <- as.call(c(x.list[1L], sym.copies, x.list[-1L]))
+    x <- dot_names(as.call(c(x.list[1L], sym.copies, x.list[-1L])))
   }
   list(call=x, symbols=symbols)
 }
@@ -1333,3 +1333,10 @@ append_foruse_dat <- function(symbols, names, index, llvl) {
   update_sym_dat(symbols, new.idx, llvl)
 }
 
+# Used to make sure "{" calls have named dotted args.
+
+dot_names <- function(x) {
+  stopifnot(is.call_w_args(x))
+  names(x) <- c("", rep("...", length(x) - 1L))
+  x
+}
