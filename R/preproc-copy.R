@@ -1252,8 +1252,7 @@ copy_fordat <- function(
       braces[[ind.use]] <- en_luse(braces[[ind.use]], lrec.id)
       braces[[ind.set]] <- en_lset(braces[[ind.set]], lrec.id)
       # Add lrec call
-      braces <- dot_names(
-        c(
+      braces <- c(
           braces[seq_len(length(braces) - 1L)],
           # We reference rec.sym here so it is clear to static analysis the
           # symbol is in use until the very end of the loop (although right now
@@ -1261,9 +1260,9 @@ copy_fordat <- function(
           # until end of loop see `collect_loop_call_symbols`).
           en_lrec(rec.sym, lrec.id),
           braces[length(braces)]  # trailing numeric(0)
-      ) )
+      )
     }
-    x[[brace.ind]] <- as.call(braces)
+    x[[brace.ind]] <- dot_names(as.call(braces))
 
     # Add the symbol copies ahead of the loop; we do it last because these
     # insertions shift the indices.  We need to copy the symbols we'll reconcile
