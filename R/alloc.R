@@ -197,6 +197,8 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
   stack <- init_stack()
   stack.ext.any <- list()
   stack.sizes <- list()   # argument sizes (see size.R)
+  stack.lrec <-
+    matrix(integer(), nrow=3, dimnames=list(c('lrec', 'use', 'set'), NULL))
   call.dat <- list()
   branch.lvl <- 0L
   external.evals <- list()
@@ -378,6 +380,13 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
           typeof <- typeof(arg.e)
           size.coef <- list(length(arg.e))
           vec.dat <- vec_dat(arg.e, "ext", typeof=typeof, size.coef=size.coef)
+          # Record symbol in names array so that the `lrec` logic can find it.
+          # This is an external symbol hence rec/scope/call.i are all set to 0
+          if(is.symbol(call)) {
+            alloc <- names_bind(
+              alloc, new.name=name, call.i=0L, rec=0L, scope=0L
+            )
+          }
         }
       }
     # - Match a Symbol In Data -------------------------------------------------
@@ -458,6 +467,47 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
         binding.stack <- binding.stack[-length(binding.stack)]
         branch.start.stack <- branch.start.stack[-length(branch.start.stack)]
         env.ext <- reconcile_env_ext(env.ext.T, env.ext.F)
+      }
+      # Handle loop use before set reconciliations.  For each `lrec` call we
+      # need to find the target memory, and change whatever `lset` is pointing
+      # to to be written there.
+      if(name == L.USE) {
+        # Record in the lrec stack the memory slot associated with the use
+        # Might need to dig back to find the vcopy?
+        # 1. Find the symbol in question.
+        # 2. Find the associated early copy and the memory location of that.
+        if(!(is.name(call[[2L]]) && is.integer(call[[3L]])))
+          stop("Internal Error: bad luse call.")
+        use.name <- as.character(call[[2L]])
+        use.lrec.id <- call[[3L]]
+        use.id <- name_to_id(alloc, use.name)
+        if(!use.id) stop("Internal Error: luse points to unregistered symbol.")
+        stack.lrec <- cbind(stack.lrec, c(lrec=use.lrec.id, id=use.id, set=NA))
+      } else if (name == L.SET) {
+        # Record in the lrec stack the memory slot associatd with the set
+        if(!(is.name(call[[2L]]) && is.integer(call[[3L]])))
+          stop("Internal Error: bad lset call.")
+        set.name <- as.character(call[[2L]])
+        set.lrec.id <- call[[3L]]
+        if(!set.lrec.id %in% stack.lrec['lrec',])
+          stop("Internal Error: lset cannot find matching luse.")
+        set.id <- name_to_id(alloc, set.name)
+        if(!set.id) stop("Internal Error: luse points to unregistered symbol.")
+        stack.lrec['set', stack.lrec['lrec',] == set.lrec.id] <- set.id
+      } else if (name == L.REC) {
+        # "Copy" the contents of the L.SET memory to the L.USE memory.  To do
+        # this we edit the memory slots assigned to the call originally to match
+        # up to the L.SET and L.USE memory.
+        lrec.id <- call[[3L]]
+        if(!lrec.id %in% stack.lrec['lrec',])
+          stop("Internal Error: lrec cannot find matching luse/lset.")
+        tmp.ids <- call.dat[[length(call.dat)]][['ids']]
+        # Because of the aliasing of the .R2C.FOR.SYM.N variables the use
+        # variable should already be at the correct slot.
+        if(tmp.ids[1] != stack.lrec['use', lrec.id])
+          stop("Internal Error: corrupted use index? Should be already set.")
+        tmp.ids[2:3] <- rep(stack.lrec['set', lrec.id], 2L)
+        call.dat[[length(call.dat)]][['ids']] <- tmp.ids
       }
       # Reduce stack
       stack <- stack[,stack['depth',] <= depth, drop=FALSE]
@@ -1121,7 +1171,7 @@ latest_symbol_instance <- function(x) {
   # symbols used by each loop.  We will pretend each of these is potentially
   # used up to the last point of the loop.  DO NOT CHANGE this assumption
   # lightly as we depend on it for bindings that are used before write in loops.
-  loop.syms <- lapply(call, collect_loop_call_symbols)
+  loop.syms <- lapply(call, collect_loop_call_symbols)  # linearized calls here
   loop.reps <- rep(seq_along(loop.syms), lengths(loop.syms))
   loop.max <- tapply(loop.reps, unlist(loop.syms), max)
 
@@ -1195,9 +1245,13 @@ check_fun <- function(name, pkg, env) {
 #'
 #' @noRd
 
+# Problem we're currently having is that in:
+# x <- lset(w, i) where `w` is not used anymore, the last.use is too early.
+# Is finding the last use for a loop not working correctly?
+
 names_clean <- function(alloc, i.call) {
   names <- alloc[['names']]
-  # Drop out ouf scope names
+  # Drop out ouf scope names (but not external names)
   names <- names[, names['scope',] <= alloc[['scope']], drop=FALSE]
   # Drop expired names
   alloc[['names']] <- names[, names['i.max',] >= i.call, drop=FALSE]
@@ -1206,16 +1260,17 @@ names_clean <- function(alloc, i.call) {
 names_free <- function(alloc, new.names, rec) {
   names <- alloc[['names']]
   to.free <-
+    names['scope', ] &  # don't free external symbols
     names['scope', ] == alloc[['scope']] &
     names['rec', ] == rec &
     colnames(names) %in% new.names
   alloc[['names']] <- names[, !to.free, drop=FALSE]
   alloc
 }
-names_bind <- function(alloc, new.name, call.i, rec) {
+names_bind <- function(alloc, new.name, call.i, rec, scope=alloc[['scope']]) {
   new.name.dat <- c(
     ids=alloc[['i']],
-    scope=alloc[['scope']],
+    scope=scope,
     i.max=unname(alloc[['meta']][['i.sym.max']][new.name]),
     i.assign=call.i,
     rec=rec, rec0=rec,

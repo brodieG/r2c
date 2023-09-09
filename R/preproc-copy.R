@@ -1284,7 +1284,7 @@ copy_fordat <- function(
 # See `symbols` in `copy_fordat`
 init_sym_idx <- function(names = character()) {
   list(
-    lrec.id=0,           # how many loop reconciliations we've made
+    lrec.id=0L,    # how many loop reconciliations we've made
     level=integer(),
     indices=matrix(
       replicate(3 * length(names), integer(0), simplify=FALSE),

@@ -208,11 +208,11 @@ collect_call_symbols <- function(x) {
 collect_loop_call_symbols <- function(x) {
   syms <- character()
   if(is.call(x) && length(x) > 1) {
-    name <- get_lang_name(x[[1L]])
+    name <- get_lang_name(x)
     syms <-
-      if(name == "for" && length(x) == 4L) collect_call_symbols(x[[4L]])
-      else if(name == "while" && length(x) == 3L) collect_call_symbols(x[[3L]])
-      else if(name == "repeat" && length(x) == 2L) collect_call_symbols(x[[2L]])
+      if(name == FOR.N && length(x) == 2L) collect_call_symbols(x[[2L]])
+      # else if(name == "while" && length(x) == 3L) collect_call_symbols(x[[3L]])
+      # else if(name == "repeat" && length(x) == 2L) collect_call_symbols(x[[2L]])
       else character()
   }
   syms

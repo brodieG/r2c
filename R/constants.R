@@ -89,7 +89,10 @@ BRANCH.MID.SYM <- c("if_true", FOR.N)
 BRANCH.END.SYM <- c("if_false", FOR.0)
 BRANCH.EXEC.SYM <- c("r2c_if", R2C.FOR)
 REC.FUNS <- c('vcopy', 'rec')
-LREC.FUNS <- c('luse', 'lset', 'lrec')
+L.USE <- 'luse'
+L.SET <- 'lset'
+L.REC <- 'lrec'
+LREC.FUNS <- c(L.USE, L.SET, L.REC)
 
 INTERNAL.FUNS <- c(
   IF.SUB.SYM, BRANCH.START.SYM, BRANCH.EXEC.SYM, REC.FUNS, FOR.INIT, LREC.FUNS
