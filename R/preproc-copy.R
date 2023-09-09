@@ -471,6 +471,13 @@ copy_branchdat_rec <- function(
         # and `seq.1` get treated as payloads for the iteration variable, but it
         # shouldn't matter since never used after branch.
         rec.skip <- 1:2
+      } else if (sym.name %in% LREC.FUNS) {
+        # We know loop reconciliation functions are wrapped only around terminal
+        # symbols, so whatever branch reconciliation is done on them applies to
+        # that symbol (since they are passive).  Alternatively we could let the
+        # copy/rec flow through to the symbol and skip it for the loop rec call,
+        # but we started doing it off this way..
+        rec.skip <- seq_along(x)
       }
       # Recurse on language subcomponents
       for(i in seq_along(x)[-rec.skip]) {
