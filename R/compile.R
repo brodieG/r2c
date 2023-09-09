@@ -640,7 +640,8 @@ clean_call <- function(x, level=1L) {
     x <- recompose_control(x)
 
     # Recurse
-    for(i in seq(2L, length(x))) x[[i]] <- clean_call(x[[i]], level=level)
+    if(length(x) > 1L) # Dropping default args can shorten call
+      for(i in seq(2L, length(x))) x[[i]] <- clean_call(x[[i]], level=level)
   }
   x
 }
