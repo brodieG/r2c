@@ -176,7 +176,7 @@ code_gen_lrec <- function(fun, pars, par.types) {
     par.types=character() && all(. %in% PAR.INT)
   )
   name <- FUN.NAMES[fun]
-  defn <- sprintf(f_copy, name, toString(F.ARGS.BASE))
+  defn <- sprintf(f_lrec, name, toString(F.ARGS.BASE))
   code_res(defn=defn, name=name)
 }
 
