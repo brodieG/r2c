@@ -483,9 +483,10 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
         tmp.ids <- call.dat[[length(call.dat)]][['ids']]
         # Because of the aliasing of the .R2C.FOR.SYM.N variables the use
         # variable should already be at the correct slot.
-        if(tmp.ids[1] != stack.lrec['use', lrec.id])
+        if(tmp.ids[2L] != stack.lrec['use', lrec.id])
           stop("Internal Error: corrupted use index? Should be already set.")
-        tmp.ids[2:3] <- rep(stack.lrec['set', lrec.id], 2L)
+        # Copy from the set location to the use location
+        tmp.ids[2:3] <- c(stack.lrec['set', lrec.id], tmp.ids[2L])
         call.dat[[length(call.dat)]][['ids']] <- tmp.ids
       }
       # Reduce stack

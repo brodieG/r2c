@@ -160,9 +160,9 @@ f_lrec <- '
 // Copy loop value to a use before set variable so that the variable will be
 // updated before beginning each subsequent loop iteration.
 static void %s(%s) {
-  R_xlen_t len0 = lens[di[0]];
+  R_xlen_t len0 = lens[di[1]];
   double * res = data[di[2]];  // skip rec.i used only by alloc
-  double * input = data[di[0]];
+  double * input = data[di[1]];
   // this should be a debug mode check only
   if(res == input) Rf_error("Internal Error: copying in-place.");
   if(len0 != lens[di[2]]) Rf_error("Internal Error: mismatched copy sizes.");
