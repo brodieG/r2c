@@ -46,6 +46,34 @@
 
 ## Current
 
+* Why do we loose a local assignment from `data[[B.NAMED]]` from branch rec?
+
+* Rename `rec` `brec` to distinguish more clearly from `lrec`?
+
+* It seems like we don't need `luse` as in `lrec(.R2C.FOR.SYM.1)` we retain the
+  alloc id of the original used symbol memory which should be the same as
+  `.R2C.FOR.SYM.1` as we aliased it.  Maybe this is less important to fix now
+  that we've rationalized logic a little with `lrec_update`?  Actually, we also
+  have logic in preproc, etc, so really we should drop this.
+
+* Ensure that use before set, but then use copy after set also works (i.e. we
+  if we aliased the use before set symbol before setting, that the alias is
+  is not overwritten when we reconcile).
+
+* Should we convert all function symbols in a call to character to avoid having
+  to repeatedly convert them to/from symbols?
+
+* Make sure that a user can't try to sneak in e.g. `lrec`.
+
+* Thank Yihui for formatR.
+
+* Assignment chains should contain only `ASSIGN.SYM`, and possibly only
+  `ASSIGN.SYM.BASE`.  We can't have stuff like `a <- {b} <- c`
+
+* It would be nice to be able to assume there are no nested braces ever in
+  "preproc-copy.R".  Alternatively (now more likely I think), ensure that
+  anyplace that isn't robust to nested braces tests for them.
+
 * What happens when we use the counter from a loop either outside of the loop as
   part of a use before set?  It should be reset at beginning of loop each time?
   So shouldn't matter.  If we read from it it's set.  If we write to it it was
