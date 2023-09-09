@@ -471,29 +471,8 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
       # Handle loop use before set reconciliations.  For each `lrec` call we
       # need to find the target memory, and change whatever `lset` is pointing
       # to to be written there.
-      if(name == L.USE) {
-        # Record in the lrec stack the memory slot associated with the use
-        # Might need to dig back to find the vcopy?
-        # 1. Find the symbol in question.
-        # 2. Find the associated early copy and the memory location of that.
-        if(!(is.name(call[['x']]) && is.integer(call[['rec.i']])))
-          stop("Internal Error: bad luse call.")
-        use.name <- as.character(call[['x']])
-        use.lrec.id <- call[['rec.i']]
-        use.id <- name_to_id(alloc, use.name)
-        if(!use.id) stop("Internal Error: luse points to unregistered symbol.")
-        stack.lrec <- cbind(stack.lrec, c(lrec=use.lrec.id, id=use.id, set=NA))
-      } else if (name == L.SET) {
-        # Record in the lrec stack the memory slot associatd with the set
-        if(!(is.name(call[['x']]) && is.integer(call[['rec.i']])))
-          stop("Internal Error: bad lset call.")
-        set.name <- as.character(call[['x']])
-        set.lrec.id <- call[['reci']]
-        if(!set.lrec.id %in% stack.lrec['lrec',])
-          stop("Internal Error: lset cannot find matching luse.")
-        set.id <- name_to_id(alloc, set.name)
-        if(!set.id) stop("Internal Error: luse points to unregistered symbol.")
-        stack.lrec['set', stack.lrec['lrec',] == set.lrec.id] <- set.id
+      if(name %in% c(L.USE, L.SET)) {
+        stack.lrec <- lrec_update(stack.lrec, alloc, call, name)
       } else if (name == L.REC) {
         # "Copy" the contents of the L.SET memory to the L.USE memory.  To do
         # this we edit the memory slots assigned to the call originally to match
@@ -1357,5 +1336,45 @@ validate_ext <- function(x, i, par.type, arg.e, name, call, .CALL) {
   ) ) }
 }
 
+# Record in the lrec stack the memory slot associated with the use/set loop use
+# before set data.
+#
+# @param stack an lrec stack
+# @param alloc the allocation object
+# @param call an `luse` or `lset` call
+# @param call.name to allow distinguishing which call it is w/o having to
+#   convert symbol again.
 
+lrec_update <- function(stack, alloc, call, call.name) {
+  if(!call.name %in% c(L.USE, L.SET))
+    stop("Internal Error: ", call.name, " must be luse or lset.")
+  if(!(is.language(call[['x']]) && is.integer(call[['rec.i']])))
+    stop("Internal Error: bad ", call.name, " call.")
+
+  # `x` may be a symbol, or a symbol wrapped in `rec` and maybe `vcopy`.
+  # Retrieve the symbol (there should only be one rec/vcopy, but we dont check)
+  x <- call[['x']]
+  while(!is.symbol(x)) {
+    if(!identical(x[[1L]], QREC) && !identical(x[[1L]], QVCOPY))
+      stop("Internal Error: bad ", call.name, " call.")
+    x <- x[[2L]]
+  }
+  name <- as.character(x)
+  lrec.id <- call[['rec.i']]
+  # Look up the symbol to rec to get the associated memory
+  id <- name_to_id(alloc, name)
+  if(!id)
+    stop("Internal Error: ", call.name, " points to unregistered symbol.")
+
+  # Add an entry to the stack for this symbol
+  if(call.name == L.USE)
+    stack <- cbind(stack, c(lrec=lrec.id, id=id, set=NA))
+  # Update the entry with the set location
+  else {
+    if(!lrec.id %in% stack['lrec',])
+      stop("Internal Error: lset cannot find matching luse.")
+    stack['set', stack['lrec',] == lrec.id] <- id
+  }
+  stack
+}
 

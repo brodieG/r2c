@@ -62,6 +62,8 @@ QBRACE <- as.name("{")
 QR2C.FOR <- quote(r2c::r2c_for)
 QFOR.ITER <- quote(r2c::for_iter)
 QFOR.INIT <- quote(r2c::for_init)
+QREC <- quote(r2c::rec)
+QVCOPY <- quote(r2c::vcopy)
 # need to wrap in list because can't be a top level for R CMD check
 MISSING <- list(formals(base::identical)[[1L]])
 
@@ -112,9 +114,9 @@ PASSIVE.SYM <- unique(
   c(
     MODIFY.SYM, CTRL.SYM, "{", "uplus",
     CTRL.SUB.SYM, BRANCH.EXEC.SYM,
-    'rec',     # vcopy not passive
-    LREC.FUNS,
-    FOR.INIT   # so it allows assignments inside
+    'rec',         # vcopy not passive
+    L.USE, L.SET,  # lrec (unlike rec) copies thus not passive
+    FOR.INIT       # to allow assignments inside
   )
 )
 # In branches, some symbols are not considered passive even though they don't

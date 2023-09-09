@@ -400,9 +400,8 @@ copy_branchdat_rec <- function(
     # return value will be computed if used, even though strictly it does not
     # compute itself.
     passive <- sym.name %in% PASSIVE.BRANCH.SYM
-    # for candidacy purposes, computing calls are leaves, as are the loop
-    # reconciliation functions.
-    leaf <- !passive || sym.name %in% LREC.FUNS
+    # for candidacy purposes, computing calls are leaves
+    leaf <- !passive
 
     if(call.modify) tar.sym <- get_target_symbol(x, sym.name)
     sub.assign.to <- if(sym.name == "subassign") {
@@ -471,13 +470,6 @@ copy_branchdat_rec <- function(
         # and `seq.1` get treated as payloads for the iteration variable, but it
         # shouldn't matter since never used after branch.
         rec.skip <- 1:2
-      } else if (sym.name %in% LREC.FUNS) {
-        # We know loop reconciliation functions are wrapped only around terminal
-        # symbols, so whatever branch reconciliation is done on them applies to
-        # that symbol (since they are passive).  Alternatively we could let the
-        # copy/rec flow through to the symbol and skip it for the loop rec call,
-        # but we started doing it off this way..
-        rec.skip <- seq_along(x)
       }
       # Recurse on language subcomponents
       for(i in seq_along(x)[-rec.skip]) {
@@ -612,10 +604,8 @@ copy_branchdat_rec <- function(
 # @param call.assign whether `x` is an assigning call.
 # @param call.modify whether `x` is a modifying call (includes `call.assign`,
 #   and additionally e.g. subassign).
-# @param leaf `x` is a symbol, a computing **call**, or a loop reconciliation
-#   call.  For computing calls, we don't need to `vcopy` them because they are a
-#   fresh value.  For loop recs, they are only ever wrapped directly around a
-#   symbol and always require vcopy.
+# @param leaf `x` is a symbol, or a computing **call**.  For computing calls, we
+#   don't need to `vcopy` them because they are a fresh value.
 #
 # @return data, updated (see copy_branchdat_rec).
 
