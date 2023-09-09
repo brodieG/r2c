@@ -476,19 +476,19 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
         # Might need to dig back to find the vcopy?
         # 1. Find the symbol in question.
         # 2. Find the associated early copy and the memory location of that.
-        if(!(is.name(call[[2L]]) && is.integer(call[[3L]])))
+        if(!(is.name(call[['x']]) && is.integer(call[['rec.i']])))
           stop("Internal Error: bad luse call.")
-        use.name <- as.character(call[[2L]])
-        use.lrec.id <- call[[3L]]
+        use.name <- as.character(call[['x']])
+        use.lrec.id <- call[['rec.i']]
         use.id <- name_to_id(alloc, use.name)
         if(!use.id) stop("Internal Error: luse points to unregistered symbol.")
         stack.lrec <- cbind(stack.lrec, c(lrec=use.lrec.id, id=use.id, set=NA))
       } else if (name == L.SET) {
         # Record in the lrec stack the memory slot associatd with the set
-        if(!(is.name(call[[2L]]) && is.integer(call[[3L]])))
+        if(!(is.name(call[['x']]) && is.integer(call[['rec.i']])))
           stop("Internal Error: bad lset call.")
-        set.name <- as.character(call[[2L]])
-        set.lrec.id <- call[[3L]]
+        set.name <- as.character(call[['x']])
+        set.lrec.id <- call[['reci']]
         if(!set.lrec.id %in% stack.lrec['lrec',])
           stop("Internal Error: lset cannot find matching luse.")
         set.id <- name_to_id(alloc, set.name)
@@ -498,7 +498,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
         # "Copy" the contents of the L.SET memory to the L.USE memory.  To do
         # this we edit the memory slots assigned to the call originally to match
         # up to the L.SET and L.USE memory.
-        lrec.id <- call[[3L]]
+        lrec.id <- call[['rec.i']]
         if(!lrec.id %in% stack.lrec['lrec',])
           stop("Internal Error: lrec cannot find matching luse/lset.")
         tmp.ids <- call.dat[[length(call.dat)]][['ids']]

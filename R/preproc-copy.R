@@ -982,9 +982,9 @@ en_rec <- function(x, clean=FALSE) {
 LUSE.FUN.NAME <- call("::", as.name("r2c"), as.name("luse"))
 LSET.FUN.NAME <- call("::", as.name("r2c"), as.name("lset"))
 LREC.FUN.NAME <- call("::", as.name("r2c"), as.name("lrec"))
-en_luse <- function(x, rec.i) as.call(list(LUSE.FUN.NAME, x=x, rec.i=rec.i))
-en_lset <- function(x, rec.i) as.call(list(LSET.FUN.NAME, x=x, rec.i=rec.i))
-en_lrec <- function(x, rec.i) as.call(list(LREC.FUN.NAME, x=x, rec.i=rec.i))
+en_luse <- function(x, rec.i) as.call(list(LUSE.FUN.NAME, rec.i=rec.i, x=x))
+en_lset <- function(x, rec.i) as.call(list(LSET.FUN.NAME, rec.i=rec.i, x=x))
+en_lrec <- function(x, rec.i) as.call(list(LREC.FUN.NAME, rec.i=rec.i, x=x))
 
 # Inject Self-vcopy
 #
