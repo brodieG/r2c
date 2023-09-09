@@ -384,7 +384,11 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
           # This is an external symbol hence rec/scope/call.i are all set to 0
           if(is.symbol(call)) {
             alloc <- names_bind(
-              alloc, new.name=name, call.i=0L, rec=0L, scope=0L
+              alloc, new.name=name, call.i=0L, rec=0L, scope=0L,
+              # A bit sketchy: we have not yet appended the `vec.dat` but we
+              # need the names to point to vec_dat.  We rely on knowing
+              # `append_dat` will give i+1 as the ids when we get to it.
+              id=alloc[['i']] + 1L
             )
           }
         }
@@ -1247,9 +1251,11 @@ names_free <- function(alloc, new.names, rec) {
   alloc[['names']] <- names[, !to.free, drop=FALSE]
   alloc
 }
-names_bind <- function(alloc, new.name, call.i, rec, scope=alloc[['scope']]) {
+names_bind <- function(
+  alloc, new.name, call.i, rec, id=alloc[['i']], scope=alloc[['scope']]
+) {
   new.name.dat <- c(
-    ids=alloc[['i']],
+    ids=id,
     scope=scope,
     i.max=unname(alloc[['meta']][['i.sym.max']][new.name]),
     i.assign=call.i,
