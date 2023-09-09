@@ -373,10 +373,17 @@ copy_branchdat_rec <- function(
       TRUE, a=in.branch  # in.branch is current position
     )
     cand.prom.i <- seq_along(cand)[cand.match][cand.after.branch]
+    cand.prom <- cand[cand.prom.i]
 
     # Effect promotions, and clear promoted candidates from candidate list.
-    data[[ACT]] <- c(data[[ACT]], cand[cand.prom.i])
+    data[[ACT]] <- c(data[[ACT]], cand.prom)
     data[[CAND]] <- clear_candidates(data[[CAND]], cand.prom.i)
+
+    # Triggered branch balance candidates may require updating free symbol list
+    # For these the trigger is the same as the symbol (e.g. x <- vcopy(x))
+    br.bal.free <- vapply(cand.prom, "[[", TRUE, "free")
+    br.bal.free.sym <- vapply(cand.prom[br.bal.free], "[[", "", "name")
+    data[['free']] <- union(data[['free']], br.bal.free.sym)
 
     if(is.null(in.branch) && length(assign.to) && sym.local.cmp) {
       # Outside of branches, aliasing a locally computed symbol makes the others
@@ -792,9 +799,20 @@ generate_candidate <- function(
 #   branches.
 # @param copy whether this is a value that need to be `vcopy`ed (see
 #   copy_branchdat`).
+# @param free if the candidate is triggered, it is possible that doing so when
+#   we're dealing with `x <- vcopy(x)` that we introduce a free symbol.  Only
+#   allowed if the training index is -1 which is the special case used to branch
+#   balance..
 
-callptr <- function(name, index, br.index, rec=TRUE, copy=FALSE) {
-  list(name=name, index=index, br.index=br.index, rec=rec, copy=copy)
+callptr <- function(
+  name, index, br.index, rec=TRUE, copy=FALSE, free=FALSE
+) {
+  if(free && index[length(index)] != -1)
+    stop(
+      "Internal Error: callptr with free symbols only allowed for branch-",
+      "balance assignments."
+    )
+  list(name=name, index=index, br.index=br.index, rec=rec, copy=copy, free=free)
 }
 add_actual_callptr  <- function(
   data, index, rec=TRUE, copy=TRUE, name=NA_character_
@@ -811,10 +829,11 @@ add_candidate_callptr <- function(
   data[[CAND]] <- c(data[[CAND]], new.cand)
   data
 }
-gen_callptrs <- function(names, index, br.index, rec, copy)
-  sapply(
-    names, callptr, copy=copy, rec=rec, index=index, br.index=br.index,
-    simplify=FALSE
+gen_callptrs <- function(names, index, br.index, rec, copy, free=FALSE)
+  Map(
+    callptr,
+    names, copy=copy, rec=rec, index=list(index), br.index=list(br.index),
+    free=free
   )
 
 # Remove Promoted Candidates
@@ -918,24 +937,21 @@ merge_copy_dat <- function(old, a, b, idx, idx.offset) {
   a.miss <- setdiff(b.names, a.names)
   b.miss <- setdiff(a.names, b.names)
   # Inject at start (hence -1L; so branch return value unchanged).
+  prev.bound <- c(old[[B.LOC.CMP]], old[[B.LOC]], old[[B.ALL]])
   a.miss.list <- gen_callptrs(
     a.miss, c(idx, 2L + idx.offset, 2L, -1L),
     br.index=c(idx, 2L + idx.offset),
-    copy=TRUE, rec=TRUE
+    copy=TRUE, rec=TRUE, free=!a.miss %in% prev.bound
   )
   b.miss.list <- gen_callptrs(
     b.miss, c(idx, 3L + idx.offset, 2L, -1L),
     br.index=c(idx, 3L + idx.offset),
-    copy=TRUE, rec=TRUE
+    copy=TRUE, rec=TRUE, free=!b.miss %in% prev.bound
   )
-  # Combine all found free symbols
-  prev.bound <- c(old[[B.LOC.CMP]], old[[B.LOC]], old[[B.ALL]], old[[B.ALL]])
-  old[['free']] <- unique(
-    c(
-      a[['free']], b[['free']],
-      # Injected e.g. `x <- vcopy(x)` means `x` could have been free
-      setdiff(a.miss, prev.bound), setdiff(b.miss, prev.bound)
-  ) )
+  # Combine all found free symbols.  Other free symbols may be introduced by
+  # branch balance injections, but those ae handled by setting the `free` param
+  # in `gen_callptrs` above.
+  old[['free']] <- union(a[['free']], b[['free']])
 
   # Recombine all the pieces into the new set of candidates
   copy.cand <- unique(
