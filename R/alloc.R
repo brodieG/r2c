@@ -388,7 +388,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
               # A bit sketchy: we have not yet appended the `vec.dat` but we
               # need the names to point to vec_dat.  We rely on knowing
               # `append_dat` will give i+1 as the ids when we get to it.
-              id=alloc[['i']] + 1L
+              id=length(alloc[['dat']]) + 1L
             )
           }
         }
