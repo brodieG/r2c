@@ -148,6 +148,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
   # - Initialize ---------------------------------------------------------------
   env <- list2env(MoreArgs, parent=par.env)
   env.ext.0 <- env.ext <- new.env(parent=env)
+  stack.env.ext.T <- stack.env.ext.F <- list()
 
   # Call indices where various interesting things happen
   meta <- list(
@@ -435,7 +436,8 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
         branch.start.stack <- c(branch.start.stack, i)
 
         # Generate a new external tracking env for the TRUE branch
-        env.ext <- env.ext.T <- new.env(parent=env.ext)
+        env.ext <- new.env(parent=env.ext)
+        stack.env.ext.T <- c(stack.env.ext.T, list(env.ext))
       } else if (name %in% BRANCH.EXEC.SYM) {
         # Last branch expression before this one
         branch.lvl <- branch.lvl - 1L
@@ -454,8 +456,8 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
         alloc[['names']]['br.hide', names.assign.in.br] <- branch.lvl
 
         # External env for FALSE branch
-        env.ext <- parent.env(env.ext.T)
-        env.ext <- env.ext.F <- new.env(parent=env.ext)
+        env.ext <- new.env(parent=parent.env(env.ext))
+        stack.env.ext.F <- c(stack.env.ext.F, list(env.ext))
       } else if (name %in% BRANCH.END.SYM) {
         # Just completed FALSE branch, reconcile allocations, symbols, etc.
         if(length(x[['call']]) < i + 1L)
@@ -471,7 +473,24 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
         stack <- rcf.dat[['stack']]
         binding.stack <- binding.stack[-length(binding.stack)]
         branch.start.stack <- branch.start.stack[-length(branch.start.stack)]
-        env.ext <- reconcile_env_ext(env.ext.T, env.ext.F)
+        env.ext <- reconcile_env_ext(
+          tail(stack.env.ext.T, 1L)[[1L]], tail(stack.env.ext.F, 1L)[[1L]]
+        )
+        stack.env.ext.T <- head(stack.env.ext.T, -1L)
+        stack.env.ext.F <- head(stack.env.ext.F, -1L)
+        # Make sure we decremented stacks correctly
+        if(
+          (length(stack.env.ext.T) || length(stack.env.ext.F)) &&
+          !(
+            length(stack.env.ext.T) &&
+            identical(env.ext, tail(stack.env.ext.T)[[1L]])
+          ) &&
+          !(
+            length(stack.env.ext.F) &&
+            identical(env.ext, tail(stack.env.ext.F)[[1L]])
+          )
+        )
+          stop("Internal Error: corrupt external env state.")
       }
       # Handle loop use-before-set reconciliations.  For each `lrec` call we
       # need to find the target memory, and change whatever `lset` is pointing
@@ -1283,7 +1302,10 @@ names_update <- function(alloc, call, call.name, call.i, rec, env.ext) {
 }
 # Prevent External Expression from Accessing Internal Symbols
 #
-# External expressions are disallowed from accessing iteration varying symbols.
+# External expressions are disallowed from accessing iteration varying symbols
+# because external expressions are only evaluated once and thus cannot
+# correctly be calculated with iteration varying data.
+#
 # We implement these by setting for each iteration varying symbol (a data symbol
 # or a symbol set in an r2c expression) an active binding that triggers a
 # condition if it is used.  This way, anytime we evaluate an external
