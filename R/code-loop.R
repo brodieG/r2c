@@ -111,21 +111,6 @@ code_gen_for <- function(...) {
   )
 }
 
-f_luse <- '
-// marker for alloc, so noop
-// static void %s(%s) { /* NOOP */ }'
-
-code_gen_luse <- function(fun, pars, par.types) {
-  vetr(
-    identical(., "luse"),
-    pars=list(NULL, NULL),
-    par.types=character() && all(. %in% PAR.INT)
-  )
-  name <- FUN.NAMES[fun]
-  defn <- sprintf(f_rec, name, toString(F.ARGS.BASE))
-  code_res(defn=defn, name=name, out.ctrl=CGEN.OUT.NONE)
-}
-
 f_lset <- '
 // marker for alloc, so noop
 // static void %s(%s) { /* NOOP */ }'
@@ -133,21 +118,6 @@ f_lset <- '
 code_gen_lset <- function(fun, pars, par.types) {
   vetr(
     identical(., "lset"),
-    pars=list(NULL, NULL),
-    par.types=character() && all(. %in% PAR.INT)
-  )
-  name <- FUN.NAMES[fun]
-  defn <- sprintf(f_rec, name, toString(F.ARGS.BASE))
-  code_res(defn=defn, name=name, out.ctrl=CGEN.OUT.NONE)
-}
-
-f_lrec <- '
-// marker for alloc, so noop
-// static void %s(%s) { /* NOOP */ }'
-
-code_gen_luse <- function(fun, pars, par.types) {
-  vetr(
-    identical(., "luse"),
     pars=list(NULL, NULL),
     par.types=character() && all(. %in% PAR.INT)
   )
@@ -208,11 +178,6 @@ for_0 <- function(expr) expr
 # For loop rec funs, x is second because these are passive functions and we want
 # the result to be the same as the `x` input (and passive functions "return"
 # their last argument).
-
-#' @rdname intermediate-representation
-#' @export
-
-luse <- function(rec.i, x) x
 
 #' @rdname intermediate-representation
 #' @export

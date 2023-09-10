@@ -7,7 +7,6 @@
 \alias{for_iter}
 \alias{for_n}
 \alias{for_0}
-\alias{luse}
 \alias{lset}
 \alias{lrec}
 \alias{r2c_if}
@@ -28,11 +27,9 @@ for_n(expr)
 
 for_0(expr)
 
-luse(x, rec.i)
+lset(rec.i, x)
 
-lset(x, rec.i)
-
-lrec(x, rec.i)
+lrec(rec.i, x)
 
 r2c_if(true, false)
 
@@ -61,10 +58,10 @@ rec(x)
 
 \item{expr}{branch expression to evaluate.}
 
+\item{rec.i}{identifier for each instance of a use before set loop variable.}
+
 \item{x}{language to wrap in markers that designate it for special treatment
 by the memory allocator at run time.}
-
-\item{rec.i}{identifier for each instance of a use before set loop variable.}
 
 \item{true}{expression to evaluate if previous \code{if_test} is TRUE.}
 

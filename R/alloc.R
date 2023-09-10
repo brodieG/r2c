@@ -198,7 +198,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
   stack.ext.any <- list()
   stack.sizes <- list()   # argument sizes (see size.R)
   stack.lrec <-
-    matrix(integer(), nrow=3, dimnames=list(c('lrec', 'use', 'set'), NULL))
+    matrix(integer(), nrow=2, dimnames=list(c('lrec', 'set'), NULL))
   call.dat <- list()
   branch.lvl <- 0L
   external.evals <- list()
@@ -387,7 +387,8 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
               alloc, new.name=name, call.i=0L, rec=0L, scope=0L,
               # A bit sketchy: we have not yet appended the `vec.dat` but we
               # need the names to point to vec_dat.  We rely on knowing
-              # `append_dat` will give i+1 as the ids when we get to it.
+              # `append_dat` will give i+1 as the ids when we get to it.  So in
+              # effect this is corrupt until the data is added.
               id=length(alloc[['dat']]) + 1L
             )
           }
@@ -472,25 +473,24 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
         branch.start.stack <- branch.start.stack[-length(branch.start.stack)]
         env.ext <- reconcile_env_ext(env.ext.T, env.ext.F)
       }
-      # Handle loop use before set reconciliations.  For each `lrec` call we
+      # Handle loop use-before-set reconciliations.  For each `lrec` call we
       # need to find the target memory, and change whatever `lset` is pointing
-      # to to be written there.
-      if(name %in% c(L.USE, L.SET)) {
-        stack.lrec <- lrec_update(stack.lrec, alloc, call, name)
+      # to to be written there.  See `copy_fordat`.
+      if(name == L.SET) {
+        stack.lrec <- lset_update(stack.lrec, alloc, call)
       } else if (name == L.REC) {
-        # "Copy" the contents of the L.SET memory to the L.USE memory.  To do
-        # this we edit the memory slots assigned to the call originally to match
-        # up to the L.SET and L.USE memory.
+        # "Copy" the contents of the L.SET memory to the first use memory.  To
+        # do this we edit the memory slots assigned to the call originally to
+        # match up to the L.SET and L.USE memory.
         lrec.id <- call[['rec.i']]
         if(!lrec.id %in% stack.lrec['lrec',])
-          stop("Internal Error: lrec cannot find matching luse/lset.")
+          stop("Internal Error: lrec cannot find matching lset.")
         tmp.ids <- call.dat[[length(call.dat)]][['ids']]
-        # Because of the aliasing of the .R2C.FOR.SYM.N variables the use
-        # variable should already be at the correct slot.
-        if(tmp.ids[2L] != stack.lrec['use', lrec.id])
-          stop("Internal Error: corrupted use index? Should be already set.")
-        # Copy from the set location to the use location
+        # Copy from the set location to the use location; we kept a reference to
+        # the use memory with the .R2C.FOR.SYM.N variable (position 2).
         tmp.ids[2:3] <- c(stack.lrec['set', lrec.id], tmp.ids[2L])
+        # No need to update param `stack` b/c we're about to drop the slots we
+        # manipulated at current depth
         call.dat[[length(call.dat)]][['ids']] <- tmp.ids
       }
       # Reduce stack
@@ -839,8 +839,8 @@ alloc_result <- function(alloc, vdat){
 #     x
 #   }
 #
-# 
-# problem.
+# We need to recognize that there is no problem in not reconciling the outer `x`
+# because the binding is not used further.
 #
 # See "preproc-copy.R" for context.
 #
@@ -1343,45 +1343,22 @@ validate_ext <- function(x, i, par.type, arg.e, name, call, .CALL) {
   ) ) }
 }
 
-# Record in the lrec stack the memory slot associated with the use/set loop use
+# Record in the lrec stack the memory slot associated with the set loop use
 # before set data.
 #
-# @param stack an lrec stack
+# @param stack.rec an lrec stack
 # @param alloc the allocation object
-# @param call an `luse` or `lset` call
+# @param call an `lset` call
 # @param call.name to allow distinguishing which call it is w/o having to
 #   convert symbol again.
 
-lrec_update <- function(stack, alloc, call, call.name) {
-  if(!call.name %in% c(L.USE, L.SET))
-    stop("Internal Error: ", call.name, " must be luse or lset.")
-  if(!(is.language(call[['x']]) && is.integer(call[['rec.i']])))
-    stop("Internal Error: bad ", call.name, " call.")
-
-  # `x` may be a symbol, or a symbol wrapped in `rec` and maybe `vcopy`.
-  # Retrieve the symbol (there should only be one rec/vcopy, but we dont check)
-  x <- call[['x']]
-  while(!is.symbol(x)) {
-    if(!identical(x[[1L]], QREC) && !identical(x[[1L]], QVCOPY))
-      stop("Internal Error: bad ", call.name, " call.")
-    x <- x[[2L]]
-  }
-  name <- as.character(x)
+lset_update <- function(stack.lrec, alloc, call) {
+  if(!is.integer(call[['rec.i']]))
+    stop("Internal Error: bad lset call.")
   lrec.id <- call[['rec.i']]
-  # Look up the symbol to rec to get the associated memory
-  id <- name_to_id(alloc, name)
-  if(!id)
-    stop("Internal Error: ", call.name, " points to unregistered symbol.")
+  if(lrec.id %in% stack.lrec['lrec',])
+    stop("Internal Error: duplicate lrec id ", lrec.id)
 
-  # Add an entry to the stack for this symbol
-  if(call.name == L.USE)
-    stack <- cbind(stack, c(lrec=lrec.id, id=id, set=NA))
-  # Update the entry with the set location
-  else {
-    if(!lrec.id %in% stack['lrec',])
-      stop("Internal Error: lset cannot find matching luse.")
-    stack['set', stack['lrec',] == lrec.id] <- id
-  }
-  stack
+  cbind(stack.lrec, c(lrec=lrec.id, set=alloc[['i']]))
 }
 

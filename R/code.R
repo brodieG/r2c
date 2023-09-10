@@ -520,12 +520,6 @@ VALID_FUNS <- c(
       res.type="preserve"
     ),
     cgen(
-      "luse", fun=luse, defn=NULL,
-      type=list("arglen", 1L),
-      code.gen=code_gen_luse,
-      res.type="preserve"
-    ),
-    cgen(
       "lset", fun=lset, defn=NULL,
       type=list("arglen", 1L),
       code.gen=code_gen_lset,
