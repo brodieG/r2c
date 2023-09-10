@@ -473,24 +473,11 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
         stack <- rcf.dat[['stack']]
         binding.stack <- binding.stack[-length(binding.stack)]
         branch.start.stack <- branch.start.stack[-length(branch.start.stack)]
-        env.ext <- reconcile_env_ext(
-          tail(stack.env.ext.T, 1L)[[1L]], tail(stack.env.ext.F, 1L)[[1L]]
-        )
-        stack.env.ext.T <- head(stack.env.ext.T, -1L)
-        stack.env.ext.F <- head(stack.env.ext.F, -1L)
-        # Make sure we decremented stacks correctly
-        if(
-          (length(stack.env.ext.T) || length(stack.env.ext.F)) &&
-          !(
-            length(stack.env.ext.T) &&
-            identical(env.ext, tail(stack.env.ext.T)[[1L]])
-          ) &&
-          !(
-            length(stack.env.ext.F) &&
-            identical(env.ext, tail(stack.env.ext.F)[[1L]])
-          )
-        )
-          stop("Internal Error: corrupt external env state.")
+
+        tmp <- reconcile_env_ext(stack.env.ext.T, stack.env.ext.F)
+        env.ext <- tmp[['env.ext']]
+        stack.env.ext.T <- tmp[['stack.env.ext.T']]
+        stack.env.ext.F <- tmp[['stack.env.ext.F']]
       }
       # Handle loop use-before-set reconciliations.  For each `lrec` call we
       # need to find the target memory, and change whatever `lset` is pointing
@@ -1042,13 +1029,31 @@ reconcile_control_flow <- function(
 #
 # See `guard_symbol`
 
-reconcile_env_ext <- function(env.ext.T, env.ext.F) {
+reconcile_env_ext <- function(stack.env.ext.T, stack.env.ext.F) {
+  env.ext.T <- tail(stack.env.ext.T, 1L)[[1L]]
+  env.ext.F <- tail(stack.env.ext.F, 1L)[[1L]]
   par.env <- parent.env(env.ext.T)
   if(!identical(par.env, parent.env(env.ext.F)))
     stop("Internal Error: corrupted external tracking envs.")
   new.names <- intersect(names(env.ext.T), names(env.ext.F))
   for(i in new.names) guard_symbol(i, par.env)
-  par.env
+
+  stack.T <- head(stack.env.ext.T, -1L)
+  stack.F <- head(stack.env.ext.F, -1L)
+
+  # Make sure we decremented env stacks correctly
+  if(
+    (length(stack.T) || length(stack.F)) &&
+    !(
+      length(stack.T) && identical(par.env, tail(stack.T)[[1L]])
+    ) &&
+    !(
+      length(stack.F) && identical(par.env, tail(stack.F)[[1L]])
+    )
+  )
+    stop("Internal Error: corrupt external env state.")
+
+  list(env.ext=par.env, stack.env.ext.T=stack.T, stack.env.ext.F=stack.F)
 }
 #
 # Identify Bindings that Should Be Reconciled
