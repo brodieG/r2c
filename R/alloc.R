@@ -298,8 +298,8 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
     # - Assigned-To Symbol -----------------------------------------------------
     } else if(x[['assign']][i]) {
       # in e.g. `x <- y`, this is the `x`, which isn't actually data,
-      # We don't need to record it but we do for consistency.  The values here
-      # shouldn't really get used anywhere where they have an impact.
+      # We don't need to record it but we do for consistency.  This is just
+      # a stub that shouldn'really get used anywhere it an impact.
       vec.dat <-
         vec_dat(numeric(), "tmp", typeof="logical", size.coef=list(integer()))
     # - Control Parameter / External -------------------------------------------

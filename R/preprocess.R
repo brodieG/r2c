@@ -186,8 +186,8 @@ preprocess <- function(call, optimize=FALSE) {
 #
 # @param call a recursively `match.call`ed call.
 # @param assign indicate whether current evaluation is of a symbol being
-#   assigned to to avoid recording that as a free symbol and also to tell the
-#   allocator to use a stub for it in the temp allocation list.
+#   assigned to, to tell the allocator to use a stub for it in the temp
+#   allocation list.
 # @param call.parent if `call` is being evaluated as an argument to a parent
 #   call, `call.parent` is that call.  Used so we can tell if we're e.g. called
 #   from braces.
@@ -597,8 +597,9 @@ transform_control <- function(x, i=0L) {
           { # We rely on these braces in for loop processing
             r2c::for_init(
               seq=.(call("<-", seq.name, x[[3L]])),
-              # Using just 0 here causes reference issue; it needs a fresh alloc.
-              seq.i=.(call("<-", seq.i.name, en_vcopy(0)))
+              # Need fresh allocs so each of these point to their own memory.
+              seq.i=.(call("<-", seq.i.name, en_vcopy(0))),
+              var=.(call("<-", x[[2L]], en_vcopy(42))) # will be overwritten.
             )
             r2c::r2c_for(
               iter=r2c::for_iter(

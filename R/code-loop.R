@@ -43,7 +43,7 @@ f_for_other <- '
 code_gen_for_init <- function(fun, pars, par.types) {
   vetr(
     identical(., "for_init"),
-    pars=list(NULL, NULL),
+    pars=list(NULL, NULL, NULL),
     par.types=character() && all(. %in% PAR.INT)
   )
   name <- FUN.NAMES[fun]
@@ -158,7 +158,7 @@ r2c_for <- function(iter, for.n, for.0) NULL
 #' @rdname intermediate-representation
 #' @export
 
-for_init <- function(seq, seq.i) NULL
+for_init <- function(seq, seq.i, var) NULL
 
 #' @rdname intermediate-representation
 #' @export

@@ -13,6 +13,10 @@
 ##
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
+# Generally we're trying to bind constant character tokens to constant variable
+# names to reduce the chance that we introduce typo-bugs.  We're not 100%
+# consistent about this.
+
 # - C Fun Parameters -----------------------------------------------------------
 
 ARGS.NM.BASE <- c('data', 'lens', 'di')
@@ -67,15 +71,18 @@ QVCOPY <- quote(r2c::vcopy)
 # need to wrap in list because can't be a top level for R CMD check
 MISSING <- list(formals(base::identical)[[1L]])
 
-# `for` assigns to the counter variable.  `->` becomes `<-` on parsing.
-
+# `->` becomes `<-` on parsing. While `for` assigns to the counter variable, we
+# handle that by decomposing the for call and having assignments in `for_init`.
 R2C.FOR <- "r2c_for"
 FOR.INIT <- "for_init"
 FOR.ITER <- "for_iter"
 FOR.N <- "for_n"
 FOR.0 <- "for_0"
 ASSIGN.SYM.BASE <- c("<-", "=")
-ASSIGN.SYM <- c(ASSIGN.SYM.BASE, "for", FOR.ITER)
+# 'for' is considered assignment symbol, used in `reuse_calls`, but once it gets
+# decomposed into FOR.ITER, FOR.N, etc., it no longer is as we add an explicit
+# assignment to the iteration variable.
+ASSIGN.SYM <- c(ASSIGN.SYM.BASE, 'for')
 MODIFY.SYM <- c(ASSIGN.SYM, "subassign")
 LOOP.SYM <- c("for", "while", "repeat")
 FOR.SYM.ALL <- c(R2C.FOR, FOR.ITER, FOR.N, FOR.0)
@@ -83,9 +90,11 @@ LOOP.SUB.SYM <- c(FOR.0, FOR.N)
 IF.SUB.SYM <- c("if_true", "if_false")
 CTRL.SYM <- c("if", LOOP.SYM)
 CTRL.SUB.SYM <- c(IF.SUB.SYM, LOOP.SUB.SYM)
-# `for_iter` and `if_test` are not quite the same because for_iter is nested
-# inside `r2c_for`.  Works out the same though in terms of sandwiching the
-# branches.
+
+# Markers to detect what part of a branch we're on when processing the
+# linearized call list.  `for_iter` and `if_test` are not quite the same wrt to
+# locaton in the linearized call list because for_iter is nested inside
+# `r2c_for`.  Works out the same though in terms of sandwiching the branches.
 BRANCH.START.SYM <- c("if_test", FOR.ITER)
 BRANCH.MID.SYM <- c("if_true", FOR.N)
 BRANCH.END.SYM <- c("if_false", FOR.0)
