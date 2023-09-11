@@ -463,7 +463,8 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
         if(length(x[['call']]) < i + 1L)
           stop("Internal Error: missing outer control after control components.")
         rcf.dat <- reconcile_control_flow(
-          alloc, call.dat, stack, binding.stack, i.call=i,
+          alloc, call.dat, stack, stack.lrec=stack.lrec,
+          binding.stack=binding.stack, i.call=i,
           depth=depth, gmax=gmax, gmin=gmin, branch.lvl=branch.lvl,
           # send full control call for error message
           call=x[['call']][c(tail(branch.start.stack, 1L), i + 1L)]
@@ -471,9 +472,10 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
         alloc <- rcf.dat[['alloc']]
         call.dat <- rcf.dat[['call.dat']]
         stack <- rcf.dat[['stack']]
+        stack.lrec <- rcf.dat[['stack.lrec']]
+
         binding.stack <- binding.stack[-length(binding.stack)]
         branch.start.stack <- branch.start.stack[-length(branch.start.stack)]
-
         tmp <- reconcile_env_ext(stack.env.ext.T, stack.env.ext.F)
         env.ext <- tmp[['env.ext']]
         stack.env.ext.T <- tmp[['stack.env.ext.T']]
@@ -857,8 +859,8 @@ alloc_result <- function(alloc, vdat){
 #   "TRUE" branches.  See details.
 
 reconcile_control_flow <- function(
-  alloc, call.dat, stack, binding.stack, i.call, call, depth, gmax, gmin,
-  branch.lvl
+  alloc, call.dat, stack, stack.lrec, binding.stack,
+  i.call, call, depth, gmax, gmin, branch.lvl
 ) {
   if(!length(binding.stack))
     stop(
@@ -1010,6 +1012,10 @@ reconcile_control_flow <- function(
       # Update branch level
       alloc[['names']]['rec', names.target] <- branch.lvl - 1L
     }
+    # Update the loop reconcilitation ids
+    stack.lrec['set', stack.lrec['set',] %in% c(id.rc.T[i], id.rc.F[i])] <-
+      new.i
+
     # Finally update stack just in case
     stack.up <- c('id', 'id0')
     stack.up.val <- c(new.i, new.id0)
@@ -1023,7 +1029,7 @@ reconcile_control_flow <- function(
   hidden <- alloc[['names']]['br.hide', ] == branch.lvl
   alloc[['names']]['br.hide', hidden] <- branch.lvl - 1L
 
-  list(alloc=alloc, call.dat=call.dat, stack=stack)
+  list(alloc=alloc, call.dat=call.dat, stack=stack, stack.lrec=stack.lrec)
 }
 # Names Defined in Both Branches Copied over to Mutual Parent
 #
@@ -1105,7 +1111,10 @@ update_cdat_alloc <- function(call.dat, old, new, start, end) {
   # to map those indices to those available in call.dat
   c.i <- vapply(call.dat, '[[', 1L, 'call.i')
 
-  # In the eligible range, remap all the ids
+  # In the eligible range, remap all the ids.  UPDATE: is it actually possible
+  # to have the id to remap outside of the eligible range?  Things to reconcile
+  # need to be computed locally, so it seems like no and thus this is a
+  # redundant check.
   for(i in which(c.i >= start & c.i <= end)) {
     call.dat[[i]][['ids']][call.dat[[i]][['ids']] == old] <- new
   }
