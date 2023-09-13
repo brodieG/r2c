@@ -1051,10 +1051,10 @@ reconcile_env_ext <- function(stack.env.ext.T, stack.env.ext.F) {
   if(
     (length(stack.T) || length(stack.F)) &&
     !(
-      length(stack.T) && identical(par.env, tail(stack.T)[[1L]])
+      length(stack.T) && identical(par.env, tail(stack.T, 1L)[[1L]])
     ) &&
     !(
-      length(stack.F) && identical(par.env, tail(stack.F)[[1L]])
+      length(stack.F) && identical(par.env, tail(stack.F, 1L)[[1L]])
     )
   )
     stop("Internal Error: corrupt external env state.")
