@@ -115,4 +115,4 @@ numeric_along <- function(along.with) numeric(length(along.with))
 #' @export
 #' @rdname numeric_along
 
-numeric_alongn <- function(...) numeric(prod(lengths(...)))
+numeric_alongn <- function(...) numeric(prod(lengths(list(...))))
