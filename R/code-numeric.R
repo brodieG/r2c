@@ -22,7 +22,7 @@ f_numeric_core <- '
     // compiler can replace with memset in common case where zero is zeroes.
     // So something to consider here.
     LOOP_W_INTERRUPT1(len, {res[i] = 0;});
-    lens[di[1]] = len;'
+    lens[di[narg]] = len;'
 
 f_numeric_size_check <- sprintf('
   if(lend >= 0 && lend < R_XLEN_T_MAX) {
@@ -34,12 +34,14 @@ f_numeric_size_check <- sprintf('
 f_numeric <- sprintf('
 static void %%s(%%s) {
   if(lens[di[0]] != 1) Rf_error("invalid length argument");
+  int narg = 1;
   double lend = data[di[0]][0];
   double * res = data[di[1]];%s
 }', f_numeric_size_check
 )
 f_numeric_along <- sprintf('
 static void %%s(%%s) {
+  int narg = 1;
   R_xlen_t len = lens[di[0]];
   double * res = data[di[1]];%s}',
   repad(f_numeric_core, 2)
@@ -47,7 +49,8 @@ static void %%s(%%s) {
 f_numeric_alongn <- sprintf('
 static void %%s(%%s) {
   double lend = 0;
-  for(int i = 0; i < narg; ++i) lend += (double) lens[di[i]];
+  // assume overflow to infinity since we require infinity support
+  for(int i = 0; i < narg; ++i) lend *= (double) lens[di[i]];
   double * res = data[di[narg]];%s}
 ', f_numeric_size_check
 )
