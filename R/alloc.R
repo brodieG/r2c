@@ -381,18 +381,6 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
           typeof <- typeof(arg.e)
           size.coef <- list(length(arg.e))
           vec.dat <- vec_dat(arg.e, "ext", typeof=typeof, size.coef=size.coef)
-          # Record symbol in names array so that the `lrec` logic can find it.
-          # This is an external symbol hence rec/scope/call.i are all set to 0
-          if(is.symbol(call)) {
-            alloc <- names_bind(
-              alloc, new.name=name, call.i=0L, rec=0L, scope=0L,
-              # A bit sketchy: we have not yet appended the `vec.dat` but we
-              # need the names to point to vec_dat.  We rely on knowing
-              # `append_dat` will give i+1 as the ids when we get to it.  So in
-              # effect this is corrupt until the data is added.
-              id=length(alloc[['dat']]) + 1L
-            )
-          }
         }
       }
     # - Match a Symbol In Data -------------------------------------------------
@@ -1284,12 +1272,13 @@ names_free <- function(alloc, new.names, rec) {
   alloc[['names']] <- names[, !to.free, drop=FALSE]
   alloc
 }
-names_bind <- function(
-  alloc, new.name, call.i, rec, id=alloc[['i']], scope=alloc[['scope']]
-) {
+# DO NOT USE DIRECTLY, only via `names_update` and `append_dat`!  Problem is if
+# we're not careful we can get the id out of sync with the one truly associated
+# with the name.
+names_bind <- function(alloc, new.name, call.i, rec) {
   new.name.dat <- c(
-    ids=id,
-    scope=scope,
+    ids=alloc[['i']],
+    scope=alloc[['scope']],
     i.max=unname(alloc[['meta']][['i.sym.max']][new.name]),
     i.assign=call.i,
     rec=rec, rec0=rec,
