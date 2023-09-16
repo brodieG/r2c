@@ -270,3 +270,19 @@ convolve <- function(a, b) {
   stopifnot(is.numeric(a), is.numeric(b))
   .Call(R2C_convolve, a, b)
 }
+# Helper to display the call data stored by `alloc`.
+
+disp_call_dat <- function(call.dat) {
+  lang <- vapply(
+    call.dat,
+    function(x) gsub("\br2c::\b", "", deparse(x[['call']])[[1L]]),
+    ""
+  )
+  i <- format(seq_along(call.dat))
+  ids <- format(
+    vapply(call.dat, function(x) paste0(x[['ids']], collapse=" "), "")
+  )
+  dat <- paste0(i, ": ", ids, " | ")
+  lang <- substr(lang, 1, max(c(10, 80 - max(nchar(dat)))))
+  writeLines(paste0(dat, lang))
+}
