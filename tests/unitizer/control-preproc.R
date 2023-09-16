@@ -370,8 +370,8 @@ unitizer_sect("Nested", {
   })
   r2c:::pp_clean(call4f1)
 
-  # Nested via else/if
-  call4f1 <-quote({
+  # Nested via else/if, only return value reconcile
+  call4f2 <-quote({
     x2 <- if(a == 1) {
       x3 <- mean(x)
     } else if (a == 2) {
@@ -381,8 +381,45 @@ unitizer_sect("Nested", {
     }
     x2
   })
+  r2c:::pp_clean(call4f2)
 
+  # Nested via else/if, check assign-reconcile
+  call4f2 <-quote({
+    if(a == 1) {
+      x3 <- mean(x)
+    } else if (a == 2) {
+      x3 <- sum(x)
+    } else {
+      x3 <- a
+    }
+    x3
+  })
+  r2c:::pp_clean(call4f2)
 
+  # Nested via else/if, check assign+reconcile when return used
+  call4f3 <-quote({
+    x2 <- if(a == 1) {
+      x3 <- mean(x)
+    } else if (a == 2) {
+      x3 <- sum(x)
+    } else {
+      x3 <- a
+    }
+    x2 + x3
+  })
+  r2c:::pp_clean(call4f3)
+
+  # Cascading of reconcile 
+  call4f4 <- function(a, b, c, d) {
+    if(a) {
+      if (b) x <- c else x <- d
+      x
+    } else {
+      x <- b
+    }
+  }
+
+  # Additional tests in control-eval, e.g. f4b1
 })
 unitizer_sect("Vcopy Branch Return", {
   # `x <- mean(z)` requires vcopy when symbol is used outside of local context

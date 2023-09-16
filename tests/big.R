@@ -67,3 +67,77 @@ ri.int <- rolli_exec(r2c_int, list(x.big, y.big), n=w)
 # With intermediate assignments
 identical(ri.slope, rolli_exec(r2c_slope2, list(x.big, y.big), n=w))
 
+# Naive matrix multiplication testing deeply nested loops and branches
+mat_mult <- function(A, B, rs.A, cs.A, rs.B, cs.B) {
+  res <- numeric_alongn(rs.A, cs.B)
+  for(r.A in rs.A) {
+    for(c.B in cs.B) {
+      for(c.A in cs.A) {
+        for(r.B in rs.B) {
+          if(c.A == r.B) {
+            res[r.A + (c.B - 1) * length(rs.A)] <-
+              res[r.A + (c.B - 1) * length(rs.A)] +
+              A[r.A + (c.A - 1) * length(rs.A)] *
+              B[r.B + (c.B - 1) * length(rs.B)]
+          }
+        }
+      }
+    }
+  }
+  res
+}
+r2c_mat_mult <- r2cf(mat_mult)
+
+# Naive matrix mult followed by rowsum/rowprod
+mat_mult_rowsum <- function(A, B, rs.A, cs.A, rs.B, cs.B, sum=TRUE) {
+  tmp <- numeric_alongn(rs.A, cs.B)
+  for(r.A in rs.A) {
+    for(c.B in cs.B) {
+      for(c.A in cs.A) {
+        for(r.B in rs.B) {
+          if(c.A == r.B) {
+            tmp[r.A + (c.B - 1) * length(rs.A)] <-
+              tmp[r.A + (c.B - 1) * length(rs.A)] +
+              A[r.A + (c.A - 1) * length(rs.A)] *
+              B[r.B + (c.B - 1) * length(rs.B)]
+          }
+        }
+      }
+    }
+  }
+  res <- numeric_along(rs.A)
+  # force if/else to outside
+  if(sum) {
+    for(r.A in rs.A) {
+      for(c.B in cs.B) {
+        res[r.A] <- res[r.A] + tmp[r.A + (c.B - 1) * length(rs.A)]
+      }
+    }
+  } else {
+    res <- res + 1
+    for(r.A in rs.A) {
+      for(c.B in cs.B) {
+        res[r.A] <- res[r.A] * tmp[r.A + (c.B - 1) * length(rs.A)]
+      }
+    }
+  }
+  res
+}
+r2c_mat_mult_rowsum <- r2cf(mat_mult_rowsum)
+
+mx <- matrix(runif(1e4), 1000)
+xr <- seq_len(nrow(mx))
+xc <- seq_len(ncol(mx))
+my <- matrix(runif(1e4), 10)
+yr <- seq_len(nrow(my))
+yc <- seq_len(ncol(my))
+
+all.equal(
+  r2c_mat_mult(c(mx), c(my), xr, xc, yr, yc),
+  c(mx %*% my)
+)
+all.equal(
+  r2c_mat_mult_rowsum(c(mx), c(my), xr, xc, yr, yc),
+  rowSums(mx %*% my)
+)
+
