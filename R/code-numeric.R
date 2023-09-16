@@ -48,7 +48,7 @@ static void %%s(%%s) {
 )
 f_numeric_alongn <- sprintf('
 static void %%s(%%s) {
-  double lend = 0;
+  double lend = 1;
   // assume overflow to infinity since we require infinity support
   for(int i = 0; i < narg; ++i) lend *= (double) lens[di[i]];
   double * res = data[di[narg]];%s}
