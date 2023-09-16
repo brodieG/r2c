@@ -599,7 +599,9 @@ transform_control <- function(x, i=0L) {
               seq=.(call("<-", seq.name, x[[3L]])),
               # Need fresh allocs so each of these point to their own memory.
               seq.i=.(call("<-", seq.i.name, en_vcopy(0))),
-              var=.(call("<-", x[[2L]], en_vcopy(42))) # will be overwritten.
+              # The iteration variable is NA if there are no iterations (this
+              # differs from R that does NULL for that case).
+              var=.(call("<-", x[[2L]], en_vcopy(NA_real_)))
             )
             r2c::r2c_for(
               iter=r2c::for_iter(
