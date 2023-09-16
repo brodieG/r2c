@@ -518,8 +518,10 @@ unitizer_sect('multi-assign', {
   })
   r2c:::pp_clean(call6a2)
 
-  # We don't use `y`, but we still do intermediate recs because logic to
-  # recognize when we can skip it is too complicated
+  # We don't use `y`, originally we still did the recs for it to avoid the
+  # complication of tracking what was and wasn't needed, but cumulative
+  # changes have resulted in it seemingly being tracked correctly.  So now no
+  # rec for `y` which isn't needed.
   call6a3a <- quote({
     u <- if(a) {
       x <- y <- mean(z)
@@ -529,6 +531,16 @@ unitizer_sect('multi-assign', {
     u + x + w
   })
   r2c:::pp_clean(call6a3a)
+  # Also skip rec for `r` in addition to `y`.
+  call6a3a1 <- quote({
+    u <- if(a) {
+      x <- y <- r <- mean(z)
+    } else {
+      x <- y <- r <- w
+    }
+    u + x + w
+  })
+  r2c:::pp_clean(call6a3a1)
   # Here we should be able to skip one of the rec/vcopys
   call6a3b <- quote({
     u <- if(a) {

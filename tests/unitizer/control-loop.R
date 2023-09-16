@@ -93,7 +93,22 @@ unitizer_sect('Use before set', {
     check=TRUE
   )
   f3b(c(2, 3, 5))
+
+  # Copy and use use before set (b should remain constant in loop despite being
+  # an alias, i should e unaffected).
+  f3c <- r2cq({
+    a <- mean(x)
+    b <- a
+    for(i in seq_along(x)) {
+      c <- a + b
+      a <- i <- c + 1
+    }
+    a
+  }, check=TRUE)
+  f3c(1:3)
+  f3c(numeric())
 })
+
 unitizer_sect('multiple use before set', {
   f4 <- r2cf(
     function(x, b, d) {

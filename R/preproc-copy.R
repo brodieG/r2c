@@ -408,8 +408,10 @@ copy_branchdat_rec <- function(
     # return value will be computed if used, even though strictly it does not
     # compute itself.
     passive <- sym.name %in% PASSIVE.BRANCH.SYM
-    # for candidacy purposes, computing calls are leaves
-    leaf <- !passive
+    # for candidacy purposes, computing calls are leaves, as are the LREC funs
+    # (really just LSET which is otherwise passive).  This prevents copy/recs
+    # from penetrating non-passive and loop rec calls.
+    leaf <- !passive || sym.name %in% LREC.FUNS
 
     if(call.modify) tar.sym <- get_target_symbol(x, sym.name)
     sub.assign.to <- if(sym.name == "subassign") {
@@ -482,11 +484,11 @@ copy_branchdat_rec <- function(
       # Recurse on language subcomponents
       for(i in seq_along(x)[-rec.skip]) {
         if(is.language(x[[i]])) {
-          # assign.to is forwarded by passive calls
-          next.last <- i == length(x) && passive
+          # assign.to is forwarded by non-leaf calls
+          next.last <- i == length(x) && !leaf
           assign.to.next <- if(!next.last) character() else assign.to
           sub.assign.to.next <- if(i != length(x)) "" else sub.assign.to
-          data[['passive']] <- passive.now
+          data[['passive']] <- passive.now # reset pre-rec passive status
           data <- copy_branchdat_rec(
             x[[i]], index=c(index, i),
             assign.to=assign.to.next, sub.assign.to=sub.assign.to.next,
@@ -668,7 +670,7 @@ generate_candidate <- function(
       # Always reconcile
       triggers <- if(call.assign) assign.to[-length(assign.to)] else assign.to
       data <- add_candidate_callptr(
-        data, index, br.index=in.branch, triggers=triggers, rec=TRUE,
+        data, index, br.index=in.branch, triggers=tail(triggers, 1L), rec=TRUE,
         copy=passive # but only vcopy passive
       )
       # Locally Computed symbols require copy if used after branch e.g:
