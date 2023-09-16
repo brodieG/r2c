@@ -59,9 +59,9 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' code in the form of an "r2c_fun" function.  This function will carry out
 #' out numerical calculations with `r2c` native instructions instead of with the
 #' standard R routines. "r2c_fun" functions are intended to be run with the
-#' `r2c` [runners] for fast iterated calculations.  `r2c` attempts to adheres
-#' closely to R semantics for the supported use cases.  Look at the examples
-#' here and those of the [runners] to get started.
+#' `r2c` [runners] for fast iterated calculations.  `r2c` adheres closely to R
+#' semantics for the supported use cases.  Look at the examples here and those
+#' of the [runners] to get started.
 #'
 #' @section r2c Generated Functions:
 #'
@@ -106,11 +106,11 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' Sub-expressions in an `r2c` expression are categorized as internal or
 #' external.  Internal sub-expressions are computed anew each iteration,
 #' whereas external ones are computed once at allocation time and the result is
-#' re-used thereafter.  Which category a sub-expression ends up in is primarily
-#' driven by what `r2c` supported function parameter they are matched to.  For
-#' example, in `sum(x, na.rm=TRUE)`, `x` is considered an internal parameter and
-#' `na.rm` an external parameter.  Additionally, symbols that resolve to
-#' iteration varying or `r2c` computed data are considered internal, and other
+#' re-used thereafter.  Which category a sub-expression is assigned to depends
+#' on what function parameter it is matched to.  For example, in `sum(x,
+#' na.rm=TRUE)`, `x` is considered an internal parameter and `na.rm` an
+#' external parameter.  Additionally, symbols that resolve to iteration
+#' varying or `r2c` computed data are considered internal, and other
 #' symbols are considered external.  It is possible to use an external symbol as
 #' the value of an internal parameter if it abides by the constraints imposed on
 #' internal parameters.  Such symbols are evaluated as per external
@@ -121,18 +121,18 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' numeric (double), and thus logical and integer vectors are copied before use.
 #' All `r2c` operations are carried out on floating point values.  In cases
 #' where the output type is knowable to be either integer or logical, `r2c` will
-#' coerce the final result to the corresponding type, again with a copy.  To
-#' avoid copies provide all inputs as doubles.
+#' coerce the final result to the corresponding type with a copy.  To avoid
+#' copies provide all inputs as doubles.
 #'
 #' External sub-expressions may be arbitrary R expressions, but if they are used
 #' for internal parameters their result will be constrained like internal ones
-#' are.  Additionally, such expressions should not reference internal symbols,
-#' and in cases where this is obviously happening `r2c` will error.  External
-#' sub-expressions are evaluated once at allocation time.  If the same
-#' sub-expression appears more than once, it is only evaluated once with the
-#' result re-used.  External sub-expressions that cause side-effects, use
-#' `eval`, manipulate frames, or engage in other complex "meta" operations are
-#' likely to have different effects than intended.
+#' are.  Such expressions should not reference internal symbols, and in cases
+#' where this is obviously happening `r2c` will error.  External sub-expressions
+#' are evaluated once at allocation time.  If the same sub-expression appears
+#' more than once, it is only evaluated once with the result re-used.  External
+#' sub-expressions that cause side-effects, use `eval`, manipulate frames, or
+#' engage in other complex "meta" operations are likely to have different
+#' effects than intended.
 #'
 #' The dichotomy between internal and external sub-expressions allows for
 #' efficient mixing of iteration varying and static data, as well as non
@@ -148,7 +148,7 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' * Logical functions: `&`, `&&`, `|`, `||`, `!`, `ifelse`.
 #' * Statistics: `mean`, `sum`, `length`, `all`, `any`.
 #' * Assignment and braces: `<-`, `=`, and `{`.
-#' * Control Structures: `if/else`, `for`.
+#' * Control Structures (experimental): `if/else`, `for`
 #' * Sequences: `seq_along`.
 #' * Subsetting: `[`, `x[s] <- expr`
 #' * Miscellaneous: `numeric`.
@@ -178,32 +178,35 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #'   branches.  This is a recursive requirement, so `mean(if(a) x <- y)` is
 #'   disallowed even though `if(a) x <- y` is allowed.
 #'
-#' Control structures include `if` / `else` statements and loops.  All of these
-#' have branches; the loop branches are loop not taken (0 iterations) vs loop
-#' taken (1+ iterations).  Control structures add additional constraints and
-#' semantic differences to R:
+#' @section Control Structures:
+#'
+#' `r2c` supports `if` / `else` statements and `for` loops on an experimental
+#' basis.  Because these substantially complicate the internals of `r2c` and as
+#' such might be removed in the future.
+#'
+#' Both `if` / `else` and `for` loops have branches; the loop branches are loop
+#' not taken (0 iterations) vs loop taken (1+ iterations).  Branches add
+#' constraints not present in R:
 #'
 #' * Control structure return values must be guaranteed to be the same
 #'   size irrespective of the branch taken, if they are subsequently used.
-#'   Additionally return values are coerced to a common type.
+#'   Return values are coerced to a common type.
 #' * Assignments made within control structure branches must be guaranteed to be
 #'   the same size irrespective of branch taken, if the corresponding bindings
 #'   are subsequently used.
-#' * `if`/`else` and `for` both return `numeric(0)` instead of NULL if an empty
-#'   branch is taken (i.e. a missing `else` branch, or with `for` a zero
-#'   iteration loop).  Combined with the need for return values to be the same
-#'   irrespective of branch taken, this makes the return value of `for` rather
-#'   useless.
 #' * Control structures can be nested at most 999 levels.
 #'
-#' Outside of the aforementioned constraints and exceptions, `r2c` attempts to
-#' mimic the corresponding R function semantics to the `identical` level, but
-#' there may be corner cases that differ, particularly those involving missing
-#' or infinite values.
+#' There are also minor semantic differences:
+#'
+#' * `if`/`else` and `for` both return `numeric(0)` instead of NULL when in R
+#'   they  would return NULL.
+#' * `for` sets `var` to NA_real_ if `length(seq) == 0` instead of NULL.
 #'
 #' Like R, `r2c` is optimized for vectorized operations.  While you can write
-#' explicit loops with `for`, they will be much slower than a pure C version.
-#' Vectorized operations like `a + b` will be comparable to the pure C version.
+#' explicit loops with `for`, they will be much slower than a pure C version,
+#' and only marginally faster than byte compiled R equivalents.  Avoid `for`
+#' loops unless you cannot express your calculation in an internally vectorized
+#' form (see examples).'
 #'
 #' @section Details:
 #'
@@ -322,6 +325,22 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' slope2 <- function(x, y)
 #'   sum((x_mux <- x - mean(x)) * (y - mean(y))) / sum(x_mux^2)
 #' try(r2c_slope2 <- r2cf(slope2))  # Error
+#'
+#' ## For loops are slow; don't use them when there is an internally
+#' ## vectorized alternative.
+#' sum_prod_loop_r <- function(x, y) {
+#'   res <- 0
+#'   for(i in seq_along(x)) res <- res + x[i] * y[i]
+#'   res
+#' }
+#' sum_prod_loop <- r2cf(sum_prod_loop_r)
+#' sum_prod_vec <- r2cq(sum(x * y))
+#' a <- runif(5e6)
+#' system.time(sum_prod_vec(a, a))
+#' system.time(sum_prod_loop(a, a))
+#' ## Make sure R fun byte-compiled
+#' sum_prod_loop_r <- compiler::cmpfun(sum_prod_loop_r)
+#' system.time(sum_prod_loop_r(a, a))
 
 r2cf <- function(
   x, dir=NULL, check=getOption('r2c.check.result', FALSE),

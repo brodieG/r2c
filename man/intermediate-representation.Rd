@@ -19,7 +19,7 @@
 \usage{
 r2c_for(iter, for.n, for.0)
 
-for_init(seq, seq.i)
+for_init(seq, seq.i, var)
 
 for_iter(var, seq, seq.i)
 
