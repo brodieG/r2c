@@ -246,7 +246,7 @@ copy_branchdat <- function(x) {
     x <- en_vcopy(x)
   } else {
     # Compute locations requring vcopy
-    branch.dat <- copy_branchdat_rec(x)
+    branch.dat <- copy_branchdat_rec(x, x0=x)
     sym.free <- branch.dat[['free']]
 
     # Modify the symbols / sub-calls that need to be vcopy'ed
@@ -339,7 +339,8 @@ copy_branchdat_rec <- function(
     ),
     copy=list(cand=list(), act=list()),
     passive=TRUE, assigned.to=character(), leaf.name="", free=character()
-  )
+  ),
+  x0  # for debugging to see what the indices are pointing at
 ) {
   sym.name <- get_lang_name(x)
   call.assign <- call.modify <- first.assign <- leaf <- FALSE
@@ -435,7 +436,7 @@ copy_branchdat_rec <- function(
           x[[2L]], index=c(index, 2L),
           last=FALSE, branch.res=FALSE,
           in.compute=FALSE, in.branch=in.branch, prev.call=sym.name,
-          data=data
+          data=data, x0=x0
         )
       }
       idx.T <- 2L + idx.offset
@@ -456,12 +457,12 @@ copy_branchdat_rec <- function(
       prev.T <- get_lang_name(x[[idx.T]])
       data.T <- copy_branchdat_rec(
         x[[c(idx.T, 2L)]], index=c(idx.T.all, 2L), data=data.next, last=last,
-        in.branch=idx.T.all, branch.res=branch.res.next, prev.call=prev.T
+        in.branch=idx.T.all, branch.res=branch.res.next, prev.call=prev.T, x0=x0
       )
       prev.F <- get_lang_name(x[[idx.F]])
       data.F <- copy_branchdat_rec(
         x[[c(idx.F, 2L)]], index=c(idx.F.all, 2L), data=data.next, last=last,
-        in.branch=idx.F.all, branch.res=branch.res.next, prev.call=prev.F
+        in.branch=idx.F.all, branch.res=branch.res.next, prev.call=prev.F, x0=x0
       )
       # Recombine branch data and the pre-branch data
       data <- merge_copy_dat(data, data.T, data.F, index, idx.offset)
@@ -493,7 +494,7 @@ copy_branchdat_rec <- function(
             branch.res=branch.res && next.last,
             in.compute=in.compute || !passive,
             in.branch=in.branch, prev.call=sym.name,
-            data=data
+            data=data, x0=x0
           )
       } }
       data[['passive']] <- passive && data[['passive']]
