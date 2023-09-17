@@ -107,7 +107,8 @@ code_gen_if <- function(...) {
 #' @return These functions are not intended for use at the R level thus their
 #'   return values are undocumented.
 #'
-#' @seealso [Preprocessing][r2c-preprocess]
+#' @seealso [Preprocessing][r2c-preprocess] for details on how these functions
+#'   are used, [subassign] (another internal representation function).
 #' @export
 #' @keywords internal
 #' @rdname intermediate-representation

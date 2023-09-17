@@ -50,27 +50,29 @@ NULL
 
 #' Memory Use
 #'
-#' `r2c` [runners] examine the "r2c_fun" function to run along with provided
-#' data to compute how much memory is required to support is execution.  The
-#' allocations are sized to support the largest iteration in the iteration
-#' varying data.  Each iteration re-uses these same allocations (or a portion
-#' thereof), thereby reducing peak memory usage and fragmentation.
+#' `r2c` [runners] examine each "r2c_fun" in conjunction with the data it is to
+#' run on to compute memory allocation sizes. The allocations are sized to
+#' support the largest iteration in the iteration varying data.  All iterations
+#' re-use the same allocations (or a portion thereof), thereby reducing peak
+#' memory usage and fragmentation.
 #'
 #' Most of the `r2c` supported functions are such that the size of the result
-#' can be inferred from the size of the inputs.  As such, once we know potential
-#' iteration data sizes, we can recursively pre-compute how much memory we need
-#' for each iteration result along with all the intermediate computations.
+#' can be inferred from the size of the inputs.  Once we know iteration data
+#' size, we can pre-compute how much memory is needed for every subcomputation
+#' and the final result of each iteration.
 #'
 #' There are two implications from this approach:
 #'
 #' 1. Result size of each subcomputation must depend only on the sizes of the
 #'    inputs, not their values (with some very specific exceptions).
-#' 2. The size of each subcomputation is a function of group size.
+#' 2. The size of each subcomputation is a **function** of iteration size.
 #'
 #' The first implication creates the requirement that control structures like
 #' `if`/`else` return results or set variables to the same size in each branch
-#' (see [compile][r2c-compile]).  This is because we do not evaluate the
-#' condition expression until after we've made the memory allocations.
+#' (see [compile][r2c-compile]).  Since the allocations are set before
+#' calculations are run, results and variables must fit into them irrespective
+#' of branch taken, and downstream calculations must be able to assume the size
+#' is independent of branch..
 #'
 #' The second implication follows from expressions like `a + b` which depend on
 #' the size of both `a` and `b`, either of which could be iteration varying
@@ -81,13 +83,13 @@ NULL
 #' `max(i, length(b))` (ignoring the possibility of 0 size inputs).  But what
 #' about the size of e.g. `c(a + b, a)`?  As expressions get more complex,
 #' the expressions required to represent result sizes as a function of
-#' iteration size can (but doesn't have to) get more complex.  `r2c` caps the
+#' iteration size can (but do not have to) get more complex.  `r2c` caps the
 #' level of complexity of such size expressions and will error at run time if
 #' this limit is exceeded.  It should be difficult to reach this cap when
 #' computing statistics.
 #'
-#' `r2c` carves out a small exception for expression like `numeric(x)` the size
-#' of which depends on the value of the input.  These expression are allowed so
+#' `r2c` carves out a small exception for expressions like `numeric(x)` the size
+#' of which depends on the value of the input.  These expressions are allowed so
 #' long as the **value** of the input in question is iteration-invariant.
 #' Iteration invariant data include that passed via the `MoreArgs` parameters to
 #' the [runners], or via external expressions.  See "Expression Types" in the
@@ -115,7 +117,7 @@ NULL
 #' are converted 1-1 into C level calls.  Control structures are more
 #' complicated because we need to generate the call structure itself without a
 #' direct correspondence of R call to structural element.  The
-#' preprocessor [decomposes regular if / else calls][control-counterpart]
+#' preprocessor [decomposes regular if / else calls][intermediate-representation]
 #' calls as:
 #'
 #' ```
