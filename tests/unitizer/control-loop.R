@@ -96,7 +96,7 @@ unitizer_sect('Use before set', {
 
   # Copy and use use before set (b should remain constant in loop despite being
   # an alias, i should e unaffected).
-  f3c <- r2cq({
+  call3c <- quote({
     a <- mean(x)
     b <- a
     for(i in seq_along(x)) {
@@ -104,7 +104,8 @@ unitizer_sect('Use before set', {
       a <- i <- c + 1
     }
     a
-  }, check=TRUE)
+  })
+  f3c <- r2cl(call3c, check=TRUE)
   f3c(1:3)
   f3c(numeric())
 })
@@ -123,6 +124,19 @@ unitizer_sect('multiple use before set', {
     check=TRUE
   )
   f4(1:2, 0, 5)
+
+  # Both b and a are used b4 set, and set to the same value.
+  f4a <- r2cf(
+    function(x, a, b, c) {
+      for(i in x) {
+        c <- a
+        a <- b <- a * b + c
+      }
+      a
+    },
+    check=TRUE
+  )
+  f4a(c(2,3,5), 2, 5, 10)
 })
 
 unitizer_sect('nested loop/branch', {

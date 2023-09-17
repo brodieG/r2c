@@ -78,6 +78,7 @@ Functions used by the \code{r2c} preprocessor to represent control structures in
 format that facilitates translation to C code.
 }
 \seealso{
-\link[=r2c-preprocess]{Preprocessing}
+\link[=r2c-preprocess]{Preprocessing} for details on how these functions
+are used, \link{subassign} (another internal representation function).
 }
 \keyword{internal}

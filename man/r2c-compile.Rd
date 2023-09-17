@@ -268,11 +268,11 @@ form (see examples).'
 \section{Details}{
 
 
-\code{r2c} may process the provided call either to apply optimizations (see
-\code{optimize} parameter), or because a call needs to be modified to work
-correctly with \code{r2c}.  The processing leaves call semantics unchanged.  If
-\code{r2c} modified a call, \code{\link{get_r_code}} will show a "processed" member with the
-modified call.
+\code{r2c} will \link[=preprocess]{r2c-preprocess} the provided call either to apply
+optimizations (see \code{optimize} parameter), or because a call needs to be
+modified to work correctly with \code{r2c}.  The processing leaves call semantics
+unchanged.  If \code{r2c} modified a call, \code{\link{get_r_code}} will show a "processed"
+member with the modified call.
 
 \code{r2c} requires a C99 or later compatible implementation with floating point
 infinity defined and the \code{R_xlen_t} range representable without precision
@@ -356,5 +356,7 @@ system.time(sum_prod_loop_r(a, a))
 \seealso{
 \code{\link{runners}} to iterate "r2c_fun" functions on varying data,
 \code{\link{r2c-inspect}} for functions to retrieve meta data from the function,
-including the generated C code and the compiler output.
+including the generated C code and the compiler output,
+\link[=r2c-preprocess]{preprocessing} for how \code{r2c} modifies R calls before
+translation to C.
 }

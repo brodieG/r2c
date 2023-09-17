@@ -21,7 +21,7 @@ Preprocessing is most impactful for control structures.  Most R level calls
 are converted 1-1 into C level calls.  Control structures are more
 complicated because we need to generate the call structure itself without a
 direct correspondence of R call to structural element.  The
-preprocessor \link[=control-counterpart]{decomposes regular if / else calls}
+preprocessor \link[=intermediate-representation]{decomposes regular if / else calls}
 calls as:
 
 \if{html}{\out{<div class="sourceCode">}}\preformatted{if(a) x else y

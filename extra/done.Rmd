@@ -12,6 +12,62 @@
 
 ### v0.4.0
 
+* Need to make sure that alloc doesn't release `for` bindings until end of loop.
+  We do check for it by getting all the symbols in a `for` call in the
+  linearized call list (which will be after all the loop calls), but big problem
+  there is we're using the original loop names, not the preprocessed ones.
+  Need to add a test that confirms this works.  We changed
+  `collect_loop_call_symbols` to look at `for_n`.
+
+* Rationalize documentation of "implementation detail" functions like `r2c_if`
+  and `subassign`.  Maybe hide them from the index with `@keywords internal` and
+  add a family that connects them.
+* Make sure to explain how we generate the C code for control structures as that
+  is not at all obvious.  Currently docs are spread in `?r2c_if` and in
+  `transform_control`.
+
+* What happens when we use the counter from a loop either outside of the loop as
+  part of a use before set?  It should be reset at beginning of loop each time?
+  So shouldn't matter.  If we read from it it's set.  If we write to it it was
+  already set beforehand.
+
+* It would be nice to be able to assume there are no nested braces ever in
+  "preproc-copy.R".  Alternatively (now more likely I think), ensure that
+  anyplace that isn't robust to nested braces tests for them.  We apply
+  `collapse_braces` now (and I think otherwise error when this happens).
+
+* Assignment chains should contain only `ASSIGN.SYM`, and possibly only
+  `ASSIGN.SYM.BASE`.  We can't have stuff like `a <- {b} <- c`
+
+* Make sure that a user can't try to sneak in e.g. `lrec`.
+
+* Test use before set where multiple symbols are set to the same value?
+
+* Identify external only expressions and eval them just once?
+* What do we do about repeated external symbols getting added to the allocation
+  table?  See notes "External Symbols".
+* Reconcile binding of group names and assignment names?  A bit awkward now in
+  `append_dat`.  What about `MoreArgs` names (these are treated as external
+  symbols, stored in an env ahead of the parent env)?
+
+* `for` is documented to always return NULL, but also to set `var` to NULL if
+  there are no iterations (need to figure out what we do with this; set to
+  NaN?).  Set to NaN
+
+* r2c.for example clearly broken.
+
+* Fill out `for` stub functions.
+
+* Thank Yihui for formatR.  Actually, it doesn't really do what I thought it did
+  so we're not using it anymore.
+
+* Ensure that use before set, but then use copy after set also works (i.e. we
+  if we aliased the use before set symbol before setting, that the alias is
+  is not overwritten when we reconcile).
+
+* Now that we dropped `luse`, see if we can drop the "sketchy" logic we added to
+  register external symbols as names.
+
 * Document for:
   * Limit to number of for loops. - done.
   * Limit for parameter size permutations. - done.

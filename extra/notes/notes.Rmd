@@ -1,4 +1,19 @@
-# Abandon Loops?
+# Current
+
+Having issues with:
+
+      for.n=for_n(expr={
+        c <- a + b
+        a <- rec(x=vcopy(
+          x=i <- lset(rec.i=1L, x=rec(x=c + 1)))
+        )
+        lrec(rec.i=1L, x=.R2C.FOR.SYM.1)
+        numeric(length=0L)
+      }),
+
+Problem is that the `a` symbol triggers both for `c+1` and the surrounding
+`lset`.  In part anyway.  Seems like the candidate generation should not be able
+to "see" past the `lset`.
 
 # Nested Functions
 
@@ -269,6 +284,8 @@ We should have a different `append_dat` for adding the group data vs a
 single vector, should cleanup the interface.
 
 ## External Symbols
+
+Update: this is now handled.
 
 Currently these are added as many times as they are referenced. To avoid this we
 would need a secondary names lookup table for external symbols.  By the

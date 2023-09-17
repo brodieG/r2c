@@ -23,6 +23,7 @@
 * Need semi-colons when collapsing calls for display in the browser view, e.g.
   seeing `call9b2 <- quote({x <- x + 1if (b) {x[a] <- yx}x})`.
 * Maybe call numbers should be displayed on right, or status on left by number.
+* Test file inference should try to match beyond beginning of string.
 
 ## Things to test
 
@@ -46,47 +47,26 @@
 
 ## Current
 
-* Why do we loose a local assignment from `data[[B.NAMED]]` from branch rec?
+* Add a finalizer to unload and dump dlls (but in some OSes we cannot unload
+  DLLs, so maybe need a mechanism for generating libraries).:
+
+    qz1ylj3zna.so':
+      `maximal number of DLLs reached...
+
+* Doc improvements:
+  * Spruce up r2c landing page.
+  * Better structuring of topics?
+  * Add a performance page?  Generally try to move more arcane stuff out of the
+    primary pages to simplify them?
+
+* Should the numeric at the end of the for loops be a noop and replaced by a
+  numeric outside the loop to make it the return value?
+
+* Why do we lose a local assignment from `data[[B.NAMED]]` from branch rec?
 
 * Rename `rec` `brec` to distinguish more clearly from `lrec`?
-
-* It seems like we don't need `luse` as in `lrec(.R2C.FOR.SYM.1)` we retain the
-  alloc id of the original used symbol memory which should be the same as
-  `.R2C.FOR.SYM.1` as we aliased it.  Maybe this is less important to fix now
-  that we've rationalized logic a little with `lrec_update`?  Actually, we also
-  have logic in preproc, etc, so really we should drop this.
-
-* Ensure that use before set, but then use copy after set also works (i.e. we
-  if we aliased the use before set symbol before setting, that the alias is
-  is not overwritten when we reconcile).
-
-* Should we convert all function symbols in a call to character to avoid having
-  to repeatedly convert them to/from symbols?
-
-* Make sure that a user can't try to sneak in e.g. `lrec`.
-
-* Thank Yihui for formatR.
-
-* Assignment chains should contain only `ASSIGN.SYM`, and possibly only
-  `ASSIGN.SYM.BASE`.  We can't have stuff like `a <- {b} <- c`
-
-* It would be nice to be able to assume there are no nested braces ever in
-  "preproc-copy.R".  Alternatively (now more likely I think), ensure that
-  anyplace that isn't robust to nested braces tests for them.
-
-* What happens when we use the counter from a loop either outside of the loop as
-  part of a use before set?  It should be reset at beginning of loop each time?
-  So shouldn't matter.  If we read from it it's set.  If we write to it it was
-  already set beforehand.
-
-* Why do we not need to worry about sub-assign in loops?  Is it because we
-  already directly modify in memory, and we don't allow use of return value?
-
-* Need to make sure that alloc doesn't release `for` bindings until end of loop.
-  We do check for it by getting all the symbols in a `for` call in the
-  linearized call list (which will be after all the loop calls), but big problem
-  there is we're using the original loop names, not the rebuilt ones.
-  Need to add a test that confirms this works.
+  Should `lrec` be `lcopy` since it actually copies more so than reconciles?  In
+  fact there is no loop reconciliation per se, just a runtime directive to copy.
 
 * What happens if we try to return/reconcile the iteration variable (`i` in
   `for(i in ...)`?  Either from the loop, or the loop nested inside an if/else.
@@ -106,22 +86,9 @@
   generate an entirely new allocation that isn't shared with anything else?
   Confirm it is actually entirely new and not a potential re-use of a freed one!
 
+* Why do we not need to worry about sub-assign in loops?  Is it because we
+  already directly modify in memory, and we don't allow use of return value?
 * What happens when we subassign in a branch?  This should be handled?
-
-* Fill out `for` stub functions.
-
-* r2c.for example clearly broken.
-
-* `for` is documented to always return NULL, but also to set `var` to NULL if
-  there are no iterations (need to figure out what we do with this; set to
-  NaN?).
-
-* Rationalize documentation of "implementation detail" functions like `r2c_if`
-  and `subassign`.  Maybe hide them from the index with `@keywords internal` and
-  add a family that connects them.
-* Make sure to explain how we generate the C code for control structures as that
-  is not at all obvious.  Currently docs are spread in `?r2c_if` and in
-  `transform_control`.
 
 * Not clear that constants are being handled properly (e.g. need to `en_vcopy`
   the constant in `transform_control` for `for_init`).
@@ -168,19 +135,20 @@
 
 * Clearly document `ftype[[3L]]` function format.
 
-* Make sure that all loops have interrupts (subset/assign don't).
+* Make sure that all loops have interrupts (subset/assign don't).  Also hidden
+  in this is `memcpy`.
 
 * Move subassign to assign/control?
 
-* Identify external only expressions and eval them just once?
-* What do we do about repeated external symbols getting added to the allocation
-  table?  See notes "External Symbols".
-* Reconcile binding of group names and assignment names?  A bit awkward now in
-  `append_dat`.  What about `MoreArgs` names (these are treated as external
-  symbols, stored in an env ahead of the parent env)?
-
-
 ## Next
+
+### Compilation / Preprocessor / Allocator Performance
+
+We haven't worried too much about optimizing these, but we'll need to keep an
+eye on how bad these get.
+
+* Should we convert all function symbols in a call to character to avoid having
+  to repeatedly convert them to/from symbols?
 
 ### Error Messages
 
@@ -204,6 +172,15 @@ Error in r2cq(x + "a")(5) :
 * Particularly for invalid parameter errors, we want to present the call that
   contains the parameter usage in question (i.e. make `call.outer` the next call
   at right depth, maybe we can record parent.id in the preprocessed data).
+  Also below the error should be attached to `numeric_along`:
+
+    > fr <- function(x, y) {
+    +   res <- numeric_along(x, y)
+    +   res + x
+    + }
+    > f <- r2cf(fr)
+    Error in match.call(definition, call, expand.dots, envir) : 
+      unused argument (y)
 
 * Move the disallowed assignment error to somewhere that does not use the
   renamed expression as that is then incomprehensible.
@@ -213,11 +190,6 @@ Error in r2cq(x + "a")(5) :
   external makes sense.
 
 ### Other
-
-* Add a finalizer to unload and dump dlls:
-
-    qz1ylj3zna.so':
-      `maximal number of DLLs reached...
 
 * Defer creation of temporary vectors until end (just record their size) so that
   we don't allocate vectors we don't use.  We should also identify unused

@@ -10,13 +10,13 @@ subassign(x, s, y)
 \item{x}{a numeric vector}
 }
 \value{
-\code{x}, squared
+\code{x} with positions designated by \code{s} replaced by values in \code{y}
 }
 \description{
 "Internal" function that implement subassignment (e.g. \code{x[s] <- y}) for
 \code{r2c}.  Standard R subassignments are converted to \code{subassign} so that the
-\code{r2c} code processor can identify them as a sub-assignment instead of an
-a subset nested in an assignment.
+\code{r2c} \link[=r2c-preprocess]{preprocessor} can identify them as a sub-assignment
+instead of an a subset nested in an assignment.
 }
 \details{
 Unlike the R counterpart, or the \code{r2c} usage of this function,
@@ -24,3 +24,9 @@ regular R usage of this function does not modify \code{x} outside of the interna
 scope of the function.  This function is an implementation detail and is
 documented only for the rare cases where it becomes visible to the user.
 }
+\seealso{
+Other \link[=intermediate representation
+  functions]{intermediate-representation}, \link[=`r2c`
+  preprocessor]{r2c-preprocess}.
+}
+\keyword{internal}

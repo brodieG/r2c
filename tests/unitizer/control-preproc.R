@@ -564,6 +564,33 @@ unitizer_sect('multi-assign', {
     u + x + y + w
   })
   r2c:::pp_clean(call6b1)
+
+  # Multi assign of branch result; recall we always copy branch
+  # return value if it _could_ be used.  So some redundant uses below.
+  call6c0 <- quote({
+    v <- if(a)
+      u <-
+        if(b) x <- y <- mean(z)
+        else x <- y <- w
+    v + u + y
+  })
+  r2c:::pp_clean(call6c0)
+  call6c1 <- quote({
+    v <- if(a)
+      u <-
+        if(b) x <- y <- mean(z)
+        else x <- y <- w
+    u + y
+  })
+  r2c:::pp_clean(call6c1)
+  call6c2 <- quote({
+    v <- if(a)
+      u <-
+        if(b) x <- y <- mean(z)
+        else x <- y <- w
+    u
+  })
+  r2c:::pp_clean(call6c2)
 })
 
 unitizer_sect('errors', {
