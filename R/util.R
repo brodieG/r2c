@@ -162,7 +162,7 @@ get_target_symbol <- function(x, fun.name) {
   target.type <- typeof(target.symbol)
   if(target.type != 'symbol') {
     msg <-
-      if(fun.name == "for")
+      if(fun.name == "for") # FOR.ITER not needed (see constants.R)
         paste("expected symbol for loop variable but got", target.type)
       else "invalid left-hand side to assignment."
     stop(simpleError(msg, x))

@@ -695,7 +695,9 @@ generate_candidate <- function(
     #     if(a) rec(vcopy(x <- ...))
     #
     # `branch.res` only TRUE if the branch result _could_ be used either because
-    # also `r2c` exp return value, or bound to symbol.
+    # also `r2c` exp return value, or bound to symbol.  This may result in a
+    # superfluous rec/vcopy when e.g. the bound symbol is not used.  Could be
+    # addressed by dead code removal.
     if(branch.res) {
       if(leaf && !length(assign.to)) {
         # Always reconcile
