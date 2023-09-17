@@ -49,8 +49,9 @@ flatten_call_rec <- function(x, calls, indices) {
 # Removes redundant braces such as those containing only one call or braces
 # nested immediately inside each other.
 
-collapse_braces <- function(x) {
+collapse_braces <- function(x, par.assign=FALSE) {
   if(is.brace_call(x)) {
+    if(par.assign) stop("could not find function \"{<-\"")
     if(length(x) == 2L) x <- collapse_braces(x[[2L]])
     else if(length(x) > 2L) {
       i <- 2L
@@ -75,7 +76,9 @@ collapse_braces <- function(x) {
       }
     }
   } else if(is.call_w_args(x)) {
-    for(i in seq(2L, length(x), 1L)) x[[i]] <- collapse_braces(x[[i]])
+    call.assign <- is.assign_call(x)
+    for(i in seq(2L, length(x), 1L))
+      x[[i]] <- collapse_braces(x[[i]], call.assign)
   }
   x
 }
