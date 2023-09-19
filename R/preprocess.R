@@ -607,7 +607,6 @@ transform_control <- function(x, i=0L) {
               iter=r2c::for_iter(
                 var=.(x[[2L]]), seq=.(seq.name), seq.i=.(seq.i.name)
               ),
-              # implement append_null to add a `numeric(0)` at end.
               for.n=r2c::for_n(expr=.(append_null(x[[4L]]))),
               for.0=r2c::for_0(expr=numeric(length=0))
             )
