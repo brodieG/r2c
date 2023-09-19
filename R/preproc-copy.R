@@ -346,14 +346,18 @@ copy_branchdat_rec <- function(
   call.assign <- call.modify <- first.assign <- leaf <- FALSE
   tar.sym <- ""
 
-  if (is.symbol(x)) {
+  if (!is.call(x)) {
+    # Could be either a symbol, or alternatively a literal (e.g. `42`).
+    # If a a literal, it will be checked for numeric-ness by the allocator.  It
+    # should never be the case that external parameters become candidates
+
     sym.local.cmp <- sym.name %in% data[[B.LOC.CMP]]
     sym.global <- sym.name %in% c(data[[B.ALL]], data[[B.ALL0]])
     passive <- !sym.local.cmp
     leaf <- TRUE
-    data[['leaf.name']] <- sym.name
+    data[['leaf.name']] <- sym.name  # "" for literals
 
-    if(!sym.name %in% data[[B.NAMED]]) {
+    if(!sym.name %in% data[[B.NAMED]] && nzchar(sym.name)) {
       data[['free']] <- union(data[['free']], sym.name)
     }
     # For symbols matching candidate(s): promote candidate if allowed.
@@ -391,12 +395,6 @@ copy_branchdat_rec <- function(
       # also locally computed.
       data[[B.LOC.CMP]] <- union(data[[B.LOC.CMP]], assign.to)
     }
-  } else if(!is.call(x)) {
-    # These are literal objects in the call.  They will be checked for
-    # numeric-ness by the allocator.  It should never be the case that
-    # external parameters gets turned into a candidate.
-    leaf <- passive <- TRUE
-    data[['leaf.name']] <- ""
   } else if(is.call(x)) {
     # Recursion, except special handling for if/else and for assignments
     call.assign <- sym.name %in% ASSIGN.SYM
@@ -481,24 +479,23 @@ copy_branchdat_rec <- function(
         # shouldn't matter since never used after branch.
         rec.skip <- 1:2
       }
-      # Recurse on language subcomponents
+      # Recurse on subcomponents (literals too)
       for(i in seq_along(x)[-rec.skip]) {
-        if(is.language(x[[i]])) {
-          # assign.to is forwarded by non-leaf calls
-          next.last <- i == length(x) && !leaf
-          assign.to.next <- if(!next.last) character() else assign.to
-          sub.assign.to.next <- if(i != length(x)) "" else sub.assign.to
-          data[['passive']] <- passive.now # reset pre-rec passive status
-          data <- copy_branchdat_rec(
-            x[[i]], index=c(index, i),
-            assign.to=assign.to.next, sub.assign.to=sub.assign.to.next,
-            last=last && next.last,
-            branch.res=branch.res && next.last,
-            in.compute=in.compute || !passive,
-            in.branch=in.branch, prev.call=sym.name,
-            data=data, x0=x0
-          )
-      } }
+        # assign.to is forwarded by non-leaf calls
+        next.last <- i == length(x) && !leaf
+        assign.to.next <- if(!next.last) character() else assign.to
+        sub.assign.to.next <- if(i != length(x)) "" else sub.assign.to
+        data[['passive']] <- passive.now # reset pre-rec passive status
+        data <- copy_branchdat_rec(
+          x[[i]], index=c(index, i),
+          assign.to=assign.to.next, sub.assign.to=sub.assign.to.next,
+          last=last && next.last,
+          branch.res=branch.res && next.last,
+          in.compute=in.compute || !passive,
+          in.branch=in.branch, prev.call=sym.name,
+          data=data, x0=x0
+        )
+      }
       data[['passive']] <- passive && data[['passive']]
 
       if(call.assign) {  # not call.modify
