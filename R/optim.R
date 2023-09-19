@@ -76,9 +76,11 @@ collapse_braces <- function(x, par.assign=FALSE) {
       }
     }
   } else if(is.call_w_args(x)) {
+    # detect {...} <- ... and error before we remove braces (preserves R
+    # semantics as otherwise {x} <- y would be allowed after brace strip).
     call.assign <- is.assign_call(x)
     for(i in seq(2L, length(x), 1L))
-      x[[i]] <- collapse_braces(x[[i]], call.assign)
+      x[[i]] <- collapse_braces(x[[i]], call.assign && i == 2L)
   }
   x
 }
