@@ -155,7 +155,7 @@ reuse_calls_int <- function(x) {
   # Add braces if there are none
   no.braces <- FALSE
   if(!is.brace_call(x)) {
-    x <- call("{", x)
+    x <- dot_names(call("{", x))
     no.braces <- TRUE
   }
   # rename assigned-to symbols, etc.  We rely completly on this to handle the
@@ -320,8 +320,10 @@ reuse_calls_int <- function(x) {
     ru.arg <- as.name(ru.char)
     ru.i <- ru.i + 1L
     hoists[[i]][['sub.sym']] <- ru.arg
-    if(length(to.sub))  # Generate the replacement expression
-      hoists[[i]][['expr']] <- call("<-", ru.arg, x[[calls.ix[[to.sub[[1L]]]]]])
+    if(length(to.sub))  {
+      # Generate the replacement expression
+      hoists[[i]][['expr']] <- en_assign(ru.arg, x[[calls.ix[[to.sub[[1L]]]]]])
+    }
     for(j in to.sub) {
       x[[calls.ix[[j]]]] <- ru.arg
     }

@@ -994,8 +994,8 @@ en_rec <- function(x, clean=FALSE) {
 }
 
 # Marker functions for signalling to `alloc` for use before set in loops
-LSET.FUN.NAME <- call("::", as.name("r2c"), as.name("lset"))
-LREC.FUN.NAME <- call("::", as.name("r2c"), as.name("lrec"))
+LSET.FUN.NAME <- pkg_fun("lset")
+LREC.FUN.NAME <- pkg_fun("lrec")
 en_lset <- function(x, rec.i) as.call(list(LSET.FUN.NAME, rec.i=rec.i, x=x))
 en_lrec <- function(x, rec.i) as.call(list(LREC.FUN.NAME, rec.i=rec.i, x=x))
 
@@ -1021,7 +1021,7 @@ inject_copy_in_brace_at <- function(x, ptr) {
 
     # generate e.g. `x <- vcopy(x)`
     sym.miss <- as.symbol(ptr[["name"]])
-    sym.vcopy <- call("<-", sym.miss, en_vcopy(sym.miss))
+    sym.vcopy <- en_assign(sym.miss, en_vcopy(sym.miss))
     call.list <- as.list(par.call)
     new.call <- dot_names(
       as.call(c(call.list[1L], list(sym.vcopy), call.list[-1L]))
@@ -1295,7 +1295,7 @@ copy_fordat <- function(
       names(rec.syms),
       function(x, syms) {
         xn <- as.name(x)
-        bquote(.(syms[[x]]) <- .(xn) <- .(en_vcopy(xn)))
+        en_assign(syms[[x]], en_assign(xn, en_vcopy(xn)))
       },
       rec.syms
     )

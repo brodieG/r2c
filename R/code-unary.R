@@ -42,7 +42,7 @@ UOP.MAP <- c("-"="uminus", "+"="uplus")
 unary_transform <- function(call) {
   name <- get_lang_name(call)
   if(name %in% c("+", "-") && length(call) == 2L) {
-    call[[1L]] <- call("::", quote(r2c), as.name(UOP.MAP[name]))
+    call[[1L]] <- pkg_fun(UOP.MAP[name])
     names(call) <- c("", "x")
   }
   call

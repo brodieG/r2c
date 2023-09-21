@@ -256,6 +256,11 @@ get_lang_name <- function(call) {
 }
 blank_lang_info <- function() list(name="", pkg="")
 
+pkg_fun <- function(fun, pkg='r2c')
+  call("::", pkg=as.name(pkg), name=as.name(fun))
+
+en_assign <- function(x, value) call("<-", x=x, value=value)
+
 # deparse but concatenate multi-element results with newlines
 
 deparseLines <- function(x, ...) paste0(deparse(x, ...), collapse="\n")

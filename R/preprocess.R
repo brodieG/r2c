@@ -596,12 +596,12 @@ transform_control <- function(x, i=0L) {
         bquote(
           { # We rely on these braces in for loop processing
             r2c::for_init(
-              seq=.(call("<-", seq.name, x[[3L]])),
+              seq=.(en_assign(seq.name, x[[3L]])),
               # Need fresh allocs so each of these point to their own memory.
-              seq.i=.(call("<-", seq.i.name, en_vcopy(0))),
+              seq.i=.(en_assign(seq.i.name, en_vcopy(0))),
               # The iteration variable is NA if there are no iterations (this
               # differs from R that does NULL for that case).
-              var=.(call("<-", x[[2L]], en_vcopy(NA_real_)))
+              var=.(en_assign( x[[2L]], en_vcopy(NA_real_)))
             )
             r2c::r2c_for(
               iter=r2c::for_iter(

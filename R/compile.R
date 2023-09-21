@@ -636,7 +636,7 @@ clean_call <- function(x, level=1L) {
     x <- clean_call(x[[2L]], level=level)
   } else if(is.call_w_args(x)) {
     if(get_lang_name(x) == "subassign") {
-      x <- call("<-", call("[", x[[2L]], x[[3L]]), x[[4L]])
+      x <- en_assign(call("[", x[[2L]], x[[3L]]), x[[4L]])
     }
     # Drop dots from e.g. `sum(...=x, )`
     if(!is.null(names(x))) names(x)[names(x) == "..."] <- ""
