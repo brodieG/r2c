@@ -25,8 +25,7 @@ scope of the function.  This function is an implementation detail and is
 documented only for the rare cases where it becomes visible to the user.
 }
 \seealso{
-Other \link[=intermediate representation
-  functions]{intermediate-representation}, \link[=`r2c`
-  preprocessor]{r2c-preprocess}.
+Other \link[=intermediate representation functions]{intermediate-representation},
+\link[=`r2c` preprocessor]{r2c-preprocess}.
 }
 \keyword{internal}
