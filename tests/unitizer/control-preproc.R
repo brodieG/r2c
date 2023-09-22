@@ -56,6 +56,10 @@ unitizer_sect("Basic Symbol Copy", {
 
   call1e3 <- quote({z <- {w; y <- x}; w})
   r2c:::pp_clean(call1e3)
+
+  # Empty braces
+  call1f <- quote({})
+  r2c:::pp_clean(call1f)
 })
 unitizer_sect("Detect Computed Val Return", {
   call2a <- quote(mean(x))

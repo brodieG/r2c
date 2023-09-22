@@ -82,10 +82,20 @@ code_gen_braces <- function(fun, pars, par.types) {
     pars=list(),
     par.types=character() && all(. %in% PAR.INT)
   )
+  # Empty braces should have been preprocessed into {numeric(0)}
   if(length(pars) < 1L) stop("Empty braces expresssions disallowed.")
   name <- FUN.NAMES[fun]
   defn <- sprintf(f_braces, name, toString(c(F.ARGS.BASE, F.ARGS.VAR)))
   code_res(defn=defn, narg=TRUE, name=name, out.ctrl=CGEN.OUT.NONE)
+}
+transform_braces <- function(call) {
+  if(!is.brace_call(call))
+    stop("Internal Error: expected braces call but got ", deparse1(call))
+  # Empty braces
+  if(length(call) == 1L) {
+    call[[2L]] <- quote(numeric(length=0))
+    dot_names(call)
+  } else call
 }
 
 f_assign <- '

@@ -22,6 +22,8 @@
 ## assigned to an r2c generated allocation that can be relocated, which is done
 ## by adding instruction to copy data into such allocations.
 
+#' @include util.R
+
 # Frequently used indices (probably should just make data flat...).
 
 CAND <- c('copy', 'cand')

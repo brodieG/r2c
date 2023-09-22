@@ -424,7 +424,8 @@ VALID_FUNS <- c(
       "{", defn=function(...) NULL,
       # arglen of last argument matching dots
       type=list("arglen", "...", function(x) x[length(x)]),
-      code.gen=code_gen_braces, res.type="preserve.last"
+      code.gen=code_gen_braces, res.type="preserve.last",
+      transform=transform_braces
     ),
     # result of this one is not used outside of the C code
     cgen(
@@ -594,8 +595,6 @@ call_valid <- function(call) {
         "`", fun,
         "` is an internal r2c function and invalid as an input to compilation."
       )
-    if(fun == "{" && length(call) < 2L)
-      stop("Empty braces {} disallowed in r2c expressions.")
     fun
   }
 

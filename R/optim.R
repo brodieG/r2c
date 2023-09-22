@@ -65,7 +65,7 @@ collapse_braces <- function(x, par.assign=FALSE) {
                 call.list[seq(1L, i - 1L, 1L)],
                 # Empty braces change semantics of call (`{5;{}}` is not equal
                 # to `{5}`), use numeric(0) like we do with missing branches.
-                if(length(x[[i]]) == 1L) list(numeric(0))
+                if(length(x[[i]]) == 1L) list(quote(numeric(0)))
                 else as.list(x[[i]])[-1L],
                 call.list[seq(i + 1L, length.out=length(x) - i, by=1L)]
           ) ) )
