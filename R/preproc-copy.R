@@ -1237,7 +1237,6 @@ copy_fordat <- function(
     )
     # For each use before set:
     # * Add a `lrec` call at end of loop for `alloc` to remap memory.
-    # * Tag the use with a unique id.
     # * Tag the set with a matching unique id.
     # * Add a vcopy for the symbol right outside of the loop to ensure memory
     #   is not shared, and add a proxy binding to ensure memory not released.

@@ -463,7 +463,7 @@ VALID_FUNS <- c(
       res.type="preserve.which", res.type.which=2L, fun=for_init
     ),
     cgen(
-      "for_iter", type=list("constant", 1), code.gen=code_gen_for_iter,
+      FOR.ITER, type=list("constant", 1), code.gen=code_gen_for_iter,
       res.type="preserve.which", res.type.which=2L, fun=for_iter
     ),
     cgen(
