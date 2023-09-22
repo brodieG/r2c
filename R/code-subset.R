@@ -129,9 +129,8 @@ code_gen_subassign <- function(fun, pars, par.types) {
 #' scope of the function.  This function is an implementation detail and is
 #' documented only for the rare cases where it becomes visible to the user.
 #'
-#' @seealso Other [intermediate-representation][intermediate representation
-#'   functions], [r2c-preprocess][`r2c`
-#'   preprocessor].
+#' @seealso Other [intermediate-representation][intermediate representation functions], 
+#' [r2c-preprocess][`r2c` preprocessor].
 #' @keywords internal
 #' @param x a numeric vector
 #' @export

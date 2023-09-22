@@ -28,15 +28,13 @@
 NULL
 
 is.valid_arglen <- function(type)
-  (is.character(type[[2L]]) || is.integer(type[[2L]])) &&
+  is.character(type[[2L]]) &&
   length(type[[2L]]) == 1L &&
   !is.na(type[[2L]]) &&
   (length(type) <= 2L || is.function(type[[3L]]))
 
 is.valid_n_arglen <- function(type)
-  length(type) >= 2L &&
-  (is.character(type[[2L]]) || is.integer(type[[2L]])) &&
-  !anyNA(type[[2L]])
+  length(type) >= 2L && is.character(type[[2L]]) && !anyNA(type[[2L]])
 
 # should rationalize these...
 is.valid_vecrec <- function(type)
@@ -193,6 +191,8 @@ valid_length <- function(length) vet(NUM.1.POS, length)
 #'   "preserve.which" is like "preserve", but applies to the parameters
 #'   designated by `res.type.which`.
 #' @param res.type.which for use when `res.type == "preserve.which"`.
+#' @param primitive.nomatch TRUE or FALSE whether the function is a primitive
+#'   that doesn't match its parameters like `-`.
 #'
 #' @return a list containing the above information after validating it.
 
@@ -202,13 +202,12 @@ cgen <- function(
   extern=list(), type, code.gen,
   in.type.validate=function(types) TRUE,
   transform=identity,
-  res.type="double", res.type.which=1L
+  res.type="double", res.type.which=1L, primitive.nomatch=FALSE
 ) {
   vetr(
     name=CHR.1,
     fun=is.function(.),
-    # really should have put some parens to resolve ambiguity below
-    defn=(typeof(.) == "closure" || NULL),
+    defn=(typeof(.) == "closure"),
     extern=list(),
     type=list() && length(.) %in% 1:3,
     code.gen=is.function(.),
@@ -219,7 +218,8 @@ cgen <- function(
         'logical', 'double', 'preserve.int', 'preserve',
         'preserve.last', 'preserve.which'
       ),
-    res.type.which=INT.POS.STR
+    res.type.which=INT.POS.STR,
+    primitive.nomatch=LGL.1
   )
   # Limitation in vetr prevents following checks from being done above
   if(
@@ -255,33 +255,33 @@ cgen <- function(
     type[[1L]] %in% c("constant") ||
     (
       type[[1L]] %in%
-        c('arglen', 'vecrec', 'eqlen', 'extern', 'prod', 'concat') &&
-      (
-        (is.null(defn) && is.integer(type[[2L]])) ||
-        (!is.null(defn) && is.character(type[[2L]]))
-      )
+        c('arglen', 'vecrec', 'eqlen', 'extern', 'prod', 'concat')
+      # used to support integer here for positional matching, but now we force
+      # names everywhere (see match_call_rec).
     )
   )
   list(
     name=name, fun=fun, defn=defn, extern=extern,
     type=type, code.gen=code.gen,
     transform=transform, res.type=res.type, res.type.which=res.type.which,
-    in.type.validate=in.type.validate
+    in.type.validate=in.type.validate, primitive.nomatch=primitive.nomatch
   )
 }
+BIN.DEFN <- function(e1, e2) NULL
 ## Specialized for binops
 cgen_bin <- function(name, res.type="preserve.int") {
   cgen(
-    name, defn=NULL,
-    type=list("vecrec", 1:2), code.gen=code_gen_bin, res.type=res.type,
-    transform=unary_transform
+    name, defn=BIN.DEFN,
+    type=list("vecrec", c("e1", "e2")), code.gen=code_gen_bin,
+    res.type=res.type, transform=unary_transform, primitive.nomatch=TRUE
   )
 }
 ## Specialized for binops that require inclusion of macros (logicals)
 cgen_bin2 <- function(name, res.type="preserve.int") {
   cgen(
-    name, defn=NULL,
-    type=list("vecrec", 1:2), code.gen=code_gen_bin2, res.type=res.type
+    name, defn=BIN.DEFN,
+    type=list("vecrec", c("e1", "e2")), code.gen=code_gen_bin2,
+    res.type=res.type, primitive.nomatch=TRUE
   )
 }
 
@@ -330,7 +330,8 @@ VALID_FUNS <- c(
   list(
     cgen(
        # needs transform, could be folded into cgen_bin like e.g. uminus
-       "^", type=list("vecrec", 1:2), code.gen=code_gen_pow,
+       "^", defn=BIN.DEFN,
+       type=list("vecrec", c("e1", "e2")), code.gen=code_gen_pow,
        transform=pow_transform
   ) ),
   lapply(c(">", ">=", "<", "<=", "==", "!="), cgen_bin2, res.type="logical"),
@@ -339,7 +340,7 @@ VALID_FUNS <- c(
   ## # could add a function like square to deal with it..  See myfmod in
   ## src/arithmetic.c in R sources
   ## cgen(
-  ##   "%%", base::`%%`, defn=function(e1, e2) NULL,
+  ##   "%%", base::`%%`, defn=BIN.DEFN,
   ##   type=list("vecrec", c("e1", "e2")), code.gen=code_gen_arith,
   ##   res.type='preserve.int'
   ## ),
@@ -357,7 +358,7 @@ VALID_FUNS <- c(
       res.type="preserve.int"
     ),
     cgen(
-      "!", type=list("arglen", 1L), code.gen=code_gen_unary,
+      "!", defn=function(x) NULL, type=list("arglen", "x"), code.gen=code_gen_unary,
       res.type="logical"
     )
   ),
@@ -392,11 +393,12 @@ VALID_FUNS <- c(
 
   list(
     cgen(
-      "&&", type=list("constant", 1), code.gen=code_gen_lgl2,
+      "&&", defn=BIN.DEFN,
+      type=list("constant", 1), code.gen=code_gen_lgl2,
       res.type="logical"
     ),
     cgen(
-      "||", type=list("constant", 1), code.gen=code_gen_lgl2,
+      "||", defn=BIN.DEFN, type=list("constant", 1), code.gen=code_gen_lgl2,
       res.type="logical"
     ),
     cgen(
@@ -409,11 +411,13 @@ VALID_FUNS <- c(
   list(
     # see subset for [<-, although transform to subassign done here
     cgen(
-      "<-", type=list("arglen", 2L), code.gen=code_gen_assign,
+      "<-", defn=function(x, value) NULL,
+      type=list("arglen", "value"), code.gen=code_gen_assign,
       res.type="preserve.last", transform=assign_transform
     ),
     cgen(
-      "=", type=list("arglen", 2L), code.gen=code_gen_assign,
+      "=", defn=function(x, value) NULL,
+      type=list("arglen", "value"), code.gen=code_gen_assign,
       res.type="preserve.last"
     ),
     cgen(
@@ -444,7 +448,12 @@ VALID_FUNS <- c(
     # into the above if_test/r2c_if/if_true/if_false, but we need it here so the
     # early parsing passes recognize it as an allowed function.
     cgen(
-      "if", type=list("eqlen", 2:3), code.gen=code_gen_if, res.type="preserve"
+      "if",
+      # This is special cased in match_call_rec.
+      defn=function(cond, cons.expr, alt.expr) NULL, primitive.nomatch=TRUE,
+      # Below not actually use due to decomposition of `if` -> `r2c_if`.
+      type=list("eqlen", c('cons.expr', 'alt.expr')),
+      code.gen=code_gen_if, res.type="preserve"
     ),
     # Result of this one is only used directly in C code, but passive pass
     # through of type so we need to preserve that.
@@ -471,7 +480,8 @@ VALID_FUNS <- c(
     ),
     # This is a stub function like `if`.
     cgen(
-      "for", type=list("arglen", 4L), code.gen=code_gen_for, res.type="preserve"
+      "for", defn=function(var, seq, expr) NULL, primitive.nomatch=TRUE,
+      type=list("arglen", "expr"), code.gen=code_gen_for, res.type="preserve"
     )
   ),
   # - Miscellaneous ------------------------------------------------------------
@@ -500,7 +510,7 @@ VALID_FUNS <- c(
       "mean1", fun=mean1,
       extern=list(na.rm=ext_par("num", valid_narm)),
       type=list("constant", 1),
-      code.gen=code_gen_summary,
+      code.gen=code_gen_summary
     ),
     cgen(
       "square", fun=square, defn=square,
@@ -508,26 +518,26 @@ VALID_FUNS <- c(
       code.gen=code_gen_square
     ),
     cgen(
-      "vcopy", fun=vcopy, defn=NULL,
-      type=list("arglen", 1L),
+      "vcopy", fun=vcopy,
+      type=list("arglen", "x"),
       code.gen=code_gen_copy,
       res.type="preserve"   # for uplus
     ),
     cgen(
-      "rec", fun=rec, defn=NULL,
-      type=list("arglen", 1L),
+      "rec", fun=rec,
+      type=list("arglen", "x"),
       code.gen=code_gen_rec,
       res.type="preserve"
     ),
     cgen(
-      "lset", fun=lset, defn=NULL,
-      type=list("arglen", 1L),
+      "lset", fun=lset,
+      type=list("arglen", "x"),
       code.gen=code_gen_lset,
       res.type="preserve"
     ),
     cgen(
-      "lrec", fun=lrec, defn=NULL,
-      type=list("arglen", 1L),
+      "lrec", fun=lrec,
+      type=list("arglen", "x"),
       code.gen=code_gen_lrec,
       res.type="preserve"
     )

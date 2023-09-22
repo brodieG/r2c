@@ -184,6 +184,10 @@ preprocess <- function(call, optimize=FALSE) {
 #
 # Classify parameters and generate code.
 #
+# WARNING: if `call` is not match-called with names, e.g. because it was
+# inserted via transform or other manipulation after the `match_call_rec` in
+# `preprocess`, this might fail in mysterious ways.
+#
 # @param call a recursively `match.call`ed call.
 # @param assign indicate whether current evaluation is of a symbol being
 #   assigned to, to tell the allocator to use a stub for it in the temp
@@ -210,7 +214,13 @@ pp_internal <- function(
     # - Recursion on Params ----------------------------------------------------
     # Classify Params
     args <- as.list(call[-1L])
-    if(is.null(names(args))) names(args) <- character(length(args))
+    if(!all(nzchar(names(args))))
+      stop("Internal Error: parameters missing names - unmatched call?")
+
+    # Ideally we wouldn't allow missing names - but it happens for primitives?
+    if(is.null(names(args))) {
+      names(args) <- character(length(args))
+    }
     linfo <- get_lang_info(call)
     func <- linfo[['name']]
     par.ext <- VALID_FUNS[[c(func, "extern")]]
@@ -218,6 +228,11 @@ pp_internal <- function(
     par.ext.types <- vapply(par.ext, "[[", "", "type")
     par.ext.validate <- lapply(par.ext, "[[", "validate")
 
+    if(!all(par.ext.names %in% names(args)))
+      stop(
+        "Internal Error: designated external parameters missing; is `call` ",
+        "not properly match-called?"
+      )
     par.ext.loc <- match(par.ext.names, names(args), nomatch=0)
     par.types <- rep("internal", length(args))
     par.types[par.ext.loc] <- par.ext.types
@@ -422,7 +437,8 @@ match_call_rec <- function(call) {
     # Only functions that have a closure definition are match-called.  These
     # are either closures, or primitives that do argument matching that we
     # manually provided a stand-in closure for match.call purposes (e.g. `sum`)
-    if(!is.null(defn <- VALID_FUNS[[c(func, "defn")]])) {
+    defn <- VALID_FUNS[[c(func, "defn")]]
+    if(!VALID_FUNS[[c(func, "primitive.nomatch")]]) {
       # Replace dots (note these are dots as an argument, as opposed to dots in
       # the formals of the function we'll generate); we do not want these dots
       # to be matched against anything since that will be done at run-time, not
@@ -433,6 +449,37 @@ match_call_rec <- function(call) {
       if(any(any.dots)) call[-1L][which(any.dots)] <- list(quote(.R2C.DOTS))
       # since we don't resolve dots env does not matter.
       call <- match.call(definition=defn, call=call, expand.dots=FALSE)
+    } else if (func == "if") {
+      # `if` is a primitive but weird because it can have different number of
+      # arguments (and even `args(if)` returns empty names).  We don't bother
+      # giving it correct names because `if/else` will be decomposed into other
+      # functions (otherwise we would need correct names and dealing with
+      # variable length).
+      names(call) <- character(length(call))
+    } else {
+      # These are primitives that don't match parameters; we want the return
+      # match value to always have parameter names, but we don't want parameter
+      # order to be changed if someone happens to do e.g. `"+"(e2=x, e1=y)`
+      # since R ignores that.
+
+      # We special case unary +/- b/c they are not transformed yet; this is a
+      # smidge dicey because names are not the same...
+      if(func %in% c("+", "-") && length(call) == 2L) defn <- uplus
+
+      if(!is.null(names(call))) {
+        stop(
+          "Supplied primitive parameter names don't match definition in ",
+          deparseLines(call)
+        )
+      } else if (length(call) != length(formals(defn)) + 1L) {
+        stop(
+          "Incorrect number of parameters for primitive ",
+          deparseLines(call)
+        )
+      }
+      if(is.null(names(call))) {
+        names(call) <- c("", names(formals(defn)))
+      }
     }
     if(length(call) > 1) {
       for(i in seq(2L, length(call), by=1L)) {
@@ -442,7 +489,7 @@ match_call_rec <- function(call) {
         } else call[[i]] <- match_call_rec(call[[i]])
       }
     }
-    if(!is.null(defn)) {
+    if(!is.null(defn) && func != "if") {
       # Fill in defaults
       frm <- formals(defn)
       frm.req <-

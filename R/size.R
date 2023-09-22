@@ -32,13 +32,6 @@ input_args <- function(stack, depth, ftype, call, .CALL) {
       )
     param.cand <-
       seq_len(ncol(stack))[colnames(stack) %in% ftype[[2L]] & stack.cand]
-  } else if(is.integer(ftype[[2L]])) {
-    param.cand <- seq_along(stack)[stack.cand][ftype[[2L]]]
-    if(anyNA(param.cand))
-      stack_param_missing(
-        ftype[[2L]][is.na(param.cand)], seq_along(stack)[stack.cand],
-        call, .CALL
-      )
   } else stop("Internal Error: unexpected arg index type.")
 
   # Arglen needs to disambiguate multiple params (e.g. `...` may show up
