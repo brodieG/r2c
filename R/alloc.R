@@ -206,6 +206,13 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
   call.names <- vapply(x[['linfo']], "[[", "", "name")
   call.pkgs <- vapply(x[['linfo']], "[[", "", "pkg")
 
+  # The final result calculation or reconciled calles  cannot re-use a slot so
+  # must get their own allocations.
+  compute.intern <-
+    x[['par.type']] == PAR.INT.CALL & !call.names %in% PASSIVE.SYM
+  no.reuse <-
+    c(max(c(0L, which(compute.intern))), which(call.names == "rec") - 1L)
+
   for(i in seq_along(x[['call']])) {
     ext.id <- ""
     par.type <- x[['par.type']][[i]]
@@ -286,7 +293,8 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
           !alloc[['ids']] %in% alloc[['names']]['ids',]
         fit <- free & alloc[['type']] == "tmp" & alloc[['alloc']] >= asize
         # If none fit prep for new allocation, otherwise reuse free alloc
-        if(!any(fit)) vec.dat[['new']] <- numeric(asize)
+        if(!any(fit) || i %in% no.reuse)
+          vec.dat[['new']] <- numeric(asize)
         else alloc <- reuse_dat(alloc, fit, vec.dat, depth=depth)
       } else if (name %in% PASSIVE.SYM) {
         # Don't do anything for these, effectively causing `dat[[i]]` to remain
@@ -499,7 +507,8 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
   }
   # - Finalize -----------------------------------------------------------------
 
-  # Return value should be redirected to result
+  # Return value should be redirected to result; need to make sure that if this
+  # id is written to in multiple places..
   last.call <- call.dat[[length(call.dat)]]
   last.alloc <- last.call[['ids']][length(last.call[['ids']])]
   res.alloc <- which(alloc[['type']] == "res")
@@ -923,6 +932,13 @@ reconcile_control_flow <- function(
       " in:\n", deparseLines(call.rec)
     )
   }
+  # Alloc sizes must also be equal (this could only differ after above check if
+  # we messed up logic elsewhere)
+  asize.eq <-
+    lengths(alloc[['dat']])[id.rc.F] == lengths(alloc[['dat']])[id.rc.T]
+  if(!all(asize.eq))
+    stop("Internal Error: mismatched allocated sizes across branches.")
+
   # All the targets for reconciliation must be `r2c` allocated.
   if(any(alloc[['type']][c(id.rc.F, id.rc.T)] != 'tmp'))
     stop("Internal Error: reconciliation allocs not r2c generated.")
