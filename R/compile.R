@@ -76,7 +76,7 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' 1. Compilation, with `r2cq` or similar.
 #' 2. Execution, either direct or via [runners], which comprises:
 #'     * A one time memory allocation sized to largest iteration (this memory
-#'       re-used for every iteration).
+#'       is re-used for every iteration).
 #'     * Iterative execution over groups/windows.
 #'
 #' Each of the `r2c*` functions addresses different types of input:
@@ -181,8 +181,8 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' @section Control Structures:
 #'
 #' `r2c` supports `if` / `else` statements and `for` loops on an experimental
-#' basis.  Because these substantially complicate the internals of `r2c` and as
-#' such might be removed in the future.
+#' basis.  These substantially complicate the internals of `r2c` and as such
+#' might be removed in the future.
 #'
 #' Both `if` / `else` and `for` loops have branches; the loop branches are loop
 #' not taken (0 iterations) vs loop taken (1+ iterations).  Branches add
@@ -206,7 +206,7 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' explicit loops with `for`, they will be much slower than a pure C version,
 #' and only marginally faster than byte compiled R equivalents.  Avoid `for`
 #' loops unless you cannot express your calculation in an internally vectorized
-#' form (see examples).'
+#' form (see examples).
 #'
 #' @section Details:
 #'

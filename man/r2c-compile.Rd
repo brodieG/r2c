@@ -118,7 +118,7 @@ The lifecycle of an \code{r2c} function has two stages.
 \item Execution, either direct or via \link{runners}, which comprises:
 \itemize{
 \item A one time memory allocation sized to largest iteration (this memory
-re-used for every iteration).
+is re-used for every iteration).
 \item Iterative execution over groups/windows.
 }
 }
@@ -235,8 +235,8 @@ disallowed even though \code{if(a) x <- y} is allowed.
 
 
 \code{r2c} supports \code{if} / \verb{else} statements and \code{for} loops on an experimental
-basis.  Because these substantially complicate the internals of \code{r2c} and as
-such might be removed in the future.
+basis.  These substantially complicate the internals of \code{r2c} and as such
+might be removed in the future.
 
 Both \code{if} / \verb{else} and \code{for} loops have branches; the loop branches are loop
 not taken (0 iterations) vs loop taken (1+ iterations).  Branches add
@@ -262,7 +262,7 @@ Like R, \code{r2c} is optimized for vectorized operations.  While you can write
 explicit loops with \code{for}, they will be much slower than a pure C version,
 and only marginally faster than byte compiled R equivalents.  Avoid \code{for}
 loops unless you cannot express your calculation in an internally vectorized
-form (see examples).'
+form (see examples).
 }
 
 \section{Details}{
