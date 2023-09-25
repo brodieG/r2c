@@ -69,6 +69,7 @@ QFOR.INIT <- quote(r2c::for_init)
 QREC <- quote(r2c::rec)
 QVCOPY <- quote(r2c::vcopy)
 QNULL <- quote(numeric(length=0L))
+QNULL.REC <- en_rec(QNULL)
 # need to wrap in list because can't be a top level for R CMD check
 MISSING <- list(formals(base::identical)[[1L]])
 

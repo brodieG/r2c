@@ -682,44 +682,66 @@ recompose_control <- function(x) {
     if(call.sym == "{") {
       x.call <- vapply(x[-1L], is.call, TRUE)
       x.call.name <- c("", vapply(x[-1L][x.call], get_lang_name, ""))
-      if.test <- which(x.call.name == "if_test")
-      # Every if.test needs to be followed either by and `r2c_if`, or by an
-      # `rec(r2c_if)`
-      if(any(if.test == length(x.call.name)))
+      ctrl.lead <- which(x.call.name %in% CTRL.LEAD)
+      # Control leads cannot be last
+      if(any(ctrl.lead == length(x.call.name)))
         stop("Internal Error, bad decomposed if call:\n", deparseLines(x))
 
-      is.rec <- FALSE
-      for(i in if.test) {
-        if(
-          x.call.name[i + 1L] != "r2c_if" && x.call.name[i + 1L] != "rec" &&
-          !is.call(x[[i + 1L]]) &&
-          (call.sym.2 <- get_lang_name(x[[i + 1L]])) != "r2c_if"
-        )
+      is.rec.v <- logical(length(x.call.name))
+      for(i in ctrl.lead) {
+        m1 <- match(x.call.name[i], CTRL.LEAD)
+        m2 <- match(x.call.name[i + 1L], CTRL.MAIN)
+        is.rec <- x.call.name[i + 1L] == 'rec'
+        if(!identical(m1, m2) && !(m1 == 1L && is.rec))
           stop("Internal Error, bad decomposed if call 2:\n", deparseLines(x))
-        if(x.call.name[i + 1L] == "rec") {
-          is.rec <- TRUE
+        # Temporarily remove the `rec` call
+        if(is.rec) {
+          is.rec.v[i] <- TRUE
           x[[i + 1L]] <- x[[i + 1L]][[2L]]
         }
       }
-      # reconstruct call from end so indices don't change, +1L because `if.test`
-      # is not counting the function slot
-      for(i in rev(if.test)) {
-        if.call <- call(
-          "if",
-          x[[i]][[2L]],                 # test
-          x[[i + 1L]][[c(2L, 2L)]],     # true
-          x[[i + 1L]][[c(3L, 2L)]]      # false
-        )
-        # Undo empty else (this might undo a legit numeric(0))
-        if(identical(if.call[[3L]], quote(numeric(length=0))))
-          if.call[[3L]] <- NULL
+      # reconstruct call from end so indices don't change, +1L because
+      # `ctrl.lead` is not counting the function slot
+      for(i in rev(ctrl.lead)) {
+        if(x.call.name[i] == IF.TEST) {
+          call.recompose <- call(
+            "if",
+            x[[i]][[2L]],                 # test
+            x[[i + 1L]][[c(2L, 2L)]],     # true
+            x[[i + 1L]][[c(3L, 2L)]]      # false
+          )
+          # Undo empty else (this might undo a legit numeric(0))
+          if(identical(call.recompose[[3L]], quote(numeric(length=0))))
+            call.recompose[[3L]] <- NULL
+          if(is.rec.v[i])
+            call.recompose <- en_rec(call.recompose, clean=TRUE)
+        } else if (x.call.name[i] == FOR.INIT) {
+          # This doesn't remove the use-b4-set business
+          call.recompose <- call(
+            "for",
+            x[[c(i + 1L, 2L, 2L)]],       # var
+            x[[c(i, 2L, 3L)]],            # seq
+            x[[c(i + 1L, 3L, 2L)]]        # expr
+          )
+          # Drop trailing numeric(0)
+          if(
+            !is.brace_call(call.recompose[[4L]]) ||
+            !identical(
+              call.recompose[[4L]][[length(call.recompose[[4L]])]],
+              QNULL.REC
+            )
+          )
+            stop(
+              "Internal Error: expecting numeric(0) at end of for body, got: ",
+              deparseLines(call.recompose)
+            )
+          call.recompose[[4L]][[length(call.recompose[[4L]])]] <- NULL
+        } else stop("Internal Error: recompose corrupt.")
 
-        # Add back the `rec` around the entire if
-        if(is.rec) if.call <- en_rec(if.call, clean=TRUE)
         x <- as.call(
           c(
             if(i - 1L) as.list(x[seq_len(i - 1L)]),
-            list(if.call),
+            list(call.recompose),
             if(length(x) > i + 1L)
               as.list(x[seq(i + 2L, by=1L, length.out=length(x) - i - 1L)])
         ) )
