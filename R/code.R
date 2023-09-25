@@ -429,7 +429,7 @@ VALID_FUNS <- c(
     ),
     # result of this one is not used outside of the C code
     cgen(
-      "if_test", type=list("constant", 1), code.gen=code_gen_if_test,
+      IF.TEST, type=list("constant", 1), code.gen=code_gen_if_test,
       res.type="logical", fun=if_test
     ),
     cgen(

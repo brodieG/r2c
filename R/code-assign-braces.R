@@ -93,7 +93,7 @@ transform_braces <- function(call) {
     stop("Internal Error: expected braces call but got ", deparse1(call))
   # Empty braces
   if(length(call) == 1L) {
-    call[[2L]] <- quote(numeric(length=0))
+    call[[2L]] <- QNULL
     dot_names(call)
   } else call
 }

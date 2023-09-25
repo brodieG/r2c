@@ -68,6 +68,7 @@ QFOR.ITER <- quote(r2c::for_iter)
 QFOR.INIT <- quote(r2c::for_init)
 QREC <- quote(r2c::rec)
 QVCOPY <- quote(r2c::vcopy)
+QNULL <- quote(numeric(length=0L))
 # need to wrap in list because can't be a top level for R CMD check
 MISSING <- list(formals(base::identical)[[1L]])
 
@@ -87,6 +88,7 @@ MODIFY.SYM <- c(ASSIGN.SYM, "subassign")
 LOOP.SYM <- c("for", "while", "repeat")
 FOR.SYM.ALL <- c(R2C.FOR, FOR.ITER, FOR.N, FOR.0)
 LOOP.SUB.SYM <- c(FOR.0, FOR.N)
+IF.TEST <- "if_test"
 IF.SUB.SYM <- c("if_true", "if_false")
 CTRL.SYM <- c("if", LOOP.SYM)
 CTRL.SUB.SYM <- c(IF.SUB.SYM, LOOP.SUB.SYM)
@@ -95,10 +97,15 @@ CTRL.SUB.SYM <- c(IF.SUB.SYM, LOOP.SUB.SYM)
 # linearized call list.  `for_iter` and `if_test` are not quite the same wrt to
 # locaton in the linearized call list because for_iter is nested inside
 # `r2c_for`.  Works out the same though in terms of sandwiching the branches.
-BRANCH.START.SYM <- c("if_test", FOR.ITER)
+BRANCH.START.SYM <- c(IF.TEST, FOR.ITER)
 BRANCH.MID.SYM <- c("if_true", FOR.N)
 BRANCH.END.SYM <- c("if_false", FOR.0)
 BRANCH.EXEC.SYM <- c("r2c_if", R2C.FOR)
+
+# For recomposing control we match to different things than we do in alloc
+CTRL.LEAD <- c(IF.TEST, FOR.INIT)
+CTRL.MAIN <- BRANCH.EXEC.SYM
+
 REC.FUNS <- c('vcopy', 'rec')
 L.SET <- 'lset'
 L.REC <- 'lrec'
@@ -180,7 +187,7 @@ FUN.NAMES <- c(
 
   # "while"="while", "repeat"="repeat", "if"="if"
 
-  if_test="if_test", if_true="if_true", if_false="if_false", r2c_if="r2c_if",
+  if_test=IF.TEST, if_true="if_true", if_false="if_false", r2c_if="r2c_if",
   "if"="if",
 
   for_init=FOR.INIT, for_iter=FOR.ITER, for_n=FOR.N, for_0=FOR.0,

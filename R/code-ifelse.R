@@ -33,7 +33,7 @@ f_ifother <- '
 
 code_gen_if_test <- function(fun, pars, par.types) {
   vetr(
-    identical(., "if_test"),
+    identical(., IF.TEST),
     pars=list(NULL),
     par.types=character() && all(. %in% PAR.INT)
   )

@@ -611,7 +611,7 @@ transform_control <- function(x, i=0L) {
     if(call.sym == "if") {
       if(!length(x) %in% 3:4)
         stop("Invalid if/else call:\n", paste0(deparse(x), collapse="\n"))
-      if(length(x) == 3L) x[[4L]] <- quote(numeric(length=0))
+      if(length(x) == 3L) x[[4L]] <- QNULL
       # **DANGER**, read docs if you change this
       x <- dot_names(
         bquote(
@@ -655,7 +655,7 @@ transform_control <- function(x, i=0L) {
                 var=.(x[[2L]]), seq=.(seq.name), seq.i=.(seq.i.name)
               ),
               for.n=r2c::for_n(expr=.(append_null(x[[4L]]))),
-              for.0=r2c::for_0(expr=numeric(length=0))
+              for.0=r2c::for_0(expr=.(QNULL))
             )
           }
       ) )
