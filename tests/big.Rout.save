@@ -1,5 +1,5 @@
 
-R Under development (unstable) (2023-01-16 r83624) -- "Unsuffered Consequences"
+R version 4.3.0 RC (2023-04-13 r84266) -- "Already Tomorrow"
 Copyright (C) 2023 The R Foundation for Statistical Computing
 Platform: aarch64-apple-darwin20 (64-bit)
 
@@ -95,6 +95,96 @@ rby.pos
 > 
 > # With intermediate assignments
 > identical(ri.slope, rolli_exec(r2c_slope2, list(x.big, y.big), n=w))
+[1] TRUE
+> 
+> # Naive matrix multiplication testing deeply nested loops and branches
+> mat_mult <- function(A, B, rs.A, cs.A, rs.B, cs.B) {
++   res <- numeric_alongn(rs.A, cs.B)
++   for(r.A in rs.A) {
++     for(c.B in cs.B) {
++       for(c.A in cs.A) {
++         for(r.B in rs.B) {
++           if(c.A == r.B) {
++             res[r.A + (c.B - 1) * length(rs.A)] <-
++               res[r.A + (c.B - 1) * length(rs.A)] +
++               A[r.A + (c.A - 1) * length(rs.A)] *
++               B[r.B + (c.B - 1) * length(rs.B)]
++           }
++         }
++       }
++     }
++   }
++   res
++ }
+> r2c_mat_mult <- r2cf(mat_mult)
+> 
+> # Naive matrix mult followed by rowsum/rowprod
+> mat_mult_rowsum <- function(A, B, rs.A, cs.A, rs.B, cs.B, sum=TRUE) {
++   tmp <- numeric_alongn(rs.A, cs.B)
++   for(r.A in rs.A) {
++     for(c.B in cs.B) {
++       for(c.A in cs.A) {
++         for(r.B in rs.B) {
++           if(c.A == r.B) {
++             tmp[r.A + (c.B - 1) * length(rs.A)] <-
++               tmp[r.A + (c.B - 1) * length(rs.A)] +
++               A[r.A + (c.A - 1) * length(rs.A)] *
++               B[r.B + (c.B - 1) * length(rs.B)]
++           }
++         }
++       }
++     }
++   }
++   res <- numeric_along(rs.A)
++   # force if/else to outside
++   if(sum) {
++     for(r.A in rs.A) {
++       for(c.B in cs.B) {
++         res[r.A] <- res[r.A] + tmp[r.A + (c.B - 1) * length(rs.A)]
++       }
++     }
++   } else {
++     res <- res + 1
++     for(r.A in rs.A) {
++       for(c.B in cs.B) {
++         res[r.A] <- res[r.A] * tmp[r.A + (c.B - 1) * length(rs.A)]
++       }
++     }
++   }
++   res
++ }
+> r2c_mat_mult_rowsum <- r2cf(mat_mult_rowsum)
+> 
+> mx <- matrix(runif(1e4), 1000)  # 1000 x 10
+> xr <- seq_len(nrow(mx))
+> xc <- seq_len(ncol(mx))
+> my <- matrix(runif(1e4), 10)    # 10 x 1000
+> yr <- seq_len(nrow(my))
+> yc <- seq_len(ncol(my))
+> 
+> all.equal(
++   r2c_mat_mult(c(mx), c(my), xr, xc, yr, yc),
++   c(mx %*% my)
++ )
+[1] TRUE
+> all.equal(
++   r2c_mat_mult_rowsum(c(mx), c(my), xr, xc, yr, yc),
++   rowSums(mx %*% my)
++ )
+[1] TRUE
+> 
+> # Group exec version of the above
+> a <- group_exec(
++   r2c_mat_mult_rowsum, c(mx), rep(1:100, 100),
++   MoreArgs=list(c(my), yr, yr, yc, yr, TRUE)
++ )
+> b <- unlist(
++   lapply(
++     split(c(mx), rep(1:100, 100)),
++     mat_mult_rowsum,
++     c(my), yr, yr, yc, yr, TRUE
++ ) )
+> identical(unname(a), unname(b))
 [1] TRUE
 > 
 > 

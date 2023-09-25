@@ -125,10 +125,10 @@ mat_mult_rowsum <- function(A, B, rs.A, cs.A, rs.B, cs.B, sum=TRUE) {
 }
 r2c_mat_mult_rowsum <- r2cf(mat_mult_rowsum)
 
-mx <- matrix(runif(1e4), 1000)
+mx <- matrix(runif(1e4), 1000)  # 1000 x 10
 xr <- seq_len(nrow(mx))
 xc <- seq_len(ncol(mx))
-my <- matrix(runif(1e4), 10)
+my <- matrix(runif(1e4), 10)    # 10 x 1000
 yr <- seq_len(nrow(my))
 yc <- seq_len(ncol(my))
 
@@ -140,4 +140,17 @@ all.equal(
   r2c_mat_mult_rowsum(c(mx), c(my), xr, xc, yr, yc),
   rowSums(mx %*% my)
 )
+
+# Group exec version of the above
+a <- group_exec(
+  r2c_mat_mult_rowsum, c(mx), rep(1:100, 100),
+  MoreArgs=list(c(my), yr, yr, yc, yr, TRUE)
+)
+b <- unlist(
+  lapply(
+    split(c(mx), rep(1:100, 100)),
+    mat_mult_rowsum,
+    c(my), yr, yr, yc, yr, TRUE
+) )
+identical(unname(a), unname(b))
 
