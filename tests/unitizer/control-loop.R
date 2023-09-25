@@ -238,4 +238,14 @@ unitizer_sect('nested loop/branch', {
   (res.5d2 <- f5d(c(A), c(B), rs.A, cs.A, rs.B, cs.B, FALSE))
   identical(res.5d1, rowSums(A%*%B))
   identical(res.5d2, apply(A%*%B, 1, prod))
+
+  # Iteration variable inside if/else
+  call5e <- quote({
+    if(a) for(i in x) 1
+    else i <- 43
+    i
+  })
+  f5e <- r2cl(call5e)
+  f5e(TRUE, c(1, 42))
+  f5e(FALSE, c(1, 42))
 })
