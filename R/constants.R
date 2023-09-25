@@ -109,11 +109,11 @@ CTRL.MAIN <- BRANCH.EXEC.SYM
 
 REC.FUNS <- c('vcopy', 'rec')
 L.SET <- 'lset'
-L.REC <- 'lrec'
-LREC.FUNS <- c(L.SET, L.REC)
+L.COPY <- 'lcopy'
+L.COPY.FUNS <- c(L.SET, L.COPY)
 
 INTERNAL.FUNS <- c(
-  IF.SUB.SYM, BRANCH.START.SYM, BRANCH.EXEC.SYM, REC.FUNS, FOR.INIT, LREC.FUNS
+  IF.SUB.SYM, BRANCH.START.SYM, BRANCH.EXEC.SYM, REC.FUNS, FOR.INIT, L.COPY.FUNS
 )
 
 NUM.TYPES <- c('logical', 'integer', 'double')
@@ -131,7 +131,7 @@ PASSIVE.SYM <- unique(
     MODIFY.SYM, CTRL.SYM, "{", "uplus",
     CTRL.SUB.SYM, BRANCH.EXEC.SYM,
     'rec',         # vcopy not passive
-    L.SET,         # lrec (unlike rec) copies thus not included here
+    L.SET,         # lcopy (unlike rec) copies thus not included here
     FOR.INIT       # to allow assignments inside
   )
 )
@@ -192,7 +192,7 @@ FUN.NAMES <- c(
   "if"="if",
 
   for_init=FOR.INIT, for_iter=FOR.ITER, for_n=FOR.N, for_0=FOR.0,
-  r2c_for=R2C.FOR, "for"="for", lrec="lrec", lset="lset",
+  r2c_for=R2C.FOR, "for"="for", lcopy="lcopy", lset="lset",
 
   seq_along="seq_along",
 

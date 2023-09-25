@@ -126,7 +126,7 @@ code_gen_lset <- function(fun, pars, par.types) {
   code_res(defn=defn, name=name, out.ctrl=CGEN.OUT.NONE)
 }
 
-f_lrec <- '
+f_lcopy <- '
 // Copy loop value to a use before set variable so that the variable will be
 // updated before beginning each subsequent loop iteration.
 static void %s(%s) {
@@ -139,14 +139,14 @@ static void %s(%s) {
   memcpy(res, input, sizeof(*res) * len0);
 }'
 
-code_gen_lrec <- function(fun, pars, par.types) {
+code_gen_lcopy <- function(fun, pars, par.types) {
   vetr(
-    identical(., "lrec"),
+    identical(., "lcopy"),
     pars=list(NULL, NULL),
     par.types=character() && all(. %in% PAR.INT)
   )
   name <- FUN.NAMES[fun]
-  defn <- sprintf(f_lrec, name, toString(F.ARGS.BASE))
+  defn <- sprintf(f_lcopy, name, toString(F.ARGS.BASE))
   code_res(defn=defn, name=name)
 }
 
@@ -187,6 +187,6 @@ lset <- function(rec.i, x) x
 #' @rdname intermediate-representation
 #' @export
 
-lrec <- function(rec.i, x) x
+lcopy <- function(rec.i, x) x
 
 

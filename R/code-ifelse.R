@@ -113,7 +113,7 @@ code_gen_if <- function(...) {
 #' @keywords internal
 #' @rdname intermediate-representation
 #' @aliases r2c_if if_true if_false if_test r2c_for for_init for_iter for_n
-#'   for_0 vcopy rec lset lrec
+#'   for_0 vcopy rec lset lcopy
 
 r2c_if <- function(true, false) true
 

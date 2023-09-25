@@ -198,8 +198,8 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
   stack <- init_stack()
   stack.ext.any <- list()
   stack.sizes <- list()   # argument sizes (see size.R)
-  stack.lrec <-
-    matrix(integer(), nrow=2, dimnames=list(c('lrec', 'set'), NULL))
+  stack.lcopy <-
+    matrix(integer(), nrow=2, dimnames=list(c('lcopy', 'set'), NULL))
   call.dat <- list()
   branch.lvl <- 0L
   external.evals <- list()
@@ -459,7 +459,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
         if(length(x[['call']]) < i + 1L)
           stop("Internal Error: missing outer control after control components.")
         rcf.dat <- reconcile_control_flow(
-          alloc, call.dat, stack, stack.lrec=stack.lrec,
+          alloc, call.dat, stack, stack.lcopy=stack.lcopy,
           binding.stack=binding.stack, i.call=i,
           depth=depth, gmax=gmax, gmin=gmin, branch.lvl=branch.lvl,
           # send full control call for error message
@@ -468,7 +468,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
         alloc <- rcf.dat[['alloc']]
         call.dat <- rcf.dat[['call.dat']]
         stack <- rcf.dat[['stack']]
-        stack.lrec <- rcf.dat[['stack.lrec']]
+        stack.lcopy <- rcf.dat[['stack.lcopy']]
 
         binding.stack <- binding.stack[-length(binding.stack)]
         branch.start.stack <- branch.start.stack[-length(branch.start.stack)]
@@ -477,22 +477,22 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
         stack.env.ext.T <- tmp[['stack.env.ext.T']]
         stack.env.ext.F <- tmp[['stack.env.ext.F']]
       }
-      # Handle loop use-before-set reconciliations.  For each `lrec` call we
+      # Handle loop use-before-set reconciliations.  For each `lcopy` call we
       # need to find the target memory, and change whatever `lset` is pointing
       # to to be written there.  See `copy_fordat`.
       if(name == L.SET) {
-        stack.lrec <- lset_update(stack.lrec, alloc, call)
-      } else if (name == L.REC) {
+        stack.lcopy <- lset_update(stack.lcopy, alloc, call)
+      } else if (name == L.COPY) {
         # "Copy" the contents of the L.SET memory to the first use memory.  To
         # do this we edit the memory slots assigned to the call originally to
         # match up to the L.SET and L.USE memory.
-        lrec.id <- call[['rec.i']]
-        if(!lrec.id %in% stack.lrec['lrec',])
-          stop("Internal Error: lrec cannot find matching lset.")
+        lcopy.id <- call[['rec.i']]
+        if(!lcopy.id %in% stack.lcopy['lcopy',])
+          stop("Internal Error: lcopy cannot find matching lset.")
         tmp.ids <- call.dat[[length(call.dat)]][['ids']]
         # Copy from the set location to the use location; we kept a reference to
         # the use memory with the .R2C.FOR.SYM.N variable (position 2).
-        tmp.ids[2:3] <- c(stack.lrec['set', lrec.id], tmp.ids[2L])
+        tmp.ids[2:3] <- c(stack.lcopy['set', lcopy.id], tmp.ids[2L])
         # No need to update param `stack` b/c we're about to drop the slots we
         # manipulated at current depth
         call.dat[[length(call.dat)]][['ids']] <- tmp.ids
@@ -856,7 +856,7 @@ alloc_result <- function(alloc, vdat){
 #   "TRUE" branches.  See details.
 
 reconcile_control_flow <- function(
-  alloc, call.dat, stack, stack.lrec, binding.stack,
+  alloc, call.dat, stack, stack.lcopy, binding.stack,
   i.call, call, depth, gmax, gmin, branch.lvl
 ) {
   if(!length(binding.stack))
@@ -1017,7 +1017,7 @@ reconcile_control_flow <- function(
       alloc[['names']]['rec', names.target] <- branch.lvl - 1L
     }
     # Update the loop reconcilitation ids
-    stack.lrec['set', stack.lrec['set',] %in% c(id.rc.T[i], id.rc.F[i])] <-
+    stack.lcopy['set', stack.lcopy['set',] %in% c(id.rc.T[i], id.rc.F[i])] <-
       new.i
 
     # Finally update stack just in case
@@ -1033,7 +1033,7 @@ reconcile_control_flow <- function(
   hidden <- alloc[['names']]['br.hide', ] == branch.lvl
   alloc[['names']]['br.hide', hidden] <- branch.lvl - 1L
 
-  list(alloc=alloc, call.dat=call.dat, stack=stack, stack.lrec=stack.lrec)
+  list(alloc=alloc, call.dat=call.dat, stack=stack, stack.lcopy=stack.lcopy)
 }
 # Names Defined in Both Branches Copied over to Mutual Parent
 #
@@ -1384,22 +1384,22 @@ validate_ext <- function(x, i, par.type, arg.e, name, call, .CALL) {
   ) ) }
 }
 
-# Record in the lrec stack the memory slot associated with the set loop use
+# Record in the lcopy stack the memory slot associated with the set loop use
 # before set data.
 #
-# @param stack.rec an lrec stack
+# @param stack.rec an lcopy stack
 # @param alloc the allocation object
 # @param call an `lset` call
 # @param call.name to allow distinguishing which call it is w/o having to
 #   convert symbol again.
 
-lset_update <- function(stack.lrec, alloc, call) {
+lset_update <- function(stack.lcopy, alloc, call) {
   if(!is.integer(call[['rec.i']]))
     stop("Internal Error: bad lset call.")
-  lrec.id <- call[['rec.i']]
-  if(lrec.id %in% stack.lrec['lrec',])
-    stop("Internal Error: duplicate lrec id ", lrec.id)
+  lcopy.id <- call[['rec.i']]
+  if(lcopy.id %in% stack.lcopy['lcopy',])
+    stop("Internal Error: duplicate lcopy id ", lcopy.id)
 
-  cbind(stack.lrec, c(lrec=lrec.id, set=alloc[['i']]))
+  cbind(stack.lcopy, c(lcopy=lcopy.id, set=alloc[['i']]))
 }
 

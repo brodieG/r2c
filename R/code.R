@@ -537,9 +537,9 @@ VALID_FUNS <- c(
       res.type="preserve"
     ),
     cgen(
-      "lrec", fun=lrec,
+      "lcopy", fun=lcopy,
       type=list("arglen", "x"),
-      code.gen=code_gen_lrec,
+      code.gen=code_gen_lcopy,
       res.type="preserve"
     )
   )
