@@ -159,9 +159,12 @@ valid_length <- function(length) vet(NUM.1.POS, length)
 #'     the result size (e.g. `probs` for [`quantile`]), also allows specifying a
 #'     function at position 3 to e.g. pick which of multiple arguments matching
 #'     `...` to use for the length.
-#'   * vecrec, eqlen, concat, product, external: character(n) (or integer(n))
-#'     the names (or indices in the matched call) of the arguments to use to
-#'     compute result size.
+#'   * vecrec, eqlen, concat, product, external: character(n) the names  of the
+#'     arguments to use to compute result size.
+#'   * external: in addition to the above, at position 3 a function to resolve a
+#'     size from the values of the external parameters.  The function will be
+#'     passed the `alloc` list along with the indices of the inputs used by the
+#'     call in the r2c expression.
 #'
 #' @param code.gen a function that generates the C code corresponding to an R
 #'   function during the preprocessing steps.  Accepts as parameters:
@@ -369,6 +372,13 @@ VALID_FUNS <- c(
       "seq_along", defn=function(along.with) NULL,
       type=list("arglen", "along.with"), code.gen=code_gen_seq_along,
       res.type='preserve'
+    ),
+    cgen(
+      "seq_len", defn=function(length.out) NULL,
+      # Is length redundant? One is to classify, and to the other compute size.
+      type=list("extern", "length.out", numeric_size),
+      extern=list(length.out=ext_par("num", valid_length)),
+      code.gen=code_gen_seq_len, res.type="double"
     )
   ),
   # - Subset -----------------------------------------------------------------

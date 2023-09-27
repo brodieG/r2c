@@ -126,6 +126,8 @@ stack_param_missing <- function(params, stack.avail, call, .CALL) {
 #   details for why there may be more than one such vector.
 # @param size.args list of lists as described in `size.coef`, used to represent
 #   the set of inputs into a function.
+# @param ftype list corresponds to the `type` parameter for `cgen` (see docs for
+#   that in code.R).
 #
 # @return a list with members:
 #

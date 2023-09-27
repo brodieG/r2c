@@ -12,6 +12,8 @@
 
 ### v0.4.0
 
+* Clearly document `ftype[[3L]]` function format.
+
 * Why do we lose a local assignment from `data[[B.NAMED]]` from branch rec?  Not
   entirely.  Update: No idea what this was about.  Oh well.
 

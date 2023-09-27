@@ -194,7 +194,7 @@ FUN.NAMES <- c(
   for_init=FOR.INIT, for_iter=FOR.ITER, for_n=FOR.N, for_0=FOR.0,
   r2c_for=R2C.FOR, "for"="for", lcopy="lcopy", lset="lset",
 
-  seq_along="seq_along",
+  seq_along="seq_along", seq_len="seq_len",
 
   "["="subset",
   subassign="subassign",   # this is [<-
