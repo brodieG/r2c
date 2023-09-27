@@ -1,0 +1,102 @@
+# Sequences
+
+## Todo
+
+Implement the naive `seq_along`?
+
+## Support
+
+* `seq_along` is easy.
+
+These are trickier because we need to be able to know the size at alloc time:
+
+* `seq_len(x)`
+* `seq(x)`?
+* `seq(from, to, by)`
+* `from:to`
+
+So it can be done if inputs are group invariant.  Is that the only
+way?  Almost certainly.
+
+Is there any point in allowing creation of group-invariant sequences?  These
+could just be provided via a parameter, so it seems like not really.  Some
+advantages are:
+
+* Avoid coercion of sequence to numeric if it is big?
+* Allow use of ALTREPish.
+
+The result would be constant size.  We are currently setup to get the size of
+the inputs, so we can check they are all scalar, and we can cross reference to
+alloc to check that they are external and thus group invariant.
+
+    x[0] = 1;
+    x[1] = 2;
+    for (int i = 2; i < n; i++){
+      x[i] = x[i-2] + x[i-1];
+    }
+    x
+
+## Integer Output
+
+What should the output of `:` and `seq_along` be?  Numeric?  Do we want to force
+it back to integer?  We settled on double for the possibility of getting an
+input longer than `INT_MAX`, but is that reasonable?  Flipside is b/c the
+underlier is double anyway, it might not be worth it to try to keep the fiction
+going.
+
+## Subsetting
+
+Main use of sequences should be for subsetting and loops?
+
+    x[1:n] <- y
+
+Scalar index should be fast?  What does something like:
+
+     # cumsum
+     x[1] <- y[1]
+     for(i in seq_along(y)[-1])
+       x[i] <- y[i] + y[i - 1]
+
+Look like?  Do we even want to support it?  It would end up looking something
+like:
+
+    double * ii = data[i];
+    R_xlen_t imax = lens[?];
+
+    for(i = 0; i < imax; ++i) {
+      forassign(data, lens, di[?], i);
+      subset(data, lens, di[?])
+      minus(data, lens, di[?])
+      subset(data, lens, di[?])
+      subassign(data, lens, di[?])
+    }
+
+This is likely to be somewhat slow.
+
+Doesn't help that the index mismatch means we have to sub 1 from every index
+used.
+
+## ALTREPish?
+
+How do we handle the desire to e.g. in:
+
+    for(i in seq_along(x))
+
+Not to generate the sequence?
+
+    R_xlen_t lim = dat[?];
+    R_xlen_t inc = dat[?];
+    for(i = 0; i < dat[?]; i += inc) {
+
+    }
+
+How does this get shoe-horned in?  Probably the function generator can handle a
+lot of this, interrupting the recursion into the `seq` bit.  But what if instead
+it's:
+
+    y <- seq_along(x)
+    for(i in y)
+
+We could just say "whatevev's, you should have done it in the for loop".
+
+

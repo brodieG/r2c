@@ -17,24 +17,17 @@
 
 NULL
 
-#' Unary Operator Equivalent Functions
-#'
-#' Required so that the compiler internals can easily disambiguate unary
-#' plus/minus from the binary forms.  These should never be needed by the user,
-#' but they are generated in the compilation step so that the C counterparts can
-#' be used by `{r2c}`.
-#'
+#' @param e1 a logical or numeric vector
+#' @rdname intermediate-representation
 #' @export
-#' @param x a logical numeric vector
-#' @return `x` for `uplus` (possibly coerced to integer/numeric), `-x` for
-#'   `uminus`
 
-uplus <- function(x) x
+uplus <- function(e1) x
 
+#' @param e1 a logical or numeric vector
+#' @rdname intermediate-representation
 #' @export
-#' @rdname uplus
 
-uminus <- function(x) -x
+uminus <- function(e1) -x
 
 UOP.MAP <- c("-"="uminus", "+"="uplus")
 
@@ -42,7 +35,7 @@ UOP.MAP <- c("-"="uminus", "+"="uplus")
 unary_transform <- function(call) {
   name <- get_lang_name(call)
   if(name %in% c("+", "-") && length(call) == 2L) {
-    call[[1L]] <- call("::", quote(r2c), as.name(UOP.MAP[name]))
+    call[[1L]] <- pkg_fun(UOP.MAP[name])
     names(call) <- c("", "x")
   }
   call
@@ -67,12 +60,11 @@ static void %1$s(%2$s) {
 
   lens[dires] = len;
 }')
-code_gen_unary <- function(fun, args.reg, args.ctrl, args.flags) {
+code_gen_unary <- function(fun, pars, par.types) {
   vetr(
     CHR.1 && . %in% c("!", "uplus", "uminus"),
-    args.reg=list(NULL),
-    args.ctrl=list() && length(.) == 0L,
-    args.flags=list() && length(.) == 0L
+    pars=list(NULL),
+    par.types=character() && all(. %in% PAR.INT)
   )
   is.neg <- fun == "!"
   name <- FUN.NAMES[fun]

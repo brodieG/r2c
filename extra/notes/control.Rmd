@@ -1,5 +1,720 @@
 # Current
 
+Tracking free symbols in branches.
+
+  if(a) tmp <- b
+  else tmp <- vcopy(tmp)
+  tmp
+
+  if(a) tmp <- b
+  b
+
+# Use Before Set in Loops (self-assignment)
+
+**This affects all loop assignments, not just self assignments**
+
+Interesting problem with:
+
+    get_r_code(r2c.for <- r2cq({
+      res <- 0
+      # This is slow, use `sum(x)` instead...
+      for(i in seq_along(x)) res <- res + x[i]
+      res
+    }), raw=TRUE)
+    r2c.for(1:10)
+
+We have:
+
+     $ :List of 5
+      ..$ call         : language res <- 0
+      ..$ ids          : Named num [1:3] 4 5 5
+      ..$ call.i       : int 3
+
+But then:
+
+     $ :List of 5
+      ..$ call         : language res + x[i = i]
+      ..$ ids          : Named num [1:3] 5 13 19
+      ..$ call.i       : int 22
+
+    ...
+
+     $ :List of 5
+      ..$ call         : language res <- r2c::rec(x = res + x[i = i])
+      ..$ ids          : Named num [1:3] 12 19 19
+      ..$ call.i       : int 24
+
+The problem is we need `call.i == 22` to write to slot 5.  Our entire allocation
+mechanism doesn't work when we have this circular assignment (need to think
+through if self-subassignment is similar?).  Is there a solution to this?  Is
+the problem really just with loops?  Yes, most likely.  Might be related to the
+fact that there are some issues that it doesn't seem like reconciliation is
+happening correctly?  Not sure (probably a different issue):
+
+    if(for_init(data, lens, di[5])) {
+
+      // r2c::for_iter(var = i, seq = .R2C_for_seq_1, seq.i = .R2C_for_seqi_1)
+      while(for_iter(data, lens, di[6])) {
+
+        // x[i = i]
+        subset(data, lens, di[7]);
+        // res + x[i = i]
+        add(data, lens, di[8]);
+        // res <- r2c::rec(x = res + x[i = i])
+        // NOOP: assign(data, lens, di[10]);
+
+      } } else {
+
+        // r2c::vcopy(x = res)
+        vcopy(data, lens, di[12]);
+        // res <- r2c::rec(x = r2c::vcopy(x = res))
+        // NOOP: assign(data, lens, di[14]);
+        // numeric(length = 0)
+        numeric(data, lens, di[15]);
+
+      }
+    }
+
+Here the two branches of the for loop don't write the result to the same
+location (nor do the assignments?).
+
+So within loops we need assignments to write to the existing memory location, so
+there is the additional constraint that a symbol can't be changed in size?  More
+specifically we need to reconcile the first and last assignments to a symbol.
+
+Unlike typical reconciliation this affects all symbols.  So for each loop, we
+need to:
+
+* Track the first and last assignment to each symbol.  Actually, not that
+  simple, we need:
+  * For each symbol written to in a loop, find the last time it's written.
+  * Find the first time that symbol is read from in the loop.
+* On loop exit (`for_n` only):
+  * Check that the two pairwise allocations from above are equal size.
+  * Reconcile them into a common allocation.
+
+What if the second assignment is loop-external?
+
+    y <- 1
+    w <- 2          // and what if this is fully external
+    for(i in x) {
+      z <- y + x
+      y <- w
+    }
+
+Should become:
+
+    y <- vcopy(1)   // mem 1
+    w <- vcopy(2)   // mem 2
+    for(i in x) {
+      z <- y + x
+      y <- w        // Redirect
+    }
+
+    y <- vcopy(1)   // mem 1
+    w <- vcopy(2)   // mem 2
+    for(i in x) {
+      z <- y + x
+      y <- w + 1    // Redirect
+    }
+
+    y <- vcopy(1)   // mem 1
+    for(i in x) {
+      z <- y + x
+      y <- vcopy(w) // Redirect vcopy.
+    }
+
+It becomes obvious the redirect can only happen after the first iteration.  So
+do we need a `for_1`?  Urgh.  Alternative is to require a vcopy every iteration.
+That's probably okay, especially that's only needed for loop-external stuff.  So
+we can do a different `copy_branchdat` that's easier because all we need to do
+is track what symbols are used in a loop and find if they are assigned to in
+that loop (or any child loop).
+
+During alloc we need to record the memory location of whatever is associated
+with the symbol, and the new expression (guaranteed to be loop local from
+preproc addition of vcopy) can be redirected to that when it's found.  The
+challenge is finding which is the last expression in the loop.  Probably what we
+do is during preproc we do `loop_rec(vcopy(...))` and during alloc we remove
+that?  That's not great b/c then we're messing with the `call.dat` list which
+might break stuff.  The alternative is to use meta data in `call.dat`; yes,
+let's do that (no that doesn't work, instead just have a no-op `loop_rec`).
+
+Watch out for stuff like:
+
+    for(i in x) {
+      y <- w
+      v <- u
+      # z <- u * w
+      u <- w <- i + v  // also watch out for `i`
+    }
+
+Is this actually a problem?  Do we need:
+
+    u <- mean(x)     // u is internal
+    w <- vcopy(w)    // if external, add this; could hoist all the way out if
+                     // branch locality doesn't matter.
+    for(i in x) {
+      y <- loop_target(w, 1)
+      v <- loop_target(u, 2)
+      # We can only redirect to one location, so if we do this we need a vcopy
+      # for the outer assignment.  This is because the pre loop values are in
+      # different locations.
+      u <- loop_rec(vcopy(w <- loop_rec(i + v, <target>), <target>)
+    }
+
+In preproc_copy (do before `copy_branchdat`):
+
+* Track loop coordinate in a stack so we know where to inject any external
+  vcopies we need.
+* Track first:
+  * Assign of every symbol in a loop; just the name.
+  * Use of every symbol in a loop not already in the first assign vector, with
+    loop nesting level and tree coordinates of use.
+* For each assignment to a symbol already in the first use array at current or
+  lesser level, record tree-coordinate of assignment expression attached to the
+  first use tracking list?  If one already exists, overwrite.
+* On loop exit, for each recorded assignment that points to a loop internal
+  memory (how do we know it's loop internal? - might need to track `call.dat`
+  index of each allocation):
+  * Inject a self-`vcopy` before the beginning of the loop:
+    * Always, we only record non-loop locals so this has to be loop external.
+    * Should also include an artificial `.R2C_FOR_SYM_N` reference to ensure
+      this memory is not released/reused in the loop.
+  * Add an `luse(..., N)` to the first use symbol.
+  * Add an `lset(..., N)` to the last assign expression; this probably needs to
+    add a `.R2C_FOR_SYM_N_2` assignment or some such to ensure `...` is not
+    overwritten by a later expression.
+  * Add a `lvcopy(.R2C_FOR_SYM_N, N)`, the symbol reference
+    prevents freeing of the memory from our initial self-`vcopy`.  This needs to
+    be done at the very end of the loop because the symbol we are going to
+    overwrite might have other references used after the last assign.
+  * We could just use `.R2C_FOR_SYM_N` as the reference throughout, but that
+    means conversions to/from symbol throughout.
+  * Add a `numeric(0)` at the end of the loop.  This could / should be part of
+    the loop function itself?
+
+In `pp_internal`: Nothing?
+
+In `alloc`:
+
+* When hit a `luse`, record the loop target id as well as the memory
+  index assigned to it.
+* Make sure that `reconcile_control_flow` isn't touching any memory indices in
+  the loop target list.  This would happen if we exit a branch that included the
+  target before we hit the last assign, which I think can't happen because the
+  last assign can't be at a branch/loop level below the first use.
+* When hit a `lset` look up the matching loop target and:
+  * Check that both the size is the same; not sure that `asize` matters because
+    the only thing we're going to be copying is the last-write expression.
+* When we hit `lvcopy`, go back and copy the `lset` expression to the
+  matching `luse`.  For this to work we need to make sure the slot the `lset`
+  expression was written to was not freed (and thus possibly overwritten).
+  Should we just suspend all freeing while in loops?  Maybe that's simpler than
+  trying to preserve the symbols.  But it seems riskier in that it's not
+  entirely clear what it will do to free/update/bind.  Main issue with this is
+  we could have the same name existing more than once in the names data, which
+  seems problematic.  So I think we need the new symbol to protect the memory.
+
+
+Feels like there is a way to break this:
+
+    b <- vcopy(b)      // #2 <- b
+    z <- b             // #2 <- z   -- NOT okay
+    for(i in x) {
+      a <- luse(b, 1)  // #2 <- a?
+      e <- b           // #2 <- e   -- NOT okay b/c used after lset
+      b <- mean(y)     // #3 <- b
+      d <- vcopy(c)    // #4 <- d
+      b <- lset(d, 1)
+      f <- e + 1       // #5 <- f   -- using an alias of `b`!
+    }
+
+It does feel something goes wonky here.  If we change `d` to write to #2, it
+will overwrite whatever `z` is referencing.  So we need to make a new copy of
+`b`.
+
+Seems like we need to add a commands at the very end of each loop that copy the
+values of the new assignment to the location of the old variable at the end of
+the loop.  This will interfere with loop return value unless we also force loop
+return value to be `numeric(0)`, which we should do anyway.
+
+Also loop variables used before write need to be `vcopy'ed` prior to loop entry
+as well.  With a simplified loop:
+
+    b <- x + y         // #2 <- b
+    z <- b             // #2 <- z   -- NOT okay
+    for(i in x) {
+      a <- b           // #2 <- a?
+      e <- b           // #2 <- e   -- NOT okay b/c used after lset
+      d <- vcopy(c)    // #4 <- d
+      b <- d
+      f <- e + 1       // #5 <- f
+    }
+
+Produces something like:
+
+    b <- x + y         // #2 <- b
+    z <- b             // #2 <- z
+    b <- vcopy(b)      // #3 <- b
+    for(i in x) {
+      a <- luse(b, 1)  // #3 <- a?
+      e <- b           // #3 <- e   -- NOT okay b/c used after lset
+      d <- vcopy(c)    // #4 <- d
+      b <- lset(d, 1)
+      f <- e + 1       // #5 <- f
+      copy_in_place(1) // copies contents of `d` to memory of `b`
+    }
+
+Loops don't release symbols until the end of the loop, but what about explicit
+re-assignment?
+
+    for(i in x) {
+      a <- luse(b, 1)  // #3 <- a?
+      c <- a + 1
+      a <- mean(x)     // memory of `luse(b, 1)` potentially released?
+      b <- x + y       // above memory used?
+
+      // Or are we always safe because we only ever use `luse` on a symbol
+
+      e <- a
+      a <- mean(x)     // this releases a? (name yes, but memory held by e)
+      b <- lset(d + 1, 1)       // this could write to old a memory?
+      f <- e + 1       // #5 <- f
+      copy_in_place(1) // copies contents of `d` to memory of `b`
+    }
+
+So as we process in alloc, need to make sure the memory associated with `b` is
+not released.  We can do that by binding a special symbol in the initial vcopy,
+and somehow including that symbol in the loop body:
+
+    b <- .R2C_FOR_SYM_1 <- vcopy(b)
+    for(i in x) {
+      ...
+      a <- luse(b, .R2C_FOR_SYM_1)
+      ...
+      b <- lset(d + 1, .R2C_FOR_SYM_1)
+      ...
+      copy_mem(.R2C_FOR_SYM_1)
+    }
+
+What if?
+
+    b <- .R2C_FOR_SYM_1 <- vcopy(b)
+    for(i in x) {
+      ...
+      a <- e <- luse(b, .R2C_FOR_SYM_1)
+      ...
+      b <- lset(d + 1, .R2C_FOR_SYM_1)
+      ...
+      copy_mem(.R2C_FOR_SYM_1)
+    }
+
+This seems okay.  `e` also should be updated same way.
+
+    b <- .R2C_FOR_SYM_1 <- vcopy(b)
+    for(i in x) {
+      ...
+      a <- e <- luse(b, .R2C_FOR_SYM_1)
+      c <- f
+      ...
+      b <- f <- lset(d + 1, .R2C_FOR_SYM_1)
+      ...
+      lrec(.R2C_FOR_SYM_1)
+    }
+
+We will need to modify `copy_branch_dat` so that `luse` and `lset`
+don't interfere with assignment chains.  It might be okay so long as we are only
+using those on leaves as seems likely to be the case.  Testing of combined
+loop/branch reconcile will be important.
+
+What happens if `last.assign` is something annoying like:
+
+    for(i in ...) {
+      b <- a + 1
+      ...
+      if(x) {
+        a <- mean(x)
+      } else {
+        a <- mean(y)
+      }
+    }
+
+This creates several annoying interactions:
+
+* The use of `a` happens before the branch!  But that's okay because we're going
+  to inject a use just before the end of the branch (otherwise we wouldn't
+  trigger the `copy_branchdat` candidate logic).
+
+    a <- vcopy(a)    // what if this doesn't exist yet?
+    for(i in ...) {
+      ...
+      if(x) {
+        # fine and dandy
+        a <- rec(mean(y))
+        b <- a + 1
+      } else {
+        # use before set!
+        b <- luse(a) + 1
+        a <- rec(lset(mean(x)))
+      }
+    }
+    a
+
+If we're not careful here we don't recognize that the second case is independent
+of the first.  We could branch the two and treat them independently, but then we
+have to reconcile across branches.  There are all permutations of needing to do
+something and not.  Including the possibility that we need to copy at end of
+loop into a branch reconciled memory location.  This seems possibly bad.  Might
+be okay.  We can try it and if it doesn't work we'll kill loops.  In this case
+we want the `if` reconciliation to happen first, that way when we get to the
+`for` reconciliation we'll update the `a` binding in both `if` branches
+even though the `lset` is only in the second branch.  It probably doesn't matter
+that we do the `copy_fordat` before `copy_branchdat` for the same reason; last
+assign could be in TRUE branch, but due to branch rec both branches will use the
+same memory for the target of the binding after branch rec.
+
+Might be a bit tricky to have a `brec` (branch rec) see through an `lset`?
+
+Can branches and loop be merged in the same logic?  Not quite the same though.
+For loops we ensure we have a fresh allocation for a symbol and redirect, but
+for branches instead we always create a new allocation.
+
+The last assign list affects all prior loops.  So ideally it would be some
+structure that for any given `llvl`, allows us to query all `llvl` at or greater
+than the current `llvl`.
+
+Do we need to `vcopy` an external symbol used by `luse`?  And how does that
+interact with
+
+Need to think really carefully about passive nature of luse/lset and if/else
+branch logic.  Seems like we have it working by making them both passive and
+leaves.
+
+# Loops and Nested Branches
+
+One potential issue is that we end up with a potential vcopy reconciliation
+needing to happen inside a for loop.
+
+# Loop Performance
+
+Pretty terrible.  With the convolution example:
+
+    f1a <- function(a, b, c) {
+      ab <- numeric(c)
+      for(i in seq_along(a)) {
+        for(j in seq_along(b)) {
+          ab[i + j - 1] <- ab[i + j - 1] + a[i] * b[j]
+        }
+      }
+      ab
+    }
+    r2c_f1a <- r2cf(f1a, dir=".")
+    ## Warning message:
+    ## In dir.create(dir) : './.' already exists
+    a <- runif(10000)
+    b <- runif(10000)
+    system.time(res0 <- r2c_f1a(a, b, length(a) + length(b) - 1))
+    ##   user  system elapsed 
+    ##  4.300   0.035   4.471 
+    system.time(res1 <- r2c:::convolve(a, b))
+    ##   user  system elapsed 
+    ##  0.036   0.000   0.038 
+    system.time(res2 <- f1a(a, b, length(a) + length(b) - 1))
+    ##   user  system elapsed 
+    ## 12.782   0.106  13.419 
+    identical(res0, res1)
+    ## [1] TRUE
+    identical(res0, res2)
+    ## [1] TRUE
+
+    enableJIT(0)
+    ... rebuild f1a ...
+    system.time(res2 <- f1a(a, b, length(a) + length(b) - 1))
+    ##    user  system elapsed 
+    ## 167.941   2.021 178.702 
+
+3x faster than R with compilation, but 100 times slower than the straight up C
+code.  Nothing seems too weird from examining the profiler data:
+
+    5.34 s      96.4%	325.00 ms        run
+    1.26 s      22.7%	1.26 s           add
+    902.00 ms   16.2%	902.00 ms        subtract
+    791.00 ms   14.2%	791.00 ms        subset
+    766.00 ms   13.8%	766.00 ms        subassign
+    355.00 ms    6.4%	355.00 ms        subset
+    309.00 ms    5.5%	309.00 ms        multiply
+    253.00 ms    4.5%	253.00 ms        subset
+    238.00 ms    4.2%	238.00 ms        for_iter
+    143.00 ms    2.5%	143.00 ms        seq_along
+    7.00 ms      0.1%	0 s              <Unknown Address>
+    6.00 ms      0.1%	6.00 ms          add
+    1.00 ms      0.0%	1.00 ms          subtract
+
+Issue is probably each of the above has it's own call/loop overhead, where the
+pure C version just has (tight part of the loop):
+
+    ;     for(int j = 1; j <= nb; j++) xab[i + j - 2] += xa[i - 1] * xb[j -1];
+         210: 66 0f 10 0c f3                movupd  (%rbx,%rsi,8), %xmm1
+         215: 66 0f 10 54 f3 10             movupd  16(%rbx,%rsi,8), %xmm2
+         21b: 48 89 cf                      movq    %rcx, %rdi
+         21e: 48 c1 ff 1d                   sarq    $29, %rdi
+         222: 66 41 0f 10 1c 3f             movupd  (%r15,%rdi), %xmm3
+         228: 66 41 0f 10 64 3f 10          movupd  16(%r15,%rdi), %xmm4
+         22f: 66 0f 59 c8                   mulpd   %xmm0, %xmm1
+         233: 66 0f 58 cb                   addpd   %xmm3, %xmm1
+         237: 66 0f 59 d0                   mulpd   %xmm0, %xmm2
+         23b: 66 0f 58 d4                   addpd   %xmm4, %xmm2
+         23f: 66 41 0f 11 0c 3f             movupd  %xmm1, (%r15,%rdi)
+         245: 66 41 0f 11 54 3f 10          movupd  %xmm2, 16(%r15,%rdi)
+         24c: 48 83 c6 04                   addq    $4, %rsi
+         250: 4c 01 e1                      addq    %r12, %rcx
+         253: 48 39 f0                      cmpq    %rsi, %rax
+         256: 75 b8                         jne     0x210 <_R2C_convolve+0x210>
+
+We can try to special case the length 1 scenario?
+
+# Loop Decomposition
+
+    for(i in seq_long(x)) {
+      y[i] <- x[i]
+      y
+    }
+
+Should become:
+
+    for_init(i_exp)
+    r2c_for(for_n(n_exp), for_zero(x_exp))
+
+Which in C land becomes
+
+    if(for_init()) {
+      while(for_inc(data, lens, di[1])) {
+        ...
+      }
+    } else {
+      ...
+    }
+
+So the calls we see are going to be:
+
+    i_exp       >
+    for_init()  >  if(for_init(...)) while(for_inc(...)) {
+    n_exp       >
+    for_n()     >  } else {
+    z_exp       >
+    for_zero()  >  }
+    r2c_for()   >
+
+Can we have a single function generate two function calls?  No, that's really
+not going to work, we need something like:
+
+    i_exp       >
+    for_init()  >  if(for_init(...))  {  // compute vector
+    for_inc()   >    while(for_inc(...)) {
+    n_exp       >
+    for_n()     >  } } else {  // not great, but otherwise alignment breaks
+    z_exp       >
+    for_zero()  >  }
+    r2c_for()   >
+
+`for_init` checks the length of the iteration vector.  I can't think of an
+obvious way to get around the extra layers.
+
+    i.exp
+    for_inc(i.exp, i, i.val)
+
+    r2c_for(
+      for_n({
+        v <- x[i]
+        ...
+        i <- i + 1L   // but this overwrites existing i
+      }),
+      for_0({
+        ...
+      })
+    )
+
+There is a hidden vector.  We need hidden loop counters.  That can't be modified
+by a sub-assign.  So then:
+
+    .R2C_for_i_0 <- vcopy(i.exp)
+
+Do we always copy `i.exp`, or only if it is a symbol and modified.  This means
+we need a new place to trigger vcopy.
+
+    for(i in i.exp) {
+      y <- z[i]^2
+      x[i] <- y
+    }
+
+Needs to become:
+
+    for_init_vec(.R2C_for_v_0 <- vcopy(i.exp))
+    for_begin()
+    x <- vcopy(x)  // so i.exp doesn't intefere if we were to allow sideffects
+    for_init_i(.R2C_for_i_0 <- 0)
+    r2c_for(
+      for_n(
+        {
+          .R2C_for_i_0 <- .R2C_for_i_0 + 1
+          i <- .R2C_for_v_0[.R2C_for_i_0]
+          y <- z[i]^2
+          x[i] <- y
+        },
+        length(.R2C_for_v_0)
+      ),
+      for_0({
+        ...
+      })
+    )
+
+In C:
+
+    .R2C_for_v_0 <- vcopy(i.exp) |
+    for_init_vec(...)            |
+    x <- vcopy(x)                |
+    for_begin()                  | if(for_init_v(data, lens, di[1])) {
+    .R2C_for_i_0 <- 0            |    <.R2C_for_i_0 <- 0>
+    for_inc_i()                  |    while(for_inc_i(data, lens, di[3])) {
+                                 |      <for_n_exp>
+                                 | } } else {
+                                 |  <for_0_exp>
+                                 | }
+
+    for_init(.R2C_for_seq_0 <- modify_candidate(i.exp), .R2C_for_seqi_0 <- 0)
+    for_iter(i.var, .R2C_for_v_0, .R2C_for_i_0 <- 0)
+    r2c_for(
+      for_n({
+        y <- z[i]^2
+        x[i] <- y
+      }),
+      for_0({
+        ...
+      })
+    )
+
+Issues to resolve:
+
+* Preprocess into above.
+  * Figure out how we'll set the target for `x <- vcopy(x)`.
+* Figure out the corresponding C code?
+
+Major issue is placing the vcopy in the right spot.  We might need to generate a
+placeholder so that any sub-assign vcopies go therein.  What about vcopies from
+nested if/else statements?  Presumably those need to stay inside the `if/else`.
+What about nested for loops?  These can probably seek to find the outermost
+`for`.  We only every need to copy these once.  In fact, we can just put them at
+the very beginning of the code and it should be fine.  What about interaction
+with the iterator expression?  That's probably fine; we just need to make sure
+that the vector is not external.  We don't care if the iterator modifies it.
+
+Do we convert into a subset
+
+So different for the simple branch because we need the `for_inc` to iterate the
+values.  What does `for_inc` do?  Could it accept a counter variable directly
+from C?  It would be convenient.  The alternative would be to have an explicit
+increment of a pointer to a vector, but that gets kind of wacky b/c we don't do
+that anywhere else (we'd have a scalar aliased as some offset into a vector).
+
+The most natural thing would be to have a `for_inc` function that copies from
+the looped vector into the counter variable.  That is annoyingly inefficient but
+maybe something we accept for now given that the whole loop implementation is
+not going to be particularly efficient.
+
+simple test:
+
+```
+f <- r2cq({
+  for(i in seq_along(x)) {
+    x[i] <- x[i] + i
+  }
+  x
+})
+```
+
+
+# Loop in relation to if
+
+Same concept of prelude/epilogue.  Same concept of an empty else branch to
+handle the allocation.  Main difference is going to be that the prelude needs to
+update the `i` variable somehow, and reset all the offsets.
+
+Also, unlike in `if` where we evaluate the condition as a stand-alone statement,
+we probably don't want to do that with a `for` loop (what about a while loop?).
+The "probably don't want" to is in consideration of the possibility of a smarter
+way of generating the sequence (or maybe we start looking into altrep?).
+
+Separately, does it matter if there are break/continues in the loop?  I guess we
+disallowed them for expression re-use optimization?
+
+One meaningful issue is that if we do have symbols written to in the loop that
+are used after we'll automatically end up with a vcopy that happens every
+iteration.  In practice it shouldn't matter too much because that vcopy is only
+needed if we don't use a computing expression, which if we don't that assignment
+shouldn't be in the loop in the first place.
+
+# Loop implementation
+
+Loop variables can be created in a child frame to the data.
+
+Each loop body will generate a `run` statement, e.g.:
+
+```
+run(...) {
+
+}
+run_loop_1(...) {
+  for(intmax_t i = 0; i < len; ++i) {
+    run(...);
+  }
+}
+run_loop_0(...) {
+  for(intmax_t i = 0; i < len; ++i) {
+    statement_0(...);
+    statement_1(...);
+    run_loop_1(...);
+  }
+}
+```
+
+Probably want two types of loops, loops where we know the start and end as
+constants or other derivable data (`seq_along`), and others where we have an
+unknown vector?  Might not be able to allow the second type, because at that
+point we can't know how large a vector that is assigned to with e.g. `x[i] <- y`
+will get.
+
+```
+for(i in seq_along(x))
+  y[i] <- x[i] + 1
+```
+
+Is the latter:
+
+```
+for(i in x)
+  y[i] <- z[i] + 1
+```
+
+At the allocation stage we need to determine the size of `y`.  It's fine if
+we're just referring to an external symbol (or even a group symbol) as we can
+check the content sizes.  But things like:
+
+```
+for(i in rev(x))
+```
+
+Get messier.  Likely we just allow symbols, or `seq_along`, or constant
+expressions like `a:b` where `a` and `b` are known at allocation time (changing
+them inside loop is fine since):
+
+> The seq in a for loop is evaluated at the start of the loop; changing it
+> subsequently does not affect the loop.
+
+But they can't be computed within the `r2c` code.
+
+# Sizing
+
 Is there a problem with situations like `a + b` where `length(a)` is NA (group
 size) and `length(b)` is either larger than any group, or larger than some
 groups?  Specifically, how do we deal with:
@@ -83,7 +798,6 @@ equal (size group)?
 * 0, 1   vs   NA, 1  Can't be equal unless gma
 
 Basically vecrec with a known element sets a minimum size?
-
 
 # Names in Branches
 
@@ -1323,20 +2037,6 @@ But then there are things like:
 
 
 
-# Loop in relation to if
-
-Same concept of prelude/epilogue.  Same concept of an empty else branch to
-handle the allocation.  Main difference is going to be that the prelude needs to
-update the `i` variable somehow, and reset all the offsets.
-
-Also, unlike in `if` where we evaluate the condition as a stand-alone statement,
-we probably don't want to do that with a `for` loop (what about a while loop?).
-The "probably don't want" to is in consideration of the possibility of a smarter
-way of generating the sequence (or maybe we start looking into altrep?).
-
-Separately, does it matter if there are break/continues in the loop?  I guess we
-disallowed them for expression re-use?
-
 # Interesting Example
 
 Pretty challenging dealing with loops.
@@ -1353,63 +2053,4 @@ hope for is consistent size every iteration including the first.  This should
 handle the case where the loop doesn't even run.
 
 What about variables created in loops that are not taken?
-
-# Loop implementation
-
-Loop variables can be created in a child frame to the data.
-
-Each loop body will generate a `run` statement, e.g.:
-
-```
-run(...) {
-
-}
-run_loop_1(...) {
-  for(intmax_t i = 0; i < len; ++i) {
-    run(...);
-  }
-}
-run_loop_0(...) {
-  for(intmax_t i = 0; i < len; ++i) {
-    statement_0(...);
-    statement_1(...);
-    run_loop_1(...);
-  }
-}
-```
-
-Probably want two types of loops, loops where we know the start and end as
-constants or other derivable data (`seq_along`), and others where we have an
-unknown vector?  Might not be able to allow the second type, because at that
-point we can't know how large a vector that is assigned to with e.g. `x[i] <- y`
-will get.
-
-```
-for(i in seq_along(x))
-  y[i] <- x[i] + 1
-```
-
-Is the latter:
-
-```
-for(i in x)
-  y[i] <- z[i] + 1
-```
-
-At the allocation stage we need to determine the size of `y`.  It's fine if
-we're just referring to an external symbol (or even a group symbol) as we can
-check the content sizes.  But things like:
-
-```
-for(i in rev(x))
-```
-
-Get messier.  Likely we just allow symbols, or `seq_along`, or constant
-expressions like `a:b` where `a` and `b` are known at allocation time (changing
-them inside loop is fine since):
-
-> The seq in a for loop is evaluated at the start of the loop; changing it
-> subsequently does not affect the loop.
-
-But they can't be computed within the `r2c` code.
 

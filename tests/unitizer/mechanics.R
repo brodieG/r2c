@@ -128,10 +128,6 @@ unitizer_sect("brackets/assign", {
   # But double assignment okay
   r2cq(z <- y <- x)(42)
 
-  # Empty braces disallowed
-  r2cq({})
-  r2cq({a;{}})
-
   # Sym return does not need copy if computed
   sym_return <- r2cq({a <- x + y; a})
   get_r_code(sym_return)

@@ -23,20 +23,21 @@ NULL
 f_summary_base <- '
 static void %%s(%%s) {
   int di0 = di[0];
-  int di1 = di[1];
+  int di_na = di[1];
+  int di_res = di[2];
 
   R_xlen_t len_n = lens[di0];
   %sdouble * dat = data[di0];
-  int narm = flag;  // only one possible flag parameter
+  int narm = (int) *data[di_na];  // checked to be 0 or 1 by valid_narm
 
 %s%s
 
-  *data[di1] = (double) tmp;
-  lens[di1] = 1;
+  *data[di_res] = (double) tmp;
+  lens[di_res] = 1;
 }'
 loop.base <- '
 long double tmp = 0;
-R_xlen_t i;
+R_xlen_t i = 0;
 if(!narm) LOOP_W_INTERRUPT1(len_n, tmp += dat[i];);
 else LOOP_W_INTERRUPT1(len_n, {if(!ISNAN(dat[i])) tmp += dat[i];%s});
 '
@@ -58,9 +59,9 @@ f_mean1 <- sprintf(
 f_sum_1 <- sprintf(f_summary_base, "", make_loop_base(count.na=FALSE), "")
 f_sum_n_base <- '
 static void %%s(%%s) {
-  int narm = flag;  // only one possible flag parameter
+  int narm = (int) *data[di[narg - 1]];  // checked to be 0 or 1 by valid_narm
 %s
-  for(int arg = 0; arg < narg; ++arg) {
+  for(int arg = 0; arg < narg - 1; ++arg) {
     int din = di[arg];
     R_xlen_t len_n = lens[din];
     double * dat = data[din];
@@ -138,44 +139,29 @@ f_summary <- list(
   all_n=f_all_n,
   any_n=f_any_n
 )
-code_gen_summary <- function(fun, args.reg, args.ctrl, args.flag) {
+code_gen_summary <- function(fun, pars, par.types) {
   vetr(
     CHR.1 && . %in% names(f_summary),
-    args.reg=list(),
-    args.ctrl=list(),
-    args.flag=list()
+    pars=list(),
+    par.types=
+      character() && length(.) == length(pars) &&
+      all(. %in% PAR.TYPES)
   )
+  pars.int <- pars[par.types %in% PAR.INT]
+
   multi <-
-    length(args.reg) > 1L ||
-    (length(args.reg) == 1L && identical(args.reg[[1L]], quote(.R2C.DOTS)))
+    length(pars.int) > 1L ||
+    (length(pars.int) == 1L && identical(pars.int[[1L]], quote(.R2C.DOTS)))
   name <- paste0(FUN.NAMES[fun], if(multi) "_n")
   code_res(
     defn=sprintf(
       f_summary[[name]], name,
-      toString(c(F.ARGS.BASE, if(multi) F.ARGS.VAR, F.ARGS.FLAG))
+      toString(c(F.ARGS.BASE, if(multi) F.ARGS.VAR))
     ),
-    name=name, narg=multi, flag=TRUE, headers="<math.h>",
+    name=name, narg=multi, headers="<math.h>",
+    ext.any=FALSE,
     defines=if(name %in% names(SUM.DEFN)) SUM.DEFN[name]
   )
-}
-## @param x a list of the matched parameters for the call `call`
-## @call the unmatched (sub)call as provided by the user
-
-ctrl_val_summary <- function(ctrl, flag, call) {
-  # for mean.default
-  trim <- ctrl[['trim']]
-  if(!isTRUE(trim.test <- vet(NULL || identical(., 0), trim)))
-    stop(
-      paste0(
-        c("`trim` must be set to default value (", trim.test, ")"),
-        collapse="\n"
-    ) )
-
-  na.rm <- flag[['na.rm']]
-  if(!isTRUE(na.test <- vet(LGL.1, na.rm)))
-    stop(na.test, " in `", deparse1(call), "`.")
-
-  if(flag[['na.rm']]) 1L else 0L # avoid bizarre cases of TRUE != 1L
 }
 #' Single Pass Mean Calculation
 #'
@@ -208,12 +194,11 @@ static void %s(%s) {
   *data[di[1]] = (double) lens[di[0]];
   lens[di[1]] = 1;
 }'
-code_gen_length <- function(fun, args.reg, args.ctrl, args.flags) {
+code_gen_length <- function(fun, pars, par.types) {
   vetr(
     identical(., "length"),
-    args.reg=list(NULL),
-    args.ctrl=list() && length(.) == 0L,
-    args.flags=list() && length(.) == 0L
+    pars=list(NULL),
+    par.types=character() && all(. %in% PAR.INT)
   )
   name <- FUN.NAMES[fun]
   defn <- sprintf(f_length, name, toString(F.ARGS.BASE))

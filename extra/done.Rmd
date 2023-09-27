@@ -12,6 +12,280 @@
 
 ### v0.4.0
 
+* Why do we lose a local assignment from `data[[B.NAMED]]` from branch rec?  Not
+  entirely.  Update: No idea what this was about.  Oh well.
+
+* Rename `rec` `brec` to distinguish more clearly from `lrec`?
+  Should `lrec` be `lcopy` since it actually copies more so than reconciles?  In
+  fact there is no loop reconciliation per se, just a runtime directive to copy.
+  We renamed `lrec` to `bcopy`.
+
+
+* Make sure that the result slot is compatible with the `asize`.  When we remap
+  an allocation to the result, it can only be the instance that will be written
+  to the result itself.  This is particularly the case if intermediate results
+  use that slot.
+* Make sure that when we reconcile sizes we account for the size of the
+  allocation, not just the size of the objects being reconciled.  Otherwise when
+  we repoint everything some of the interim stuff might not fit anymore.  This
+  probably hasn't been an issue so far because we cause all reconciliation to be
+  branch-local memory allocations, but I think the problem can still happen.
+  The size should be max of existing asize and what we need, in addition to
+  ensuring that the two objects being reconciled have the same size expression.
+  **UPDATE**: maybe this doesn't matter so long as when we reconcile, we
+  generate an entirely new allocation that isn't shared with anything else?
+  Confirm it is actually entirely new and not a potential re-use of a freed one!
+* It could matter given we could use branch-local allocations.  So instead we
+  just disallow re-use for reconciled values and so on.
+
+* Big `group_exec` involving branches.
+
+* Loops with no iterations (definitely tested).
+
+* Are we robust to zero result sizes?  Particularly when not all results are
+  size zero.  Is it possible to have varying number of zero length results
+  (probably not)?  We seem to be.
+
+* Recompose control for for loops.
+
+* What happens if we try to return/reconcile the iteration variable (`i` in
+  `for(i in ...)`?  Either from the loop, or the loop nested inside an if/else.
+  This works, but highlighted that we need to vcopy literals too.
+
+* Why do we not need to worry about sub-assign in loops?  Is it because we
+  already directly modify in memory, and we don't allow use of return value?
+* What happens when we subassign in a branch?  This should be handled?  It seems
+  like it doesn't matter because we are not changing the size of the variable so
+  subsequent code is unaffected.
+
+* Not clear that constants are being handled properly (e.g. need to `en_vcopy`
+  the constant in `transform_control` for `for_init`).
+
+* Need to make sure that alloc doesn't release `for` bindings until end of loop.
+  We do check for it by getting all the symbols in a `for` call in the
+  linearized call list (which will be after all the loop calls), but big problem
+  there is we're using the original loop names, not the preprocessed ones.
+  Need to add a test that confirms this works.  We changed
+  `collect_loop_call_symbols` to look at `for_n`.
+
+* Rationalize documentation of "implementation detail" functions like `r2c_if`
+  and `subassign`.  Maybe hide them from the index with `@keywords internal` and
+  add a family that connects them.
+* Make sure to explain how we generate the C code for control structures as that
+  is not at all obvious.  Currently docs are spread in `?r2c_if` and in
+  `transform_control`.
+
+* What happens when we use the counter from a loop either outside of the loop as
+  part of a use before set?  It should be reset at beginning of loop each time?
+  So shouldn't matter.  If we read from it it's set.  If we write to it it was
+  already set beforehand.
+
+* It would be nice to be able to assume there are no nested braces ever in
+  "preproc-copy.R".  Alternatively (now more likely I think), ensure that
+  anyplace that isn't robust to nested braces tests for them.  We apply
+  `collapse_braces` now (and I think otherwise error when this happens).
+
+* Assignment chains should contain only `ASSIGN.SYM`, and possibly only
+  `ASSIGN.SYM.BASE`.  We can't have stuff like `a <- {b} <- c`
+
+* Make sure that a user can't try to sneak in e.g. `lrec`.
+
+* Test use before set where multiple symbols are set to the same value?
+
+* Identify external only expressions and eval them just once?
+* What do we do about repeated external symbols getting added to the allocation
+  table?  See notes "External Symbols".
+* Reconcile binding of group names and assignment names?  A bit awkward now in
+  `append_dat`.  What about `MoreArgs` names (these are treated as external
+  symbols, stored in an env ahead of the parent env)?
+* Check that we don't lose "shallow copy" of external vectors.
+
+* `for` is documented to always return NULL, but also to set `var` to NULL if
+  there are no iterations (need to figure out what we do with this; set to
+  NaN?).  Set to NaN
+
+* r2c.for example clearly broken.
+
+* Fill out `for` stub functions.
+
+* Thank Yihui for formatR.  Actually, it doesn't really do what I thought it did
+  so we're not using it anymore.
+
+* Ensure that use before set, but then use copy after set also works (i.e. we
+  if we aliased the use before set symbol before setting, that the alias is
+  is not overwritten when we reconcile).
+
+* Now that we dropped `luse`, see if we can drop the "sketchy" logic we added to
+  register external symbols as names.
+
+* Document for:
+  * Limit to number of for loops. - done.
+  * Limit for parameter size permutations. - done.
+
+* Whitespace not great for generated C code for loops.  Meh, it's okay.
+
+* Braces not getting fully collapsed anymore after processing for `for`.  We
+  added a brace collapse pass after initial preprocessing.
+
+* Make sure we can't overflow `R_xlen_t` with `seq.i` in `for`.  We can't,
+  `seq.i` is checked against a value from `lens[]`, which is `R_xlen_t*`.
+
+* Check that we can't do stuff like `for(a + 2 in ...)` (i.e. symbol must be
+  target).  This is actually a parse error.
+
+* Is the new use of `in.branch` with the index a good way to deal with
+  `sym.local` (i.e do we need both)?  Yes, it is.  But can't get rid of B.LOC or
+  sym.local computed without further analysis.  Would be nice to be able to make
+  the computed thing a property of the candidate, but not entirely sure it can
+  be.
+
+* Seeing weird reconcile / vcopy of iteration variable with nested loops.  One
+  weirdness is that the "assign" from `for_iter` has two payloads (the latter we
+  just added a comment for).
+
+    // r2c::for_iter(var = j, seq = .R2C_for_seq_2, seq.i = r2c::rec(x = r2c::vcopy(x = .R2C_for_seqi_2)))
+
+
+* Make sure `reconcile_control_flow` works correctly for for loops.
+
+* Do we disallow using group vectors as control variables?  Probably makes sense
+  to do this.  Very confusing / weird otherwise, straight up error message
+  better.  I'm not sure there is a use case that makes sense.  Also need to
+  resolve the complexity of an external variable getting masked by a binding.
+  This should just be disallowed.  Need to consider the case where control
+  parameters include expressions.  Do we just defer evaluation on those?  How
+  complex an expression do we allow?  Do we allow binding symbols in them?
+  It is now an error to attempt to use these in external expressions.
+
+* Think through implications of `x <- numeric(n)`, any problems with
+  re-allocation vs just rewriting with zeros?  Should be okay, but we do need to
+  rewrite with zeros every iteration.
+
+* Resolve confusing naming around control parameters and control flow
+  structures.
+
+
+* Simplify flags to make them part of the data array?  This would remove one
+  parameter from parameter list since we're already squeezed there.  Something
+  to think about, could be nice.  Then numeric external and flag external can
+  have the same logic.  Implementation can still use "bitwise" comparison on the
+  double values and now can go up to 2^53 (but is this slow?).  Looks like this
+  would require coercion.  They are now just members of the array represented as
+  doubles.  No longer flags.
+* Rename control parameter to external parameter so that e.g. `numeric(x)` makes
+  sense.  Done.
+
+* What's up with the `args.ctrl`, `args.flags`, etc in the code gen functions
+  where we don't seem to use those anywhere?  Not relevant anymore.
+
+* For control / flag parameters, do we evaluate sub-expressions?  No, we
+  evaluate the whole thing without recursion.
+
+*  Does preproc-copy actually fully detect whether a branch return value is
+  used?  Yes, it does seem so.
+
+* Go through all the cgen functions and make sure they are okay with the changes
+  in flag, etc.
+
+* Make sure that parameter type matching doesn't get confused between internal
+  and external when `...` matches to both e.g. `r2cq(sum(x, y, na.rm=TRUE))`.
+  Actually, should never be the case that `...` is an external parameter so it
+  shouldn't matter.
+
+* Do `for` and `while` need to be decomposed?  Yes.
+
+* Remove old reference to `i` from `names_update`.
+
+* Why did we move the self-copy for sub-assign into ext to the very beginning of
+  the call?  Probably nested branches with sub-assigns?  Problem is this causes
+  more than one copy as next.  If we had deferred the copy to be in-branch the
+  return value copy would not be necessary.  Gaah, it's because we don't want to
+  vcopy every loop iteration, and particularly with nested loops, we really want
+  the copy to be done outside of every loop.  It ends up looking messy but the
+  flipside is you avoid needless copies since we just want one copy to ensure
+  not external.
+
+    x <- r2c::vcopy(x)
+    if (a) {
+        s <- mean(y)
+        x[a] <- s
+        r2c::rec(r2c::vcopy(x))
+    }
+    else r2c::rec(y <- x + 1)
+
+  Additionally, copying in a loop is always just going to reset to the original
+  values since the second time the loop goes around it's still referencing the
+  old value that was copied.
+
+* The `x <- vcopy(x)` issue in a loop where we then sub-assign to `x`, but the
+  second (and n) times around all our modifications are overwritten because the
+  two `x`s in the self copy are actually different memory locations.
+
+* Do we need `if_true` / `if_false`?  Effectively implicit in position, but
+  might simplify finding boundaries (actually, definitely does).
+
+* Loop counter variable not being recognized as assigned-to.
+
+* Zero length return value does not retain correct type (this was specific to
+  subset bug).
+
+* Think carefully about the following case.  Can we get away without a
+  reconciliation (as it is it's just not right - mismatched rec).  This is now
+  resolved by moving the vcopy outside of the branch.
+
+  {
+      x <- r2c::vcopy(x)
+      if (b) 
+          x[a] <- y
+      else {
+          x <- r2c::rec(r2c::vcopy(x))
+          numeric(0)
+      }
+      x
+  }
+
+* Sub-assignment from a complex expressions that strains eval order.  How do we
+  recognize that `x` is not external because we'll be vcopying it?  Is this even
+  allowed (assign inside arg)?  Do we need to vcopy `x` in this case (no).  We
+  should see this because we process the arg first.
+
+    x[a] <- {
+      x <- y + 1
+      y
+    }
+
+  Maybe more relevant:
+
+    if(b) {
+      x[a] <- x
+      x
+    }
+
+  Seems like we can't get in a situation where we don't recognize the symbol is
+  local.
+
+* Can we collapse the subassign into regular promotes now that we're
+  rationalizing the 0 (i.e. get rid of `add_actual_sub_callptr` (or whatever
+  it's called).  Yes, done.
+* Make sure that we deduplicate `rec` and `vcopy` requirements e.g. for the case
+  of sub-assignment (maybe this is untestable because we don't allow the result
+  of a sub-assignment to be used?).  Does't seem an issue now?
+* Check it's okay to add curly braces for the sub-assign to ext copy.  Do we
+  need to collapse nested `{` later?  We do collapse the braces.
+* `clean_call` should deal with `subassign`.
+* Actual run time sub-assignments.
+* Subassign inside if/else.
+* Subassign assign to self `x[a] <- x` (we do need to pass through the
+  subassign as `prev.call`?).
+* Attempt to use `subassign` directly.
+* Subassign on a symbol that has a candidate bound, should trigger.
+* Subassign on an external symbol in one branch creates a candidate in the
+  other (because it needs to be reconciled).
+
+* Unary plus:
+  * Executes vcopy correctly when needed
+  * Coerces logical to integer
+
 * Double check that the re-use optimization doesn't attempt to re-use an
   expression computed only in one branch.  Or maybe if there are two if/else's,
   each with the expression in one branch, how does it treat that?  I think we

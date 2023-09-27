@@ -150,22 +150,19 @@ is.dbl_colon_call <- function(x)
   is.chr_or_sym(x[[1L]]) && is.chr_or_sym(x[[2L]]) && is.chr_or_sym(x[[3L]]) &&
   as.character(x[[1L]]) == "::"
 
-## These next two are currently equivalent
-is.brace_or_assign_call <- function(x)
-  is.call(x) && get_lang_name(x) %in% c("{", ASSIGN.SYM)
 is.passive_call <- function(x)
   is.call(x) && get_lang_name(x) %in% c(PASSIVE.SYM, ASSIGN.SYM)
 
 # For `<symbol> <- y`, retrieve the symbol.  Obviously assumes `x` has been
 # checked previously to be an assignment.  Recall `for` includes an assignment.
 get_target_symbol <- function(x, fun.name) {
-  if(!fun.name %in% ASSIGN.SYM)
+  if(!fun.name %in% MODIFY.SYM)
     stop("Internal Error: ", fun.name, " is not an assignment function.")
   target.symbol <- x[[2L]]
   target.type <- typeof(target.symbol)
   if(target.type != 'symbol') {
     msg <-
-      if(fun.name == "for")
+      if(fun.name == "for") # FOR.ITER not needed (see constants.R)
         paste("expected symbol for loop variable but got", target.type)
       else "invalid left-hand side to assignment."
     stop(simpleError(msg, x))
@@ -211,11 +208,11 @@ collect_call_symbols <- function(x) {
 collect_loop_call_symbols <- function(x) {
   syms <- character()
   if(is.call(x) && length(x) > 1) {
-    name <- get_lang_name(x[[1L]])
+    name <- get_lang_name(x)
     syms <-
-      if(name == "for" && length(x) == 4L) collect_call_symbols(x[[4L]])
-      else if(name == "while" && length(x) == 3L) collect_call_symbols(x[[3L]])
-      else if(name == "repeat" && length(x) == 2L) collect_call_symbols(x[[2L]])
+      if(name == FOR.N && length(x) == 2L) collect_call_symbols(x[[2L]])
+      # else if(name == "while" && length(x) == 3L) collect_call_symbols(x[[3L]])
+      # else if(name == "repeat" && length(x) == 2L) collect_call_symbols(x[[2L]])
       else character()
   }
   syms
@@ -247,7 +244,7 @@ get_lang_info <- function(call) {
       else if (is.chr_or_sym(call[[1L]])) as.character(call[[1L]])
       else stop(
         "Only calls in form `fun(...)` and `pkg::fun(...)` where `fun` is a ",
-        "symbol or character are supported (i.e. not `", deparse1(call), "`)."
+        "symbol or character are supported, i.e. not:\n", deparseLines(call)
       )
     }
     else ""
@@ -257,6 +254,12 @@ get_lang_name <- function(call) {
   if(is.language(call)) get_lang_info(call)[['name']]
   else ""
 }
+blank_lang_info <- function() list(name="", pkg="")
+
+pkg_fun <- function(fun, pkg='r2c')
+  call("::", pkg=as.name(pkg), name=as.name(fun))
+
+en_assign <- function(x, value) call("<-", x=x, value=value)
 
 # deparse but concatenate multi-element results with newlines
 
@@ -266,4 +269,25 @@ deparseLines <- function(x, ...) paste0(deparse(x, ...), collapse="\n")
 # preprocessing
 pp_clean <- function(x, optimize=TRUE) {
   clean_call(preprocess(x, optimize=TRUE)[['call.processed']])
+}
+
+convolve <- function(a, b) {
+  stopifnot(is.numeric(a), is.numeric(b))
+  .Call(R2C_convolve, a, b)
+}
+# Helper to display the call data stored by `alloc`.
+
+disp_call_dat <- function(call.dat) {
+  lang <- vapply(
+    call.dat,
+    function(x) gsub("\br2c::\b", "", deparse(x[['call']])[[1L]]),
+    ""
+  )
+  i <- format(seq_along(call.dat))
+  ids <- format(
+    vapply(call.dat, function(x) paste0(x[['ids']], collapse=" "), "")
+  )
+  dat <- paste0(i, ": ", ids, " | ")
+  lang <- substr(lang, 1, max(c(10, 80 - max(nchar(dat)))))
+  writeLines(paste0(dat, lang))
 }

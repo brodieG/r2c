@@ -67,11 +67,13 @@ loop_mean4 <- make_loop_mean(lp.mn, 't += (dx[i] - s)/m', 4)
 f_mean <- sprintf('
 static void %%s(%%s) {
   int di0 = di[0];
-  int di1 = di[1];
+  int di_na = di[1];
+  int dires = di[2];
+
   R_xlen_t n, m;
   n = m = lens[di0];
   double * dx = data[di0];
-  int narm = flag;  // only one possible flag parameter
+  int narm = *data[di_na];  // checked to be 0 or 1 by valid_narm
 
   long double s = 0.0;
 %s
@@ -98,8 +100,8 @@ static void %%s(%%s) {
     s += t;
   }
   // Overflow to Inf (and we check Inf available in assumptions.c)
-  *data[di1] = (double) s;
-  lens[di1] = 1;
+  *data[dires] = (double) s;
+  lens[dires] = 1;
 }', loop_mean1, loop_mean2, loop_mean3, loop_mean4)
 
 

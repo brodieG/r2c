@@ -66,5 +66,5 @@ get_r_code(r2c_sum_sub)
 show_c_code(r2c_sum_sub)
 }
 \seealso{
-\code{\link{r2c-compile}}.
+\code{\link{r2c-compile}}, \code{\link{r2c-preprocess}}.
 }

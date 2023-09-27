@@ -18,7 +18,6 @@
 #ifndef R2C_H
 #define R2C_H
 #define R_NO_REMAP
-#define INTERRUPT_AT 10000000 /* keep sync'ed with loop-interrupt.h */
 
 // System headers go above
 #include <R.h>
@@ -39,6 +38,8 @@
 #define STAT_RECYCLE 0  // bad recycling
 #define STAT_LOOP    1  // loop counter for interrupts
 
+#define INTERRUPT_AT 10000000
+
 // KEEP SYNC'ED WITH inst/headers/r2c-const.h
 // ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -46,12 +47,13 @@
 struct const_dat {const char * name; const int value;};
 
 typedef SEXP (*r2c_dl_fun) (
-  double ** data, R_xlen_t * lens, int ** di, int * narg, int * flag, SEXP ctrl
+  double ** data, R_xlen_t * lens, int ** di, int * narg, SEXP extn
 );
 
 SEXP R2C_assumptions(void);
 SEXP R2C_constants(void);
 SEXP R2C_group_sizes(SEXP g);
+SEXP R2C_vecrec_pmax(SEXP sizes);
 
 /*
  * Structure containing the varying data in a format for faster access
@@ -66,8 +68,7 @@ struct R2C_dat {
   int dat_count;   // dat_end - dat_start + 1 (convenience)
   int ** datai;    // For each sub-fun, which indices in data are relevant
   int * narg;      // For each sub-fun, how many arguments it takes
-  int * flags;     // Flag (T/F) control parameters, one for each sub-fun
-  SEXP ctrl;       // Non data, non-flag parameters
+  SEXP extn;       // Non data parameters (non-numeric external)
   R_xlen_t * lens; // Length of each of the data vectors
   r2c_dl_fun fun;  // function to apply
 };
@@ -77,33 +78,33 @@ struct R2C_dat prep_data(
   // List with as many elements as sub-calls in the r2c fun, indicating for each
   // which elements in `data` should be given to the function
   SEXP ids,
-  SEXP flag, SEXP ctrl, SEXP so
+  SEXP extn, SEXP so
 );
 
 
 // See prep_data and R2C_dat above for details of the first 5 parameters
 // for all the R2C_run_* functions
 SEXP R2C_run_group(
-  SEXP so, SEXP dat, SEXP dat_cols, SEXP ids, SEXP flag, SEXP ctrl,
+  SEXP so, SEXP dat, SEXP dat_cols, SEXP ids, SEXP extn,
   SEXP grp_lens, SEXP res_lens
 );
 SEXP R2C_run_window(
-  SEXP so, SEXP dat, SEXP dat_cols, SEXP ids, SEXP flag, SEXP ctrl,
+  SEXP so, SEXP dat, SEXP dat_cols, SEXP ids, SEXP extn,
   SEXP width, SEXP offset, SEXP by, SEXP partial
 );
 
 SEXP R2C_run_window_by(
-  SEXP so, SEXP dat, SEXP dat_cols, SEXP ids, SEXP flag, SEXP ctrl,
+  SEXP so, SEXP dat, SEXP dat_cols, SEXP ids, SEXP extn,
   SEXP width, SEXP offset, SEXP by_sxp, SEXP x_sxp,
   SEXP start_sxp, SEXP end_sxp, SEXP bounds_sxp
 );
 SEXP R2C_run_window_at(
-  SEXP so, SEXP dat, SEXP dat_cols, SEXP ids, SEXP flag, SEXP ctrl,
+  SEXP so, SEXP dat, SEXP dat_cols, SEXP ids, SEXP extn,
   SEXP width, SEXP offset, SEXP at_sxp, SEXP x_sxp,
   SEXP bounds_sxp
 );
 SEXP R2C_run_window_bw(
-  SEXP so, SEXP dat, SEXP dat_cols, SEXP ids, SEXP flag, SEXP ctrl,
+  SEXP so, SEXP dat, SEXP dat_cols, SEXP ids, SEXP extn,
   SEXP left_sxp, SEXP right_sxp, SEXP x_sxp,
   SEXP bounds_sxp
 );
@@ -119,5 +120,7 @@ SEXP R2C_size_window_at(
 SEXP R2C_size_window_bw(
   SEXP rlen_sxp, SEXP left_sxp, SEXP right_sxp, SEXP x_sxp, SEXP bounds_sxp
 );
+
+SEXP R2C_convolve(SEXP a, SEXP b);
 
 #endif  /* R2C_H */

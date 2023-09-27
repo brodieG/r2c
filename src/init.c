@@ -22,12 +22,13 @@
 static const
 R_CallMethodDef callMethods[] = {
   {"group_sizes", (DL_FUNC) &R2C_group_sizes, 1},
-  {"run_group", (DL_FUNC) &R2C_run_group, 8},
-  {"run_window", (DL_FUNC) &R2C_run_window, 10},
+  {"vecrec_pmax", (DL_FUNC) &R2C_vecrec_pmax, 1},
+  {"run_group", (DL_FUNC) &R2C_run_group, 7},
+  {"run_window", (DL_FUNC) &R2C_run_window, 9},
 
-  {"run_window_by", (DL_FUNC) &R2C_run_window_by, 13},
-  {"run_window_at", (DL_FUNC) &R2C_run_window_at, 11},
-  {"run_window_bw", (DL_FUNC) &R2C_run_window_bw, 10},
+  {"run_window_by", (DL_FUNC) &R2C_run_window_by, 12},
+  {"run_window_at", (DL_FUNC) &R2C_run_window_at, 10},
+  {"run_window_bw", (DL_FUNC) &R2C_run_window_bw, 9},
 
   {"size_window_by", (DL_FUNC) &R2C_size_window_by, 8},
   {"size_window_at", (DL_FUNC) &R2C_size_window_at, 6},
@@ -35,6 +36,7 @@ R_CallMethodDef callMethods[] = {
 
   {"assumptions", (DL_FUNC) &R2C_assumptions, 0},
   {"constants", (DL_FUNC) &R2C_constants, 0},
+  {"convolve", (DL_FUNC) &R2C_convolve, 2},
 
   {NULL, NULL, 0}
 };

@@ -56,6 +56,10 @@ unitizer_sect("Basic Symbol Copy", {
 
   call1e3 <- quote({z <- {w; y <- x}; w})
   r2c:::pp_clean(call1e3)
+
+  # Empty braces
+  call1f <- quote({})
+  r2c:::pp_clean(call1f)
 })
 unitizer_sect("Detect Computed Val Return", {
   call2a <- quote(mean(x))
@@ -166,7 +170,6 @@ unitizer_sect("Basic if/else", {
   })
   r2c:::pp_clean(call3c3)
 
-
   # Triggering candidate should obviate need to copy return value
   call3d0 <- quote({
     if(a) y <- x
@@ -253,7 +256,7 @@ unitizer_sect("Basic if/else", {
     } else {
       x <- mean(x) # `x` is branch local computation.
       z <- mean(y) # `z` is reset by if/else return value, so do nothing.
-      y <- x       # `x` unused: only reconcile.  Return needs copy.
+      y <- x       # `x` branch local: only reconcile. Return needs copy.
     }
     y + z
   })
@@ -371,8 +374,8 @@ unitizer_sect("Nested", {
   })
   r2c:::pp_clean(call4f1)
 
-  # Nested via else/if
-  call4f1 <-quote({
+  # Nested via else/if, only return value reconcile
+  call4f2 <-quote({
     x2 <- if(a == 1) {
       x3 <- mean(x)
     } else if (a == 2) {
@@ -382,8 +385,45 @@ unitizer_sect("Nested", {
     }
     x2
   })
+  r2c:::pp_clean(call4f2)
 
+  # Nested via else/if, check assign-reconcile
+  call4f2 <-quote({
+    if(a == 1) {
+      x3 <- mean(x)
+    } else if (a == 2) {
+      x3 <- sum(x)
+    } else {
+      x3 <- a
+    }
+    x3
+  })
+  r2c:::pp_clean(call4f2)
 
+  # Nested via else/if, check assign+reconcile when return used
+  call4f3 <-quote({
+    x2 <- if(a == 1) {
+      x3 <- mean(x)
+    } else if (a == 2) {
+      x3 <- sum(x)
+    } else {
+      x3 <- a
+    }
+    x2 + x3
+  })
+  r2c:::pp_clean(call4f3)
+
+  # Cascading of reconcile 
+  call4f4 <- function(a, b, c, d) {
+    if(a) {
+      if (b) x <- c else x <- d
+      x
+    } else {
+      x <- b
+    }
+  }
+
+  # Additional tests in control-eval, e.g. f4b1
 })
 unitizer_sect("Vcopy Branch Return", {
   # `x <- mean(z)` requires vcopy when symbol is used outside of local context
@@ -482,8 +522,10 @@ unitizer_sect('multi-assign', {
   })
   r2c:::pp_clean(call6a2)
 
-  # We don't use `y`, but we still do intermediate recs because logic to
-  # recognize when we can skip it is too complicated
+  # We don't use `y`, originally we still did the recs for it to avoid the
+  # complication of tracking what was and wasn't needed, but cumulative
+  # changes have resulted in it seemingly being tracked correctly.  So now no
+  # rec for `y` which isn't needed.
   call6a3a <- quote({
     u <- if(a) {
       x <- y <- mean(z)
@@ -493,6 +535,16 @@ unitizer_sect('multi-assign', {
     u + x + w
   })
   r2c:::pp_clean(call6a3a)
+  # Also skip rec for `r` in addition to `y`.
+  call6a3a1 <- quote({
+    u <- if(a) {
+      x <- y <- r <- mean(z)
+    } else {
+      x <- y <- r <- w
+    }
+    u + x + w
+  })
+  r2c:::pp_clean(call6a3a1)
   # Here we should be able to skip one of the rec/vcopys
   call6a3b <- quote({
     u <- if(a) {
@@ -516,6 +568,33 @@ unitizer_sect('multi-assign', {
     u + x + y + w
   })
   r2c:::pp_clean(call6b1)
+
+  # Multi assign of branch result; recall we always copy branch
+  # return value if it _could_ be used.  So some redundant uses below.
+  call6c0 <- quote({
+    v <- if(a)
+      u <-
+        if(b) x <- y <- mean(z)
+        else x <- y <- w
+    v + u + y
+  })
+  r2c:::pp_clean(call6c0)
+  call6c1 <- quote({
+    v <- if(a)
+      u <-
+        if(b) x <- y <- mean(z)
+        else x <- y <- w
+    u + y
+  })
+  r2c:::pp_clean(call6c1)
+  call6c2 <- quote({
+    v <- if(a)
+      u <-
+        if(b) x <- y <- mean(z)
+        else x <- y <- w
+    u
+  })
+  r2c:::pp_clean(call6c2)
 })
 unitizer_sect('errors', {
   call7a <- quote({
@@ -524,4 +603,13 @@ unitizer_sect('errors', {
       else r2c::rec(y + y)
   })
   r2c:::pp_clean(call7a)
+})
+unitizer_sect('loop reconstruct', {
+  call8a <- quote(
+    for(i in x) {
+      tmp <- y + 1
+      y <- tmp
+    }
+  )
+  r2c:::pp_clean(call8a)
 })

@@ -4,8 +4,14 @@
 
 * What about the case where you want to reference another argument in a vetting
   expression?  That gets interpreted as a template because the other parameter
-  name is not `.`.
+  name is not `.`:
+  (function(a, b) vetr::vetr(is.logical(.) || is.logical(b)))(1, 2)
+  Error in (function(a, b) vetr::vetr(is.logical(.) || is.logical(b)))(a = 1,  : 
+    For argument `a` at least one of these should pass:
+    - `1` should be type "logical" (is "double")
+    - `is.logical(1)` is not TRUE (FALSE)
 * Do we need to document that the `&&` and `||` tokens are lazy?
+
 
 ## Unitizer
 
@@ -14,30 +20,131 @@
   review" in addition to re-run all updated.
 * Dig into git repository sizes and see if `unitizer` has anything to do with
   seemingly large ones.
+* Need semi-colons when collapsing calls for display in the browser view, e.g.
+  seeing `call9b2 <- quote({x <- x + 1if (b) {x[a] <- yx}x})`.
+* Maybe call numbers should be displayed on right, or status on left by number.
+* Test file inference should try to match beyond beginning of string.
+* When not in tests working directory, see:
+
+    Loading unitizer data...Warning in load_unitizers(store.ids[active], test.files[active], par.frame = util.frame,  :
+      Upgraded test file does not match original test file ('subassign-preproc.R' vs 'NA').
 
 ## Things to test
 
 * That it is impossible to try to use an allocation before it would be created
-  in the code.  Tricky with loops.
-* Loops with no iterations.
+  in the code.  Tricky with loops.  Can we check for this within `alloc`?
+  Probably, but not trivial, particularly because we change all the previously
+  allocated values.  To do this we could record each result allocation, and make
+  sure that every function call always has in the leading parameters things in
+  that list.  Maybe loops aren't too bad since we just explicitly copy
+  back.
 
-* Unary plus:
-  * Executes vcopy correctly when needed
-  * Coerces logical to integer
+* Adjust window iteration size calculation.
 
-## Error Messages
+* Size computed correctly with concatenations of things produced in branches.
 
-* Error for size mismatch in `reconcile_cf` need to handle NA size. 
+* Eqlen when one of the inputs is group size; maybe working because we paper
+  over the NA when `gmax == gmin`
+
+* Extern symbol resolution caching actually works.
+
+* Attempt to use internal symbol in external param is caught.  Maybe test with
+  'get' too?  Still can get around by specifying an environment.
+
+## Current
+
+* Add a finalizer to unload and dump dlls (but in some OSes we cannot unload
+  DLLs, so maybe need a mechanism for generating libraries).:
+
+    qz1ylj3zna.so':
+      `maximal number of DLLs reached...
+
+* Doc improvements:
+  * Spruce up r2c landing page.
+  * Better structuring of topics?
+  * Add a performance page?  Generally try to move more arcane stuff out of the
+    primary pages to simplify them?
+* Clearly document `ftype[[3L]]` function format.
+
+* Think through implication of saving parameter validation functions in r2c_fun
+  object in terms of environment capture, etc.
+
+* Check what the `ARGS.NM.VAR` variable is, is it the total number of arguments,
+  or the total number of `...` arguments.  Important to get this right for the
+  summary functions.  Seems like it is total count.
+
+* Check that multi-arg summary cannot have zero args?  Need to automatically
+  give it at least one arg to be consistent.
+
+* Add the capability to convert a non-numeric external into a numeric external
+  with the validation function, e.g. character vector with levels, etc.
+
+* In alloc.R what's the deal with call.outer vs .CALL?
+
+* Can we rationalize the typeof parameter of `vec_dat`?
+
+* Rationalize `code_gen_*` funs?  We need name, number of params, and the C
+  template, but the last one has a bit of variability that might be difficult to
+  parametrize generally.  There is a set of functions that do look very similar
+  though.
+
+* Do we need to check for integers larger than 2^53 for loss of precision?  Is
+  that even possible?  R semi guarantees 32 bit integers.  What if double was 32
+  bits?  Probably do need a similar assumption check.
+
+* Where do we check the validity of size vectors?
+
+* Make sure that all loops have interrupts (subset/assign don't).  Also hidden
+  in this is `memcpy`.
+
+* Move subassign to assign/control?
+
+## Next
+
+### Optimizations
+
+* Should the numeric at the end of the for loops be a noop and replaced by a
+  numeric outside the loop to make it the return value?
+
+### Compilation / Preprocessor / Allocator Performance
+
+We haven't worried too much about optimizing these, but we'll need to keep an
+eye on how bad these get.
+
+* Should we convert all function symbols in a call to character to avoid having
+  to repeatedly convert them to/from symbols?
+
+### Error Messages
+
+* Error message generation for different size in branches when sizes are
+  complex in some way that makes sense to the user that has no idea about the
+  univariate polynomial on g business.
+
+* Allow empty formals / no free symbols (e.g. so `1:3` will work).
+
+* Error for size mismatch in `reconcile_cf` need to handle NA size.
 
 * Fix error for invalid literal (not a symbol):
 
-Error in r2cq(x + "a")(5) : 
+Error in r2cq(x + "a")(5) :
   External argument `a` for `x + "a"` is not unclassed numeric (type: character).
 
 * Need better error messaging that provides overall context for the error (i.e.
   from top level r2c call / runner, as well as local context for the specific
   problematic part of code).  Need to review all `stop` and `Rf_error` in the
   code.
+* Particularly for invalid parameter errors, we want to present the call that
+  contains the parameter usage in question (i.e. make `call.outer` the next call
+  at right depth, maybe we can record parent.id in the preprocessed data).
+  Also below the error should be attached to `numeric_along`:
+
+    > fr <- function(x, y) {
+    +   res <- numeric_along(x, y)
+    +   res + x
+    + }
+    > f <- r2cf(fr)
+    Error in match.call(definition, call, expand.dots, envir) : 
+      unused argument (y)
 
 * Move the disallowed assignment error to somewhere that does not use the
   renamed expression as that is then incomprehensible.
@@ -46,7 +153,27 @@ Error in r2cq(x + "a")(5) :
   whether error messages around them when they are part of the iteration data vs
   external makes sense.
 
-## Current
+### Other
+
+* Should we just used nested environments for name bindings, where each name
+  just binds the alloc id?  Problem with this is it's not easy to query the data
+  (great for looking up names though).  This might simplify the name management
+  logic a bit.
+
+* Defer creation of temporary vectors until end (just record their size) so that
+  we don't allocate vectors we don't use.  We should also identify unused
+  vectors and not allocate them (e.g. because branch reconciliation made a
+  vector unused - does this actually happen)?
+
+* Subset with logicals.  AFAIK there is no way to pass the type of the input to
+  C to make this decision.  We would need to change the interface to add
+  support (we could add one more "status" vector to encode the type of each
+  parameter, probably needs to be a separate vector since we won't know the
+  size).  For subset major issue is result size, which is not knowable
+  ex-ante.  Subassign would be okay since size isn't changed.  Do we allow at
+  all?
+
+* `:`, `seq`, etc?
 
 * `mean(x) * mean(x)` should re-use `mean(x)` but doesn't?
 
@@ -56,26 +183,14 @@ Error in r2cq(x + "a")(5) :
   work as right now all the fields there are in `alloc`.  `names` actually
   doesn't seem to have any of those.
 
-* Add a finalizer to unload and dump dlls:
-
-    qz1ylj3zna.so':
-      `maximal number of DLLs reached...
-
 * Add `get_r_function` to recover an R function with formals, etc.
 * `clean_call` should have additional levels to remove `vcopy` / `rec` (Done).
   Decide what `get_r_code` does.
 
-
 * Empty braces can't just be merged into parent braces, so we need to check the
   empty condition before we simplify them away (`{5;{}}` is not equal to `{5}`).
-  Empty braces should be disallowed anyway.
-
-* Defer creation of temporary vectors until end (just record their size) so that
-  we don't allocate vectors we don't use.  We should also identify unused
-  vectors and not allocate them (e.g. because branch reconciliation made a
-  vector unused - does this actually happen)?
-
-* Do `for` and `while` need to be decomposed?  Yes.
+  Empty braces should be disallowed anyway (iirc they are now).  But could deal
+  with these by returning `numeric(0)`.
 
 * Ideas to improve preprocessing:
   * Try to simplify `copy_symdat` by removing unused bindings.  Then being used
@@ -122,13 +237,6 @@ Error in r2cq(x + "a")(5) :
 * ISNAN vs isnan? (R_ext/Arith.h).  Return R NAN not just NAN?  For logicals
   doesn't matter as much if they get coerced eventually to NA_LOGICAL, but if we
   add a no-lines mode then it might matter.
-
-* What do we do about repeated external symbols getting added to the allocation
-  table?  We need to deal with it because for non-numeric the coercion to
-  numeric will force a full copy every time.  See notes "External Symbols".
-* Reconcile binding of group names and assignment names?  A bit awkward now in
-  `append_dat`.  What about `MoreArgs` names (these are treated as external
-  symbols, stored in an env ahead of the parent env)?
 
 * Do we offer a no-lies mode where we don't coerce results back to
   integer/logical?  Yes, should be easy to implement, we just need a parameter

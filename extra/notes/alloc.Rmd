@@ -1,0 +1,73 @@
+# Allocation
+
+## Abstracting the Allocator?
+
+It would be nice if there was some way of designing the allocator such that we
+can express to it the memory requirements and it would figure out all the
+reconciliations itself.  How is this different from what we are attempting to
+do?  Maybe how we express the memory requirements?  A naive allocator would
+re-allocate each loop iteration so wouldn't have to worry about tracking
+anything.  Blergh.
+
+
+## External vs. Control
+
+For functions that rely on an external input (we don't have any at the moment),
+can we just rely wholly on the control parameter?
+
+We just include a control validation function, and then subsequent to that in
+each iteration we directly access the value?
+
+A few issues:
+
+* We really don't want to have to use `REAL(x)[0]` each iteration; for control
+  parameters that are supposed to evaluate to doubles it would be nice if we
+  could just throw them in the data array.
+* Maybe that is the purpose of "extern", has the same semantics as "control",
+  but is required to evaluate to a numeric so we can throw it in the data pile.
+  So e.g. `quantile` could rely on "extern" instead of control.
+
+Is "extern" the right name?  Seems like that is the overall category for
+"control", "flag", and "numeric".  More broadly, maybe "control" is also not
+right".  Really we're dealing with "ext.generic", "ext.lgl", and "ext.num".
+
+More generally, maybe we can simplify the control parameter thing to be
+external/internal.  The distinction between flag/general/numeric can be an
+implementation detail (I guess it kind of is already).
+
+It seems that we want two classes of external params: "any" and "numeric", the
+latter could be logical or integer too, just a matter of interpretation, but
+they will be stored as double.
+
+We can use the validation function to check that they are good.  Validation
+functions should take a parameter name and check for acceptable values.  Unlike
+what we have now, validation should happen after each external parameter is
+evaluated.
+
+## Eval of External Args
+
+Maybe we can set up an environment where we keep adding any internal symbols as
+active bindings that blow up if you try to use them?
+
+    env <- new.env()
+    makeActiveBinding("a", function() stop('boom'), env)
+    evalq(sum(a), env)
+
+Probably want to signal a condition that we catch, where we embed the symbol
+name in the message of the condition, and then we can compose a meaningful
+message like:
+
+> Attempt to use internal symbol via an external parameter.
+
+Here we need to intercept any attemps to use internal parameters. At the most
+basic this means create a fake `data` environment that has the special active
+bindings with the `env` environment as the parent.  Do we add a child
+environment?  What about branches and nested functions?
+
+Can we rely on the fact that anything that is internal in one branch will be
+internal in the other?  No, because we don't make copies of symbols that are not
+used outside of the branch.  So what might be an illegal access in one branch,
+is not in the other.
+
+What about nested functions?  If implemented R semantic these should reset the
+search path.

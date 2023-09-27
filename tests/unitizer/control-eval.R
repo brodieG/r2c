@@ -78,7 +78,7 @@ unitizer_sect("nesting", {
   f4a(1:3, 3)
 
   # simple nesting with internal assign (x2/x3 always same so boring?)
-  f4b.r <-function(x, a) {
+  f4b.r <- function(x, a) {
     x2 <- if(a == 1) x3 <- mean(x)
     else if (a == 2) x3 <- sum(x)
     else x3 <- a
@@ -88,6 +88,37 @@ unitizer_sect("nesting", {
   f4b(1:3, 1)
   f4b(1:3, 2)
   f4b(1:3, 3)
+
+  # simple nesting with assignment rec **NOT** needed in outer if/else
+  f4b1.r <- function(a, b, c, d, e) {
+    if(a) {
+      if (b) x <- c else x <- d
+      x
+    } else {
+      x <- b
+    }
+  }
+  f4b1 <- r2cf(f4b1.r, check=TRUE)
+  f4b1(1, 1, 3, 4, 5)
+  f4b1(0, 1, 3, 4, 5)
+  f4b1(1, 0, 3, 4, 5)
+  f4b1(0, 0, 3, 4, 5)
+
+  # simple nesting with assignment rec needed in outer if/else
+  f4b2.r <- function(a, b, c, d, e) {
+    if(a) {
+      if (b) x <- c else x <- d
+      x
+    } else {
+      x <- e
+    }
+    x
+  }
+  f4b2 <- r2cf(f4b2.r, check=TRUE)
+  f4b2(1, 1, 3, 4, 5)
+  f4b2(0, 1, 3, 4, 5)
+  f4b2(1, 0, 3, 4, 5)
+  f4b2(0, 0, 3, 4, 5)
 
   # simple nesting with internal assign
   f4c.r <-function(x, a) {
@@ -174,4 +205,16 @@ unitizer_sect("nesting", {
   f5c(1:3, 5:7, 1, 0)
   f5c(1:3, 5:7, 2, 0)
   f5c(1:3, 5:7, 3, 0)
+
+  # Direct nesting
+  f6a.r <- function(a, b, c, d) {
+    x <- b
+    if(c) if(d) x <- a
+    x
+  }
+  f6a <- r2cf(f6a.r)
+  f6a(2:3, 3:4, TRUE, TRUE)
+  f6a(2:3, 3:4, FALSE, TRUE)
+  f6a(2:3, 3:4, FALSE, FALSE)
+  f6a(2:3, 3:4, TRUE, FALSE)
 })

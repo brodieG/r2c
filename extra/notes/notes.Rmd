@@ -1,3 +1,21 @@
+# DLL count issue
+
+We should be able to unload DLLs with `dyn.unload`.  Main problem referenced is:
+
+> The function dyn.unload unlinks the DLL. Note that unloading a DLL and then
+> re-loading a DLL of the same name may or may not work: on Solaris it used the
+> first version loaded. Note also that some DLLs cannot be safely unloaded at
+> all: unloading a DLL which implements C finalizers but does not unregister
+> them on unload causes R to crash.
+
+So it seems for our purposes this is fine so long as the ".so" is not preserved
+in some way with intent to be reloaded.  Even then what would really have to
+happen is for the user to manipulate the C code and generate an so file with the
+same name.
+
+If we can register a finalizer to the r2c object such that when it goes out of
+scope it unloads the DLL that probably will work reasonably well.
+
 # Nested Functions
 
 Simplest implementation would be inlining with some kind of scope tracking for
@@ -7,6 +25,12 @@ Otherwise, it should be pretty straightforward to just generate multiple `run_x`
 functions than the outer `run` calls.
 
 Should probably try to implement tail recursion?
+
+Do we allow full recursion?  Each level of recursion will require re-allocation,
+which we likely cannot do ex-ante?  Is it the case that after the first level of
+recursion we can classify the parameter types?  Probably not since it's possible
+that through the recursion they change, not to mention there could be multiple
+entry points to recursion within a single function in e.g. branches.
 
 # Interrupt
 
@@ -215,6 +239,25 @@ initialization of it that was creating duplicate ones).
 
 # Alloc cleanup
 
+## Result Size vs Intermediate Size
+
+Final result must get it's own 
+
+## Reconcile asize vs size
+
+For results can we detect that we're dealing with the last computing call and
+disallow re-use for non-matching size?  And thus don't have to worry about the
+alternative?  Yes, we just need to safely detect when we're at the last
+computing call.  But can we do that easily with branches and passive calls?
+
+We should be able to travel through the list of calls and find the last
+non-passive call by only storing a new call id if it is non passive.  If it is
+a branch though? Might be okay so long as the branch reconciliation obeys the
+rules.
+
+Reconcile's are guaranteed to be loop local, but not necessarily vcopy's.  Can
+we rely on size being good.
+
 ## Rationalize Appending Data
 
 `alloc_dat` is called only with a call, which means it has additional contextual
@@ -262,6 +305,8 @@ single vector, should cleanup the interface.
 
 ## External Symbols
 
+Update: this is now handled.
+
 Currently these are added as many times as they are referenced. To avoid this we
 would need a secondary names lookup table for external symbols.  By the
 structure of the code it is subordinate to any assigned symbols.  Then, when we
@@ -269,6 +314,23 @@ go to eval a leaf expression, if it is a symbol, we can first look in our
 external symbol table.  In fact, we could modify the `if` condition to check the
 external symbol table in addition to the internal one, and fall back to the
 `name_to_id` branch.  The only change would have to be for `data.used` tracking.
+
+We need to deal with it because for non-numeric the coercion to numeric will
+force a full copy every time.  Or is it every iteration?  Scenario is we have
+`x` as an integer used in several different places.  In some places it is used
+as an integer, and in others as a numeric?  Ok, that doesn't matter, we just
+want to make sure we only turn `x` underlier into numeric once.  The tracked
+type can stay as integer.
+
+Need to think through:
+
+* ctrl params: can evaluate to anything.
+* flag params: can evaluate to true/false.
+* external params: is there a restriction for these?  Obviously in `numeric(x)`
+  we only allow scalar numerics/integers, but where does this get validated?  We
+  could check for naked num on eval, and then each function needs to check it's
+  requirements in C code (e.g. length for `numeric`).
+* external symbols: can evaluate to naked numeric
 
 # Eval Env
 
@@ -414,7 +476,7 @@ In order for this to work, `x` must always refer to the same allocation, and
 have the same size.  More generally, any symbol written to in the `if` call with
 a lifetime outside the `if` call must obey that constraint.  This will not
 happen naturally if things are created in different order in different branches,
-so seems like we 
+so seems like we
 
 `if` stack contains a count of how many `else` at any given `if` depth.  For
 each depth, for each variable, what symbol-nodes it has been bound to (a symbol

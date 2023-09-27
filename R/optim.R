@@ -49,8 +49,9 @@ flatten_call_rec <- function(x, calls, indices) {
 # Removes redundant braces such as those containing only one call or braces
 # nested immediately inside each other.
 
-collapse_braces <- function(x) {
+collapse_braces <- function(x, par.assign=FALSE) {
   if(is.brace_call(x)) {
+    if(par.assign) stop("could not find function \"{<-\"")
     if(length(x) == 2L) x <- collapse_braces(x[[2L]])
     else if(length(x) > 2L) {
       i <- 2L
@@ -58,14 +59,16 @@ collapse_braces <- function(x) {
         if(is.brace_call(x[[i]])) {
           # fold child call into parent if it is a nested brace
           call.list <- as.list(x)
-          x <- as.call(
-            c(
-              call.list[seq(1L, i - 1L, 1L)],
-              as.list(x[[i]])[-1L],
-              call.list[seq(i + 1L, length.out=length(x) - i, by=1L)]
-          ) )
-          # in order to look match-called we need names on the call
-          names(x)[seq_along(x)[-1L]] <- "..."
+          x <- dot_names(
+            as.call(
+              c(
+                call.list[seq(1L, i - 1L, 1L)],
+                # Empty braces change semantics of call (`{5;{}}` is not equal
+                # to `{5}`), use numeric(0) like we do with missing branches.
+                if(length(x[[i]]) == 1L) list(quote(numeric(0)))
+                else as.list(x[[i]])[-1L],
+                call.list[seq(i + 1L, length.out=length(x) - i, by=1L)]
+          ) ) )
         } else {
           x[[i]] <- collapse_braces(x[[i]])
           i <- i + 1L
@@ -73,7 +76,11 @@ collapse_braces <- function(x) {
       }
     }
   } else if(is.call_w_args(x)) {
-    for(i in seq(2L, length(x), 1L)) x[[i]] <- collapse_braces(x[[i]])
+    # detect {...} <- ... and error before we remove braces (preserves R
+    # semantics as otherwise {x} <- y would be allowed after brace strip).
+    call.assign <- is.assign_call(x)
+    for(i in seq(2L, length(x), 1L))
+      x[[i]] <- collapse_braces(x[[i]], call.assign && i == 2L)
   }
   x
 }
@@ -148,7 +155,7 @@ reuse_calls_int <- function(x) {
   # Add braces if there are none
   no.braces <- FALSE
   if(!is.brace_call(x)) {
-    x <- call("{", x)
+    x <- dot_names(call("{", x))
     no.braces <- TRUE
   }
   # rename assigned-to symbols, etc.  We rely completly on this to handle the
@@ -313,8 +320,10 @@ reuse_calls_int <- function(x) {
     ru.arg <- as.name(ru.char)
     ru.i <- ru.i + 1L
     hoists[[i]][['sub.sym']] <- ru.arg
-    if(length(to.sub))  # Generate the replacement expression
-      hoists[[i]][['expr']] <- call("<-", ru.arg, x[[calls.ix[[to.sub[[1L]]]]]])
+    if(length(to.sub))  {
+      # Generate the replacement expression
+      hoists[[i]][['expr']] <- en_assign(ru.arg, x[[calls.ix[[to.sub[[1L]]]]]])
+    }
     for(j in to.sub) {
       x[[calls.ix[[j]]]] <- ru.arg
     }
@@ -354,9 +363,7 @@ reuse_calls_int <- function(x) {
   }
 
   # Drop fake layers, part 1
-  x <- x[[1L]]
-  # Give names to added braces (needed b/c logic assumes every arg is named)
-  if(is.null(names(x))) names(x) <- c("", rep("...", length(x) - 1L))
+  x <- dot_names(x[[1L]])
   # Drop fake layers, part 2
   if(no.braces && length(x) == 2L) x <- x[[2L]]
 
