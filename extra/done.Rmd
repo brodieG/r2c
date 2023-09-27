@@ -12,6 +12,55 @@
 
 ### v0.4.0
 
+* Why do we lose a local assignment from `data[[B.NAMED]]` from branch rec?  Not
+  entirely.  Update: No idea what this was about.  Oh well.
+
+* Rename `rec` `brec` to distinguish more clearly from `lrec`?
+  Should `lrec` be `lcopy` since it actually copies more so than reconciles?  In
+  fact there is no loop reconciliation per se, just a runtime directive to copy.
+  We renamed `lrec` to `bcopy`.
+
+
+* Make sure that the result slot is compatible with the `asize`.  When we remap
+  an allocation to the result, it can only be the instance that will be written
+  to the result itself.  This is particularly the case if intermediate results
+  use that slot.
+* Make sure that when we reconcile sizes we account for the size of the
+  allocation, not just the size of the objects being reconciled.  Otherwise when
+  we repoint everything some of the interim stuff might not fit anymore.  This
+  probably hasn't been an issue so far because we cause all reconciliation to be
+  branch-local memory allocations, but I think the problem can still happen.
+  The size should be max of existing asize and what we need, in addition to
+  ensuring that the two objects being reconciled have the same size expression.
+  **UPDATE**: maybe this doesn't matter so long as when we reconcile, we
+  generate an entirely new allocation that isn't shared with anything else?
+  Confirm it is actually entirely new and not a potential re-use of a freed one!
+* It could matter given we could use branch-local allocations.  So instead we
+  just disallow re-use for reconciled values and so on.
+
+* Big `group_exec` involving branches.
+
+* Loops with no iterations (definitely tested).
+
+* Are we robust to zero result sizes?  Particularly when not all results are
+  size zero.  Is it possible to have varying number of zero length results
+  (probably not)?  We seem to be.
+
+* Recompose control for for loops.
+
+* What happens if we try to return/reconcile the iteration variable (`i` in
+  `for(i in ...)`?  Either from the loop, or the loop nested inside an if/else.
+  This works, but highlighted that we need to vcopy literals too.
+
+* Why do we not need to worry about sub-assign in loops?  Is it because we
+  already directly modify in memory, and we don't allow use of return value?
+* What happens when we subassign in a branch?  This should be handled?  It seems
+  like it doesn't matter because we are not changing the size of the variable so
+  subsequent code is unaffected.
+
+* Not clear that constants are being handled properly (e.g. need to `en_vcopy`
+  the constant in `transform_control` for `for_init`).
+
 * Need to make sure that alloc doesn't release `for` bindings until end of loop.
   We do check for it by getting all the symbols in a `for` call in the
   linearized call list (which will be after all the loop calls), but big problem
@@ -49,6 +98,7 @@
 * Reconcile binding of group names and assignment names?  A bit awkward now in
   `append_dat`.  What about `MoreArgs` names (these are treated as external
   symbols, stored in an env ahead of the parent env)?
+* Check that we don't lose "shallow copy" of external vectors.
 
 * `for` is documented to always return NULL, but also to set `var` to NULL if
   there are no iterations (need to figure out what we do with this; set to

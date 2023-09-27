@@ -1,19 +1,20 @@
-# Current
+# DLL count issue
 
-Having issues with:
+We should be able to unload DLLs with `dyn.unload`.  Main problem referenced is:
 
-      for.n=for_n(expr={
-        c <- a + b
-        a <- rec(x=vcopy(
-          x=i <- lset(rec.i=1L, x=rec(x=c + 1)))
-        )
-        lrec(rec.i=1L, x=.R2C.FOR.SYM.1)
-        numeric(length=0L)
-      }),
+> The function dyn.unload unlinks the DLL. Note that unloading a DLL and then
+> re-loading a DLL of the same name may or may not work: on Solaris it used the
+> first version loaded. Note also that some DLLs cannot be safely unloaded at
+> all: unloading a DLL which implements C finalizers but does not unregister
+> them on unload causes R to crash.
 
-Problem is that the `a` symbol triggers both for `c+1` and the surrounding
-`lset`.  In part anyway.  Seems like the candidate generation should not be able
-to "see" past the `lset`.
+So it seems for our purposes this is fine so long as the ".so" is not preserved
+in some way with intent to be reloaded.  Even then what would really have to
+happen is for the user to manipulate the C code and generate an so file with the
+same name.
+
+If we can register a finalizer to the r2c object such that when it goes out of
+scope it unloads the DLL that probably will work reasonably well.
 
 # Nested Functions
 
@@ -237,6 +238,25 @@ We fixed this just by resetting the `@global$par.env` (and fixing an
 initialization of it that was creating duplicate ones).
 
 # Alloc cleanup
+
+## Result Size vs Intermediate Size
+
+Final result must get it's own 
+
+## Reconcile asize vs size
+
+For results can we detect that we're dealing with the last computing call and
+disallow re-use for non-matching size?  And thus don't have to worry about the
+alternative?  Yes, we just need to safely detect when we're at the last
+computing call.  But can we do that easily with branches and passive calls?
+
+We should be able to travel through the list of calls and find the last
+non-passive call by only storing a new call id if it is non passive.  If it is
+a branch though? Might be okay so long as the branch reconciliation obeys the
+rules.
+
+Reconcile's are guaranteed to be loop local, but not necessarily vcopy's.  Can
+we rely on size being good.
 
 ## Rationalize Appending Data
 

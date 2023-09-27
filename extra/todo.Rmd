@@ -24,16 +24,22 @@
   seeing `call9b2 <- quote({x <- x + 1if (b) {x[a] <- yx}x})`.
 * Maybe call numbers should be displayed on right, or status on left by number.
 * Test file inference should try to match beyond beginning of string.
+* When not in tests working directory, see:
+
+    Loading unitizer data...Warning in load_unitizers(store.ids[active], test.files[active], par.frame = util.frame,  :
+      Upgraded test file does not match original test file ('subassign-preproc.R' vs 'NA').
 
 ## Things to test
 
-* Adjust window iteration size calculation.
-
-* Big `group_exec` involving branches.
-
 * That it is impossible to try to use an allocation before it would be created
-  in the code.  Tricky with loops.
-* Loops with no iterations.
+  in the code.  Tricky with loops.  Can we check for this within `alloc`?
+  Probably, but not trivial, particularly because we change all the previously
+  allocated values.  To do this we could record each result allocation, and make
+  sure that every function call always has in the leading parameters things in
+  that list.  Maybe loops aren't too bad since we just explicitly copy
+  back.
+
+* Adjust window iteration size calculation.
 
 * Size computed correctly with concatenations of things produced in branches.
 
@@ -58,53 +64,10 @@
   * Better structuring of topics?
   * Add a performance page?  Generally try to move more arcane stuff out of the
     primary pages to simplify them?
-
-* Should the numeric at the end of the for loops be a noop and replaced by a
-  numeric outside the loop to make it the return value?
-
-* Why do we lose a local assignment from `data[[B.NAMED]]` from branch rec?
-
-* Rename `rec` `brec` to distinguish more clearly from `lrec`?
-  Should `lrec` be `lcopy` since it actually copies more so than reconciles?  In
-  fact there is no loop reconciliation per se, just a runtime directive to copy.
-
-* What happens if we try to return/reconcile the iteration variable (`i` in
-  `for(i in ...)`?  Either from the loop, or the loop nested inside an if/else.
-
-* Make sure that the result slot is compatible with the `asize`.  When we remap
-  an allocation to the result, it can only be the instance that will be written
-  to the result itself.  This is particularly the case if intermediate results
-  use that slot.
-* Make sure that when we reconcile sizes we account for the size of the
-  allocation, not just the size of the objects being reconciled.  Otherwise when
-  we repoint everything some of the interim stuff might not fit anymore.  This
-  probably hasn't been an issue so far because we cause all reconciliation to be
-  branch-local memory allocations, but I think the problem can still happen.
-  The size should be max of existing asize and what we need, in addition to
-  ensuring that the two objects being reconciled have the same size expression.
-  **UPDATE**: maybe this doesn't matter so long as when we reconcile, we
-  generate an entirely new allocation that isn't shared with anything else?
-  Confirm it is actually entirely new and not a potential re-use of a freed one!
-
-* Why do we not need to worry about sub-assign in loops?  Is it because we
-  already directly modify in memory, and we don't allow use of return value?
-* What happens when we subassign in a branch?  This should be handled?
-
-* Not clear that constants are being handled properly (e.g. need to `en_vcopy`
-  the constant in `transform_control` for `for_init`).
-
-* Recompose control for for loops.
-
-* Should we just used nested environments for name bindings, where each name
-  just binds the alloc id?  Problem with this is it's not easy to query the data
-  (great for looking up names though).
+* Clearly document `ftype[[3L]]` function format.
 
 * Think through implication of saving parameter validation functions in r2c_fun
   object in terms of environment capture, etc.
-
-* Are we robust to zero result sizes?  Particularly when not all results are
-  size zero.  Is it possible to have varying number of zero length results
-  (probably not)?
 
 * Check what the `ARGS.NM.VAR` variable is, is it the total number of arguments,
   or the total number of `...` arguments.  Important to get this right for the
@@ -120,8 +83,6 @@
 
 * Can we rationalize the typeof parameter of `vec_dat`?
 
-* Check that we don't lose "shallow copy" of external vectors.
-
 * Rationalize `code_gen_*` funs?  We need name, number of params, and the C
   template, but the last one has a bit of variability that might be difficult to
   parametrize generally.  There is a set of functions that do look very similar
@@ -133,14 +94,17 @@
 
 * Where do we check the validity of size vectors?
 
-* Clearly document `ftype[[3L]]` function format.
-
 * Make sure that all loops have interrupts (subset/assign don't).  Also hidden
   in this is `memcpy`.
 
 * Move subassign to assign/control?
 
 ## Next
+
+### Optimizations
+
+* Should the numeric at the end of the for loops be a noop and replaced by a
+  numeric outside the loop to make it the return value?
 
 ### Compilation / Preprocessor / Allocator Performance
 
@@ -190,6 +154,11 @@ Error in r2cq(x + "a")(5) :
   external makes sense.
 
 ### Other
+
+* Should we just used nested environments for name bindings, where each name
+  just binds the alloc id?  Problem with this is it's not easy to query the data
+  (great for looking up names though).  This might simplify the name management
+  logic a bit.
 
 * Defer creation of temporary vectors until end (just record their size) so that
   we don't allocate vectors we don't use.  We should also identify unused
