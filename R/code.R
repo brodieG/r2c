@@ -24,6 +24,7 @@
 #' @include code-unary.R
 #' @include code-subset.R
 #' @include code-numeric.R
+#' @include code-concat.R
 
 NULL
 
@@ -337,6 +338,7 @@ VALID_FUNS <- c(
        type=list("vecrec", c("e1", "e2")), code.gen=code_gen_pow,
        transform=pow_transform
   ) ),
+  # See also "Other Logical" and "Unary"
   lapply(c(">", ">=", "<", "<=", "==", "!="), cgen_bin2, res.type="logical"),
   lapply(c("|", "&"), cgen_bin2, res.type='logical'),
   ## # Not implemented for now given not just a simple counterpart, but
@@ -360,6 +362,7 @@ VALID_FUNS <- c(
       "uminus", fun=uminus, type=list("arglen", "x"), code.gen=code_gen_unary,
       res.type="preserve.int"
     ),
+    # See also "Vec Binops" and "Other Logical"
     cgen(
       "!", defn=function(x) NULL, type=list("arglen", "x"), code.gen=code_gen_unary,
       res.type="logical"
@@ -401,6 +404,7 @@ VALID_FUNS <- c(
 
   # - Other Logical ------------------------------------------------------------
 
+  # See also "Vec Binops" and "Unary"
   list(
     cgen(
       "&&", defn=BIN.DEFN,
@@ -513,6 +517,12 @@ VALID_FUNS <- c(
       "numeric_alongn", fun=numeric_alongn,
       type=list("prod", "..."),
       code.gen=code_gen_numeric_alongn, res.type="double"
+    ),
+    cgen(
+      "c", defn=function(...) NULL,
+      type=list("concat", "..."),
+      code.gen=code_gen_concat,
+      res.type="preserve"
     )
   ),
   # - r2c funs -----------------------------------------------------------------

@@ -160,7 +160,7 @@ compute_size <- function(
             " in a function that requires them to be external:\n":
             deparseLines(clean_call(call, level=2L))
           )
-        size <- ftype[[3L]](alloc[['dat']][inputs])
+        size <- ftype[[3L]](alloc[['dat']][inputs], in.size)
         if(!is.size_coef(size))
           stop("Internal Error: external parameter size comp invalid.")
         size

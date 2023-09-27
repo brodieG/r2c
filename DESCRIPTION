@@ -24,6 +24,7 @@ Collate:
     'preproc-copy.R'
     'rename.R'
     'optim.R'
+    'code-concat.R'
     'constants.R'
     'code-unary.R'
     'code-bin.R'

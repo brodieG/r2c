@@ -200,7 +200,9 @@ FUN.NAMES <- c(
   subassign="subassign",   # this is [<-
 
   numeric="numeric", numeric_along="numeric_along",
-  numeric_alongn="numeric_alongn"
+  numeric_alongn="numeric_alongn",
+
+  c="concat"
 )
 # C Generator Output Types
 CGEN.OUT.CALL <- 1L   # output call to C fun e.g. `mean(data, lens, di[5])`
