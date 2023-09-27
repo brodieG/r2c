@@ -10,7 +10,7 @@
 \alias{for_n}
 \alias{for_0}
 \alias{lset}
-\alias{lrec}
+\alias{lcopy}
 \alias{r2c_if}
 \alias{if_true}
 \alias{if_false}
@@ -35,7 +35,7 @@ for_0(expr)
 
 lset(rec.i, x)
 
-lrec(rec.i, x)
+lcopy(rec.i, x)
 
 r2c_if(true, false)
 

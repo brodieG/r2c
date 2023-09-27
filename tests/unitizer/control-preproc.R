@@ -596,7 +596,6 @@ unitizer_sect('multi-assign', {
   })
   r2c:::pp_clean(call6c2)
 })
-
 unitizer_sect('errors', {
   call7a <- quote({
       x0 <- x + y
@@ -604,4 +603,13 @@ unitizer_sect('errors', {
       else r2c::rec(y + y)
   })
   r2c:::pp_clean(call7a)
+})
+unitizer_sect('loop reconstruct', {
+  call8a <- quote(
+    for(i in x) {
+      tmp <- y + 1
+      y <- tmp
+    }
+  )
+  r2c:::pp_clean(call8a)
 })
