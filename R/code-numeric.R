@@ -58,12 +58,12 @@ static void %%s(%%s) {
 )
 # Sizing fun for things like `numeric(x)`
 
-numeric_size <- function(alloc, idx) {
+numeric_size <- function(alloc, idx, gmax, gmin) {
   if(length(idx) != 1L)
     stop(
       "There should only be one sizing param, got ", length(idx)
     )
-  val <- alloc[['dat']][idx]
+  val <- alloc[['dat']][[idx]]
   if(!is.numeric(val) || length(val) != 1L || is.na(val) || val < 0)
     stop("Invalid size parameter.")
   list(val)  # this is a size.coef
