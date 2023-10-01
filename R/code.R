@@ -515,7 +515,8 @@ VALID_FUNS <- c(
         length.out=ext_par("num", valid_length.out),
         each=ext_par("num", valid_each)
       ),
-      code.gen=code_gen_rep, res.type="preserve"
+      code.gen=code_gen_rep,
+      res.type="preserve.which", res.type.which=1L,
     )
   ),
   # - Miscellaneous ------------------------------------------------------------
