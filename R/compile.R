@@ -149,7 +149,7 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' * Statistics: `mean`, `sum`, `length`, `all`, `any`.
 #' * Assignment and braces: `<-`, `=`, and `{`.
 #' * Control Structures (experimental): `if/else`, `for`
-#' * Sequences: `seq_along`.
+#' * Sequences: `seq_along`, `seq_len`, `rep`.
 #' * Subsetting: `[`, `x[s] <- expr`
 #' * Miscellaneous: `numeric`.
 #'
@@ -172,8 +172,10 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #'       value of the sub-assignment expression may not be used).
 #'     * `s` may only contain values in `seq_along(x)`.
 #'     * `"[<-"(x, s, y)` is considered distinct and disallowed.
-#' * In `numeric(x)`, `x` is an external parameter, i.e. it cannot be iteration
-#'   varying (see "Expression Types", also `?numeric_along`).
+#' * In `numeric(x)`, `seq_len(x)`, `rep(vec, times=x, each=y, length.out=z)`,
+#'   `x`, `y`, and `z` are external parameters, i.e. they cannot be iteration
+#'   varying (see "Expression Types", also `?numeric_along`).  Additionally
+#'   `rep` does not take any `...` parameters.
 #' * Assignments may only be nested in braces (`{`) or in control structure
 #'   branches.  This is a recursive requirement, so `mean(if(a) x <- y)` is
 #'   disallowed even though `if(a) x <- y` is allowed.

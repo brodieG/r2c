@@ -202,6 +202,8 @@ FUN.NAMES <- c(
   numeric="numeric", numeric_along="numeric_along",
   numeric_alongn="numeric_alongn",
 
+  rep="rep",
+
   c="concat"
 )
 # C Generator Output Types
