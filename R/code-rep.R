@@ -69,9 +69,10 @@ static void %s(%s) {
         // Checked already in rep_size, should we skip?
         if(len_x * each != len_times)
           Rf_error("Invalid \'times\' value for `rep`.");
+
         for(R_xlen_t i = 0; i < len_x; ++i) {
-          for(R_xlen_t time = times[i]; time; --time) {
-            for(R_xlen_t eachi = eacht; eachi; --eachi) {
+          for(R_xlen_t eachi = eacht; eachi; --eachi) {
+            for(R_xlen_t time = *(times++); time; --time) {
               *(res++) = x[i];
             }
           }
@@ -113,13 +114,15 @@ rep_size <- function(alloc, idx, gmax, gmin) {
     )
   # See `compute_size(..., size.coef, ...)` for what coefs is.  Here it
   # represents the size of the `x` parameter
-  coefs <- alloc[['size']][idx[1L]]
+  coefs <- alloc[['size.coefs']][[idx[1L]]]
 
+  if(!is.size_coef(coefs)) stop("Internal Error: expected size coef.")
   if(!all(alloc[['type']][idx[2:4]] == "ext"))
     stop(
       "Internal Error: `times`, `length.out` and `each` parameters to `rep` ",
       "must be external."
     )
+  # These should be validated already (not their interactions)
   times <- alloc[['dat']][[idx[2L]]]
   length.out <- alloc[['dat']][[idx[3L]]]
   each <- alloc[['dat']][[idx[4L]]]
@@ -142,21 +145,27 @@ rep_size <- function(alloc, idx, gmax, gmin) {
     # `times` can be length 1, or of a constant size that matches coefs of `x`.
     is.size.const <- FALSE
     size.const <- NA_real_
-    if(length(coefs) == 1L) {
-      # Constant size if either only constant coef, or group size is constant.
-      is.size.const <- sum(coefs[[1L]][-1L]) == 0 || gmax == gmin
-    }
-    if(is.size.const) {
-      size.const <- actual_size(coefs, gmax) * each
-    }
-    if(length(times) != 1 && !isTRUE(size.const == length(times) * each))
-      stop("invalid 'times' value for `rep`")
-    list(sum(times * each))
-  }
-  if((max.size <- actual_size(size.coef[[1L]], gmax)) > IX["R_XLEN_T_MAX"])
-    stop("`rep` produces a vector longer than R_XLEN_T_MAX (%0.d)", max.size)
-  size.coef
 
+    if(length(times) == 1) {
+      lapply(coefs, function(x) x * times * each)
+    } else {
+      if(length(coefs) == 1L) {
+        # Constant size if either only constant coef, or group size is constant.
+        is.size.const <- sum(coefs[[1L]][-1L]) == 0 || gmax == gmin
+      }
+      if(is.size.const) {
+        size.const <- actual_size(coefs[[1L]], gmax) * each
+      }
+      if(!isTRUE(size.const == length(times)))
+        stop("invalid 'times' value for `rep`")
+      list(sum(times))
+    }
+  }
+  sizes <- vapply(size.coef, actual_size, 0, gmax)
+
+  if(max(sizes) > IX["R_XLEN_T_MAX"])
+    stop("`rep` produces a vector longer than R_XLEN_T_MAX (%0.d)", max(sizes))
+  size.coef
 }
 
 # Not a complete validation, more is done in the sizing fun to make sure size is
