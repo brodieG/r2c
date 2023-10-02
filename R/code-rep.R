@@ -79,6 +79,7 @@ static void %s(%s) {
         }
       }
     }
+    // each == 0 case doesnt do anything
   } else {
     if(!len_x) {
       for(R_xlen_t i = 0; i < len_outt; ++i) *(res++) = R_NaReal;
@@ -91,7 +92,7 @@ static void %s(%s) {
         i -= len_x;
       }
       for(R_xlen_t j = 0; j < i; ++j) *(res++) = x[j];
-    } else {
+    } else { // each cannot be 0 (error in `rep_size`).
       R_xlen_t i = len_outt;
       while(i > len_x * each) {
         for(R_xlen_t j = 0; j < len_x; ++j) {
@@ -99,8 +100,8 @@ static void %s(%s) {
         }
         i -= len_x * each;
       }
-      for(R_xlen_t j = 0; j < i; ++j) {
-        for(R_xlen_t eachi = eacht; eachi; --eachi) *(res++) = x[j];
+      for(R_xlen_t j = 0; j < len_x; ++j) {
+        for(R_xlen_t eachi = eacht; eachi && i; --eachi, --i) *(res++) = x[j];
       }
     }
   }
