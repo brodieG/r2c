@@ -92,7 +92,7 @@ roll_call <- function(
     )
     status <- .Call(
       crunner,
-      obj[[c('handle', 'name')]],
+      obj[['handle']][['name']],
       prep[['dat']],
       prep[['dat_cols']],
       prep[['ids']],

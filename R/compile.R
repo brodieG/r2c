@@ -696,12 +696,11 @@ get_r2c_dat <- function(fun) {
   if(!is.environment(dat))
     stop("Could not find data environment in `fun`")
 
-  dat <- as.list(dat)
   dat.contents <- c(
     'preproc', 'call', 'call.processed', 'so', 'compile.out',
     'R.version', 'r2c.version'
   )
-  if(!all(dat.contents %in% names(dat)))
+  if(!all(dat.contents %in% ls(dat)))
     stop("`fun` missing some expected components.")
   if(!identical(dat[['R.version']], R.version))
     stop(
