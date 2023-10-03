@@ -124,10 +124,36 @@ match_and_alloc <- function(
   ) ) )
 
   # Split back into group varying (data) vs not (MoreArgs)
-  dat.match <- unlist(call.dummy.m[call.dummy.m <= length(do)])
+  dummy.idx <- unlist(call.dummy.m)
+  dat.match <- dummy.idx[dummy.idx <= length(do)]
   names(do)[dat.match] <- names(dat.match)
-  more.match <- unlist(call.dummy.m[call.dummy.m > length(do)])
+  more.match <- unlist(dummy.idx[dummy.idx > length(do)])
   names(MoreArgs)[more.match - length(do)] <- names(more.match)
+
+  # Add unmatched defaults (we already checked for missing formals above)
+  # Note we don't allow dots with defaults, which technically is possible but
+  # in definition of a function but not in use of it.  Need to eval defaults.
+  missing.formals <-
+    which(!names(formals) %in% c(names(call.dummy.m.old), '...'))
+  if(!all(missing.formals %in% which(default_params(formals))))
+    stop("Internal Error: missing non-default formals")
+  defaults <- sapply(
+    names(formals[missing.formals]),
+      function(miss) {
+        tryCatch(
+          eval(formals[[miss]], envir=c(do, MoreArgs), enclos=enclos),
+          error=function(e) {
+            stop(
+              simpleCondition(
+                paste0(
+                  "Error evaluating default parameter ", miss, ": ",
+                  conditionMessage(e)
+                ),
+                call
+    ) ) } ) },
+    simplify=FALSE
+  )
+  MoreArgs <- c(MoreArgs, defaults)
 
   # Expand any dots in the preprocess data to match the dot args we were given
   preproc <- expand_dots(preproc, c(names(do), names(MoreArgs)))
