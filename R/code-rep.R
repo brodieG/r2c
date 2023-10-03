@@ -128,7 +128,8 @@ rep_size <- function(alloc, idx, gmax, gmin) {
   length.out <- alloc[['dat']][[idx[3L]]]
   each <- alloc[['dat']][[idx[4L]]]
 
-  if(length.out > 0 && each == 0) stop("invalid 'each' argument for `rep`.")
+  if(isTRUE(length.out > 0) && each == 0)
+    stop("invalid 'each' argument for `rep`.")
 
   if(length(length.out) > 1L)
     warning("first element used of 'length.out' argument.")
@@ -165,7 +166,7 @@ rep_size <- function(alloc, idx, gmax, gmin) {
   sizes <- vapply(size.coef, actual_size, 0, gmax)
 
   if(max(sizes) > IX["R_XLEN_T_MAX"])
-    stop("`rep` produces a vector longer than R_XLEN_T_MAX (%0.d)", max(sizes))
+    stop("`rep` produces a vector longer than R_XLEN_T_MAX (", max(sizes), ")")
   size.coef
 }
 
