@@ -6,7 +6,7 @@
   expression?  That gets interpreted as a template because the other parameter
   name is not `.`:
   (function(a, b) vetr::vetr(is.logical(.) || is.logical(b)))(1, 2)
-  Error in (function(a, b) vetr::vetr(is.logical(.) || is.logical(b)))(a = 1,  : 
+  Error in (function(a, b) vetr::vetr(is.logical(.) || is.logical(b)))(a = 1,  :
     For argument `a` at least one of these should pass:
     - `1` should be type "logical" (is "double")
     - `is.logical(1)` is not TRUE (FALSE)
@@ -53,18 +53,27 @@
 
 ## Current
 
+* All the rep checks on times/each/length.out should stay in `rep_size` and
+  similar since they are external and shouldn't change.
+
+* Copyright banners in tests have wrong title.
+
+* Should we preprocess `rep` into `rep.int`, `rep_len`, `rep_along`, etc., so
+  that we don't have the branches in the C code?  Maybe eventually.
+
 * Add a finalizer to unload and dump dlls (but in some OSes we cannot unload
   DLLs, so maybe need a mechanism for generating libraries).:
 
     qz1ylj3zna.so':
       `maximal number of DLLs reached...
 
+  See notes.Rmd for additional discussion.
+
 * Doc improvements:
   * Spruce up r2c landing page.
   * Better structuring of topics?
   * Add a performance page?  Generally try to move more arcane stuff out of the
     primary pages to simplify them?
-* Clearly document `ftype[[3L]]` function format.
 
 * Think through implication of saving parameter validation functions in r2c_fun
   object in terms of environment capture, etc.
@@ -87,10 +96,6 @@
   template, but the last one has a bit of variability that might be difficult to
   parametrize generally.  There is a set of functions that do look very similar
   though.
-
-* Do we need to check for integers larger than 2^53 for loss of precision?  Is
-  that even possible?  R semi guarantees 32 bit integers.  What if double was 32
-  bits?  Probably do need a similar assumption check.
 
 * Where do we check the validity of size vectors?
 
@@ -143,7 +148,7 @@ Error in r2cq(x + "a")(5) :
     +   res + x
     + }
     > f <- r2cf(fr)
-    Error in match.call(definition, call, expand.dots, envir) : 
+    Error in match.call(definition, call, expand.dots, envir) :
       unused argument (y)
 
 * Move the disallowed assignment error to somewhere that does not use the
