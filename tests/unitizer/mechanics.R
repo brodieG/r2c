@@ -108,6 +108,13 @@ unitizer_sect("Formals / Symbol Resolution", {
     r2c_test <- r2cq(sum(x))
     r2c_test(31)
   })
+  # Defaults in formals
+  rf6 <- function(x, y=1:3) sum(x, y)
+  f6 <- r2cf(rf6)
+  f6(5)
+  f6(5, 1)
+  group_exec(f6, 1:6, rep(1:2, 3))
+  group_exec(f6, 1:6, rep(1:2, 3), MoreArgs=list(100:101))
 })
 unitizer_sect("brackets/assign", {
   external <- 1:5

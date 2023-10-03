@@ -169,6 +169,10 @@ get_target_symbol <- function(x, fun.name) {
   }
   as.character(target.symbol)
 }
+# Which parameteres in formals have default values
+default_params <- function(formals)
+  vapply(formals, function(x) !identical(x, MISSING[[1L]]), TRUE)
+
 #' Identify Symbols Assigned
 #'
 #' Return names of all symbols assigned to within a call.  This is not super

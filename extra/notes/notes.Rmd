@@ -1,3 +1,11 @@
+# rep
+
+Big problem with `rep.int` is that the times argument can be the same length as
+the `x` argument, which only works with fixed size.  Can we leverage the new
+`ftype` version?  Maybe, we have gmax, gmin, so we should be able to check for
+the special case where they are equal and the same size as the second parameter.
+
+
 # DLL count issue
 
 We should be able to unload DLLs with `dyn.unload`.  Main problem referenced is:

@@ -646,8 +646,7 @@ clean_call <- function(x, level=1L) {
     fun.defn <- VALID_FUNS[[c(fun.name, 'defn')]]
     if(!is.null(fun.defn) && !is.null(names(x))) {
       defn.frm <- formals(fun.defn)
-      default.args <-
-        vapply(defn.frm, function(x) !identical(x, MISSING[[1L]]), TRUE)
+      default.args <- default_params(defn.frm)
       default.args.nm <- names(defn.frm)[default.args]
       act.def.equal <- vapply(
         default.args.nm,

@@ -12,6 +12,25 @@
 
 ### v0.4.0
 
+* Default arguments in `group_exec` don't seem to work (test with `r2cf`)?
+* Default arguments that depend on iteration varying data (i.e. the default
+  references an argument that is iteration varying); probably just don't support
+  this type of function?
+
+    f1a <- r2cf(
+      function(x, na.rm=TRUE) sum(x, na.rm=na.rm)
+    )
+    args(f1a)
+    ## function (x, na.rm = TRUE)
+    ## NULL
+    group_exec(f1a, 1:4, rep(1:2, 2))
+    ## Error in sum(... = x, ... = na.rm, na.rm = FALSE) :
+    ##   object 'na.rm' not found
+    f1a(1:2)
+    ## [1] 4   # <---- WRONG, adding the na.rm value
+
+* Function with default formals in `group_exec`.
+
 * Do we need to check for integers larger than 2^53 for loss of precision?  Is
   that even possible?  R semi guarantees 32 bit integers.  What if double was 32
   bits?  Probably do need a similar assumption check.
