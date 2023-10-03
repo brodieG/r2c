@@ -197,7 +197,7 @@ The following functions are supported in \code{x} (or in the body of \code{x} fo
 \item Statistics: \code{mean}, \code{sum}, \code{length}, \code{all}, \code{any}.
 \item Assignment and braces: \verb{<-}, \code{=}, and \verb{\{}.
 \item Control Structures (experimental): \verb{if/else}, \code{for}
-\item Sequences: \code{seq_along}.
+\item Sequences: \code{seq_along}, \code{seq_len}, \code{rep}.
 \item Subsetting: \code{[}, \code{x[s] <- expr}
 \item Miscellaneous: \code{numeric}.
 }
@@ -223,8 +223,10 @@ value of the sub-assignment expression may not be used).
 \item \code{s} may only contain values in \code{seq_along(x)}.
 \item \code{"[<-"(x, s, y)} is considered distinct and disallowed.
 }
-\item In \code{numeric(x)}, \code{x} is an external parameter, i.e. it cannot be iteration
-varying (see "Expression Types", also \code{?numeric_along}).
+\item In \code{numeric(x)}, \code{seq_len(x)}, \code{rep(vec, times=x, each=y, length.out=z)},
+\code{x}, \code{y}, and \code{z} are external parameters, i.e. they cannot be iteration
+varying (see "Expression Types", also \code{?numeric_along}).  Additionally
+\code{rep} does not take any \code{...} parameters.
 \item Assignments may only be nested in braces (\verb{\{}) or in control structure
 branches.  This is a recursive requirement, so \code{mean(if(a) x <- y)} is
 disallowed even though \code{if(a) x <- y} is allowed.

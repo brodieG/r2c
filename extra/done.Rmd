@@ -12,6 +12,12 @@
 
 ### v0.4.0
 
+* Do we need to check for integers larger than 2^53 for loss of precision?  Is
+  that even possible?  R semi guarantees 32 bit integers.  What if double was 32
+  bits?  Probably do need a similar assumption check.
+
+* Clearly document `ftype[[3L]]` function format.
+
 * Why do we lose a local assignment from `data[[B.NAMED]]` from branch rec?  Not
   entirely.  Update: No idea what this was about.  Oh well.
 
@@ -19,7 +25,6 @@
   Should `lrec` be `lcopy` since it actually copies more so than reconciles?  In
   fact there is no loop reconciliation per se, just a runtime directive to copy.
   We renamed `lrec` to `bcopy`.
-
 
 * Make sure that the result slot is compatible with the `asize`.  When we remap
   an allocation to the result, it can only be the instance that will be written

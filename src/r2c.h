@@ -43,8 +43,7 @@
 // KEEP SYNC'ED WITH inst/headers/r2c-const.h
 // ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-
-struct const_dat {const char * name; const int value;};
+struct const_dat {const char * name; const intmax_t value; SEXPTYPE type;};
 
 typedef SEXP (*r2c_dl_fun) (
   double ** data, R_xlen_t * lens, int ** di, int * narg, SEXP extn

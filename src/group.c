@@ -50,7 +50,7 @@ SEXP R2C_group_sizes(SEXP g) {
   double *gsize = REAL(gsize_sxp);
   int *glabs = INTEGER(glabs_sxp);
   double gmax = 0;
-  double gmin = 0;
+  double gmin = glen;
 
   if(glen == 1) {
     *gsize = (double) glen;

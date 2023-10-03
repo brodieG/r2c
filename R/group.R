@@ -91,7 +91,8 @@ group_exec_int <- function(
   } else iter.sizes.in[[1L]]
 
   # Identify obvious cases for optimizing result label generation.  size_vecrec
-  # should have collapsed to obvious cases if possible.
+  # should have collapsed to obvious cases if possible.  We rely on the internal
+  # allocator to freak out if we request something larger than R_xlen_t?
   res.size.type <- "variable"
   if(length(res.size.coef) == 1L) {
     rsc1 <- res.size.coef[[1L]]

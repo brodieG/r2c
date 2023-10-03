@@ -24,6 +24,8 @@
 #' @include code-unary.R
 #' @include code-subset.R
 #' @include code-numeric.R
+#' @include code-concat.R
+#' @include code-rep.R
 
 NULL
 
@@ -45,7 +47,7 @@ is.valid_eqlen <- function(type)
 
 is.valid_extern <- function(type)
   is.valid_n_arglen(type) && type[[1L]] == "extern" &&
-  length(type[[2L]]) == 1L
+  length(type[[2L]]) >= 1L
 
 is.valid_concat <- function(type)
   is.valid_n_arglen(type) && type[[1L]] == "concat"
@@ -149,19 +151,30 @@ valid_length <- function(length) vet(NUM.1.POS, length)
 #'   here are considered "internal" (see `?"r2c-compile"`).
 #' @param type list(2:3) containing the length-type of function with at position
 #'   one a scalar character in "constant", "arglen", "vecrec", "eqlen",
-#'   "concat", "product", or "extern", and additional meta data at position two
-#'   or three that can be depending on the value in position one (see size.R for
-#'   details):
+#'   "concat", "product", or "extern" (see size.R for details on the meanings of
+#'   these).  At position two additional meta data that varies based on the
+#'   value at position one:
 #'
 #'   * constant: a positive non-NA integer indicating the constant result size
 #'     (e.g. 1L for `mean`)
 #'   * arglen: character(1L) the name of the argument to use the length of as
-#'     the result size (e.g. `probs` for [`quantile`]), also allows specifying a
-#'     function at position 3 to e.g. pick which of multiple arguments matching
-#'     `...` to use for the length.
-#'   * vecrec, eqlen, concat, product, external: character(n) (or integer(n))
-#'     the names (or indices in the matched call) of the arguments to use to
-#'     compute result size.
+#'     the result size (e.g. `probs` for [`quantile`]).
+#'   * vecrec, eqlen, concat, product, external: character(n) the names  of the
+#'     arguments to use to compute result size.
+#'   * external: in addition to the above, at position 3 a function to resolve a
+#'     size from the values of the external parameters.  The function will be
+#'     passed the `alloc` list along with the indices of the inputs used by the
+#'     call in the r2c expression.
+#'
+#'   Additionally, at position three we can see:
+#'
+#'   * arglen: allows specifying a function at position 3 that is given
+#'     parameter names and returns which of them to use, e.g. to pick which of
+#'     multiple arguments matching `...` to use for the length.
+#'   * external: a function given the `alloc` object, the indices of the data
+#'     elements corresponding to the parameters of the call being processed, and
+#'     the `gmax`, `gmin` values, for custom computations of size requiring
+#'     consultation of external param values(e.g. for `numeric`, `rep.int`).
 #'
 #' @param code.gen a function that generates the C code corresponding to an R
 #'   function during the preprocessing steps.  Accepts as parameters:
@@ -237,7 +250,6 @@ cgen <- function(
       stop("Internal Error: external params missing from defn or include '...'.")
     extern <- extern[order(match(names(extern), names(formals)))]
   }
-
   stopifnot(
     is.character(type[[1L]]) && length(type[[1L]]) == 1L && !is.na(type[[1L]]),
     type[[1L]] %in%
@@ -334,6 +346,7 @@ VALID_FUNS <- c(
        type=list("vecrec", c("e1", "e2")), code.gen=code_gen_pow,
        transform=pow_transform
   ) ),
+  # See also "Other Logical" and "Unary"
   lapply(c(">", ">=", "<", "<=", "==", "!="), cgen_bin2, res.type="logical"),
   lapply(c("|", "&"), cgen_bin2, res.type='logical'),
   ## # Not implemented for now given not just a simple counterpart, but
@@ -357,18 +370,10 @@ VALID_FUNS <- c(
       "uminus", fun=uminus, type=list("arglen", "x"), code.gen=code_gen_unary,
       res.type="preserve.int"
     ),
+    # See also "Vec Binops" and "Other Logical"
     cgen(
       "!", defn=function(x) NULL, type=list("arglen", "x"), code.gen=code_gen_unary,
       res.type="logical"
-    )
-  ),
-  # - Sequence -----------------------------------------------------------------
-
-  list(
-    cgen(
-      "seq_along", defn=function(along.with) NULL,
-      type=list("arglen", "along.with"), code.gen=code_gen_seq_along,
-      res.type='preserve'
     )
   ),
   # - Subset -----------------------------------------------------------------
@@ -391,6 +396,7 @@ VALID_FUNS <- c(
 
   # - Other Logical ------------------------------------------------------------
 
+  # See also "Vec Binops" and "Unary"
   list(
     cgen(
       "&&", defn=BIN.DEFN,
@@ -485,6 +491,34 @@ VALID_FUNS <- c(
       type=list("arglen", "expr"), code.gen=code_gen_for, res.type="preserve"
     )
   ),
+  # - Sequence -----------------------------------------------------------------
+
+  list(
+    cgen(
+      "seq_along", defn=function(along.with) NULL,
+      type=list("arglen", "along.with"), code.gen=code_gen_seq_along,
+      res.type='preserve'
+    ),
+    cgen(
+      "seq_len", defn=function(length.out) NULL,
+      type=list("extern", "length.out", numeric_size),
+      extern=list(length.out=ext_par("num", valid_length)),
+      code.gen=code_gen_seq_len, res.type="double"
+    ),
+    cgen(
+      "rep", defn=function(x, times=1, length.out=NA_real_, each=1) NULL,
+      type=list(
+        "extern", c("x", "times", "each", "length.out"), rep_size
+      ),
+      extern=list(
+        times=ext_par("num", valid_times),
+        length.out=ext_par("num", valid_length.out),
+        each=ext_par("num", valid_each)
+      ),
+      code.gen=code_gen_rep,
+      res.type="preserve.which", res.type.which=1L,
+    )
+  ),
   # - Miscellaneous ------------------------------------------------------------
   list(
     cgen(
@@ -503,6 +537,12 @@ VALID_FUNS <- c(
       "numeric_alongn", fun=numeric_alongn,
       type=list("prod", "..."),
       code.gen=code_gen_numeric_alongn, res.type="double"
+    ),
+    cgen(
+      "c", defn=function(...) NULL,
+      type=list("concat", "..."),
+      code.gen=code_gen_concat,
+      res.type="preserve"
     )
   ),
   # - r2c funs -----------------------------------------------------------------

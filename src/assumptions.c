@@ -48,6 +48,22 @@ SEXP R2C_assumptions(void) {
   )
     Rf_error("Double cannot hold R_LEN_T_MAX without precision loss.");
 
+  // Repeat same tests for integer, would be a weird system to fail this one.
+  double intlen_test_dbl = INT_MAX;
+  intmax_t intlen_test_int = (intmax_t) intlen_test_dbl;
+  if(intlen_test_int != INT_MAX)
+    Rf_error("Double cannot hold INT_MAX without precision loss.");
+
+  // Need to make sure the full range of R_xlen_t values can be accomodated by
+  // double as we use doubles to store vector indices, specifically that there
+  // is enough precision that all sequential integers are representable and
+  // we're not skipping e.g. with a stride of 2.
+  if(
+    ((int)((double) INT_MAX) != INT_MAX) ||
+      ((int)((double) INT_MAX - 1) != INT_MAX - 1)
+  )
+    Rf_error("Double cannot hold INT_MAX without precision loss.");
+
   // For window application, we want to remap the window starts and ends to an
   // all-positive domain.  With a max window size of int we can definitely use
   // R_xlen_t for that (in the positive range).  But what if we want to

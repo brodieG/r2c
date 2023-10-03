@@ -15,6 +15,13 @@
 
 #' @include code-summary.R
 
+double_size_tpl <- '
+  if(lend >= 0 && lend < R_XLEN_T_MAX) {
+    R_xlen_t len = (R_xlen_t) lend;%s
+  } else {
+    Rf_error("Invalid vector size (got %%%%%%%%f)", data[di[0]][0]);
+  }'
+
 f_numeric_core <- '
     R_xlen_t i;
     // AFAICT 0.0 not guaranteed to be all zeroes in binary representation, so
@@ -24,13 +31,8 @@ f_numeric_core <- '
     LOOP_W_INTERRUPT1(len, {res[i] = 0;});
     lens[di[narg]] = len;'
 
-f_numeric_size_check <- sprintf('
-  if(lend >= 0 && lend < R_XLEN_T_MAX) {
-    R_xlen_t len = (R_xlen_t) lend;%s
-  } else {
-    Rf_error("Invalid vector size (got %%%%%%%%f)", data[di[0]][0]);
-  }', f_numeric_core
-)
+f_numeric_size_check <- sprintf(double_size_tpl, f_numeric_core)
+
 f_numeric <- sprintf('
 static void %%s(%%s) {
   if(lens[di[0]] != 1) Rf_error("invalid length argument");
@@ -56,14 +58,15 @@ static void %%s(%%s) {
 )
 # Sizing fun for things like `numeric(x)`
 
-numeric_size <- function(vals) {
-  if(!is.list(vals) || length(vals) != 1L) stop(
-    "There should only be one sizing param, got ", length(vals)
-  )
-  val <- vals[[1L]]
+numeric_size <- function(alloc, idx, gmax, gmin) {
+  if(length(idx) != 1L)
+    stop(
+      "There should only be one sizing param, got ", length(idx)
+    )
+  val <- alloc[['dat']][[idx]]
   if(!is.numeric(val) || length(val) != 1L || is.na(val) || val < 0)
     stop("Invalid size parameter.")
-  list(val)
+  list(val)  # this is a size.coef
 }
 
 code_gen_numeric <- function(fun, pars, par.types) {

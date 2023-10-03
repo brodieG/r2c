@@ -126,6 +126,8 @@ stack_param_missing <- function(params, stack.avail, call, .CALL) {
 #   details for why there may be more than one such vector.
 # @param size.args list of lists as described in `size.coef`, used to represent
 #   the set of inputs into a function.
+# @param ftype list corresponds to the `type` parameter for `cgen` (see docs for
+#   that in code.R).
 #
 # @return a list with members:
 #
@@ -152,13 +154,13 @@ compute_size <- function(
       extern={
         if(!is.function(ftype[[3L]]))
           stop("Internal error: no function to resolve external size.")
-        if(!all(alloc[['type']][inputs] == 'ext'))
+        if(!any(alloc[['type']][inputs] == 'ext'))
           stop(
-            "Non-external parameter(s) ", toString(names(inputs)),
-            " in a function that requires them to be external:\n":
+            "No external parameter(s) ", toString(names(inputs)),
+            " in a function that requires some to be external:\n":
             deparseLines(clean_call(call, level=2L))
           )
-        size <- ftype[[3L]](alloc[['dat']][inputs])
+        size <- ftype[[3L]](alloc, inputs, gmax, gmin)
         if(!is.size_coef(size))
           stop("Internal Error: external parameter size comp invalid.")
         size
