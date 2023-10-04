@@ -414,16 +414,13 @@ r2c_core <- function(
   # Compile C code
   so <- make_shlib(preproc[['code']], dir=dir, quiet=quiet)
   # Pre-load lib as by default we don't keep the SO file
-  handle <- dyn.load(so[['so']])
-  if(clean) {
-    so[['so']] <- NA_character_
-    unlink(dir, recursive=TRUE)
-  }
+
   # But if we do keep it, we want to be able to recover it later.  We store the
   # data in an environment for deparse into <environment> instead of a list.
   OBJ <- list2env(
     list(
-      preproc=preproc, so=so[['so']], handle=handle,
+      preproc=preproc, so=so[['so']],
+      handle=list(name="r2c"),  # dummy handle should return FALSE w/ is.loaded
       call=call, call.processed=preproc[['call.processed']],
       compile.out=so[['out']],
       R.version=R.version, r2c.version=utils::packageVersion('r2c'),
@@ -431,6 +428,9 @@ r2c_core <- function(
     ),
     parent=emptyenv()
   )
+  OBJ[['handle']] <- load_dynlib(OBJ)
+  if(clean) unlink(dir, recursive=TRUE)
+
   # Generate formals that match the free symbols in the call
   if(auto.formals) {
     sym.free <- preproc[['sym.free']]
@@ -513,7 +513,7 @@ r2c_core <- function(
     .ENV <- list2env(.DAT0, parent=.(envir))
   })
   # We'll use group_exec with a single group to act as the runner for the
-  # stand-alone use of this function, so ue `groups=NULL`.
+  # stand-alone use of this function, so use `groups=NULL`.
   GEXE <- quote(
     bquote(
       group_exec_int(
@@ -716,5 +716,21 @@ get_r2c_dat <- function(fun) {
     )
 
   dat
+}
+
+## Load a DLL and Register Finalizer to Unload It
+##
+## @param obj environment r2c object
+
+load_dynlib <- function(obj) {
+  shlib <- obj[['so']]
+  handle <- obj[['handle']]
+  if(file.exists(shlib) && !is.loaded("run", PACKAGE=handle[['name']])) {
+    obj[['handle']] <- handle <- dyn.load(shlib)
+    reg.finalizer(obj, function(obj) dyn.unload(obj[['so']]))
+  }
+  if(!is.loaded("run", PACKAGE=handle[['name']]))
+    stop("Could not load native code.")
+  handle
 }
 

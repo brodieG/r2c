@@ -108,12 +108,7 @@ group_exec_int <- function(
   status <- numeric(1)
   res.i <- which(alloc[['alloc']][['type']] == "res")
   res <- if(length(group.res.sizes)) {
-    handle <- obj[['handle']]
-    if(!is.na(shlib) && !is.loaded("run", PACKAGE=handle[['name']])) {
-      handle <- dyn.load(shlib)
-    }
-    if(!is.loaded("run", PACKAGE=handle[['name']]))
-      stop("Could not load native code.")
+    handle <- load_dynlib(obj)
 
     alp <- prep_alloc(alloc, sum(group.res.sizes))
 
