@@ -24,6 +24,18 @@ same name.
 If we can register a finalizer to the r2c object such that when it goes out of
 scope it unloads the DLL that probably will work reasonably well.
 
+Finalizer seems to works, but it's obvious that `gc(full=TRUE)` does not
+actually `gc` all things that it should, so adding the finalizer only slows down
+the point at which we eventually run out of DLLs.
+
+And in the case of the unitizer tests it's not clear that it's actually reducing
+the number of DLLs, and I can't seem to get the DLLs to unload, or more
+specifically the r2c environments to GC.
+
+No great solution for this.  For our purposes we'll just add a method of
+recording registered DLLs and dumping them as part of the unitizer tests so the
+tests themselves don't cause a problem.
+
 # Nested Functions
 
 Simplest implementation would be inlining with some kind of scope tracking for

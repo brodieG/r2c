@@ -42,7 +42,8 @@ here extract various aspects of this data.
 }
 \details{
 \itemize{
-\item \code{get_so_loc} the file system location of the shared object file.
+\item \code{get_so_loc} the file system location of the shared object file which can
+be used to identify the corresponding loaded dynamic library (see details).
 \item \code{get_c_code} the generated C code used to produce the shared object, but
 for quick inspection \code{show_c_code} is best.
 \item \code{show_c_code} retrieves code with \code{get_c_code} and outputs to screen the
@@ -59,6 +60,12 @@ level counterpart labeled with the R call in a comment.  This includes calls
 that are nested as arguments to other calls, which will appear before the
 outer call.  Due to how how control structures are implemented the R calls
 and the C level counterparts will not match up exactly.
+
+When \code{r2c} creates a dynamic library, by default it immediately deletes the
+file system object after loading into memory.  Thus, \code{get_so_loc} is only
+useful to help identify the loaded version of the library.  See
+\code{\link{r2c-compile}} for how to preserve the file system version of loaded
+libraries.
 }
 \examples{
 r2c_sum_sub <- r2cq(sum(x + y))
@@ -66,5 +73,5 @@ get_r_code(r2c_sum_sub)
 show_c_code(r2c_sum_sub)
 }
 \seealso{
-\code{\link{r2c-compile}}, \code{\link{r2c-preprocess}}.
+\code{\link{r2c-compile}}, \code{\link{r2c-preprocess}}, \code{\link{loaded_r2c_dynlibs}}.
 }

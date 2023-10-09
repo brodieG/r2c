@@ -61,14 +61,6 @@
 * Should we preprocess `rep` into `rep.int`, `rep_len`, `rep_along`, etc., so
   that we don't have the branches in the C code?  Maybe eventually.
 
-* Add a finalizer to unload and dump dlls (but in some OSes we cannot unload
-  DLLs, so maybe need a mechanism for generating libraries).:
-
-    qz1ylj3zna.so':
-      `maximal number of DLLs reached...
-
-  See notes.Rmd for additional discussion.
-
 * Doc improvements:
   * Spruce up r2c landing page.
   * Better structuring of topics?
