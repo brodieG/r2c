@@ -48,13 +48,6 @@ roll_prep <- function(
 
   # - Run ----------------------------------------------------------------------
 
-  handle <- obj[['handle']]
-  if(!is.na(shlib) && !is.loaded("run", PACKAGE=handle[['name']])) {
-    handle <- dyn.load(shlib)
-  }
-  if(!is.loaded("run", PACKAGE=handle[['name']]))
-    stop("Could not load native code.")
-
   prep_alloc(alloc, r.len)
 }
 ## Convert result to integer if it came in that way, and issue recycling
@@ -87,12 +80,13 @@ roll_call <- function(
     obj <- get_r2c_dat(fun)
     prep <- roll_prep(
       obj, data=data, r.len=r.len, formals=formals(fun),
-      call=call, runner=runner, MoreArgs=MoreArgs, 
+      call=call, runner=runner, MoreArgs=MoreArgs,
       wmax=size[1L], wmin=size[2L]
     )
+    handle <- load_dynlib(obj)
     status <- .Call(
       crunner,
-      obj[[c('handle', 'name')]],
+      handle[['name']],
       prep[['dat']],
       prep[['dat_cols']],
       prep[['ids']],

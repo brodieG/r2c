@@ -12,6 +12,15 @@
 
 ### v0.4.0
 
+* Add a finalizer to unload and dump dlls (but in some OSes we cannot unload
+  DLLs, so maybe need a mechanism for generating libraries).:
+
+    qz1ylj3zna.so':
+      `maximal number of DLLs reached...
+
+  See notes.Rmd for additional discussion.
+
+
 * Default arguments in `group_exec` don't seem to work (test with `r2cf`)?
 * Default arguments that depend on iteration varying data (i.e. the default
   references an argument that is iteration varying); probably just don't support
