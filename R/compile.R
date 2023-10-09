@@ -743,4 +743,77 @@ load_dynlib <- function(obj) {
     stop("Could not load native code.")
   handle
 }
+#' Manage `r2c` Dynamic Libraries
+#'
+#' List or unload `r2c` loaded dynamic libraries.  These functions are helpful
+#' for managing situations where there is a sufficiently large number of `r2c`
+#' functions created (hundreds) that there is a risk of exhausting the number of
+#' allowed open dynamic libraries (see note for [`base::dyn.load`]).
+#'
+#' "r2c_fun" functions are designed to unload their associated dynamic libraries
+#' when they are garbage collected, but in our experience garbage collection on
+#' them is difficult to predict or force. The intended use of these function is
+#' to record loaded `r2c` dynamic libraries that we wish to preserve prior
+#' to creating a set that we wish to use and discard.  Once we are done with the
+#' discardable set, we drop all `r2c` dynamic libraries that were not part of
+#' the previously recorded list (see examples).
+#'
+#' `r2c` dynamic libraries are recognized solely by matching their names against
+#' the regular expression pattern `"^r2c-[a-z0-9]{10}$"`.  All such libraries
+#' missing from the `except` parameter will be unloaded by `unload_r2c_dynlibs`,
+#' even if they were not created by `r2c`.  Any `r2c` function that has its
+#' associated dynamic library unloaded will cease to work, so it only makes
+#' sense to unload libraries for functions known to be deleted.
+#'
+#' @export
+#' @seealso [r2c-compile] for details on "r2c_fun" functions, [`get_so_loc`] to
+#'   retrieve original dynamic library file system location from and "r2c_fun"
+#'   object, [`base::dyn.unload`], [`base::getLoadedDLLs`].
+#' @param except character vector of dynamic library names as produced by
+#'   `loaded_r2c_dynlibs` to exclude from unloading.
+#' @examples
+#' except <- loaded_r2c_dynlibs()
+#' tmp.r2c.fun <- r2cq(sum(x))
+#' tmp.r2c.fun(1:10)
+#' rm(tmp.r2c.fun)
+#' gc()                        # gc should unload lib, but it often doesn't
+#' unload_r2c_dynlibs(except)  # force unload
+
+loaded_r2c_dynlibs <- function() {
+  libs <- getLoadedDLLs()
+  lib.names <- names(libs)
+  grep("^r2c-[a-z0-9]{10}$", lib.names, value=TRUE)
+}
+#' @export
+#' @rdname loaded_r2c_dynlibs
+
+unload_r2c_dynlibs <- function(except=character()) {
+  libs <- getLoadedDLLs()
+  r2c.libs <- loaded_r2c_dynlibs()
+  libs.to.unload <- setdiff(r2c.libs, except)
+  unloaded <- vapply(
+    libs.to.unload,
+    function(x) {
+      path <- libs[[x]][['path']]
+      unloaded <- try(dyn.unload(path), silent=TRUE)
+      if(inherits(unloaded, "try-error")) {
+        msg <- conditionMessage(attr(unloaded, 'condition'))
+        paste0("Failed to unload ", name, ": ", msg)
+      } else ""
+    },
+    ""
+  )
+  if(length(unloaded.libs <- unloaded[nzchar(unloaded)])) {
+    if(length(unloaded.libs == 1L)) {
+      stop(unloaded.libs)
+    } else {
+      stop(
+        paste0(
+          "Unable to unload 'r2c' dynamic libraries:\n",
+          paste0("* ", unloaded.libs, collapse="\n")
+      ) )
+    }
+  }
+  invisible(libs.to.unload[!nzchar(unloaded)])
+}
 
