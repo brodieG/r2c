@@ -71,23 +71,10 @@
 
 * In alloc.R what's the deal with call.outer vs .CALL?
 
-* Can we rationalize the typeof parameter of `vec_dat`?
-
-* Where do we check the validity of size vectors?
-
 * Make sure that all loops have interrupts (subset/assign don't).  Also hidden
   in this is `memcpy`.
 
 * Move subassign to assign/control?
-
-* Subset with logicals.  AFAIK there is no way to pass the type of the input to
-  C to make this decision.  We would need to change the interface to add
-  support (we could add one more "status" vector to encode the type of each
-  parameter, probably needs to be a separate vector since we won't know the
-  size).  For subset major issue is result size, which is not knowable
-  ex-ante.  Subassign would be okay since size isn't changed.  Do we allow at
-  all?  Do we implement which (doesn't resolve the unknowable input size).
-
 
 ## Next
 
@@ -168,6 +155,14 @@ Error in r2cq(x + "a")(5) :
   instead of an internal function.
 
 ### Other
+
+* Subset with logicals.  AFAIK there is no way to pass the type of the input to
+  C to make this decision.  We would need to change the interface to add
+  support (we could add one more "status" vector to encode the type of each
+  parameter, probably needs to be a separate vector since we won't know the
+  size).  For subset major issue is result size, which is not knowable
+  ex-ante.  Subassign would be okay since size isn't changed.  Do we allow at
+  all?  Do we implement which (doesn't resolve the unknowable input size).
 
 * Add the capability to convert a non-numeric external into a numeric external
   with the validation function, e.g. character vector with levels, etc.

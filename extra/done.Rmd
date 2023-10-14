@@ -12,6 +12,12 @@
 
 ### v0.4.0
 
+* Where do we check the validity of size vectors?  Looks like we do it in
+  `vec_dat`.
+
+* Can we rationalize the typeof parameter of `vec_dat`? Not sure what I meant
+  this nor whether it would be worth the time to do so.
+
 * Defer creation of temporary vectors until end (just record their size) so that
   we don't allocate vectors we don't use.  We should also identify unused
   vectors and not allocate them (e.g. because branch reconciliation made a
