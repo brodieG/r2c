@@ -639,7 +639,7 @@ append_dat <- function(
   # groups should have non-constant size coefficients
   if(any(lengths(size.coef) > 1L) && !type %in% c("grp", "tmp"))
     stop("Internal Eror: complex sizes only for temporary allocs or group.")
-  if(type == "tmp" && !is.null(new))
+  if(type != "tmp" && is.null(new))
     stop("Internal Error: NULL data allowed only for internal allocations.")
 
   new.num <- if(is.integer(new) || is.logical(new)) as.numeric(new) else new
