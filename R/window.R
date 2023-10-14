@@ -40,9 +40,8 @@ roll_prep <- function(
     enclos=enclos, call=call, runner=runner,
     gmax=wmax, gmin=wmin
   )
-  stack <- alloc[['stack']]
-  if(ncol(stack) != 1L) stop("Internal Error: unexpected stack state at exit.")
-  res.size.coef <- alloc[['alloc']][['size.coefs']][[stack['id', 1L]]]
+  res.id <- which(alloc[['alloc']][['type']] == 'res')
+  res.size.coef <- alloc[['alloc']][['size.coefs']][[res.id]]
   if(!identical(res.size.coef, list(1)))
     stop("`fun` must be guaranteed to return scalar values.")
 
