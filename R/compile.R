@@ -157,9 +157,7 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' is the name of the function, optionally in `pkg::fun` format.  Functions must
 #' be bound to their original symbols for them to be recognized.
 #'
-#' In general the r2c implementations will behave as in R.  There are several
-#' exceptions, but outside of those involving control structures you will not
-#' notice them in typical usage:
+#' In general the r2c implementations will behave as in R, with some exceptions:
 #'
 #' * `ifelse` always return in a common type that can support
 #'   both `yes` and `no` values.
@@ -179,6 +177,7 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' * Assignments may only be nested in braces (`{`) or in control structure
 #'   branches.  This is a recursive requirement, so `mean(if(a) x <- y)` is
 #'   disallowed even though `if(a) x <- y` is allowed.
+#' * Control Structures have significant constraints (see next).
 #'
 #' @section Control Structures:
 #'

@@ -158,12 +158,12 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
   alloc <- init_dat(x[['call']], meta=meta, scope=0L)
   # Status control placeholder.
   sts.vec <- numeric(IX[['STAT.N']])
-  vdat <- vec_dat(sts.vec, "sts", typeof='double')
+  vdat <- vec_dat(sts.vec, type="sts", typeof='double', gmax=gmax)
   alloc <- append_dat(
     alloc, vdat=vdat, depth=0L, call.i=0L, rec=0L, branch.lvl=0L
   )
   # Result placeholder, to be alloc'ed once we know group sizes.
-  vdat <- vec_dat(numeric(), type="res", typeof='double')
+  vdat <- vec_dat(numeric(), type="res", typeof='double', gmax=gmax)
   alloc <- append_dat(
     alloc, vdat=vdat, depth=0L, call.i=0L, rec=0L, branch.lvl=0L
   )
@@ -171,12 +171,12 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
   # Add group data.
   if(!all(nzchar(names(data)))) stop("All data must be named.")
   data.naked <- data[is.num_naked(data)]
-  data.used <- integer()
   for(i in seq_along(data.naked)) {
     datum <- data.naked[[i]]
     dname <- names(data.naked)[i]
     typeof <- typeof(datum)
-    vdat <- vec_dat(datum, type="grp", typeof=typeof, size.coef=list(0:1))
+    vdat <-
+      vec_dat(datum, type="grp", typeof=typeof, size.coef=list(0:1), gmax=gmax)
     alloc <-
       append_dat(alloc, vdat=vdat, depth=0L, name=dname, call.i=0L, rec=0L)
     guard_symbol(dname, env.ext)
@@ -217,6 +217,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
     ext.id <- ""
     par.type <- x[['par.type']][[i]]
     par.ext <- par.type %in% PAR.EXT
+    reuse <- FALSE
 
     call <- x[['call']][[i]]
     depth <- x[['depth']][[i]]
@@ -227,7 +228,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
       pkg <- call.pkgs[i]
     }
     id <- if(par.type != PAR.INT.CALL) name_to_id(alloc, name) else 0L
-    vec.dat <- init_vec_dat()
+    vec.dat <- NULL
 
     # reconciliation level
     rec <- x[['rec']][[i]]
@@ -283,9 +284,10 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
         alloc, call, call.name=name, call.i=i, rec=rec, env.ext=env.ext
       )
       # Prepare new vec data (if any), and tweak objet depending on situation.
-      # Alloc is made later, but only if vec.dat[['new']] is not null.
-      vec.dat <- vec_dat(NULL, "tmp", typeof=res.typeof, size.coef=size.coef)
       if(!name %in% c(PASSIVE.SYM, MODIFY.SYM)) {
+        vec.dat <- vec_dat(
+          NULL, "tmp", typeof=res.typeof, size.coef=size.coef, gmax=gmax
+        )
         # We have a computing expression in need of a free slots.
         # (NB: PASSIVE includes ASSIGN, but use both in case that changes).
         free <-
@@ -293,9 +295,10 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
           !alloc[['ids']] %in% alloc[['names']]['ids',]
         fit <- free & alloc[['type']] == "tmp" & alloc[['alloc']] >= asize
         # If none fit prep for new allocation, otherwise reuse free alloc
-        if(!any(fit) || i %in% no.reuse)
-          vec.dat[['new']] <- numeric(asize)
-        else alloc <- reuse_dat(alloc, fit, vec.dat, depth=depth)
+        if(any(fit) && !i %in% no.reuse) {
+          alloc <- reuse_dat(alloc, fit, vec.dat, depth=depth)
+          vec.dat <- NULL
+        }
       } else if (name %in% PASSIVE.SYM) {
         # Don't do anything for these, effectively causing `dat[[i]]` to remain
         # unchanged for use by the next call, except we do update the `typeof`
@@ -308,8 +311,9 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
       # in e.g. `x <- y`, this is the `x`, which isn't actually data,
       # We don't need to record it but we do for consistency.  This is just
       # a stub that shouldn'really get used anywhere it an impact.
-      vec.dat <-
-        vec_dat(numeric(), "tmp", typeof="logical", size.coef=list(integer()))
+      vec.dat <- vec_dat(
+        numeric(), "tmp", typeof="logical", size.coef=list(integer()), gmax=gmax
+      )
     # - Control Parameter / External -------------------------------------------
     } else if (par.ext || !id) {
       # ext.any evals should not mix with internal values.
@@ -388,7 +392,8 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
           validate_ext(x, i, par.type, arg.e, name, call, .CALL)
           typeof <- typeof(arg.e)
           size.coef <- list(length(arg.e))
-          vec.dat <- vec_dat(arg.e, "ext", typeof=typeof, size.coef=size.coef)
+          vec.dat <-
+            vec_dat(arg.e, "ext", typeof=typeof, size.coef=size.coef, gmax=gmax)
         }
       }
     # - Match a Symbol In Data -------------------------------------------------
@@ -397,14 +402,13 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
       alloc[['i']] <- id
       # Update symbol depth (needed for assigned-to symbols)
       if(alloc[['depth']][id] > depth) alloc[['depth']][id] <- depth
-      data.used <- union(data.used, id)
     } else stop("Internal Error: unexpected token.")
 
     # - Update Stack / Data ----------------------------------------------------
 
     # Append new data to our data array.  Not all calls produce data; those
     # that do have non-NULL vec.dat[['new']].
-    if(!is.null(vec.dat[['new']])) {
+    if(!is.null(vec.dat)) {
       alloc <- append_dat(
         alloc, vec.dat, depth=depth, call.i=i, rec=rec, branch.lvl=0L
       )
@@ -512,32 +516,40 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
   last.call <- call.dat[[length(call.dat)]]
   last.alloc <- last.call[['ids']][length(last.call[['ids']])]
   res.alloc <- which(alloc[['type']] == "res")
+
   for(i in seq_along(call.dat)) {
     id.replace <- call.dat[[i]][['ids']] == last.alloc
     call.dat[[i]][['ids']][id.replace] <- res.alloc
   }
   alloc[['i']] <- res.alloc
-  alloc[['typeof']][res.alloc] <- alloc[['typeof']][last.alloc]
+  for(i in c('size.coefs', 'typeof', 'alloc'))
+    alloc[[i]][res.alloc] <- alloc[[i]][last.alloc]
 
-  # Remove unused data, and re-index to account for that
-  ids.all <- seq_along(alloc[['dat']])
-  ids.keep <- ids.all[
-    alloc[['type']] %in% c("res", "ext", "tmp", "sts") |
-    ids.all %in% data.used
-  ]
+  # Check stack status
+  if(ncol(stack) != 1L || stack['id',] != last.alloc)
+    stop("Internal Error: unexpected stack state at exit.")
+
+  # Drop unused data and re-index
+  ids.keep <- sort(
+    union(
+      unlist(lapply(call.dat, "[[", "ids")),
+      seq_along(alloc[['dat']])[alloc[['type']] %in% c('res', 'sts')]
+  ) )
   call.dat <- lapply(
     call.dat, function(x) {
       x[['ids']] <- match(x[['ids']][x[['ids']] %in% ids.keep], ids.keep)
       x
   } )
-  stack['id',] <- match(stack['id',], ids.keep)
-
-  alloc.fin <- lapply(
-    alloc[c('dat', 'alloc', 'depth', 'type', 'typeof', 'size.coefs')],
-    "[", ids.keep
-  )
+  alloc.fin <- lapply(alloc[c('dat', ALLOC.DAT.VEC)], "[", ids.keep)
   alloc.fin[['i']] <- match(alloc[['i']], ids.keep)
-  list(alloc=alloc.fin, call.dat=call.dat, stack=stack)
+
+  # Instantiate vectors to hold intermediate calcs; result vector initialized
+  # separately
+  vec.to.inst <- alloc.fin[['type']] == 'tmp'
+  alloc.fin[['dat']][vec.to.inst] <-
+    lapply(alloc.fin[['alloc']][vec.to.inst], numeric)
+
+  list(alloc=alloc.fin, call.dat=call.dat)
 }
 # - Data Structures ------------------------------------------------------------
 
@@ -554,22 +566,32 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
 ## longer needed, and each new group will re-use the allocations from the prior
 ## group.  Allocations are sized to accommodate the largest group.
 ##
-## This is a description of the input `dat` (which is also the returned value
+## Temporary vectors are initialized as NULL.  Their allocation size can be
+## inferred from `vdat[['size.coefs']]` and `gmax`, and actual allocation is
+## deferred until after all reconciliations to avoid instantiating vectors that
+## end up unused.
+##
+## This is a description of the input `alloc` (which is also the returned value
 ## after update).
 ##
-## * dat: (this is `dat[['dat']]`) the actual data, for "tmp" type (i.e.
-##   generated by computation of a sub-call) this will be written to so should
-##   not be accessible via R.
+## * dat: (this is `alloc[['dat']]`) the actual data vectors.  The "tmp" ones
+##   (i.e. those generated by computation of a sub-call) are not instantiated
+##   until later (NULL placeholders).  Once instantiated they are modified by C
+##   code so should never be returned to the user.
 ## * ids0: a unique identifier for each allocation, differs from column rank in
 ##   `dat` as soon as there is a re-use of a previous allocation.  This is a
 ##   sentinel to detect deviations between the stack and allocations.
-## * type: one of "tmp" (allocated), "grp" (from the iteration/group variant
-##   data, "ext" (any other data vector), "res" (the result), "sts"
-##   (status flags, e.g. recycle warning).
+## * type: one of:
+##   * "tmp": Computed/allocated.
+##   * "grp": From the iteration/group variant data.
+##   * "ext": Any other data vector.
+##   * "res": The result.
+##   * "sts": Status flags, e.g. recycle warning.
 ## * typeof: the intended data format at the end of the computation.  Used to
 ##   try to track whether a vector could be interpreted as logical or integer.
+## * type: what type of vector:
 ## * alloc: the true size of the vector (should be equivalent to
-##   `lengths(dat[['dat']])`?).
+##   `lengths(dat[['dat']])` for instantiated vectors).
 ## * size.coefs: a list of `size.coef` elements as described in `compute_size`.
 ## * depth: the depth at which allocation occurred, only relevant for
 ##   `type == "tmp"`
@@ -590,7 +612,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
 ## We're mixing return value elements and params, a bit, but there are some
 ## differences, e.g.:
 ##
-## @param dat the allocation data structure
+## @param alloc the allocation data structure
 ## @param vdat see vec_dat
 ## @param name group data comes with names, or things that are assigned to
 ##   symbols
@@ -599,7 +621,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
 ## @return dat, updated
 
 append_dat <- function(
-  dat, vdat, name=NULL, depth, call.i, rec, branch.lvl
+  alloc, vdat, name=NULL, depth, call.i, rec, branch.lvl
 ) {
   if(is.null(name)) name <- ""
   if(!is.vec_dat(vdat)) stop("Internal Error: bad vec_dat.")
@@ -607,43 +629,46 @@ append_dat <- function(
   typeof <- vdat[['typeof']]
   new <- vdat[['new']]
   size.coef <- vdat[['size.coef']]
-  if(is.null(new)) stop("Internal Error: cannot append null data.")
 
-  if(!is.num_naked(list(new))) stop("Internal Error: bad data column.")
+  if(!is.null(new) && !is.num_naked(list(new)))
+    stop("Internal Error: bad data column.")
   if(!type %in% c("res", "grp", "ext", "tmp", "sts"))
     stop("Internal Error: bad type.")
   if(type != "tmp" && (length(size.coef) != 1L || any(lengths(size.coef)) > 2L))
     stop("Internal Eror: complex sizes only for computed allocs.") # and res?
-
+  # groups should have non-constant size coefficients
   if(any(lengths(size.coef) > 1L) && !type %in% c("grp", "tmp"))
     stop("Internal Eror: complex sizes only for temporary allocs or group.")
+  if(type != "tmp" && is.null(new))
+    stop("Internal Error: NULL data allowed only for internal allocations.")
 
   new.num <- if(is.integer(new) || is.logical(new)) as.numeric(new) else new
-  dat[['dat']] <- c(dat[['dat']], list(new.num))
+  alloc[['dat']] <- c(alloc[['dat']], list(new.num))
+  asize <- compute_asize_from_size(size.coef, vdat[['gmax']])
 
-  dat[['i']] <- length(dat[['dat']])
-  id0.new <- dat[['id0']] <- dat[['id0']] + 1L
+  alloc[['i']] <- length(alloc[['dat']])
+  id0.new <- alloc[['id0']] <- alloc[['id0']] + 1L
 
   # need to test whether data.frame would slow things down too much
-  dat[['ids0']] <- c(dat[['ids0']], id0.new)
-  dat[['alloc']] <- c(dat[['alloc']], length(new))         # true size
-  dat[['size.coefs']] <- c(dat[['size.coefs']], list(size.coef)) # list of lists
-  dat[['depth']] <- c(dat[['depth']], depth)
-  dat[['type']] <- c(dat[['type']], type)
-  dat[['typeof']] <- c(dat[['typeof']], typeof)
+  alloc[['ids0']] <- c(alloc[['ids0']], id0.new)
+  alloc[['alloc']] <- c(alloc[['alloc']], asize)                     # true size
+  alloc[['size.coefs']] <- c(alloc[['size.coefs']], list(size.coef)) # list of lists
+  alloc[['depth']] <- c(alloc[['depth']], depth)
+  alloc[['type']] <- c(alloc[['type']], type)
+  alloc[['typeof']] <- c(alloc[['typeof']], typeof)
 
-  if(length(unique(lengths(dat[ALLOC.DAT.VEC]))) != 1L)
+  if(length(unique(lengths(alloc[ALLOC.DAT.VEC]))) != 1L)
     stop("Internal Error: irregular vector alloc data.")
 
   # Append dat should never overwrite names in the existing scope
-  names <- dat[['names']]
+  names <- alloc[['names']]
   if(
-    name %in% colnames(names[,names['scope',] == dat[['scope']], drop=FALSE])
+    name %in% colnames(names[,names['scope',] == alloc[['scope']], drop=FALSE])
   )
     stop("Internal error: cannot append names existing in current scope.")
-  if(nzchar(name)) dat <- names_bind(dat, name, call.i, rec)
+  if(nzchar(name)) alloc <- names_bind(alloc, name, call.i, rec)
 
-  dat
+  alloc
 }
 ## We Have Unused Allocations to Reuse
 reuse_dat <- function(alloc, fit, vec.dat, depth) {
@@ -651,6 +676,7 @@ reuse_dat <- function(alloc, fit, vec.dat, depth) {
   target <- which.min(fit)
   slot <- seq_along(alloc[['dat']])[fit][target]
 
+  # Copy over the fields from vec.dat into `alloc`.
   update.vecs <- setdiff(ALLOC.DAT.VEC, c('ids0', 'alloc', 'depth'))
   for(i in update.vecs) alloc[[i]][slot] <- vec.dat[[i]]
 
@@ -696,17 +722,17 @@ init_dat <- function(call, meta, scope) {
 }
 init_vec_dat <- function() {
   list(
-    new=NULL, type=NA_character_, typeof=NA_character_, group=NA_real_,
-    size.coef=list(integer())
+    new=NULL, type=NA_character_, typeof=NA_character_,
+    size.coef=list(integer()), gmax=NA_real_
   )
 }
 # See `append_dat` for details on what the parameters are.
-
 vec_dat <- function(
   new=NULL, type=NA_character_, typeof=NA_character_,
-  size.coef=list(length(new))
+  size.coef=list(length(new)), gmax
 ) {
-  vec.dat <- list(new=new, type=type, typeof=typeof, size.coef=size.coef)
+  vec.dat <-
+    list(new=new, type=type, typeof=typeof, size.coef=size.coef, gmax=gmax)
   stopifnot(is.vec_dat(vec.dat))
   vec.dat
 }
@@ -726,7 +752,9 @@ is.vec_dat <- function(x)
       length(x[['size.coef']][[1L]] == 1L)
   ) ) &&
   is.character(x[['typeof']]) && length(x[['typeof']]) == 1L &&
-  isTRUE(x[['typeof']] %in% c("double", "integer", "logical"))
+  isTRUE(x[['typeof']] %in% c("double", "integer", "logical")) &&
+  is.numeric(x[['gmax']]) && length(x[['gmax']]) == 1L &&
+  !is.na(x[['gmax']]) && x[['gmax']] >= 0
 
 ## Stack used to track parameters ahead of reduction when processing call.
 init_stack <- function() {
@@ -974,12 +1002,11 @@ reconcile_control_flow <- function(
   for(i in seq_along(id.rc.F)) {
     # Size and generate allocation
     size.coef <- size.coef.T[[i]]
-    asize <- compute_asize_from_size(size.coef, gmax)
-    new <- numeric(asize)
     # Take the most general type from the two branches
     typeof.num <- match(c(typeof.F[i], typeof.T[i]), NUM.TYPES)
     typeof <- NUM.TYPES[max(typeof.num)]
-    vec.dat <- vec_dat(new, "tmp", typeof=typeof, size.coef=size.coef)
+    vec.dat <-
+      vec_dat(NULL, "tmp", typeof=typeof, size.coef=size.coef, gmax=gmax)
     # rec=0L b/c reconciliation decisions made on 'rec' data from names matrix,
     # so this value should not be used anymore.
     alloc <- append_dat(

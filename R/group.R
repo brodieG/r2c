@@ -72,15 +72,9 @@ group_exec_int <- function(
     do=do, MoreArgs=MoreArgs, preproc=preproc, formals=formals,
     enclos=enclos, gmax=gmax, gmin=gmin, call=call, runner=r2c::group_exec
   )
-  stack <- alloc[['stack']]
-
-  # Compute result size
-  if(ncol(stack) != 1L)
-    stop("Internal Error: unexpected stack state at exit.")
-
-  empty.res <- FALSE
+  res.id <- which(alloc[['alloc']][['type']] == 'res')
   gsizes <- group.sizes[['gsizes']]
-  res.size.coef <- alloc[['alloc']][['size.coefs']][[stack['id', 1L]]]
+  res.size.coef <- alloc[['alloc']][['size.coefs']][[res.id]]
 
   # Compute sizes for each size coefs element across all groups; skip
   # pmax for single element case for speed.
