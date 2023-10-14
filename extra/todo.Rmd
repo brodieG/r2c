@@ -57,10 +57,6 @@
   similar since they are external and shouldn't change.
 
 * Copyright banners in tests have wrong title.
-
-* Should we preprocess `rep` into `rep.int`, `rep_len`, `rep_along`, etc., so
-  that we don't have the branches in the C code?  Maybe eventually.
-
 * Doc improvements:
   * Spruce up r2c landing page.
   * Better structuring of topics?
@@ -70,24 +66,12 @@
 * Think through implication of saving parameter validation functions in r2c_fun
   object in terms of environment capture, etc.
 
-* Check what the `ARGS.NM.VAR` variable is, is it the total number of arguments,
-  or the total number of `...` arguments.  Important to get this right for the
-  summary functions.  Seems like it is total count.
-
 * Check that multi-arg summary cannot have zero args?  Need to automatically
   give it at least one arg to be consistent.
-
-* Add the capability to convert a non-numeric external into a numeric external
-  with the validation function, e.g. character vector with levels, etc.
 
 * In alloc.R what's the deal with call.outer vs .CALL?
 
 * Can we rationalize the typeof parameter of `vec_dat`?
-
-* Rationalize `code_gen_*` funs?  We need name, number of params, and the C
-  template, but the last one has a bit of variability that might be difficult to
-  parametrize generally.  There is a set of functions that do look very similar
-  though.
 
 * Where do we check the validity of size vectors?
 
@@ -96,12 +80,38 @@
 
 * Move subassign to assign/control?
 
+* Subset with logicals.  AFAIK there is no way to pass the type of the input to
+  C to make this decision.  We would need to change the interface to add
+  support (we could add one more "status" vector to encode the type of each
+  parameter, probably needs to be a separate vector since we won't know the
+  size).  For subset major issue is result size, which is not knowable
+  ex-ante.  Subassign would be okay since size isn't changed.  Do we allow at
+  all?  Do we implement which (doesn't resolve the unknowable input size).
+
+
 ## Next
 
 ### Optimizations
 
 * Should the numeric at the end of the for loops be a noop and replaced by a
   numeric outside the loop to make it the return value?
+
+* Can we mark some functions as okay to re-use memory, where the result can be
+  one of the inputs?
+
+* Profile a compilation call and track (maybe it doesn't matter because really
+  it's all about that first compilation to load the tool chain).
+
+* Can we get more memory efficient by e.g. using `+=`.  This is complicated, see
+  notes "Memory Re-Use".
+
+* Can we avoid `r2c_copy` in cases where we know the symbol is assigned to from
+  an expression?  The big challenge is dealing with e.g. `if` and all the
+  constraints that adds.
+
+* Identify unused assignments as a courtesy warning?  This could be extended to
+  unused expressions, which could potentially be eliminated (possibly
+  iteratively for e.g. `x <- y; z <- x` where then `z` is unused).
 
 ### Compilation / Preprocessor / Allocator Performance
 
@@ -150,25 +160,30 @@ Error in r2cq(x + "a")(5) :
   whether error messages around them when they are part of the iteration data vs
   external makes sense.
 
+* `reuse_call` needs to track what the original call was so we can provide
+  better error messages if something goes wrong at some point.
+
+* Semi-internal error should issue conditions that can be caught by the
+  compilers or runners to return as errors with a meaningful calling function
+  instead of an internal function.
+
 ### Other
+
+* Add the capability to convert a non-numeric external into a numeric external
+  with the validation function, e.g. character vector with levels, etc.
+
+* Rationalize `code_gen_*` funs?  We need name, number of params, and the C
+  template, but the last one has a bit of variability that might be difficult to
+  parametrize generally.  There is a set of functions that do look very similar
+  though.
+
+* Should we preprocess `rep` into `rep.int`, `rep_len`, `rep_along`, etc., so
+  that we don't have the branches in the C code?  Maybe eventually.
 
 * Should we just used nested environments for name bindings, where each name
   just binds the alloc id?  Problem with this is it's not easy to query the data
   (great for looking up names though).  This might simplify the name management
   logic a bit.
-
-* Defer creation of temporary vectors until end (just record their size) so that
-  we don't allocate vectors we don't use.  We should also identify unused
-  vectors and not allocate them (e.g. because branch reconciliation made a
-  vector unused - does this actually happen)?
-
-* Subset with logicals.  AFAIK there is no way to pass the type of the input to
-  C to make this decision.  We would need to change the interface to add
-  support (we could add one more "status" vector to encode the type of each
-  parameter, probably needs to be a separate vector since we won't know the
-  size).  For subset major issue is result size, which is not knowable
-  ex-ante.  Subassign would be okay since size isn't changed.  Do we allow at
-  all?
 
 * `:`, `seq`, etc?
 
@@ -245,7 +260,7 @@ Error in r2cq(x + "a")(5) :
   `process_groups`, i.e. generating its output, especially if the sorted version
   does not include the order vector.
 
-## Next
+* Should we have safety tests in the code to be controlled by a debug mode flag?
 
 ### Generic
 
@@ -284,49 +299,18 @@ Error in r2cq(x + "a")(5) :
 * Rename depth to height.  No, rename depth to level.  The use of height and
   depth with an upside down tree is ridiculous and not my fault.
 
-### Optim
-
-* Can we mark some functions as okay to re-use memory, where the result can be
-  one of the inputs?
-
-* Profile a compilation call and track (maybe it doesn't matter because really
-  it's all about that first compilation to load the tool chain).
-
-* Can we get more memory efficient by e.g. using `+=`.  This is complicated, see
-  notes "Memory Re-Use".
-
-* Can we avoid `r2c_copy` in cases where we know the symbol is assigned to from
-  an expression?  The big challenge is dealing with e.g. `if` and all the
-  constraints that adds.
-
-* Identify unused assignments as a courtesy warning?  This could be extended to
-  unused expressions, which could potentially be eliminated (possibly
-  iteratively for e.g. `x <- y; z <- x` where then `z` is unused).
-
-### Error Messages
-
-* `reuse_call` needs to track what the original call was so we can provide
-  better error messages if something goes wrong at some point.
-
-* Semi-internal error should issue conditions that can be caught by the
-  compilers or runners to return as errors with a meaningful calling function
-  instead of an internal function.
-
-### Other
-
-* Should we have safety tests in the code to be controlled by a debug mode flag?
-
-## Memory Re-Use
-
-## Zero Len
-
 ## For CRAN
 
 * Include README/extra contents in vignettes
+
 * Figure out why winbuilder doesn't work.
+
 * Errors in `match.call` that show the deparsed argument might deparse
   differently on different systems (`group_sum` error tests).
+
 * Add iterator breaks?
+
+* Make sure calling mechanism is legal
 
 ## Other
 

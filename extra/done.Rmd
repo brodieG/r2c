@@ -12,6 +12,17 @@
 
 ### v0.4.0
 
+* Defer creation of temporary vectors until end (just record their size) so that
+  we don't allocate vectors we don't use.  We should also identify unused
+  vectors and not allocate them (e.g. because branch reconciliation made a
+  vector unused - does this actually happen)?
+
+* Check what the `ARGS.NM.VAR` variable is, is it the total number of arguments,
+  or the total number of `...` arguments.  Important to get this right for the
+  summary functions.  So the `*narg` array has one entry per (sub-)call, and
+  each entry is an integer that reflects the number of `id` values minus one
+  for the result.  So it is the total internal arg count.
+
 * Add a finalizer to unload and dump dlls (but in some OSes we cannot unload
   DLLs, so maybe need a mechanism for generating libraries).:
 
