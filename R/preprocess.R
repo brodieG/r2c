@@ -526,11 +526,9 @@ match_call_rec <- function(call) {
       args.pos <- match(args.nm, names(frm))
       args.ord <- order(args.pos)
       args <- args.dummy[args.ord]
-      args.dot.pos <- if(length(call.dots)) {
-        # Used when e.g. vecrec is done on dots
-        names(call.dots) <- rep('...', length(call.dots))
-        match("...", args.nm[args.ord])
-      } else length(args)
+      names(call.dots) <- rep('...', length(call.dots))
+      args.dot.pos <- match("...", args.nm[args.ord])
+
       # expand the dots
       res <- c(
         args[seq_len(args.dot.pos - 1L)],
