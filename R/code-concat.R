@@ -22,6 +22,7 @@ static void %s(%s) {
     int din = di[arg];
     double * dat = data[din];
     R_xlen_t len_n = lens[din];
+    // Probably should be R level check
     if(R_XLEN_T_MAX - len_n < len_tot)
       Rf_error("Concatenating arguments would overflow R_xlen_t.");
     len_tot += len_n;

@@ -12,6 +12,13 @@
 
 ### v0.4.0
 
+* All the rep checks on times/each/length.out should stay in `rep_size` and
+  similar since they are external and shouldn't change.
+
+* Check that multi-arg summary cannot have zero args?  Need to automatically
+  give it at least one arg to be consistent.  Fixed it so that it can operate
+  with zero args.
+
 * Where do we check the validity of size vectors?  Looks like we do it in
   `vec_dat`.
 

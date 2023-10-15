@@ -22,7 +22,8 @@
 // Implement interrupts at r2c Expression Level
 //
 // CURRENTLY INTERRUPTS AS IMPLEMENTED IN THIS HEADER ARE DISABLED!  Instead the
-// interrupts are checked between groups / windows by the runner code.
+// interrupts are checked between groups / windows by the runner code (see
+// src/loop-interrupt-basic.h, uses of R_CheckUserInterrupt in src/window.c).
 //
 // When enabled, these macros count iterations at the r2c sub-expression level
 // and do so across groups so that interrupts are only triggered every

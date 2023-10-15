@@ -21,8 +21,9 @@ static void %s(%s) {
 
   R_xlen_t len = lens[di[1]];
   R_xlen_t lend = lens[di[0]];
+  R_xlen_t i;
 
-  for(R_xlen_t i = 0; i < len; ++i) {
+  LOOP_W_INTERRUPT1(len, {
     double ival = index[i];
     int isna = ISNAN(ival);
     if(!isna && ival > 0 && ival <= lend) {
@@ -34,7 +35,7 @@ static void %s(%s) {
         "Only strictly positive index values allowed, found: [%%jd].",
         (intmax_t) ival
       );
-  }
+  });
   lens[di[2]] = len;
 }'
 
@@ -60,16 +61,15 @@ static void %s(%s) {
 
   R_xlen_t lenr = lens[di[0]];
   R_xlen_t leni = lens[di[1]];
-  R_xlen_t lenv = lens[di[2]];
-  R_xlen_t v = 0;
+  R_xlen_t lenj = lens[di[2]];
 
-  for(R_xlen_t i = 0; i < leni; ++i, ++v) {
-    if(v >= lenv) v = 0;
+  R_xlen_t i, j;
+  LOOP_W_INTERRUPT2(leni, lenj, {
     double ival = index[i];
     int isna = ISNAN(ival);
     if(!isna && ival > 0 && ival <= lenr) {
       R_xlen_t ival0 = ival - 1;
-      res[ival0] = dat[v];
+      res[ival0] = dat[j];
     } else if (isna) {
       Rf_error("NAs are not allowed in subscripted assignments.");
     } else if (ival <= R_XLEN_T_MAX) {
@@ -83,8 +83,8 @@ static void %s(%s) {
         "[>R_XLEN_T_MAX]."
       );
     }
-  }
-  if(leni && v != lenv) data[%s][%s] = 1.;   // bad recycle
+  });
+  if(leni && j != lenj) data[%s][%s] = 1.;   // bad recycle
 }'
 
 # Validator for Subset/Subassign

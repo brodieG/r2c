@@ -12,7 +12,6 @@
     - `is.logical(1)` is not TRUE (FALSE)
 * Do we need to document that the `&&` and `||` tokens are lazy?
 
-
 ## Unitizer
 
 * Annoying that after a re-install, there is no way to rerun the top level
@@ -42,6 +41,8 @@
 * Adjust window iteration size calculation.
 
 * Size computed correctly with concatenations of things produced in branches.
+* Did we have concat tests on the other computer?  We don't seem to have them
+  now.
 
 * Eqlen when one of the inputs is group size; maybe working because we paper
   over the NA when `gmax == gmin`
@@ -53,9 +54,6 @@
 
 ## Current
 
-* All the rep checks on times/each/length.out should stay in `rep_size` and
-  similar since they are external and shouldn't change.
-
 * Copyright banners in tests have wrong title.
 * Doc improvements:
   * Spruce up r2c landing page.
@@ -66,15 +64,7 @@
 * Think through implication of saving parameter validation functions in r2c_fun
   object in terms of environment capture, etc.
 
-* Check that multi-arg summary cannot have zero args?  Need to automatically
-  give it at least one arg to be consistent.
-
 * In alloc.R what's the deal with call.outer vs .CALL?
-
-* Make sure that all loops have interrupts (subset/assign don't).  Also hidden
-  in this is `memcpy`.
-
-* Move subassign to assign/control?
 
 ## Next
 
@@ -155,6 +145,9 @@ Error in r2cq(x + "a")(5) :
   instead of an internal function.
 
 ### Other
+
+* Create `R2C_RXLT_MAX` as a proxy for `R_XLEN_T_MAX` so that we can test our
+  overflow checks?  Seems unlikely we'll ever get to this.
 
 * Subset with logicals.  AFAIK there is no way to pass the type of the input to
   C to make this decision.  We would need to change the interface to add
@@ -257,6 +250,25 @@ Error in r2cq(x + "a")(5) :
 
 * Should we have safety tests in the code to be controlled by a debug mode flag?
 
+### Interrupts
+
+Currently we have `LOOP_W_INTERRUPTN` throughout the code base, but it is
+actually disabled.  The hope would be we can figure out why it causes slowdowns
+with small groups (but otherwise performs fine).
+
+There are some places where we are not using it consistently (again, it
+shouldn't matter):
+
+* `rep` does not implement interrupts because using `INTERRUPTN` is not
+  straightforward there and those interrupts are disabled currently anyway.
+* Uses of `memcpy`, which implicitly are a loop.  One problem is that if we add
+  an interruptible version of this it is possible the compiler won't recognize
+  what we're trying to do?
+* Generally, we don't have support for nested loops for the interrupts, although
+  we should be able to make this work just by using the interrupt on the inner
+  loops as .
+
+
 ### Generic
 
 * Improve the ability to provide what group had a bad length `&&` error, and
@@ -293,6 +305,7 @@ Error in r2cq(x + "a")(5) :
 
 * Rename depth to height.  No, rename depth to level.  The use of height and
   depth with an upside down tree is ridiculous and not my fault.
+
 
 ## For CRAN
 
