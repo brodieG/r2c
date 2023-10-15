@@ -150,7 +150,7 @@ code_gen_summary <- function(fun, pars, par.types) {
   pars.int <- pars[par.types %in% PAR.INT]
 
   multi <-
-    length(pars.int) > 1L ||
+    length(pars.int) != 1L ||
     (length(pars.int) == 1L && identical(pars.int[[1L]], quote(.R2C.DOTS)))
   name <- paste0(FUN.NAMES[fun], if(multi) "_n")
   code_res(
