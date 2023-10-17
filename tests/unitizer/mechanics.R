@@ -81,6 +81,10 @@ unitizer_sect("Forwarded Dots", {
   f5(1:10)
   f5(1:10, 2)
 })
+unitizer_sect("Empty Dots", {
+  r2cf(function(x) sum() + x)(2)
+  r2cf(function(x, na.rm=FALSE) sum(na.rm=na.rm) + x)(2, TRUE)
+})
 unitizer_sect("Self Check", {
   sum_check <- r2cq(sum(x), check=TRUE)
   sum_check(x)
