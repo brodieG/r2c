@@ -21,14 +21,13 @@ NULL
 
 #' Generate C Code for Compilation
 #'
-#' Match each call and its parameters, identifying which parameters are control
-#' vs. flag (flag are TRUE/FALSE control parameters), and associating the C call
-#' to each R call.  The call tree is linearized depth first, so the parameters
-#' are recorded before the call they belong to.  The depth of the parameters
-#' allows us to distinguish what call they belong to (note a parameter can be a
-#' call too).  The order of the elements in the linearized call implicitly
-#' contains all parameter matching information (i.e. everything has been
-#' `match.call`ed already).
+#' Match each call and its parameters, identifying which parameters are
+#' external, and associating the C call to each R call.  The call tree is
+#' linearized depth first, so the parameters are recorded before the call they
+#' belong to.  The depth of the parameters allows us to distinguish what call
+#' they belong to (note a parameter can be a call too).  The order of the
+#' elements in the linearized call implicitly contains all parameter matching
+#' information (i.e. everything has been `match.call`ed already).
 #'
 #' See `alloc` and `init_call_dat` for more details.
 #'
@@ -69,7 +68,8 @@ preprocess <- function(call, optimize=FALSE) {
   tmp <- copy_fordat(call)
   call <- tmp[['call']]
 
-  # Copy "external" data to r2c alloc mem (see fun docs); must be the last step.
+  # Copy "external" data to r2c alloc mem (see fun docs), reconcile branches.
+  # Think twice before you add any manipulations after this step.
   tmp <- copy_branchdat(call)
   call <- tmp[['call']]
   sym.free <- tmp[['sym.free']]
@@ -258,7 +258,7 @@ pp_internal <- function(
         # Do not recurse into externals; shouldn't be assign symbol
         if(next.assign) stop("Internal error: controls/flag on assignment.")
         x <- record_call_dat(
-          x, call=args[[i]], depth=depth + 1L, linfo=blank_lang_info(),
+          x, call=args[[i]], depth=depth + 1L, linfo=get_lang_info(args[[i]]),
           argn=names(args)[i],
           par.type=par.types[i], par.validate=par.validate[i],
           code=code_blank(), assign=FALSE, indent=indent, rec=FALSE

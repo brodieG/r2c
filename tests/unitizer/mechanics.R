@@ -160,6 +160,16 @@ unitizer_sect("optimization", {
   get_r_code(r2c_int)
   get_r_code(r2cf(intercept, optimize=FALSE))
 })
+unitizer_sect("extern syms", {
+  ## Check that caching of external symbols works
+  f7 <- r2cq(sum(x, na.rm=z) + mean(x, na.rm=z))
+  makeActiveBinding("w", function(...) {message('hello'); TRUE}, environment())
+  group_exec(f7, list(x=1:6), rep(1:2, each=3), MoreArgs=list(z=w))
+
+  ## Error if we try to use internal arg for external param
+  group_exec(f7, list(z=w), 1, MoreArgs=list(6))
+})
+
 unitizer_sect("double colon", {
   local({`::` <- list; r2cq(base::sum(r2c::square(x)))})(5)
   detach("package:r2c")

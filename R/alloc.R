@@ -332,7 +332,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
         # is e.g. integer, which would require coercion to numeric each time.
         # Drawback is expressions with side-effects will not work correctly.
         if(par.type %in% PAR.EXT) {
-          ext.id <- paste0(deparse(call, control="all"), collapse="\n")
+          ext.id <- paste0(deparse(call, control="niceNames"), collapse="\n")
           if(!nzchar(ext.id))
             stop("Symbol with zero length name disallowed.")
           if(!is.null(external.evals[[ext.id]])) {
@@ -413,7 +413,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
         alloc, vec.dat, depth=depth, call.i=i, rec=rec, branch.lvl=0L
       )
       # Cache if external and generated a ext.id
-      if(nzchar(ext.id)) external.evals[[ext.id]] <- alloc[[i]]
+      if(nzchar(ext.id)) external.evals[[ext.id]] <- alloc[['i']]
     }
     # Call actions that need to happen after allocation data updated
     if(par.type == PAR.INT.CALL) {
