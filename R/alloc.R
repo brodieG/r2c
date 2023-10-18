@@ -549,6 +549,35 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
   alloc.fin[['dat']][vec.to.inst] <-
     lapply(alloc.fin[['alloc']][vec.to.inst], numeric)
 
+  # Sanity check usage order: every id that is not a result id must appear as a
+  # result id, grp, or external before being used.  Assign sets a slot for the
+  # symbol, but that isn't actually used so we don't check it.
+  call.assign <- vapply(call.dat, '[[', '', 'name') %in% ASSIGN.SYM
+  call.dat.ids <- do.call(
+    rbind,
+    lapply(
+      seq_along(call.dat)[!call.assign],
+      function(x) {
+        ids <- call.dat[[x]][['ids']]
+        if(!length(ids)) stop("Internal Error: zero length call dat.")
+        res <- logical(length(ids))
+        res[length(ids)] <- TRUE
+        cbind(step=x, ids, res)
+  } ) )
+  id.set <-
+    call.dat.ids[call.dat.ids[, 'res'] == 1, c('step', 'ids'), drop=FALSE]
+  id.use <-
+    call.dat.ids[call.dat.ids[, 'res'] != 1, c('step', 'ids'), drop=FALSE]
+  id.use <- id.use[
+    !alloc.fin[['type']][id.use[,'ids']] %in% c("sts", "grp", "ext"),,
+    drop=FALSE
+  ]
+  id.use.step <- tapply(id.use[,'step'], id.use[,'ids'], min)
+  id.use.step.id <- as.numeric(names(id.use.step))
+  id.set.step <- id.set[match(id.use.step.id, id.set[, 'ids']), 'step']
+  if(anyNA(id.set.step) || any(id.use.step <= id.set.step))
+    stop("Internal Error: attempt to use alloc before setting it.")
+
   list(alloc=alloc.fin, call.dat=call.dat)
 }
 # - Data Structures ------------------------------------------------------------
