@@ -148,8 +148,8 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' * Logical functions: `&`, `&&`, `|`, `||`, `!`, `ifelse`.
 #' * Statistics: `mean`, `sum`, `length`, `all`, `any`.
 #' * Assignment and braces: `<-`, `=`, and `{`.
-#' * Control Structures (experimental): `if/else`, `for`
-#' * Sequences: `seq_along`, `seq_len`, `rep`.
+#' * Control Structures (experimental): `if/else`, `for`.
+#' * Sequences: `seq_along`, `seq_len`, `rep`, `c`.
 #' * Subsetting: `[`, `x[s] <- expr`
 #' * Miscellaneous: `numeric`.
 #'
@@ -157,18 +157,19 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' is the name of the function, optionally in `pkg::fun` format.  Functions must
 #' be bound to their original symbols for them to be recognized.
 #'
-#' In general the r2c implementations will behave as in R, with some exceptions:
+#' `r2c` implementations strive to behave as their R counterparts, with some
+#' exceptions:
 #'
 #' * `ifelse` always return in a common type that can support
 #'   both `yes` and `no` values.
 #' * `&&` and `||` always evaluate all parameters.
 #' * `{` must contain at least one parameter (no empty braces).
 #' * `seq_along` always returns a double vector, never integer.
-#' * `[` only supports strictly positive indices.
-#' * `x[s] <- y`
+#' * `[` and  `x[s] <- y` only subset in one dimension with strictly positive
+#'   indices, additionally for `x[s] <- y` all `s` values must be in-bounds.
+#' * `x[s] <- y`:
 #'     * May only be used for the side effect of changing `x` (i.e. the return
 #'       value of the sub-assignment expression may not be used).
-#'     * `s` may only contain values in `seq_along(x)`.
 #'     * `"[<-"(x, s, y)` is considered distinct and disallowed.
 #' * In `numeric(x)`, `seq_len(x)`, `rep(vec, times=x, each=y, length.out=z)`,
 #'   `x`, `y`, and `z` are external parameters, i.e. they cannot be iteration
@@ -177,6 +178,7 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' * Assignments may only be nested in braces (`{`) or in control structure
 #'   branches.  This is a recursive requirement, so `mean(if(a) x <- y)` is
 #'   disallowed even though `if(a) x <- y` is allowed.
+#' * `c` ignores any names given to parameters.
 #' * Control Structures have significant constraints (see next).
 #'
 #' @section Control Structures:
@@ -204,10 +206,10 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' * `for` sets `var` to NA_real_ if `length(seq) == 0` instead of NULL.
 #'
 #' Like R, `r2c` is optimized for vectorized operations.  While you can write
-#' explicit loops with `for`, they will be much slower than a pure C version,
-#' and only marginally faster than byte compiled R equivalents.  Avoid `for`
-#' loops unless you cannot express your calculation in an internally vectorized
-#' form (see examples).
+#' explicit loops with `for`, they will be slower than a pure C version, and
+#' only marginally faster than byte compiled R equivalents.  Avoid `for` loops
+#' unless you cannot express your calculation in an internally vectorized form
+#' (see examples).
 #'
 #' @section Details:
 #'
