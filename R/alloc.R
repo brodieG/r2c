@@ -406,8 +406,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
 
     # - Update Stack / Data ----------------------------------------------------
 
-    # Append new data to our data array.  Not all calls produce data; those
-    # that do have non-NULL vec.dat[['new']].
+    # Append new data to our data array.  Not all calls produce data.
     if(!is.null(vec.dat)) {
       alloc <- append_dat(
         alloc, vec.dat, depth=depth, call.i=i, rec=rec, branch.lvl=0L
@@ -495,7 +494,9 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
           stop("Internal Error: lcopy cannot find matching lset.")
         tmp.ids <- call.dat[[length(call.dat)]][['ids']]
         # Copy from the set location to the use location; we kept a reference to
-        # the use memory with the .R2C.FOR.SYM.N variable (position 2).
+        # the use memory with the .R2C.FOR.SYM.N variable (position 2).  Note
+        # this makes the call ids of e.g. a containing "{" calls out of date
+        # which doesn't matter except for the use/set sanity check at end.
         tmp.ids[2:3] <- c(stack.lcopy['set', lcopy.id], tmp.ids[2L])
         # No need to update param `stack` b/c we're about to drop the slots we
         # manipulated at current depth
@@ -549,14 +550,15 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
   alloc.fin[['dat']][vec.to.inst] <-
     lapply(alloc.fin[['alloc']][vec.to.inst], numeric)
 
-  # Sanity check usage order: every id that is not a result id must appear as a
-  # result id, grp, or external before being used.  Assign sets a slot for the
-  # symbol, but that isn't actually used so we don't check it.
-  call.assign <- vapply(call.dat, '[[', '', 'name') %in% ASSIGN.SYM
+  # Sanity check usage order: id that are not a result id must appear as a
+  # result id, grp, or ext prior to use.  Passive exempted b/c they don't touch
+  # the memory (and quirks in the code mean the checks would fail for them, e.g.
+  # use b4 set lcopy, assign sym).
+  call.passive <- vapply(call.dat, '[[', '', 'name') %in% PASSIVE.SYM
   call.dat.ids <- do.call(
     rbind,
     lapply(
-      seq_along(call.dat)[!call.assign],
+      seq_along(call.dat)[!call.passive],
       function(x) {
         ids <- call.dat[[x]][['ids']]
         if(!length(ids)) stop("Internal Error: zero length call dat.")
@@ -572,10 +574,12 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
     !alloc.fin[['type']][id.use[,'ids']] %in% c("sts", "grp", "ext"),,
     drop=FALSE
   ]
-  id.use.step <- tapply(id.use[,'step'], id.use[,'ids'], min)
-  id.use.step.id <- as.numeric(names(id.use.step))
-  id.set.step <- id.set[match(id.use.step.id, id.set[, 'ids']), 'step']
-  if(anyNA(id.set.step) || any(id.use.step <= id.set.step))
+  # For each id, find the earliest step it is used in
+  tmp <- tapply(id.use[,'step'], id.use[,'ids'], min)
+  id.use.min <- cbind(id=as.integer(names(tmp)), step.min=as.vector(tmp))
+  # For those same ids, find the earliest step it is set in
+  id.set.step <- id.set[match(id.use.min[,'id'], id.set[, 'ids']), 'step']
+  if(anyNA(id.set.step) || any(id.use.min[,'step.min'] <= id.set.step))
     stop("Internal Error: attempt to use alloc before setting it.")
 
   list(alloc=alloc.fin, call.dat=call.dat)
