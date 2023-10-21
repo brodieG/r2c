@@ -213,7 +213,7 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #'
 #' @section Details:
 #'
-#' `r2c` will [r2c-preprocess][preprocess] the provided call either to apply
+#' `r2c` will [preprocess][r2c-preprocess] the provided call either to apply
 #' optimizations (see `optimize` parameter), or because a call needs to be
 #' modified to work correctly with `r2c`.  The processing leaves call semantics
 #' unchanged.  If `r2c` modified a call, [`get_r_code`] will show a "processed"
@@ -230,9 +230,11 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' iteration-interrupts, but it adds overhead when dealing with many iterations
 #' with few elements each and thus is disabled at the moment.
 #'
-#' The structure of "r2c_fun" functions is subject to change without notice in
-#' future `r2c` releases.  The only supported uses of them are standard
-#' invocation with the `(` operator and use with the [runners].
+#' Users should not rely on specifics of The internal structure of "r2c_fun"
+#' functions; these are subject to change without notice in future `r2c`
+#' releases.  The only supported uses of "r2c_fun" functions are use with the
+#' [runners], standard invocation with the `(` operator, and other `r2c`
+#' functions that accept "r2c_fun" functions as arguments.
 #'
 #' @export
 #' @param x an object to compile into an "r2c_fun", for `r2cf` an R function,
@@ -285,11 +287,18 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #'   [preprocessing][r2c-preprocess] for how `r2c` modifies R calls before
 #'   translation to C.
 #' @examples
-#' r2c_sum_sub <- r2cq(sum(x - y))
-#' r2c_sum_sub <- r2cl(quote(sum(x - y)))  ## equivalently
-#' sum_sub <- function(x, y) sum(x - y)
-#' r2c_sum_sub <- r2cf(sum_sub)            ## equivalently
-#' r2c_sum_sub(-1, c(1, 2, 3))
+#' r2c_mean_area <- r2cq(mean(x * y))
+#' r2c_mean_area <- r2cl(quote(mean(x * y)))   ## equivalently
+#' mean_area <- function(x, y) mean(x * y)
+#' r2c_mean_area <- r2cf(mean_area)            ## equivalently
+#' ## Intended use is with runners
+#' with(
+#'   iris,
+#'   group_exec(r2c_mean_area, list(Sepal.Width, Sepal.Length), Species)
+#' )
+#' ## Standard invocation supported but, it is of limited value.
+#' ## We'll use standard invocation in the examples for clarity.
+#' r2c_mean_area(iris[['Sepal.Width']], iris[['Sepal.Length']])
 #'
 #' ## Set parameter order for r2cq
 #' r2c_sum_sub2 <- r2cq(sum(x - y), formals=c('y', 'x'))

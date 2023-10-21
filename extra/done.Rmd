@@ -12,6 +12,33 @@
 
 ### v0.4.0
 
+* Eqlen when one of the inputs is group size; maybe working because we paper
+  over the NA when `gmax == gmin`.  Added test, but error messages are awful.
+
+* That it is impossible to try to use an allocation before it would be created
+  in the code.  Tricky with loops.  Can we check for this within `alloc`?
+  Probably, but not trivial, particularly because we change all the previously
+  allocated values.  To do this we could record each result allocation, and make
+  sure that every function call always has in the leading parameters things in
+  that list.  Maybe loops aren't too bad since we just explicitly copy
+  back.  We added a check at the end of `alloc` to try to catch this.  We had to
+  ignore passive expressions because they are generated in ways that don't
+  always end up consistent (e.g. there is a fake alloc associated with the
+  symbol in `sym <- val`, but that's never used because we always access the
+  value bound to the symbol, not the symbol itself, and also brace calls are
+  not always update for changes in the ids used by subcalls from reconciliation,
+  etc.).
+
+* Size computed correctly with concatenations of things produced in branches.
+* Did we have concat tests on the other computer?  We don't seem to have them
+  now (we did not).
+
+* Test that:
+  * extern symbol resolution caching actually works.
+  * Attempt to use internal symbol in external param is caught.  Maybe test with
+    'get' too?  Still can get around by specifying an environment.
+
+
 * All the rep checks on times/each/length.out should stay in `rep_size` and
   similar since they are external and shouldn't change.
 
