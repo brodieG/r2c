@@ -218,3 +218,18 @@ unitizer_sect("nesting", {
   f6a(2:3, 3:4, FALSE, FALSE)
   f6a(2:3, 3:4, TRUE, FALSE)
 })
+unitizer_sect("eqlen and groups", {
+  f7a.r <- function(a, b, c) {
+    if(mean(a) > 3) b
+    else c
+  }
+  f7a <- r2cf(f7a.r)
+  # gmax == gmin so okay
+  group_exec(
+    f7a, list(1:6, 1:6*10), rep(1:2, each=3), MoreArgs=list(rep(42, 3))
+  )
+  # Not okay due to varying size
+  group_exec(
+    f7a, list(2:6, 2:6*10), rep(1:2, each=3)[-1], MoreArgs=list(rep(42, 3))
+  )
+})
