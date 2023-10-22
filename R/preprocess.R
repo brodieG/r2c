@@ -482,11 +482,15 @@ match_call_rec <- function(call) {
       }
     }
     if(length(call) > 1) {
+      par.ext <- VALID_FUNS[[c(func, "extern")]]
       for(i in seq(2L, length(call), by=1L)) {
-        if(names2(call)[i] == "...") {
-          for(j in seq_along(call[[i]]))
-            call[[i]][[j]] <- match_call_rec(call[[i]][[j]])
-        } else call[[i]] <- match_call_rec(call[[i]])
+        par.name <- names2(call)[i]
+        if(!par.name %in% names(par.ext)) {
+          if(par.name == "...") {
+            for(j in seq_along(call[[i]]))
+              call[[i]][[j]] <- match_call_rec(call[[i]][[j]])
+          } else call[[i]] <- match_call_rec(call[[i]])
+        }
       }
     }
     if(!is.null(defn) && func != "if") {
@@ -556,8 +560,11 @@ transform_call_rec <- function(call) {
     call <- call.transform
   }
   if(is.call(call) && length(call) > 1L) {
-    for(i in seq(2L, length(call), 1L))
-      call[[i]] <- transform_call_rec(call[[i]])
+    par.ext.names <- names(VALID_FUNS[[c(func, "extern")]])
+    for(i in seq(2L, length(call), 1L)) {
+      if(!names2(call)[i] %in% par.ext.names)
+        call[[i]] <- transform_call_rec(call[[i]])
+    }
   }
   call
 }
@@ -604,8 +611,11 @@ transform_control <- function(x, i=0L) {
   if(i > 999L)
     stop("Exceeded maximum allowable control structure count (", i - 1L,")")
   if(is.call(x)) {
-    x[-1L] <- lapply(x[-1L], transform_control, i=i + 1L)
     call.sym <- get_lang_name(x)
+    par.ext.names <- names(VALID_FUNS[[c(call.sym, "extern")]])
+    par.ext <- which(names2(x) %in% par.ext.names)
+    skip <- -c(1L, par.ext)
+    x[skip] <- lapply(x[skip], transform_control, i=i + 1L)
     if(call.sym == "if") {
       if(!length(x) %in% 3:4)
         stop("Invalid if/else call:\n", paste0(deparse(x), collapse="\n"))

@@ -483,6 +483,10 @@ copy_branchdat_rec <- function(
         # shouldn't matter since never used after branch.
         rec.skip <- 1:2
       }
+      # Skip external params
+      par.ext.names <- names(VALID_FUNS[[c(sym.name, "extern")]])
+      rec.skip <- union(rec.skip, which(names2(x) %in% par.ext.names))
+
       # Recurse on subcomponents (literals too)
       for(i in seq_along(x)[-rec.skip]) {
         # assign.to is forwarded by non-leaf calls
@@ -1218,6 +1222,9 @@ copy_fordat <- function(
       assign.to <- union(assign.to, get_target_symbol(x, name))
       rec.skip <- if(name == FOR.ITER) 1:3 else 1:2
     } else assign.to <- character()
+    # Skip external params
+    par.ext.names <- names(VALID_FUNS[[c(name, "extern")]])
+    rec.skip <- union(rec.skip, which(names2(x) %in% par.ext.names))
 
     # Recurse
     for(i in seq_along(x)[-rec.skip]) {
