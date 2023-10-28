@@ -760,14 +760,6 @@ recompose_control <- function(x) {
   x
 }
 
-sym_free <- function(x, sym) {
-  if(is.symbol(sym)) {
-    sym.chr <- as.character(sym)
-    if(identical(sym.chr, ".R2C.DOTS")) sym.chr <- "..."
-    if(!sym.chr %in% x[['sym.free']]) sym.chr
-  }
-}
-
 ## Expand Dots
 ##
 ## Once we have an actual param match at runtime, we need to expand out the call
