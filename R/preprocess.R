@@ -496,8 +496,7 @@ match_call_rec <- function(call) {
     if(!is.null(defn) && func != "if") {
       # Fill in defaults
       frm <- formals(defn)
-      frm.req <-
-        vapply(frm, function(x) is.name(x) && !nzchar(as.character(x)), TRUE)
+      frm.req <- vapply(frm, missing_sym, TRUE)
       frm.bad <- vapply(frm[!frm.req], function(x) is.language(x), TRUE)
       if(any(frm.bad))
         stop("Functions with non-constant defaults are unsupported.")

@@ -146,9 +146,13 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
   call.outer <- x[['call']][[call.len]]
 
   # - Initialize ---------------------------------------------------------------
-  env <- list2env(MoreArgs, parent=par.env)
-  env.ext.0 <- env.ext <- new.env(parent=env)
-  stack.env.ext.T <- stack.env.ext.F <- list()
+  env <- env0 <- list2env(MoreArgs, parent=par.env)
+  env <- list2env(data, parent=env)
+
+  # See reconcile_env_ext for what this is
+  env.ext <- new.env(parent=env)
+  lockEnvironment(env.ext)
+  stack.env.ext.T <- stack.env.ext.F <- stack.env.ext <- list()
 
   # Call indices where various interesting things happen
   meta <- list(
@@ -168,7 +172,9 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
     alloc, vdat=vdat, depth=0L, call.i=0L, rec=0L, branch.lvl=0L
   )
 
-  # Add group data.
+  # Add group data; we skip invalid data here, but we keep all the invalid data
+  # in the search path and check for validity if it is used.  So it's okay to
+  # have bad data if it isn't use.  Look for calls to `eval` later.
   if(!all(nzchar(names(data)))) stop("All data must be named.")
   data.naked <- data[is.num_naked(data)]
   for(i in seq_along(data.naked)) {
@@ -179,7 +185,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
       vec_dat(datum, type="grp", typeof=typeof, size.coef=list(0:1), gmax=gmax)
     alloc <-
       append_dat(alloc, vdat=vdat, depth=0L, name=dname, call.i=0L, rec=0L)
-    guard_symbol(dname, env.ext)
+    env.ext <- guard_symbols(dname, env.ext)
   }
   # Bump scope so the data cannot be overwritten
   alloc[['scope']] <- alloc[['scope']] + 1L
@@ -280,9 +286,11 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
       asize <- size.tmp[['asize']]         # required allocation size
 
       # Cleanup expired symbols, and bind new ones
-      alloc <- names_update(
+      tmp <- names_update(
         alloc, call, call.name=name, call.i=i, rec=rec, env.ext=env.ext
       )
+      alloc <- tmp[['alloc']]
+      env.ext <- tmp[['env.ext']]
       # Prepare new vec data (if any), and tweak objet depending on situation.
       if(!name %in% c(PASSIVE.SYM, MODIFY.SYM)) {
         vec.dat <- vec_dat(
@@ -344,14 +352,12 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
             if(alloc[['depth']][id] > depth) alloc[['depth']][id] <- depth
           }
       } }
-      # Need to eval parameter if not cached; `env` contains MoreArgs.
-      # Here we need to intercept any attemps to use internal parameters. At the
-      # most basic this means create a fake `data` environment that has the
-      # special active bindings with the `env` environment as the parent.  Do we
+      # Need to eval parameter if not cached.  We intercept any attemps to use
+      # internal parameters via the active bindings created by guard_symbol.
       # add a child environment?  What about branches and nested functions?
       if(!id) {
         tryCatch(
-          arg.e <- eval(call, envir=data, enclos=env.ext),
+          arg.e <- eval(call, envir=env.ext),
           error=function(e) stop(simpleError(conditionMessage(e), call.outer)),
           internalSymbolAccess=function(e) {
             call.dep <- deparseLines(call)
@@ -434,9 +440,8 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
         branch.lvl <- branch.lvl + 1L
         branch.start.stack <- c(branch.start.stack, i)
 
-        # Generate a new external tracking env for the TRUE branch
-        env.ext <- new.env(parent=env.ext)
-        stack.env.ext.T <- c(stack.env.ext.T, list(env.ext))
+        # Track current ext env for backtracking
+        stack.env.ext <- c(stack.env.ext, list(env.ext))
       } else if (name %in% BRANCH.EXEC.SYM) {
         # Last branch expression before this one
         branch.lvl <- branch.lvl - 1L
@@ -454,9 +459,9 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
           names.assign > branch.start.stack[length(branch.start.stack)]
         alloc[['names']]['br.hide', names.assign.in.br] <- branch.lvl
 
-        # External env for FALSE branch
-        env.ext <- new.env(parent=parent.env(env.ext))
-        stack.env.ext.F <- c(stack.env.ext.F, list(env.ext))
+        # Complete TRUE env.ext branch and start FALSE env.ext branch
+        stack.env.ext.T <- c(stack.env.ext.T, list(env.ext))
+        env.ext <- stack.env.ext[[length(stack.env.ext)]]
       } else if (name %in% BRANCH.END.SYM) {
         # Just completed FALSE branch, reconcile allocations, symbols, etc.
         if(length(x[['call']]) < i + 1L)
@@ -475,10 +480,11 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
 
         binding.stack <- binding.stack[-length(binding.stack)]
         branch.start.stack <- branch.start.stack[-length(branch.start.stack)]
-        tmp <- reconcile_env_ext(stack.env.ext.T, stack.env.ext.F)
+
+        tmp <- reconcile_env_ext(stack.env.ext, stack.env.ext.T, env.ext)
         env.ext <- tmp[['env.ext']]
         stack.env.ext.T <- tmp[['stack.env.ext.T']]
-        stack.env.ext.F <- tmp[['stack.env.ext.F']]
+        stack.env.ext <- tmp[['stack.env.ext']]
       }
       # Handle loop use-before-set reconciliations.  For each `lcopy` call we
       # need to find the target memory, and change whatever `lset` is pointing
@@ -1097,35 +1103,48 @@ reconcile_control_flow <- function(
 }
 # Names Defined in Both Branches Copied over to Mutual Parent
 #
-# See `guard_symbol`
+# We do need to track the common environment and the true enviornment in stacks,
+# as otherwise we can't backtrack correctly as we complete control structures.
+# While the linearized calls are on a depth first basis, there is no way to
+# recover the common parent when you have multiple nested control structures as
+# we backtrack unless we save them in stacks.
+#
+# See `guard_symbols`.
+#
+# @param stack.env.ext stack of active env.ext at the point a control structure
+#   starts.
+# @param stack.env.ext.T stack active env.ext at the point a TRUE branch
+#   **ends**.
+# @param env.ext.F active env.ext when the FALSE branch **ends**.  We only to
+#   track the most recent branch so no stack here.
 
-reconcile_env_ext <- function(stack.env.ext.T, stack.env.ext.F) {
-  env.ext.T <- tail(stack.env.ext.T, 1L)[[1L]]
-  env.ext.F <- tail(stack.env.ext.F, 1L)[[1L]]
-  par.env <- parent.env(env.ext.T)
-  if(!identical(par.env, parent.env(env.ext.F)))
-    stop("Internal Error: corrupted external tracking envs.")
-  new.names <- intersect(names(env.ext.T), names(env.ext.F))
-  for(i in new.names) guard_symbol(i, par.env)
+reconcile_env_ext <- function(stack.env.ext, stack.env.ext.T, env.ext.F) {
+  env.ext.common <- stack.env.ext[[length(stack.env.ext)]]
+  env.ext.T <- stack.env.ext.T[[length(stack.env.ext.T)]]
+  names.T <- names.F <- character()
+
+  # Walk back the chain from the TRUE and FALSE branches back to the common
+  # ancestor, collecting all names in the process.
+  while(!identical(env.ext.T, env.ext.common)) {
+    names.T <- c(names.T, names(env.ext.T))
+    env.ext.T <- parent.env(env.ext.T)
+  }
+  while(!identical(env.ext.F, env.ext.common)) {
+    names.F <- c(names.F, names(env.ext.F))
+    env.ext.F <- parent.env(env.ext.F)
+  }
+  env.ext.common <- guard_symbols(intersect(names.T, names.F), env.ext.common)
 
   stack.T <- head(stack.env.ext.T, -1L)
-  stack.F <- head(stack.env.ext.F, -1L)
+  stack <- head(stack.env.ext, -1L)
 
-  # Make sure we decremented env stacks correctly
-  if(
-    (length(stack.T) || length(stack.F)) &&
-    !(
-      length(stack.T) && identical(par.env, tail(stack.T, 1L)[[1L]])
-    ) &&
-    !(
-      length(stack.F) && identical(par.env, tail(stack.F, 1L)[[1L]])
-    )
+  list(
+    env.ext=env.ext.common,
+    stack.env.ext=stack,
+    stack.env.ext.T=stack.T
   )
-    stop("Internal Error: corrupt external env state.")
-
-  list(env.ext=par.env, stack.env.ext.T=stack.T, stack.env.ext.F=stack.F)
 }
-#
+
 # Identify Bindings that Should Be Reconciled
 
 cand_rec_bind <- function(names, branch.lvl) {
@@ -1375,9 +1394,9 @@ names_update <- function(alloc, call, call.name, call.i, rec, env.ext) {
     alloc <- names_bind(alloc, sym, call.i, rec)
 
     # Add a forbidden binding to the external environment
-    guard_symbol(sym, env.ext)
+    env.ext <- guard_symbols(sym, env.ext)
   }
-  alloc
+  list(alloc=alloc, env.ext=env.ext)
 }
 # Prevent External Expression from Accessing Internal Symbols
 #
@@ -1390,17 +1409,27 @@ names_update <- function(alloc, call, call.name, call.i, rec, env.ext) {
 # condition if it is used.  This way, anytime we evaluate an external
 # expression, we will detect any internal symbols used.
 #
-# This is not a foolproof implementation as someone can always use expressions
-# like `eval` to either corrupt these environments, but it should detect the
-# typical accidental case.
+# Each symbol or set of symbols added is set to its own environment so we can
+# lock it to prevent evaluated expressions from adding/removing symbols.  The
+# environment chain creates the illusion of all symbols co-existing in one
+# environment.
 #
-# Add special symbols to env that trigger conditions when they are used so that
-# we may detect use of internal symbols when evaluating external parameters.
+# This is not a foolproof implementation as someone could find and unlock these
+# bindings within an external expression, but it really takes wanting to do
+# that.
 
-guard_symbol <- function(name, env) {
-  cond <- simpleCondition(name)
-  class(cond) <- c('internalSymbolAccess', class(cond))
-  makeActiveBinding(name, function() signalCondition(cond), env)
+guard_symbols <- function(names, env) {
+  if(length(names)) {
+    env <- new.env(parent=env)
+    for(name in names) {
+      cond <- simpleCondition(name)
+      class(cond) <- c('internalSymbolAccess', class(cond))
+      makeActiveBinding(name, function() signalCondition(cond), env)
+      lockBinding(name, env)
+    }
+    lockEnvironment(env)
+  }
+  env
 }
 ## Lookup a Name In Storage List
 ##

@@ -295,3 +295,6 @@ disp_call_dat <- function(call.dat) {
   lang <- substr(lang, 1, max(c(10, 80 - max(nchar(dat)))))
   writeLines(paste0(dat, lang))
 }
+# Check whether captured value could be a missing arg
+
+missing_sym <- function(x) is.name(x) && !nzchar(as.character(x))

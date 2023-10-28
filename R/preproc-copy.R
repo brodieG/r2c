@@ -483,26 +483,37 @@ copy_branchdat_rec <- function(
         # shouldn't matter since never used after branch.
         rec.skip <- 1:2
       }
-      # Skip external params
       par.ext.names <- names(VALID_FUNS[[c(sym.name, "extern")]])
-      rec.skip <- union(rec.skip, which(names2(x) %in% par.ext.names))
 
       # Recurse on subcomponents (literals too)
       for(i in seq_along(x)[-rec.skip]) {
-        # assign.to is forwarded by non-leaf calls
-        next.last <- i == length(x) && !leaf
-        assign.to.next <- if(!next.last) character() else assign.to
-        sub.assign.to.next <- if(i != length(x)) "" else sub.assign.to
-        data[['passive']] <- passive.now # reset pre-rec passive status
-        data <- copy_branchdat_rec(
-          x[[i]], index=c(index, i),
-          assign.to=assign.to.next, sub.assign.to=sub.assign.to.next,
-          last=last && next.last,
-          branch.res=branch.res && next.last,
-          in.compute=in.compute || !passive,
-          in.branch=in.branch, prev.call=sym.name,
-          data=data, x0=x0
-        )
+        # Skip external/constant params
+        if(!names2(x)[i] %in% par.ext.names) {
+          # assign.to is forwarded by non-leaf calls
+          next.last <- i == length(x) && !leaf
+          assign.to.next <- if(!next.last) character() else assign.to
+          sub.assign.to.next <- if(i != length(x)) "" else sub.assign.to
+          data[['passive']] <- passive.now # reset pre-rec passive status
+          data <- copy_branchdat_rec(
+            x[[i]], index=c(index, i),
+            assign.to=assign.to.next, sub.assign.to=sub.assign.to.next,
+            last=last && next.last,
+            branch.res=branch.res && next.last,
+            in.compute=in.compute || !passive,
+            in.branch=in.branch, prev.call=sym.name,
+            data=data, x0=x0
+          )
+        } else {
+          # We still record free symbols to generate the interface for r2cq/l.
+          # This is not perfect because the external expression may be creating
+          # symbols it uses for itself, but that's a documented corner case.
+          syms <- collect_call_symbols(x)
+          new.free.syms <- syms[
+            !syms %in% data[[B.NAMED]] & nzchar(syms) &
+            !grepl(R2C.PRIV.RX, syms)  # Could these exist here?
+          ]
+          data[['free']] <- union(data[['free']], new.free.syms)
+        }
       }
       data[['passive']] <- passive && data[['passive']]
 
