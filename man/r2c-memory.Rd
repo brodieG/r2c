@@ -4,50 +4,33 @@
 \alias{r2c-memory}
 \title{Memory Use}
 \description{
-\code{r2c} \link{runners} examine each "r2c_fun" in conjunction with the data it is to
-run on to compute memory allocation sizes. The allocations are sized to
-support the largest iteration in the iteration varying data.  All iterations
-re-use the same allocations (or a portion thereof), thereby reducing peak
-memory usage and fragmentation.
+\code{r2c} \link{runners} pre-allocate the memory required to compute every
+sub-expression for the single largest iteration they will execute.  This
+same allocation is re-used for the every iteration, thereby reducing peak
+memory requirements and memory fragmentation.
 }
 \details{
-Most of the \code{r2c} supported functions are such that the size of the result
-can be inferred from the size of the inputs.  Once we know iteration data
-size, we can pre-compute how much memory is needed for every subcomputation
-and the final result of each iteration.
+\code{r2c} \link{runners} examine "r2c_fun" functions in conjunction with the iteration
+size of their \code{data} argument to compute memory allocation sizes.  Most of
+the \link[=r2c-supported-funs]{r2c supported functions} are such that the size of
+the result can be inferred from the size of the inputs.  Once a \link{runner}
+knows the iteration data sizes, it can pre-compute how much memory is needed
+for every sub-expression in each iteration.
 
-There are two implications from this approach:
-\enumerate{
-\item Result size of each subcomputation must depend only on the sizes of the
-inputs, not their values (with some very specific exceptions).
-\item The size of each subcomputation is a \strong{function} of iteration size.
-}
+In order to expand the range of supported functions outside of those that
+derive output size from input size, \code{r2c} introduces some constraints on
+semantics.  For example, control structures like \code{if}/\verb{else} are allowed so
+long as their return values and/or any set variables are the same size
+irrespective of the branch taken.  Functions like \code{numeric(x)} that derive
+their size from the value of an input can be supported, but that value must
+be \link[=r2c-expression-types]{iteration invariant}.
 
-The first implication creates the requirement that control structures like
-\code{if}/\verb{else} return results or set variables to the same size in each branch
-(see \link[=r2c-compile]{compile}).  Since the allocations are set before
-calculations are run, results and variables must fit into them irrespective
-of branch taken, and downstream calculations must be able to assume the size
-is independent of branch..
-
-The second implication follows from expressions like \code{a + b} which depend on
-the size of both \code{a} and \code{b}, either of which could be iteration varying
-data, or derived from iteration varying data.  Suppose \code{a} is iteration
-varying, and \code{b} is constant size.  What is the size of \code{a + b}?  It depends
-on both the size of \code{b} and the size of each iteration.  If we take \code{i} to be
-the iteration data size, we could express the result size as
-\code{max(i, length(b))} (ignoring the possibility of 0 size inputs).  But what
-about the size of e.g. \code{c(a + b, a)}?  As expressions get more complex,
-the expressions required to represent result sizes as a function of
-iteration size can (but do not have to) get more complex.  \code{r2c} caps the
-level of complexity of such size expressions and will error at run time if
-this limit is exceeded.  It should be difficult to reach this cap when
+Even for the case functions for which output size is computable from the
+input alone, there is complexity.  For example, the size of \code{a + b} depends
+on the size of both \code{a} and \code{b}, either of which could be
+\link{iteration-varying}.  As expressions get more complex, e.g. \code{c(a + b, a)},
+computing result sizes can also get more complex.  \code{r2c} caps the level of
+complexity of size calculations it will support, and will error at run time
+if this limit is exceeded.  It should be difficult to reach this cap when
 computing statistics.
-
-\code{r2c} carves out a small exception for expressions like \code{numeric(x)} the size
-of which depends on the value of the input.  These expressions are allowed so
-long as the \strong{value} of the input in question is iteration-invariant.
-Iteration invariant data include that passed via the \code{MoreArgs} parameters to
-the \link{runners}, or via external expressions.  See "Expression Types" in the
-\link[=r2c-compile]{compilation} documentation.
 }

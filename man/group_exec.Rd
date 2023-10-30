@@ -43,11 +43,9 @@ groups.  Otherwise, a "data.frame" with the group vectors as columns and
 the result of the computation as the last column.
 }
 \description{
-A \link[=runners]{runner} that organizes \code{data} according to \code{groups}, and calls
-the native code associated with \code{fun} iteratively for each group.  \code{data}
-\code{data} will be "subset" the portion corresponding to the group being iterated
-prior to the native code invocation.  There is no interpreter overhead
-between iterations.
+A \link[=runners]{runner} that organizes \code{data} into groups as defined by \code{groups},
+and executes the native code associated with \code{fun} iteratively with each
+group's portion of \code{data}.
 }
 \examples{
 r2c_mean <- r2cq(mean(x))
