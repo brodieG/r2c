@@ -1434,14 +1434,13 @@ guard_symbols <- function(names, env) {
 ## Lookup a Name In Storage List
 ##
 ## Will find data vectors as well as any live assigned vectors that were
-## generated.
+## generated.  The hide business is kludgy.  We should use nested environments.
 
 name_to_id <- function(alloc, name) {
   names <- alloc[['names']]
   res <- 0L
   if(ncol(names)) {
-    hide.lvl <- max(names['br.hide',])
-    visible <- names['br.hide',] != hide.lvl | hide.lvl == 0L
+    visible <- names['br.hide',] == 0L
     # Only look through non hidden names (hidden are those in the "TRUE" branch)
     names.v <- names[, visible, drop=FALSE]
     if (id <- match(name, rev(colnames(names.v)), nomatch=0)) {
