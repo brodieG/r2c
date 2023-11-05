@@ -499,11 +499,17 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
         if(!lcopy.id %in% stack.lcopy['lcopy',])
           stop("Internal Error: lcopy cannot find matching lset.")
         tmp.ids <- call.dat[[length(call.dat)]][['ids']]
+        # Sanity check that all the sets (there may be more than one with nested
+        # branches inside loops) have been reconciled.
+        lset.id <- unique(stack.lcopy['set', stack.lcopy['lcopy',] == lcopy.id])
+        if(length(lset.id) > 1)
+          stop("Internal Error: inconsistent lset ids for lcopy id ", lcopy.id)
+
         # Copy from the set location to the use location; we kept a reference to
         # the use memory with the .R2C.FOR.SYM.N variable (position 2).  Note
         # this makes the call ids of e.g. a containing "{" calls out of date
         # which doesn't matter except for the use/set sanity check at end.
-        tmp.ids[2:3] <- c(stack.lcopy['set', lcopy.id], tmp.ids[2L])
+        tmp.ids[2:3] <- c(lset.id, tmp.ids[2L])
         # No need to update param `stack` b/c we're about to drop the slots we
         # manipulated at current depth
         call.dat[[length(call.dat)]][['ids']] <- tmp.ids
@@ -645,7 +651,9 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
 ##   that beyond that the name binding need not prevent release of memory),
 ##   `i.assign` the index in which the symbol was bound, and `br.hide` is the
 ##   branch level the symbols assigned in the TRUE branch need to be hidden from
-##   (so the FALSE branch can't see them).
+##   (so the FALSE branch can't see them).  This should probably be an
+##   environment with branches handled as child environments, instead of a
+##   matrix with all the br.hide business.
 ## * rec: see `rec` parameter.
 ##
 ## We're mixing return value elements and params, a bit, but there are some
@@ -1485,8 +1493,7 @@ lset_update <- function(stack.lcopy, alloc, call) {
   if(!is.integer(call[['rec.i']]))
     stop("Internal Error: bad lset call.")
   lcopy.id <- call[['rec.i']]
-  if(lcopy.id %in% stack.lcopy['lcopy',])
-    stop("Internal Error: duplicate lcopy id ", lcopy.id)
+
 
   cbind(stack.lcopy, c(lcopy=lcopy.id, set=alloc[['i']]))
 }

@@ -89,6 +89,7 @@ MODIFY.SYM <- c(ASSIGN.SYM, "subassign")
 LOOP.SYM <- c("for", "while", "repeat")
 FOR.SYM.ALL <- c(R2C.FOR, FOR.ITER, FOR.N, FOR.0)
 LOOP.SUB.SYM <- c(FOR.0, FOR.N)
+R2C.IF <- "r2c_if"
 IF.TEST <- "if_test"
 IF.SUB.SYM <- c("if_true", "if_false")
 CTRL.SYM <- c("if", LOOP.SYM)
@@ -101,7 +102,7 @@ CTRL.SUB.SYM <- c(IF.SUB.SYM, LOOP.SUB.SYM)
 BRANCH.START.SYM <- c(IF.TEST, FOR.ITER)
 BRANCH.MID.SYM <- c("if_true", FOR.N)
 BRANCH.END.SYM <- c("if_false", FOR.0)
-BRANCH.EXEC.SYM <- c("r2c_if", R2C.FOR)
+BRANCH.EXEC.SYM <- c(R2C.IF, R2C.FOR)
 
 # For recomposing control we match to different things than we do in alloc
 CTRL.LEAD <- c(IF.TEST, FOR.INIT)
@@ -188,11 +189,11 @@ FUN.NAMES <- c(
 
   # "while"="while", "repeat"="repeat", "if"="if"
 
-  if_test=IF.TEST, if_true="if_true", if_false="if_false", r2c_if="r2c_if",
+  if_test=IF.TEST, if_true="if_true", if_false="if_false", r2c_if=R2C.IF,
   "if"="if",
 
   for_init=FOR.INIT, for_iter=FOR.ITER, for_n=FOR.N, for_0=FOR.0,
-  r2c_for=R2C.FOR, "for"="for", lcopy="lcopy", lset="lset",
+  r2c_for=R2C.FOR, "for"="for", lcopy="lcopy", lset=L.SET,
 
   seq_along="seq_along", seq_len="seq_len",
 
