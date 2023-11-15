@@ -79,10 +79,9 @@ group_exec_int <- function(
   # Compute sizes for each size coefs element across all groups; skip
   # pmax for single element case for speed.
   iter.sizes.in <- lapply(res.size.coef, iter_result_sizes, base=gsizes)
-  group.res.sizes <- if(length(iter.sizes.in) > 1) {
-    # Like pmax, except 0 dominates
-    .Call(R2C_vecrec_pmax, iter.sizes.in)
-  } else iter.sizes.in[[1L]]
+  group.res.sizes <-
+    if(length(iter.sizes.in) > 1) pmax2(iter.sizes.in)
+    else iter.sizes.in[[1L]]
 
   # Identify obvious cases for optimizing result label generation.  size_vecrec
   # should have collapsed to obvious cases if possible.  We rely on the internal
@@ -151,6 +150,9 @@ group_exec_int <- function(
   }
   res
 }
+# Like pmax, except 0 dominates
+pmax2 <- function(x) .Call(R2C_vecrec_pmax, x)
+
 #' Compute Group Meta Data
 #'
 #' Use by [`group_exec`] to organize group data, and made available as an
