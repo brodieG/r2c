@@ -8,6 +8,33 @@
 \description{
 Compiles a subset of R into machine code so that expressions composed with
 that subset can be applied repeatedly on varying data without interpreter
-overhead.  Use \link[=r2c-compile]{the compilation functions} to compile R, and
-\link{runners} to execute the resulting compiled code iteratively on varying data.
+overhead.
 }
+\details{
+For a quick start:
+\itemize{
+\item Review \link[=r2c-supported-funs]{supported functions}.
+\item Use \link[=r2c-compile]{the compilation functions} to compile R.
+\item \link[=runners]{Run} your \code{r2c} functions iteratively on varying data.
+}
+
+Details:
+\itemize{
+\item \link[=r2c-performance]{Performance considerations}.
+\item \link[=r2c-memory]{Memory use}.
+\item \link[=r2c-preprocess]{Preprocessing}.
+\item Experimental support for \link[=r2c-control-structures]{control structures}.
+\item Iteration \link[=r2c-expression-types]{Constant and varying expressions}.
+}
+}
+\seealso{
+Other r2c-topics: 
+\code{\link{r2c-control-structures}},
+\code{\link{r2c-expression-types}},
+\code{\link{r2c-memory}},
+\code{\link{r2c-performance}},
+\code{\link{r2c-preprocess}},
+\code{\link{r2c-supported-funs}},
+\code{\link{runners}}
+}
+\concept{r2c-topics}

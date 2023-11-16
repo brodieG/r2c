@@ -252,18 +252,19 @@ bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 #' @param position finite, non-NA, monotonically increasing numeric vector with
 #'   as many elements as `data`.  Each element in `position` is the position on
 #'   the real line of the corresponding `data` element (see notes).  Integer
-#'   vectors are coerced to numeric.
+#'   vectors are coerced to numeric and thus copied.
 #' @param by strictly positive, finite, non-NA scalar numeric, interpreted
 #'   as the stride to increment the anchor by after each `fun` application.
 #' @param at non-NA, finite, monotonically increasing numeric vector of anchor
 #'   positions on the real line for each window (see notes).
-#'   Integer vectors are coerced to numeric.
+#'   Integer vectors are coerced to numeric and thus copied.
 #' @param left non-NA, finite, monotonically increasing numeric
 #'   positions of the left end of each window on the real line (see notes).
-#'   Integer vectors are coerced to numeric.
+#'   Integer vectors are coerced to numeric and thus copied.
 #' @param right non-NA, finite, monotonically increasing numeric
 #'   positions of the left end of each window on the real line, where
-#'   `right >= left` (see notes).  Integer vectors are coerced to numeric.
+#'   `right >= left` (see notes).  Integer vectors are coerced to numeric and
+#'   thus copied.
 #' @param offset finite, non-na, scalar numeric representing the offset
 #'   of the window from its "anchor".  Defaults to 0, which means the left end
 #'   of the window is aligned with the anchor (i.e. conceptually equivalent to
@@ -548,7 +549,7 @@ rollbw_exec <- function(
 #'   instead of an interval width as in [`rollby_exec`] and friends.  Must be
 #'   scalar, or have as many elements as data (see "Data Elements").  For the
 #'   latter, specifies the element counts of each window.  Coerced to integer if
-#'   numeric.
+#'   numeric, and thus copied.
 #' @param by strictly positive scalar integer interpreted as the stride to
 #'   increment the "anchor" after each `fun` application.  Coerced to integer if
 #'   numeric.

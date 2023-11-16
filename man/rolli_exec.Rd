@@ -31,7 +31,7 @@ It is called \code{n} and not \code{width} to emphasize it is a discrete count
 instead of an interval width as in \code{\link{rollby_exec}} and friends.  Must be
 scalar, or have as many elements as data (see "Data Elements").  For the
 latter, specifies the element counts of each window.  Coerced to integer if
-numeric.}
+numeric, and thus copied.}
 
 \item{by}{strictly positive scalar integer interpreted as the stride to
 increment the "anchor" after each \code{fun} application.  Coerced to integer if

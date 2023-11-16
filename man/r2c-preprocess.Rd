@@ -58,3 +58,15 @@ get_r_code(r2c.for <- r2cq({
 }), raw=TRUE)
 r2c.for(1:10)
 }
+\seealso{
+Other r2c-topics: 
+\code{\link{r2c-control-structures}},
+\code{\link{r2c-expression-types}},
+\code{\link{r2c-memory}},
+\code{\link{r2c-package}},
+\code{\link{r2c-performance}},
+\code{\link{r2c-supported-funs}},
+\code{\link{runners}}
+}
+\concept{r2c-topics}
+\keyword{internal}

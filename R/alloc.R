@@ -17,129 +17,128 @@
 
 NULL
 
-#' Allocate Required Storage
-#'
-#' This is internal documentation.  Please be sure to read `?r2c-compile` and
-#' the documentation for the `preprocess` internal function before reading this.
-#'
-#' We iterate through the linearized call list (see "Linearization"` for
-#' details) to determine the memory needs to support the evaluation of the
-#' function, and pre-allocate this memory.  The allocations are sized to fit
-#' the largest iteration (and thus should fit all iterations).  The
-#' allocations are appended to the storage list that is part of the `alloc`
-#' object (`alloc[['dat']]).  See docs for `append_dat`.
-#'
-#' Every leaf expression that might affect allocation requirements  is brought
-#' into the storage list if it is not there already.  Leaf expressions include
-#' those labeled PAR.INT.LEAF and those labeled PAR.EXT, but note that
-#' PAR.EXT.ANY are kept on their own stack and thus don't affect allocation
-#' requirements.  External vectors (i.e. not part of the group data) are shallow
-#' copied into the storage list (i.e. just referenced, not actually copied, per
-#' standard R semantics), except that if they are integer/logical they are
-#' coerced and thus copied.  The semantics of lookup should mimic those of e.g.
-#' `with`, where we first look through any symbols previously bound in the `r2c`
-#' evaluation environment, then in the data in `with`, and finally in the
-#' calling environment.
-#'
-#' The sizes of leaf expressions are tracked in the `stack` array, along with
-#' their depth, and where in the storage list they reside.  When we reach a
-#' sub-call all its inputs will be in the `stack` with a depth equal to 1 + its
-#' own depth.  We can use the input size information along with meta data about
-#' the function in the call to compute the output size.  The inputs are then
-#' removed from the stack and replaced by the output size from the sub call, and
-#' we allocate (or re-use a no-longer needed allocation) to/from the storage
-#' list.  Ex-ante calculation of output size is complex (see `compute_size`).
-#'
-#' This continues until the stack contains the output size and location of the
-#' final call, and the allocation memory list contains all the vectors required
-#' to hold intermediate calculations.  We record the state of the stack at each
-#' sub-call along with other other useful data in `call.dat`.
-#'
-#' Control and flags are tracked in separate stacks that are also merged into
-#' `call.dat`.
-#'
-#' @section Linearization:
-#'
-#' Linearization is very convenient when we have a sequence of calls that reduce
-#' their parameters into a single result.  This is because we can keep all sorts
-#' of meta data in parallel lists that map 1-1 with each call component.
-#' Otherwise we need a complex recursive structure that matches the call
-#' and also carries the meta data, and it is more awkward to deal with
-#' that.  Linearization is done by `preprocess`.  An example:
-#'
-#'     x + y * z
-#'
-#' When linearized becomes:
-#'
-#'     expression          depth
-#'
-#'     x               2-------+
-#'                             |
-#'     y                  3--+ |
-#'     z                  3--+ |
-#'                           | |
-#'     y * z           2-----+-+
-#'                             |
-#'     x + y * z     1---------+
-#'
-#' Processing the expressions sequentially can be done straightforwardly with a
-#' simple stack.
-#'
-#' Unfortunately much after the initial implementation we decided it
-#' would be a fun challenge to add branches, and the linearized format is not
-#' well suited for them for the purpose of ex-ante size calculation.  Rather
-#' than try to transition everything to a recursive structure we resorted to
-#' some convolutions to deal with the branches
-#'
-#' @section Depth:
-#'
-#' An allocation is considered "freed" as soon as we emerge above the call
-#' level (depth) for which it was originally made, unless it is also referenced
-#' by a symbol that is still in use (designated `alloc[['names']]`).  The
-#' `depth` variable semantics are strongly shaped by how it is generated (i.e.
-#' by incrementing it with each level of recursion in the call tree it
-#' originates from).  For example, for a call at depth `depth`, it is a given
-#' that all of it's parameters will have a `depth` of `depth+1`.  We use `stack`
-#' as a mechanism for tracking the current call's parameters.
-#'
-#' @section Special Sub-Calls:
-#'
-#' Assignments and braces are considered special because neither of them do any
-#' computations.  Assignments change the lifetime of the expression assigned to
-#' the symbol to last until the last use of that symbol-instance (a
-#' symbol-instance lifetime ends if it is overwritten).  A storage list element
-#' containing the value bound to the symbol cannot be re-used until after the
-#' lifetime ends.  Braces just "output" the last expression they contain.  Both
-#' braces and assignments register on the stack by having their last input also
-#' be the output.  This works fine because both these functions are no-op at the
-#' C level so there is no risk of corrupting the input.
-#'
-#' @section Result Vector:
-#'
-#' All the allocations in the storage list are sized to contain a single
-#' iteration (group, window, etc.), but the result vector will hold the
-#' concatenation of all of them.  Thus, the final call is intercepted and
-#' redirected to the special result vector in the storage list.  Special
-#' handling is required when the result is just a symbol, or branches are
-#' involved.  See `copy_branchdat` in preprocess.R.
-#'
-#' @param x preprocessed data as produced by `preprocess`
-#' @return an alloc object:
-#'
-#' alloc
-#'   $alloc: see `append_dat`.
-#'   $call.dat: each actual call with a C counterpart
-#'     $call: the R call
-#'     $ids: ids in `alloc$dat` for parameters, and then result
-#'     $ctrl: evaluated control parameters
-#'     $flag: computed flag parameter value
-#'   $stack:
-#'     matrix used to track call-parameter relationships; when returned it
-#'     should just have one column representing the return value of the r2c
-#'     expression.
-#'
-#' @noRd
-#' @param x the result of preprocessing an expression
+## Allocate Required Storage
+##
+## This is internal documentation.  Please be sure to read `?r2c-compile` and
+## the documentation for the `preprocess` internal function before reading this.
+##
+## We iterate through the linearized call list (see "Linearization"` for
+## details) to determine the memory needs to support the evaluation of the
+## function, and pre-allocate this memory.  The allocations are sized to fit
+## the largest iteration (and thus should fit all iterations).  The
+## allocations are appended to the storage list that is part of the `alloc`
+## object (`alloc[['dat']]).  See docs for `append_dat`.
+##
+## Every leaf expression that might affect allocation requirements  is brought
+## into the storage list if it is not there already.  Leaf expressions include
+## those labeled PAR.INT.LEAF and those labeled PAR.EXT, but note that
+## PAR.EXT.ANY are kept on their own stack and thus don't affect allocation
+## requirements.  External vectors (i.e. not part of the group data) are shallow
+## copied into the storage list (i.e. just referenced, not actually copied, per
+## standard R semantics), except that if they are integer/logical they are
+## coerced and thus copied.  The semantics of lookup should mimic those of e.g.
+## `with`, where we first look through any symbols previously bound in the `r2c`
+## evaluation environment, then in the data in `with`, and finally in the
+## calling environment.
+##
+## The sizes of leaf expressions are tracked in the `stack` array, along with
+## their depth, and where in the storage list they reside.  When we reach a
+## sub-call all its inputs will be in the `stack` with a depth equal to 1 + its
+## own depth.  We can use the input size information along with meta data about
+## the function in the call to compute the output size.  The inputs are then
+## removed from the stack and replaced by the output size from the sub call, and
+## we allocate (or re-use a no-longer needed allocation) to/from the storage
+## list.  Ex-ante calculation of output size is complex (see `compute_size`).
+##
+## This continues until the stack contains the output size and location of the
+## final call, and the allocation memory list contains all the vectors required
+## to hold intermediate calculations.  We record the state of the stack at each
+## sub-call along with other other useful data in `call.dat`.
+##
+## Control and flags are tracked in separate stacks that are also merged into
+## `call.dat`.
+##
+## @section Linearization:
+##
+## Linearization is very convenient when we have a sequence of calls that reduce
+## their parameters into a single result.  This is because we can keep all sorts
+## of meta data in parallel lists that map 1-1 with each call component.
+## Otherwise we need a complex recursive structure that matches the call
+## and also carries the meta data, and it is more awkward to deal with
+## that.  Linearization is done by `preprocess`.  An example:
+##
+##     x + y * z
+##
+## When linearized becomes:
+##
+##     expression          depth
+##
+##     x               2-------+
+##                             |
+##     y                  3--+ |
+##     z                  3--+ |
+##                           | |
+##     y * z           2-----+-+
+##                             |
+##     x + y * z     1---------+
+##
+## Processing the expressions sequentially can be done straightforwardly with a
+## simple stack.
+##
+## Unfortunately much after the initial implementation we decided it
+## would be a fun challenge to add branches, and the linearized format is not
+## well suited for them for the purpose of ex-ante size calculation.  Rather
+## than try to transition everything to a recursive structure we resorted to
+## some convolutions to deal with the branches
+##
+## @section Depth:
+##
+## An allocation is considered "freed" as soon as we emerge above the call
+## level (depth) for which it was originally made, unless it is also referenced
+## by a symbol that is still in use (designated `alloc[['names']]`).  The
+## `depth` variable semantics are strongly shaped by how it is generated (i.e.
+## by incrementing it with each level of recursion in the call tree it
+## originates from).  For example, for a call at depth `depth`, it is a given
+## that all of it's parameters will have a `depth` of `depth+1`.  We use `stack`
+## as a mechanism for tracking the current call's parameters.
+##
+## @section Special Sub-Calls:
+##
+## Assignments and braces are considered special because neither of them do any
+## computations.  Assignments change the lifetime of the expression assigned to
+## the symbol to last until the last use of that symbol-instance (a
+## symbol-instance lifetime ends if it is overwritten).  A storage list element
+## containing the value bound to the symbol cannot be re-used until after the
+## lifetime ends.  Braces just "output" the last expression they contain.  Both
+## braces and assignments register on the stack by having their last input also
+## be the output.  This works fine because both these functions are no-op at the
+## C level so there is no risk of corrupting the input.
+##
+## @section Result Vector:
+##
+## All the allocations in the storage list are sized to contain a single
+## iteration (group, window, etc.), but the result vector will hold the
+## concatenation of all of them.  Thus, the final call is intercepted and
+## redirected to the special result vector in the storage list.  Special
+## handling is required when the result is just a symbol, or branches are
+## involved.  See `copy_branchdat` in preprocess.R.
+##
+## @param x preprocessed data as produced by `preprocess`
+## @return an alloc object:
+##
+## alloc
+##   $alloc: see `append_dat`.
+##   $call.dat: each actual call with a C counterpart
+##     $call: the R call
+##     $ids: ids in `alloc$dat` for parameters, and then result
+##     $ctrl: evaluated control parameters
+##     $flag: computed flag parameter value
+##   $stack:
+##     matrix used to track call-parameter relationships; when returned it
+##     should just have one column representing the return value of the r2c
+##     expression.
+##
+## @param x the result of preprocessing an expression
 
 alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
   call.len <- length(x[['call']])

@@ -68,7 +68,7 @@ different to that for \code{\link{rolli_exec}}.}
 \item{position}{finite, non-NA, monotonically increasing numeric vector with
 as many elements as \code{data}.  Each element in \code{position} is the position on
 the real line of the corresponding \code{data} element (see notes).  Integer
-vectors are coerced to numeric.}
+vectors are coerced to numeric and thus copied.}
 
 \item{start}{non-na, finite scalar numeric position on real line of first
 "anchor".  Windows may extend to the left of \code{start} (or to the right of
@@ -101,15 +101,16 @@ positional matching occurring after the elements in \code{data} are matched.}
 
 \item{at}{non-NA, finite, monotonically increasing numeric vector of anchor
 positions on the real line for each window (see notes).
-Integer vectors are coerced to numeric.}
+Integer vectors are coerced to numeric and thus copied.}
 
 \item{left}{non-NA, finite, monotonically increasing numeric
 positions of the left end of each window on the real line (see notes).
-Integer vectors are coerced to numeric.}
+Integer vectors are coerced to numeric and thus copied.}
 
 \item{right}{non-NA, finite, monotonically increasing numeric
 positions of the left end of each window on the real line, where
-\code{right >= left} (see notes).  Integer vectors are coerced to numeric.}
+\code{right >= left} (see notes).  Integer vectors are coerced to numeric and
+thus copied.}
 }
 \value{
 A numeric vector of length:

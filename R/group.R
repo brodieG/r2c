@@ -155,9 +155,11 @@ pmax2 <- function(x) .Call(R2C_vecrec_pmax, x)
 
 #' Compute Group Meta Data
 #'
-#' Use by [`group_exec`] to organize group data, and made available as an
-#' exported function for the case where multiple calculations use the same group
-#' set and thus there is an efficiency benefit in processing it once.
+#' [`group_exec`] sorts data by groups prior to iterating through them.  When
+#' running `group_exec` multiple times on the same data, it is better to
+#' pre-sort the data and tell `group_exec` as much so it does  not sort the data
+#' again.  We can do the latter with `process_groups`, which additionally
+#' computes group information we can re-use across calls.
 #'
 #' @note The structure and content of the return value may change in the future.
 #' @inheritParams group_exec
@@ -167,21 +169,31 @@ pmax2 <- function(x) .Call(R2C_vecrec_pmax, x)
 #'   already sorted.  If set to TRUE, no sorting will be done on the groups, nor
 #'   later on the `data` by [`group_exec`]. If the data is truly sorted this
 #'   produces the same results while avoiding the cost of sorting.  If the data
-#'   is not sorted groups `g` will produce groups corresponding to equal-value
-#'   runs it contains, which might be useful in some circumstances.
+#'   is not sorted by groups, `g` will produce groups corresponding to
+#'   equal-value runs it contains, which might be useful in some circumstances.
 #' @return an "r2c.groups" object, which is a list containing group sizes,
 #'   labels, and group count, along with other meta data such as the group
 #'   ordering vector.
 #' @examples
 #' ## Use same group data for different but same length data.
 #' ## (alternatively, could use two functions on same data).
-#' g <- c(1L, 2L, 2L)
-#' x <- runif(3)
-#' y <- runif(3)
-#' g.r2c <- process_groups(g, sorted=TRUE)
+#' n <- 10
+#' dat <- data.frame(x=runif(n), y=runif(n), g=sample(1:3, n, replace=TRUE))
+#'
+#' ## Pre-sort by group and compute grouping data
+#' dat <- dat[order(dat[['g']]),]
+#' g.r2c <- process_groups(dat[['g']], sorted=TRUE) # note sorted=TRUE
+#'
+#' ## Re-use pre-computed group data
 #' f <- r2cq(sum(x))
-#' group_exec(f, x, g.r2c)
-#' group_exec(f, y, g.r2c)
+#' with(dat, group_exec(f, x, groups=g.r2c))
+#' with(dat, group_exec(f, y, groups=g.r2c))
+#'
+#' ## Claim unsorted data is sorted to implement RLE
+#' g <- c(1, 2, 2, 1, 1, 1, 2, 2)
+#' group_exec(f, rep(1, length(g)), process_groups(g, sorted=TRUE))
+#' rle(g)$values
+#' rle(g)$lengths
 
 process_groups <- function(groups, sorted=FALSE) {
   vetr(

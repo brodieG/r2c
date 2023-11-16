@@ -6,31 +6,43 @@
 \description{
 \code{r2c} \link{runners} pre-allocate the memory required to compute every
 sub-expression for the single largest iteration they will execute.  This
-same allocation is re-used for the every iteration, thereby reducing peak
+same allocation is re-used for every iteration, thereby reducing peak
 memory requirements and memory fragmentation.
 }
 \details{
 \code{r2c} \link{runners} examine "r2c_fun" functions in conjunction with the iteration
-size of their \code{data} argument to compute memory allocation sizes.  Most of
+size of their \code{data} argument to compute memory requirements.  Most of
 the \link[=r2c-supported-funs]{r2c supported functions} are such that the size of
-the result can be inferred from the size of the inputs.  Once a \link{runner}
-knows the iteration data sizes, it can pre-compute how much memory is needed
-for every sub-expression in each iteration.
+the result can be inferred from the size of the inputs.  Once a
+\link[=runners]{runner} knows the iteration data sizes, it can pre-compute how much
+memory is needed for every sub-expression in each iteration.
 
 In order to expand the range of supported functions outside of those that
 derive output size from input size, \code{r2c} introduces some constraints on
 semantics.  For example, control structures like \code{if}/\verb{else} are allowed so
-long as their return values and/or any set variables are the same size
-irrespective of the branch taken.  Functions like \code{numeric(x)} that derive
-their size from the value of an input can be supported, but that value must
-be \link[=r2c-expression-types]{iteration invariant}.
+long as their return values and/or any variables set in their branches are
+the same size irrespective of the branch taken.  Functions like \code{numeric(x)}
+that derive their size from the value of an input can be supported, but that
+value must be \link[=r2c-expression-types]{constant across iterations}.
 
-Even for the case functions for which output size is computable from the
-input alone, there is complexity.  For example, the size of \code{a + b} depends
+Even when output size is derivable from input size alone, there is the
+potential for unbounded complexity.  For example, the size of \code{a + b} depends
 on the size of both \code{a} and \code{b}, either of which could be
-\link{iteration-varying}.  As expressions get more complex, e.g. \code{c(a + b, a)},
-computing result sizes can also get more complex.  \code{r2c} caps the level of
-complexity of size calculations it will support, and will error at run time
-if this limit is exceeded.  It should be difficult to reach this cap when
-computing statistics.
+\link[=r2c-expression-types]{iteration varying}.  As expressions get more complex,
+e.g. \code{c(a + b, a)}, computing result sizes can also get more complex.  \code{r2c}
+caps the level of complexity of size calculations it will support, and will
+error at run time if this limit is exceeded.  It should be difficult to reach
+this cap when computing statistics.
 }
+\seealso{
+Other r2c-topics: 
+\code{\link{r2c-control-structures}},
+\code{\link{r2c-expression-types}},
+\code{\link{r2c-package}},
+\code{\link{r2c-performance}},
+\code{\link{r2c-preprocess}},
+\code{\link{r2c-supported-funs}},
+\code{\link{runners}}
+}
+\concept{r2c-topics}
+\keyword{internal}
