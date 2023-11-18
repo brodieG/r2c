@@ -46,15 +46,5 @@ group_exec(f, data=list(x=1:3), groups=g, MoreArgs=list(y=2:4))
 ## But if we make `y` varying, it does not
 try(group_exec(f, data=list(x=1:3, y=2:4), groups=g))
 }
-\seealso{
-Other r2c-topics: 
-\code{\link{r2c-control-structures}},
-\code{\link{r2c-memory}},
-\code{\link{r2c-package}},
-\code{\link{r2c-performance}},
-\code{\link{r2c-preprocess}},
-\code{\link{r2c-supported-funs}},
-\code{\link{runners}}
-}
 \concept{r2c-topics}
 \keyword{internal}

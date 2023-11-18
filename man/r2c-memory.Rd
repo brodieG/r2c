@@ -35,14 +35,6 @@ error at run time if this limit is exceeded.  It should be difficult to reach
 this cap when computing statistics.
 }
 \seealso{
-Other r2c-topics: 
-\code{\link{r2c-control-structures}},
-\code{\link{r2c-expression-types}},
-\code{\link{r2c-package}},
-\code{\link{r2c-performance}},
-\code{\link{r2c-preprocess}},
-\code{\link{r2c-supported-funs}},
-\code{\link{runners}}
+\link[=r2c]{Package Overview}.
 }
-\concept{r2c-topics}
 \keyword{internal}

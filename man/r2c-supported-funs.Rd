@@ -68,14 +68,6 @@ is the name of the function, optionally in \code{pkg::fun} format.  Functions mu
 be bound to their original symbols for them to be recognized.
 }
 \seealso{
-Other r2c-topics: 
-\code{\link{r2c-control-structures}},
-\code{\link{r2c-expression-types}},
-\code{\link{r2c-memory}},
-\code{\link{r2c-package}},
-\code{\link{r2c-performance}},
-\code{\link{r2c-preprocess}},
-\code{\link{runners}}
+\link[=r2c]{Package Overview}.
 }
-\concept{r2c-topics}
 \keyword{internal}

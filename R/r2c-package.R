@@ -35,7 +35,6 @@
 #'
 #' @docType package
 #' @name r2c-package
-#' @family r2c-topics
 #' @aliases r2c
 #' @import vetr
 #' @importFrom utils globalVariables tail head
@@ -59,8 +58,8 @@ utils::globalVariables(".")  # for vetr .
 #'
 #' @keywords internal
 #' @name runners
-#' @family r2c-topics
 #' @family runner functions
+#' @seealso [Package Overview][r2c].
 
 NULL
 
@@ -112,7 +111,7 @@ NULL
 #' be bound to their original symbols for them to be recognized.
 #'
 #' @keywords internal
-#' @family r2c-topics
+#' @seealso [Package Overview][r2c].
 #' @name r2c-supported-funs
 
 NULL
@@ -148,7 +147,7 @@ NULL
 #' error at run time if this limit is exceeded.  It should be difficult to reach
 #' this cap when computing statistics.
 #'
-#' @family r2c-topics
+#' @seealso [Package Overview][r2c].
 #' @keywords internal
 #' @name r2c-memory
 
@@ -197,7 +196,7 @@ NULL
 #' requirements.
 #'
 #' @keywords internal
-#' @family r2c-topics
+#' @seealso [Package Overview][r2c].
 #' @name r2c-control-structures
 
 NULL
@@ -292,7 +291,7 @@ NULL
 #' to get control flow to fit into an implementation that originally did not
 #' intend to allow them).
 #'
-#' @family r2c-topics
+#' @seealso [Package Overview][r2c].
 #' @keywords internal
 #' @name r2c-preprocess
 #' @examples
@@ -351,7 +350,7 @@ NULL
 #' expired symbols (to free associated memory for re-use).  These are
 #' implemented in the [preprocessing step][r2c-preproces].
 #'
-#' @family r2c-topics
+#' @seealso [Package Overview][r2c].
 #' @keywords internal
 #' @name r2c-performance
 

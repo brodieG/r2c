@@ -54,14 +54,14 @@ rand_string <- function(len, pool=c(letters, 0:9))
 
 #' Compile Eligible R Calls Into Native Instructions
 #'
-#' The `r2c*` functions translate eligible R calls into C, compile them into
-#' native instructions using `R CMD SHLIB`, and return an interface to that
-#' code in the form of an "r2c_fun" function.  This function will carry out
-#' out numerical calculations with `r2c` native instructions instead of with the
-#' standard R routines. "r2c_fun" functions are intended to be run with the
-#' `r2c` [runners] for fast iterated calculations.  `r2c` adheres closely to R
-#' semantics for the supported use cases.  Look at the examples here and those
-#' of the [runners] to get started.
+#' The `r2c*` functions translate [eligible R calls][r2c-supported-funs] into C,
+#' compile them into native instructions using `R CMD SHLIB`, and return an
+#' interface to that code in the form of an "r2c_fun" function.  This function
+#' will carry out out numerical calculations with `r2c` native instructions
+#' instead of with the standard R routines. "r2c_fun" functions are intended to
+#' be run with the `r2c` [runners] for fast iterated calculations.  `r2c`
+#' adheres closely to R semantics for the supported use cases.  Look at the
+#' examples here and those of the [runners] to get started.
 #'
 #' @section r2c Generated Functions:
 #'
@@ -90,9 +90,7 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' For `r2cl` and `r2cq`, free symbols used as parameters to `call` and its
 #' constituent sub-calls (e.g. the `x` and `y` in `sum(x) + y`) will become
 #' parameters to the output "r2c_fun" function.  There must be at least one such
-#' symbol in `call`.  Bindings set by [constant
-#' expressions][r2c-expression-types] are ignored when determining whether a
-#' symbol is free or not.  Parameter order follows that of appearance in the
+#' symbol in `call`.  Parameter order follows that of appearance in the
 #' call tree after everything is [`match.call`]ed.  Symbols beginning with
 #' `.R2C` are reserved for use by `r2c` and thus disallowed in `call`.  You may
 #' also directly set the parameter list with the `formals` parameter, or with
@@ -123,7 +121,7 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' iteration-interrupts, but it adds overhead when dealing with many iterations
 #' with few elements each and thus is disabled at the moment.
 #'
-#' Users should not rely on specifics of The internal structure of "r2c_fun"
+#' Users should not rely on specifics of the internal structure of "r2c_fun"
 #' functions; these are subject to change without notice in future `r2c`
 #' releases.  The only supported uses of "r2c_fun" functions are use with the
 #' [runners], standard invocation with the `(` operator, and other `r2c`

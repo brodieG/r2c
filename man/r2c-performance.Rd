@@ -46,14 +46,6 @@ expired symbols (to free associated memory for re-use).  These are
 implemented in the \link[=r2c-preproces]{preprocessing step}.
 }
 \seealso{
-Other r2c-topics: 
-\code{\link{r2c-control-structures}},
-\code{\link{r2c-expression-types}},
-\code{\link{r2c-memory}},
-\code{\link{r2c-package}},
-\code{\link{r2c-preprocess}},
-\code{\link{r2c-supported-funs}},
-\code{\link{runners}}
+\link[=r2c]{Package Overview}.
 }
-\concept{r2c-topics}
 \keyword{internal}

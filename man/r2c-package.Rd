@@ -27,14 +27,3 @@ Details:
 \item Iteration \link[=r2c-expression-types]{Constant and varying expressions}.
 }
 }
-\seealso{
-Other r2c-topics: 
-\code{\link{r2c-control-structures}},
-\code{\link{r2c-expression-types}},
-\code{\link{r2c-memory}},
-\code{\link{r2c-performance}},
-\code{\link{r2c-preprocess}},
-\code{\link{r2c-supported-funs}},
-\code{\link{runners}}
-}
-\concept{r2c-topics}
