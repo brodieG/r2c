@@ -48,6 +48,8 @@
 // which allows us to leave the interrupt code in the functions should we decide
 // to switch back to this later.
 
+// Prior to re-enabling:
+// * Look at `rep`, do we want to add interrupts there?
 // #define LOOP_W_INTERRUPT0(I_MAX, LOOP) do {                          \
 //   R_xlen_t i_stop, next_interrupt;                                   \
 //   i = 0;                                                             \
