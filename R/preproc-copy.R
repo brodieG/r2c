@@ -36,7 +36,10 @@ B.LOC <- c('bind', 'loc')
 B.LOC.CMP <- c('bind', 'loc.compute')
 # Global and computing
 B.ALL <- c('bind', 'all')
-# Global and computing, but to inject at front by e.g. subassign
+# Global and computing, but to inject at front by e.g. subassign, difference
+# with B.ALL seems to be these don't get reset by branch local bindings and that
+# they don't generate branch balance assignments.  Unfortunately don't recall
+# exactly why the distinction was needed.
 B.ALL0 <- c('bind', 'all0')
 # Track all bindings irrespective of type for free variables
 B.NAMED <- c('bind', 'named')
@@ -243,16 +246,19 @@ B.NAMED <- c('bind', 'named')
 #
 # @seealso copy_branchdat_rec for details on what gets copied and why.
 # @param x call to process
+# @param unsupported see `sub_unsupported`
 
-copy_branchdat <- function(x) {
+copy_branchdat <- function(x, unsupported) {
   if(is.symbol(x)) {
     # Special case: a single symbol.  For recursive logic to work cleanly every
     # symbol needs to be part of a call
     sym.free <- as.character(x)
+    if(sym.free %in% names(unsupported))
+      sym.free <- collect_call_symbols(unsupported[[sym.free]])
     x <- en_vcopy(x)
   } else {
     # Compute locations requring vcopy
-    branch.dat <- copy_branchdat_rec(x, x0=x)
+    branch.dat <- copy_branchdat_rec(x, x0=x, unsupported=unsupported)
     sym.free <- branch.dat[['free']]
 
     # Modify the symbols / sub-calls that need to be vcopy'ed
@@ -331,6 +337,7 @@ copy_branchdat <- function(x) {
 #     processed call or its children, used to set triggers in some cases.
 #   * "leaf.name": if the leaf of a call is a symbol, the name of the symbol.
 #   * "free": any used symbols that are not previously bound.
+# @param unsupported see `sub_unsupported`
 # @return an updated `data` object.
 
 copy_branchdat_rec <- function(
@@ -346,6 +353,7 @@ copy_branchdat_rec <- function(
     copy=list(cand=list(), act=list()),
     passive=TRUE, assigned.to=character(), leaf.name="", free=character()
   ),
+  unsupported,
   x0  # for debugging to see what the indices are pointing at
 ) {
   sym.name <- get_lang_name(x)
@@ -355,46 +363,22 @@ copy_branchdat_rec <- function(
   if (!is.call(x)) {
     # Could be either a symbol, or alternatively a literal (e.g. `42`).
     # If a a literal, it will be checked for numeric-ness by the allocator.  It
-    # should never be the case that external parameters become candidates
-
+    # should never be the case that external parameters become candidates,
+    # except if they are sub-assign targets?
     sym.local.cmp <- sym.name %in% data[[B.LOC.CMP]]
     sym.global <- sym.name %in% c(data[[B.ALL]], data[[B.ALL0]])
     passive <- !sym.local.cmp
     leaf <- TRUE
     data[['leaf.name']] <- sym.name  # "" for literals
 
-    if(!sym.name %in% data[[B.NAMED]] && nzchar(sym.name)) {
-      data[['free']] <- union(data[['free']], sym.name)
-    }
+    # Add free symbol: for Unsupported calls we want the symbols from the
+    # unsupported calls, not the placeholder in `sym.name`
+    data <- add_maybe_unsup_free_symbol(data, sym.name, unsupported)
+
     # For symbols matching candidate(s): promote candidate if allowed.
-    cand <- data[[CAND]]
-    cand.match <- names(cand) == sym.name
-    cand.match.source <- lapply(cand[cand.match], "[[", "br.index")
-    cand.after.branch <- vapply(
-      cand.match.source,
-      function(a, b) {
-        # Definitely after branch if not in branch but symbol is from branch
-        if(is.null(a)) length(b) > 0
-        # Otherwise check if current branch is later than symbol branch
-        else {
-          if(length(a) > length(b)) length(a) <- length(b)
-          index_greater(a, b)
-        }
-      },
-      TRUE, a=in.branch  # in.branch is current position
+    data <- trigger_candidates(
+      data, name=sym.name, index=in.branch, unsupported=unsupported
     )
-    cand.prom.i <- seq_along(cand)[cand.match][cand.after.branch]
-    cand.prom <- cand[cand.prom.i]
-
-    # Effect promotions, and clear promoted candidates from candidate list.
-    data[[ACT]] <- c(data[[ACT]], cand.prom)
-    data[[CAND]] <- clear_candidates(data[[CAND]], cand.prom.i)
-
-    # Triggered branch balance candidates may require updating free symbol list
-    # For these the trigger is the same as the symbol (e.g. x <- vcopy(x))
-    br.bal.free <- vapply(cand.prom, "[[", TRUE, "free")
-    br.bal.free.sym <- vapply(cand.prom[br.bal.free], "[[", "", "name")
-    data[['free']] <- union(data[['free']], br.bal.free.sym)
 
     if(is.null(in.branch) && length(assign.to) && sym.local.cmp) {
       # Outside of branches, aliasing a locally computed symbol makes the others
@@ -426,6 +410,10 @@ copy_branchdat_rec <- function(
       )
         stop("Result of `[<-` may not be used directly.")
 
+      # Promote candidates attached to the sub-assign symbol.
+      data <- trigger_candidates(
+        data, tar.sym, in.branch, unsupported, subassign=TRUE
+      )
       tar.sym
     } else ""  # We want sub-assign symbol to spread to its children only
 
@@ -440,7 +428,7 @@ copy_branchdat_rec <- function(
           x[[2L]], index=c(index, 2L),
           last=FALSE, branch.res=FALSE,
           in.compute=FALSE, in.branch=in.branch, prev.call=sym.name,
-          data=data, x0=x0
+          data=data, unsupported=unsupported, x0=x0
         )
       }
       idx.T <- 2L + idx.offset
@@ -461,12 +449,14 @@ copy_branchdat_rec <- function(
       prev.T <- get_lang_name(x[[idx.T]])
       data.T <- copy_branchdat_rec(
         x[[c(idx.T, 2L)]], index=c(idx.T.all, 2L), data=data.next, last=last,
-        in.branch=idx.T.all, branch.res=branch.res.next, prev.call=prev.T, x0=x0
+        in.branch=idx.T.all, branch.res=branch.res.next, prev.call=prev.T,
+        unsupported=unsupported, x0=x0
       )
       prev.F <- get_lang_name(x[[idx.F]])
       data.F <- copy_branchdat_rec(
         x[[c(idx.F, 2L)]], index=c(idx.F.all, 2L), data=data.next, last=last,
-        in.branch=idx.F.all, branch.res=branch.res.next, prev.call=prev.F, x0=x0
+        in.branch=idx.F.all, branch.res=branch.res.next, prev.call=prev.F,
+        unsupported=unsupported, x0=x0
       )
       # Recombine branch data and the pre-branch data
       data <- merge_copy_dat(data, data.T, data.F, index, idx.offset)
@@ -501,18 +491,12 @@ copy_branchdat_rec <- function(
             branch.res=branch.res && next.last,
             in.compute=in.compute || !passive,
             in.branch=in.branch, prev.call=sym.name,
-            data=data, x0=x0
+            data=data, x0=x0, unsupported=unsupported
           )
         } else {
           # We still record free symbols to generate the interface for r2cq/l.
-          # This is not perfect because the external expression may be creating
-          # symbols it uses for itself, but that's a documented corner case.
-          syms <- collect_call_symbols(x)
-          new.free.syms <- syms[
-            !syms %in% data[[B.NAMED]] & nzchar(syms) &
-            !grepl(R2C.PRIV.RX, syms)  # Could these exist here?
-          ]
-          data[['free']] <- union(data[['free']], new.free.syms)
+          # See also the unsupported symbol case
+          data <- add_free_symbols(data, x)
         }
       }
       data[['passive']] <- passive && data[['passive']]
@@ -550,6 +534,30 @@ copy_branchdat_rec <- function(
   )
   data
 }
+# Register additional free symbols
+# @param x a call
+
+add_free_symbols <- function(data, x) {
+  syms <- collect_call_symbols(x)
+  new.free.syms <- syms[
+    !syms %in% data[[B.NAMED]] & nzchar(syms) &
+    !grepl(R2C.PRIV.RX, syms)  # Could these exist here?
+  ]
+  data[['free']] <- union(data[['free']], new.free.syms)
+  data
+}
+add_maybe_unsup_free_symbol <- function(data, names, unsupported) {
+  names <- unique(names)
+  names.unsup <- names[names %in% names(unsupported)]
+  names.other <- setdiff(names, names.unsup)
+  for(i in names.unsup) data <- add_free_symbols(data, unsupported[[i]])
+  data[['free']] <- union(
+    data[['free']],
+    names.other[!names.other %in% data[[B.NAMED]] & nzchar(names.other)]
+  )
+  data
+}
+
 # Generate Candidate (and Actual) Call Pointers
 #
 # Compute which expressions might need to  be copied and/or reconciled, and
@@ -561,6 +569,9 @@ copy_branchdat_rec <- function(
 # branches **if** such values might be used (see `copy_branchdat_rec`).  A
 # branch return value might be used if it is assigned to a symbol, or if it is
 # also the return value of the entire `r2c` expression.
+#
+# Additionally, candidates are needed for non-computed/external symbols that are
+# modified by subassign.
 #
 # Each candidate will be assigned a (set of) triggering symbol(s) that will,
 # should they appear after the branch, cause a promotion of the candidate to an
@@ -665,7 +676,6 @@ generate_candidate <- function(
     data <- add_actual_callptr(data, index, rec=FALSE, copy=TRUE)
   }
   # Subassignment to an external symbol requires self-copy to make it internal.
-  # This will be branch-balanced in `merge_copy_dat`.
   if(sym.name == "subassign" && !tar.sym %in% computed.sym) {
     # Self-copy goes all the way to the beginning of code because that works,
     # and if we did it adjacent existing code that happened to be in a loop we
@@ -675,19 +685,22 @@ generate_candidate <- function(
     data <-
       add_actual_callptr(data, s.cpy.idx, name=tar.sym, rec=FALSE, copy=TRUE)
   }
-  if(length(in.branch)) {
+  if(!last || branch.res) {
     # Symbols bound in branches will require rec and/or vcopy of their payload
     # **if** they are used (after the branch?). vcopy not always needed, e.g:
     #
     #   if(a) x <- rec(vcopy(y)); x     # rec and vcopy
     #   if(a) x <- rec(mean(y)); x      # only rec
     #
+    # We are also tagging symbols that may generated outside of branch in case
+    # they are modified by subassign.
     if(length(assign.to) && !first.assign && (call.assign || leaf)) {
       # Always reconcile
       triggers <- if(call.assign) assign.to[-length(assign.to)] else assign.to
       data <- add_candidate_callptr(
-        data, index, br.index=in.branch, triggers=tail(triggers, 1L), rec=TRUE,
-        copy=passive # but only vcopy passive
+        data, index, br.index=in.branch, triggers=tail(triggers, 1L),
+        rec=length(in.branch) > 0L, # rec if in branch
+        copy=passive                # but only vcopy passive
       )
       # Locally Computed symbols require copy if used after branch e.g:
       #
@@ -741,7 +754,7 @@ generate_candidate <- function(
         }
       }
     }
-  } else if (last) {
+  } else {
     # Final return not from branch: need to copy if not computed already.
     # Reconciliation not necessary since we're not in branch.
     assign.passive <- !data[['leaf.name']] %in% computed.sym
@@ -761,7 +774,7 @@ generate_candidate <- function(
         data[[B.LOC.CMP]] <- union(data[[B.LOC.CMP]], tar.sym)
         data[[B.ALL]] <- union(data[[B.ALL]], tar.sym)
       }
-      if(call.modify) {
+      if(call.modify) {  # assign + subassign
         data[[B.ALL0]] <- union(data[[B.ALL0]], tar.sym)
       }
     } else if(call.assign) {
@@ -778,6 +791,49 @@ generate_candidate <- function(
   data[['assigned.to']] <- assign.to
   data
 }
+trigger_candidates <- function(
+  data, name, index, unsupported, subassign=FALSE
+) {
+  cand <- data[[CAND]]
+  cand.match <- names(cand) == name
+  cand.match.source <- lapply(cand[cand.match], "[[", "br.index")
+  cand.after.branch <- vapply(
+    cand.match.source,
+    function(a, b) {
+      # Definitely after branch if not in branch but symbol is from branch
+      if(is.null(a)) length(b) > 0
+      # Otherwise check if current branch is later than symbol branch
+      else {
+        if(length(a) > length(b)) length(a) <- length(b)
+        index_greater(a, b)
+      }
+    },
+    TRUE, a=index  # index is current position
+  )
+  # Promote top-level candidates for sub-assign because that modifies memory
+  cand.prom.bool <-
+    if(subassign) cand.after.branch | lengths(cand.match.source) == 0L
+    else cand.after.branch
+
+  cand.prom.i <- seq_along(cand)[cand.match][cand.prom.bool]
+  cand.prom <- cand[cand.prom.i]
+
+  # Effect promotions, and clear promoted candidates from candidate list.
+  data[[ACT]] <- c(data[[ACT]], cand.prom)
+  data[[CAND]] <- clear_candidates(data[[CAND]], cand.prom.i)
+
+  # Update the bindings.  Looks like we don't need to update B.LOC because
+  # things triggered here should only be after the branch or top-level.
+  data[[B.ALL]] <- union(data[[B.ALL]], names(cand.prom))
+  data[[B.ALL0]] <- union(data[[B.ALL0]], names(cand.prom))
+
+  # Triggered branch balance candidates may require updating free symbol list
+  # For these the trigger is the same as the symbol (e.g. x <- vcopy(x))
+  br.bal.free <- vapply(cand.prom, "[[", TRUE, "free")
+  br.bal.free.sym <- vapply(cand.prom[br.bal.free], "[[", "", "name")
+  add_maybe_unsup_free_symbol(data, br.bal.free.sym, unsupported)
+}
+
 # A "Pointer" to Spot in Call Tree to Modify
 #
 # Allows us to track candidates or actual positions in the call tree for

@@ -236,4 +236,11 @@ REUSE.ARG.BASE <- sprintf("%s_SUB_", R2C.PRIV.BASE)
 REUSE.ARG.RX <- sprintf("^\\%s\\d+$", RENAME.ARG.BASE)
 REUSE.ARG.TPL <- sprintf("%s%%d", REUSE.ARG.BASE)
 
+# For unsupported function subs
+UNSUP.CALL.BASE <- sprintf("%s_UNSUP_", R2C.PRIV.BASE)
+UNSUP.CALL.RX <- sprintf("^\\%s\\d+$", UNSUP.CALL.BASE)
+UNSUP.CALL.TPL <- sprintf("%s%%d", UNSUP.CALL.BASE)
+
+
+
 

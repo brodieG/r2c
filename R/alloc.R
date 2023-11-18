@@ -217,6 +217,9 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
       name <- call.names[i]
       pkg <- call.pkgs[i]
     }
+    # The `id` value does some heavy lifting here.  We rely on it being zero to
+    # catch unsupported calls that need to be evaluated even though they get
+    # classified as PAR.INT.LEAF.
     id <- if(par.type != PAR.INT.CALL) name_to_id(alloc, name) else 0L
     vec.dat <- NULL
 
@@ -301,7 +304,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
       vec.dat <- vec_dat(
         numeric(), "tmp", typeof="logical", size.coef=list(integer()), gmax=gmax
       )
-    # - Control Parameter / External -------------------------------------------
+    # - External ---------------------------------------------------------------
     } else if (par.ext || !id) {
       # ext.any evals should not mix with internal values.
       if(id && par.type == PAR.EXT.ANY)
@@ -515,32 +518,34 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
   # the memory (and quirks in the code mean the checks would fail for them, e.g.
   # use b4 set lcopy, assign sym).
   call.passive <- vapply(call.dat, '[[', '', 'name') %in% PASSIVE.SYM
-  call.dat.ids <- do.call(
-    rbind,
-    lapply(
-      seq_along(call.dat)[!call.passive],
-      function(x) {
-        ids <- call.dat[[x]][['ids']]
-        if(!length(ids)) stop("Internal Error: zero length call dat.")
-        res <- logical(length(ids))
-        res[length(ids)] <- TRUE
-        cbind(step=x, ids, res)
-  } ) )
-  id.set <-
-    call.dat.ids[call.dat.ids[, 'res'] == 1, c('step', 'ids'), drop=FALSE]
-  id.use <-
-    call.dat.ids[call.dat.ids[, 'res'] != 1, c('step', 'ids'), drop=FALSE]
-  id.use <- id.use[
-    !alloc.fin[['type']][id.use[,'ids']] %in% c("sts", "grp", "ext"),,
-    drop=FALSE
-  ]
-  # For each id, find the earliest step in call.dat it is used in
-  tmp <- tapply(id.use[,'step'], id.use[,'ids'], min)
-  id.use.min <- cbind(id=as.integer(names(tmp)), step.min=as.vector(tmp))
-  # For those same ids, find the earliest step it is set in
-  id.set.step <- id.set[match(id.use.min[,'id'], id.set[, 'ids']), 'step']
-  if(anyNA(id.set.step) || any(id.use.min[,'step.min'] <= id.set.step))
-    stop("Internal Error: attempt to use alloc before setting it.")
+  if(!all(call.passive)) {
+    call.dat.ids <- do.call(
+      rbind,
+      lapply(
+        seq_along(call.dat)[!call.passive],
+        function(x) {
+          ids <- call.dat[[x]][['ids']]
+          if(!length(ids)) stop("Internal Error: zero length call dat.")
+          res <- logical(length(ids))
+          res[length(ids)] <- TRUE
+          cbind(step=x, ids, res)
+    } ) )
+    id.set <-
+      call.dat.ids[call.dat.ids[, 'res'] == 1, c('step', 'ids'), drop=FALSE]
+    id.use <-
+      call.dat.ids[call.dat.ids[, 'res'] != 1, c('step', 'ids'), drop=FALSE]
+    id.use <- id.use[
+      !alloc.fin[['type']][id.use[,'ids']] %in% c("sts", "grp", "ext"),,
+      drop=FALSE
+    ]
+    # For each id, find the earliest step in call.dat it is used in
+    tmp <- tapply(id.use[,'step'], id.use[,'ids'], min)
+    id.use.min <- cbind(id=as.integer(names(tmp)), step.min=as.vector(tmp))
+    # For those same ids, find the earliest step it is set in
+    id.set.step <- id.set[match(id.use.min[,'id'], id.set[, 'ids']), 'step']
+    if(anyNA(id.set.step) || any(id.use.min[,'step.min'] <= id.set.step))
+      stop("Internal Error: attempt to use alloc before setting it.")
+  }
 
   list(alloc=alloc.fin, call.dat=call.dat)
 }
