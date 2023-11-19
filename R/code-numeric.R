@@ -33,6 +33,9 @@ f_numeric_core <- '
 
 f_numeric_size_check <- sprintf(double_size_tpl, f_numeric_core)
 
+# Strictly we could make do without numeric() because it only works as a
+# constant expression, but because we use `numeric(0)` for the implicit branches
+# we are keeping it around for now.
 f_numeric <- sprintf('
 static void %%s(%%s) {
   if(lens[di[0]] != 1) Rf_error("invalid length argument");

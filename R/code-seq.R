@@ -36,14 +36,6 @@ static void %%s(%%s) {
 }', f_seq_len_size_check
 )
 
-f_seq_len <- sprintf('
-static void %%s(%%s) {
-  if(lens[di[0]] != 1) Rf_error("invalid length argument");
-  double * res = data[di[1]];
-  double lend = data[di[0]][0];%s
-}', f_seq_len_size_check
-)
-
 code_gen_seq_along <- function(fun, pars, par.types) {
   vetr(
     identical(., "seq_along"),
@@ -54,13 +46,4 @@ code_gen_seq_along <- function(fun, pars, par.types) {
   defn <- sprintf(f_seq_along, name, toString(F.ARGS.BASE))
   code_res(defn=defn, name=name)
 }
-code_gen_seq_len <- function(fun, pars, par.types) {
-  vetr(
-    identical(., "seq_len"),
-    pars=list(NULL),
-    par.types=character(1) && all(. %in% PAR.EXT.NUM)
-  )
-  name <- FUN.NAMES[fun]
-  defn <- sprintf(f_seq_len, name, toString(F.ARGS.BASE))
-  code_res(defn=defn, name=name)
-}
+

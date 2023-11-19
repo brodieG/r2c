@@ -371,7 +371,8 @@ VALID_FUNS <- c(
     ),
     # See also "Vec Binops" and "Other Logical"
     cgen(
-      "!", defn=function(x) NULL, type=list("arglen", "x"), code.gen=code_gen_unary,
+      "!", defn=function(x) NULL, type=list("arglen", "x"),
+      code.gen=code_gen_unary,
       res.type="logical"
     )
   ),
@@ -497,12 +498,6 @@ VALID_FUNS <- c(
       "seq_along", defn=function(along.with) NULL,
       type=list("arglen", "along.with"), code.gen=code_gen_seq_along,
       res.type='preserve'
-    ),
-    cgen(
-      "seq_len", defn=function(length.out) NULL,
-      type=list("extern", "length.out", numeric_size),
-      extern=list(length.out=ext_par("num", valid_length)),
-      code.gen=code_gen_seq_len, res.type="double"
     ),
     cgen(
       "rep", defn=function(x, times=1, length.out=NA_real_, each=1) NULL,

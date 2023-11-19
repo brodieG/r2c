@@ -81,9 +81,9 @@ NULL
 #' * Statistics: `mean`, `sum`, `length`, `all`, `any`.
 #'   * `na.rm` is a [constant][r2c-expression-types] parameter.
 #'   * `trim` is unsupported.
-#' * Sequences: `seq_along`, `seq_len`, `rep`.
-#'   * `length.out`, `times`, and `each` are
-#'     [constant][r2c-expression-types] parameters.
+#' * Sequences: `seq_along`, `rep`.
+#'   * `length.out`, `times`, and `each` are [constant][r2c-expression-types]
+#'     parameters.
 #'   * `rep` does not take any `...` parameters.
 #' * Concatenation: `c`.
 #'   * Ignores/drops names.
