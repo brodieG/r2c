@@ -599,32 +599,34 @@ show_c_code <- function(fun, all=FALSE) {
   invisible(code)
 }
 
-get_r2c_dat <- function(fun) {
-  vetr(is.function(.) && inherits(., "r2c_fun"))
+get_r2c_dat <- function(fun, check=TRUE) {
+  vetr(is.function(.) && inherits(., "r2c_fun"), check=LGL.1)
   dat <- try(body(fun)[[c(2L,3L)]])
   if(inherits(try, "try-error"))
     stop("`fun` does not appear to be structured like an r2c function.")
   if(!is.environment(dat))
     stop("Could not find data environment in `fun`")
 
-  dat.contents <- c(
-    'preproc', 'call', 'call.processed', 'so', 'compile.out',
-    'R.version', 'r2c.version'
-  )
-  if(!all(dat.contents %in% ls(dat)))
-    stop("`fun` missing some expected components.")
-  if(!identical(dat[['R.version']], R.version))
-    stop(
-      "`fun` was compiled with a different R.version:\n\n",
-      paste0(
-        utils::capture.output(print(dat.contents[['R.version']])),
-        collapse="\n"
-    ) )
-  if(!identical(dat[['r2c.version']], utils::packageVersion('r2c')))
-    stop(
-      "`fun` was compiled with a different r2c verson (",
-      dat.contents[['r2c.version']], ")"
+  if(check) {
+    dat.contents <- c(
+      'preproc', 'call', 'call.processed', 'so', 'compile.out',
+      'R.version', 'r2c.version'
     )
+    if(!all(dat.contents %in% ls(dat)))
+      stop("`fun` missing some expected components.")
+    if(!identical(dat[['R.version']], R.version))
+      stop(
+        "`fun` was compiled with a different R.version:\n\n",
+        paste0(
+          utils::capture.output(print(dat[['R.version']])),
+          collapse="\n"
+      ) )
+    if(!identical(dat[['r2c.version']], utils::packageVersion('r2c')))
+      stop(
+        "`fun` was compiled with a different r2c verson (",
+        dat[['r2c.version']], ")"
+      )
+  }
 
   dat
 }
