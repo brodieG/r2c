@@ -418,21 +418,19 @@ r2c_core <- function(
   })
   # We'll use group_exec with a single group to act as the runner for the
   # stand-alone use of this function, so use `groups=NULL`.
-  GEXE <- quote(
+  EXE <- quote(
     bquote(
-      group_exec_int(
-        NULL, formals=.(.FRM), groups=NULL,
-        # Pretend first argument is group-varying, even though it's not
-        data=.(.DGRP), MoreArgs=.(.DAT[-1L]), call=quote(.(.CALL))
+      one_exec_int(
+        NULL, formals=.(.FRM), MoreArgs=.(.DAT), call=quote(.(.CALL))
   ) ) )
-  GEXE[[c(2L, 2L)]] <- OBJ  # embed object directly in call (replaces 1st NULL)
+  EXE[[c(2L, 2L)]] <- OBJ  # embed object directly in call (replaces 1st NULL)
 
   # Assemble the full function, we have a normal version, and a self check
   # version that compares against normal eval.
   body(fun) <- if(!check) {
     bquote({
       .(PREAMBLE)
-      eval(.(GEXE), envir=getNamespace('r2c'))
+      eval(.(EXE), envir=getNamespace('r2c'))
     })
   } else {
     # Symbol creation is ordered so that no created symbols will interfere with
@@ -442,7 +440,7 @@ r2c_core <- function(
       .(PREAMBLE)
       test.i <- identical(
         res0 <- evalq(.(call), envir=.ENV),
-        res1 <- eval(.(GEXE), envir=getNamespace('r2c'))
+        res1 <- eval(.(EXE), envir=getNamespace('r2c'))
       )
       test.ae <- if(!test.i) all.equal(res0, res1)
       attr(res1, 'r2c.check.identical') <- test.i

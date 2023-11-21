@@ -187,4 +187,63 @@ prep_alloc <- function(alloc, res.size) {
   dat_cols <- sum(alloc[['alloc']][['type']] == "grp")
   list(dat=dat, dat_cols=dat_cols, ids=ids, extern=extern, alloc=alloc)
 }
+# Run Once
+#
+# See `group_exec_int` for details
+
+one_exec_int <- function(obj, formals, MoreArgs, call) {
+  preproc <- obj[['preproc']]
+  shlib <- obj[['so']]
+  enclos <- obj[['envir']]
+  do <- data <- list()  # all data via MoreArgs
+  gmax <- gmin <- 0
+
+  alloc <- match_and_alloc(
+    do=do, MoreArgs=MoreArgs, preproc=preproc, formals=formals,
+    enclos=enclos, gmax=gmax, gmin=gmin, call=call, runner=r2c::group_exec
+  )
+  res.i <- which(alloc[['alloc']][['type']] == "res")
+  res.size.coef <- alloc[['alloc']][['size.coefs']][[res.i]]
+
+  # Should really just be constant since no varying data
+  res.size.in <- lapply(res.size.coef, iter_result_sizes, base=0)
+  res.size <-
+    if(length(res.size.in) > 1) pmax2(res.size.in) else res.size.in[[1L]]
+
+  handle <- load_dynlib(obj)
+  alp <- prep_alloc(alloc, res.size)
+
+  status <- run_one_int(
+    handle[['name']],
+    alp[['dat']],
+    alp[['dat_cols']],
+    alp[['ids']],
+    alp[['extern']],
+    res.size
+  )
+  if(status) {
+    warning("longer object length is not a multiple of shorter object length.")
+  }
+  # Result vector is modified by reference
+  res <- alp[['dat']][[res.i]]
+
+  if(alloc[['alloc']][['typeof']][res.i] == "integer")
+    res <- as.integer(res)
+  else if(alloc[['alloc']][['typeof']][res.i] == "logical")
+    res <- as.logical(res)
+
+  res
+}
+
+run_one_int <- function(handle, dat, dat_cols, ids, extern, res.size) {
+  .Call(
+    R2C_run_one,
+    handle,
+    dat,
+    dat_cols,
+    ids,
+    extern,
+    res.size
+  )
+}
 

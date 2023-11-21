@@ -38,17 +38,7 @@ group_exec_int <- function(
   if(length(d.len <- unique(lengths(data))) > 1L)
     stop("All `data` vectors must be the same length.")
   if(!length(d.len)) d.len <- 0L  # No data
-  groups <- if(is.null(groups)) { # Direct call of "r2c_fun"?
-    r2c_group_obj(
-      sizes=list(
-        gsizes=as.numeric(d.len), glabs=0L,
-        gmax=as.numeric(d.len), gmin=as.numeric(d.len)
-      ),
-      order=seq_len(d.len),
-      group.o=list(rep(1L, d.len)), # Not altrep as of 4.2.1, sadly
-      sorted=TRUE, mode="ungrouped"
-    )
-  } else if(!inherits(groups, "r2c.groups")) {
+  groups <-  if(!inherits(groups, "r2c.groups")) {
     process_groups(groups)
   } else groups
 

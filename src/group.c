@@ -218,6 +218,7 @@ SEXP R2C_run_group(
     // one past end of data, but it will not be dereferenced so okay.
     for(int j = dp.dat_start; j <= dp.dat_end; ++j)
         *(dp.data + j) += g_len;
+    // This warning is too late but if it works it is helpful in debugging
     if(dp.lens[I_RES] != r_len)
       Rf_error(
         "Group result size does not match expected (%jd vs expected %jd).",
