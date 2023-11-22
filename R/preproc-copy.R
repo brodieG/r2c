@@ -376,7 +376,7 @@ copy_branchdat_rec <- function(
     data <- add_maybe_unsup_free_symbol(data, sym.name, unsupported)
 
     # For symbols matching candidate(s): promote candidate if allowed.
-    data <- trigger_candidates(
+    data <- promote_candidates(
       data, name=sym.name, index=in.branch, unsupported=unsupported
     )
 
@@ -411,7 +411,7 @@ copy_branchdat_rec <- function(
         stop("Result of `[<-` may not be used directly.")
 
       # Promote candidates attached to the sub-assign symbol.
-      data <- trigger_candidates(
+      data <- promote_candidates(
         data, tar.sym, in.branch, unsupported, subassign=TRUE
       )
       tar.sym
@@ -791,48 +791,6 @@ generate_candidate <- function(
   data[['assigned.to']] <- assign.to
   data
 }
-trigger_candidates <- function(
-  data, name, index, unsupported, subassign=FALSE
-) {
-  cand <- data[[CAND]]
-  cand.match <- names(cand) == name
-  cand.match.source <- lapply(cand[cand.match], "[[", "br.index")
-  cand.after.branch <- vapply(
-    cand.match.source,
-    function(a, b) {
-      # Definitely after branch if not in branch but symbol is from branch
-      if(is.null(a)) length(b) > 0
-      # Otherwise check if current branch is later than symbol branch
-      else {
-        if(length(a) > length(b)) length(a) <- length(b)
-        index_greater(a, b)
-      }
-    },
-    TRUE, a=index  # index is current position
-  )
-  # Promote top-level candidates for sub-assign because that modifies memory
-  cand.prom.bool <-
-    if(subassign) cand.after.branch | lengths(cand.match.source) == 0L
-    else cand.after.branch
-
-  cand.prom.i <- seq_along(cand)[cand.match][cand.prom.bool]
-  cand.prom <- cand[cand.prom.i]
-
-  # Effect promotions, and clear promoted candidates from candidate list.
-  data[[ACT]] <- c(data[[ACT]], cand.prom)
-  data[[CAND]] <- clear_candidates(data[[CAND]], cand.prom.i)
-
-  # Update the bindings.  Looks like we don't need to update B.LOC because
-  # things triggered here should only be after the branch or top-level.
-  data[[B.ALL]] <- union(data[[B.ALL]], names(cand.prom))
-  data[[B.ALL0]] <- union(data[[B.ALL0]], names(cand.prom))
-
-  # Triggered branch balance candidates may require updating free symbol list
-  # For these the trigger is the same as the symbol (e.g. x <- vcopy(x))
-  br.bal.free <- vapply(cand.prom, "[[", TRUE, "free")
-  br.bal.free.sym <- vapply(cand.prom[br.bal.free], "[[", "", "name")
-  add_maybe_unsup_free_symbol(data, br.bal.free.sym, unsupported)
-}
 
 # A "Pointer" to Spot in Call Tree to Modify
 #
@@ -912,6 +870,54 @@ gen_callptrs <- function(names, index, br.index, rec, copy, free=FALSE)
     names, copy=copy, rec=rec, index=list(index), br.index=list(br.index),
     free=free
   )
+## Promote Candidates
+##
+## Given an encountered symbol, promote matching candidates and update data
+## structures to reflect promotion.
+
+promote_candidates <- function(
+  data, name, index, unsupported, subassign=FALSE
+) {
+  cand <- data[[CAND]]
+  cand.match <- names(cand) == name
+  cand.match.source <- lapply(cand[cand.match], "[[", "br.index")
+  cand.after.branch <- vapply(
+    cand.match.source,
+    function(a, b) {
+      # Definitely after branch if not in branch but symbol is from branch
+      if(is.null(a)) length(b) > 0
+      # Otherwise check if current branch is later than symbol branch
+      else {
+        if(length(a) > length(b)) length(a) <- length(b)
+        index_greater(a, b)
+      }
+    },
+    TRUE, a=index  # index is current position
+  )
+  # Promote top-level candidates for sub-assign because that modifies memory
+  cand.prom.bool <-
+    if(subassign) cand.after.branch | lengths(cand.match.source) == 0L
+    else cand.after.branch
+
+  cand.prom.i <- seq_along(cand)[cand.match][cand.prom.bool]
+  cand.prom <- cand[cand.prom.i]
+
+  # Effect promotions, and clear promoted candidates from candidate list.
+  data[[ACT]] <- c(data[[ACT]], cand.prom)
+  data[[CAND]] <- clear_candidates(data[[CAND]], cand.prom.i)
+
+  # Update the bindings.  Looks like we don't need to update B.LOC because
+  # things triggered here should only be after the branch or top-level.
+  data[[B.ALL]] <- union(data[[B.ALL]], names(cand.prom))
+  data[[B.ALL0]] <- union(data[[B.ALL0]], names(cand.prom))
+
+  # Triggered branch balance candidates may require updating free symbol list,
+  # as a symbol may be bound in the explicit branch, but not in the implicit
+  # one prior to the self-copy.  Trigger is same as symbol (e.g. x <- vcopy(x))
+  br.bal.free <- vapply(cand.prom, "[[", TRUE, "free")
+  br.bal.free.sym <- vapply(cand.prom[br.bal.free], "[[", "", "name")
+  add_maybe_unsup_free_symbol(data, br.bal.free.sym, unsupported)
+}
 
 # Remove Promoted Candidates
 #
