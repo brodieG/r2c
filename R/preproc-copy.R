@@ -685,7 +685,7 @@ generate_candidate <- function(
     data <-
       add_actual_callptr(data, s.cpy.idx, name=tar.sym, rec=FALSE, copy=TRUE)
   }
-  if(!last || branch.res) {
+  if(!last || length(in.branch)) {
     # Symbols bound in branches will require rec and/or vcopy of their payload
     # **if** they are used (after the branch?). vcopy not always needed, e.g:
     #
