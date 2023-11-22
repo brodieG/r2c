@@ -849,11 +849,17 @@ callptr <- function(
     )
   list(name=name, index=index, br.index=br.index, rec=rec, copy=copy, free=free)
 }
+
 add_actual_callptr  <- function(
   data, index, rec=TRUE, copy=TRUE, name=NA_character_
 ) {
   new.act <- callptr(name, index, br.index=NULL, copy=copy, rec=rec)
   data[[ACT]] <- c(data[[ACT]], list(new.act))
+  # An actual callptr that's copied is a computing binding
+  if(copy && !is.na(name) && nzchar(name)) {
+    data[[B.ALL]] <- union(data[[B.ALL]], name)
+    data[[B.ALL0]] <- union(data[[B.ALL0]], name)
+  }
   data[['passive']] <- !copy
   data
 }
