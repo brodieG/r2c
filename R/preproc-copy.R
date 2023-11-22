@@ -30,16 +30,16 @@
 
 CAND <- c('copy', 'cand')
 ACT <- c('copy', 'act')
-# Local binding
-B.LOC <- c('bind', 'loc')
-# Local and computed
-B.LOC.CMP <- c('bind', 'loc.compute')
-# Global and computing
-B.ALL <- c('bind', 'all')
-# Global and computing, but to inject at front by e.g. subassign, difference
-# with B.ALL seems to be these don't get reset by branch local bindings and that
-# they don't generate branch balance assignments.  Unfortunately don't recall
-# exactly why the distinction was needed.
+
+# Binding tracking, see docs for `data` in `copy_branchdat_rec`.
+B.LOC <- c('bind', 'loc')               # Local binding
+B.LOC.CMP <- c('bind', 'loc.compute')   # Local and computed
+B.ALL <- c('bind', 'all')               # Global and computed
+# Global computed created to deal with external symbols that are subassigned to
+# (e.g. x[s] <- y where `x` references external data).  These get an e.g.
+# `x <- vcopy(x)` at the very beginning of the code, and thus will be outside of
+# all branches so don't get the masking that those in B.ALL do (and thus need to
+# be tracked separately).  See docs for `data` in `copy_branchdat_rec`.
 B.ALL0 <- c('bind', 'all0')
 # Track all bindings irrespective of type for free variables
 B.NAMED <- c('bind', 'named')
@@ -286,7 +286,10 @@ copy_branchdat <- function(x, unsupported) {
 # branch-bound symbols are branch-local and thus don't require `vcopy`. Because
 # of this distinction we track local bindings and global bindings separately in
 # the `data` object.  We also track whether local bindings were computed locally
-# or not, as sometimes locally computed values can avoid a copy.
+# or not, as sometimes locally computed values can avoid a copy.  This tracking
+# implementation using `data[[B.ALL]]` and similar (see comments at `B.ALL`
+# definition) is fragile and really should have been done with environments
+# like we do the binding tracking at allocation time.
 #
 # In general, we try to avoid unnecessary `vcopy`s, but to avoid
 # over-complicating the code there is no guarantee that there are no redundant
@@ -326,7 +329,7 @@ copy_branchdat <- function(x, unsupported) {
 #   * "bind": a list containing branch-local bindings, branch-local computed
 #     bindings, global bindings (all, and all0 for those re-injected at
 #     beginning of call by e.g. subassign), and every encountered binding
-#     (named).
+#     (named).  See Tracking Bindings above.
 #   * "copy": a list with elements "cand", and "act". Each is a list
 #     of `callptr` generated objects used to track calls that need to be
 #     reconciled and/or vcopied (potentially for "cand", definitively).
@@ -775,6 +778,7 @@ generate_candidate <- function(
         data[[B.ALL]] <- union(data[[B.ALL]], tar.sym)
       }
       if(call.modify) {  # assign + subassign
+        # These are assumed bound at top-level outside of any branches
         data[[B.ALL0]] <- union(data[[B.ALL0]], tar.sym)
       }
     } else if(call.assign) {

@@ -67,11 +67,12 @@ NULL
 #'
 #' `r2c` supports a subset of R functions.  These functions are re-implemented
 #' and optimized for iterated execution while hewing as closely as practicable
-#' to the original R semantics.
+#' to the original R semantics.  `r2c` also allows unsupported function calls
+#' provided they are [iteration-constant][r2c-expression-types].
 #'
 #' The following functions are supported by the `r2c` [compiler][r2c-compile],
 #' with semantic differences to their R counterparts noted.  Parameters that
-#' require [constant expressions][r2c-expression-types] are marked as such.
+#' require [constant expressions] are marked as such.
 #'
 #' * Arithmetic: `+`, `-`, `*`, `/`, and `^`.
 #' * Relational: `<`, `<=`, `>`, `>=`, `==`, `!=`.
@@ -90,7 +91,7 @@ NULL
 #' * Subsetting: `x[i]`, `x[s] <- expr`.
 #'   * In 1 dimension with strictly positive numeric indices.
 #'   * Return value of assignment form may not be used.
-#' * Initialization: `numeric` (and the r2c implemented [`numeric_along`]).
+#' * Initialization: `numeric` (and the `r2c` provided [`numeric_along`]).
 #'   * `length` is a [constant parameter][r2c-expression-types].
 #' * Braces: `{`.
 #' * Assignment: `<-`, `=`.
@@ -101,10 +102,12 @@ NULL
 #'   * See [Control Structures][r2c-control-structures] for important
 #'     constraints and semantic differences to R.
 #'
-#' Expressions provided to [varying][r2c-expression-types] parameters
-#' must be attribute-less numeric, integer, or logical vectors.  Integer or
-#' logical inputs or outputs attract a [performance penalty][r2c-performance].
-#' Parameters marked as constant may only be given constant expressions.
+#' Except for [constant][r2c-expression-types] parameters, expressions and
+#' variables provided as arguments to `r2c` implemented functions must resolve
+#' to attribute-less numeric, integer, or logical vectors.  Integer or logical
+#' inputs or outputs attract a [performance penalty][r2c-performance].
+#' Parameters marked as constant may only be given [constant
+#' expressions][r2c-expression-types].
 #'
 #' Calls must be in the form `fun(...)` (`a fun b` for operators)  where `fun`
 #' is the name of the function, optionally in `pkg::fun` format.  Functions must
@@ -207,27 +210,45 @@ NULL
 #' on across iterations, so references to values from `data` are known as
 #' iteration varying (varying).  Expressions that depend directly or indirectly
 #' on such references are also known as varying, and those that do not are
-#' known as constant.  Some `r2c` [implemented function][r2c-supported-funs]
-#' parameters will only accept constant expressions.
+#' known as constant.  For example, an expressions that references only symbols
+#' that match to the `MoreArgs` parameters of the [runners] will be constant.
+#' Some `r2c` [implemented function][r2c-supported-funs] parameters will only
+#' accept constant expressions.  Currently only direct references to constant
+#' expressions are recognized as constant; rebinding symbols and similar will
+#' cause `r2c` to treat them as varying.  See examples.
 #'
 #' `r2c` uses constant parameters to allow for semantics otherwise precluded by
 #' its [pre-allocated memory][r2c-memory] design.  Normally, `r2c` requires that
 #' the size of the output of an expression be derivable from the **size** of its
 #' inputs alone, as is the case with e.g.  `seq_along(x)`.  But many useful
 #' functions require knowing the value of their inputs to compute output size,
-#' e.g.  `seq_len(x)`.  `r2c` can implement functions like the latter when the
-#' input value is constant because such values can be computed in R before any
-#' runner iterations are executed (see examples).
+#' e.g.  `rep(x, length.out=n)`.  `r2c` can implement functions like the latter
+#' when the input value is constant because such values can be computed in R
+#' before any runner iterations are executed (see examples).
 #'
-#' Constant expressions passed to constant parameters are evaluated once at
-#' allocation time and cached.  In addition to re-use of the cached value across
-#' iterations, these values are also re-used if the same expression appears for
-#' a different constant parameter.  Due to the caching, constant expressions
-#' that cause side-effects, use `eval`, manipulate frames, or engage in other
-#' complex "meta" operations may have different effects than intended.  Constant
-#' expressions passed to constant parameters may evaluate to any R object,
-#' subject to the restrictions on the `r2c` function parameter they are matched
-#' to.
+#' Similarly it is possible to embed arbitrary R sub-expressions within `r2c`
+#' compiled expressions provided that they are constant.  All children of a
+#' constant sub-expression are treated as constant expressions, even if they
+#' contain calls that `r2c` could otherwise compile.  This is for convenience;
+#' the same effect is achieved by using a symbol and passing the result of
+#' computing the expression to that symbol directly at run time.
+#'
+#' Constant expressions that are passed to constant parameters, or are a call to
+#' [non-implemented functions][r2c-supported-funs], are evaluated once at
+#' allocation time and cached.  Cached values are re-used both across iterations
+#' and within an iteration if the same expression appears multiple times in the
+#' call.  Due to the caching, constant expressions that cause side-effects, use
+#' `eval`, manipulate frames, or engage in other complex "meta" operations may
+#' have different effects than intended.  Simple attempts to create new bindings
+#' with constant expressions with e.g. `<-` will fail; trying to circumvent
+#' enforced restrictions are likely to cause problems.
+#'
+#' Constant expressions that are calls to implemented functions **and** are used
+#' in a varying parameter or top-level are re-evaluated every iteration despite
+#' being constant.  This behavior may change in the future.  Expressions passed
+#' to constant parameters may evaluate to any R object, subject to being
+#' constant and to the restrictions on the `r2c` function parameter they are
+#' matched to.  Varying expressions are illegal in constant parameters.
 #'
 #' Every expression provided to a constant parameter must be constant, but
 #' varying parameters will accept otherwise constant expressions if they abide
