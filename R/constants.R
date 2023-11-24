@@ -147,7 +147,7 @@ CALL.DAT.VEC <- c(
   'linfo'
 )
 ALLOC.DAT.VEC <- c(
-  'ids0', 'alloc', 'size.coefs', 'depth', 'type', 'typeof'
+  'ids0', 'alloc', 'size.coefs', 'depth', 'type', 'typeof', 'iter.var'
 )
 
 # Parameter types

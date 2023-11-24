@@ -156,7 +156,8 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
   alloc <- init_dat(x[['call']], meta=meta, scope=0L, env=env)
   # Status control placeholder.
   sts.vec <- numeric(IX[['STAT.N']])
-  vdat <- vec_dat(sts.vec, type="sts", typeof='double', gmax=gmax)
+  vdat <-
+    vec_dat(sts.vec, type="sts", typeof='double', gmax=gmax, iter.var=FALSE)
   alloc <- append_dat(alloc, vdat=vdat, depth=0L)
   # Result placeholder, to be alloc'ed once we know group sizes.
   vdat <- vec_dat(numeric(), type="res", typeof='double', gmax=gmax)
@@ -276,7 +277,8 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
       # Prepare new vec data (if any), and tweak objet depending on situation.
       if(!name %in% c(PASSIVE.SYM, MODIFY.SYM)) {
         vec.dat <- vec_dat(
-          NULL, "tmp", typeof=res.typeof, size.coef=size.coef, gmax=gmax
+          NULL, "tmp", typeof=res.typeof, size.coef=size.coef, gmax=gmax,
+          iter.var=call_iter_var(alloc, stack, depth)
         )
         # We have a computing expression in need of a free slots.
         # (NB: PASSIVE includes ASSIGN, but use both in case that changes).
@@ -341,19 +343,10 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
         tryCatch(
           arg.e <- eval(call, envir=alloc[[NM.ENV.VAR]]),
           error=function(e) stop(simpleError(conditionMessage(e), call.outer)),
-          internalSymbolAccess=function(e) {
-            call.dep <- deparseLines(call)
-            stop(
-              simpleError(
-                paste0(
-                  "External parameter expression",
-                  if(grepl("\n", call.dep)) paste0("\n:", call.dep, "\n")
-                  else paste0(" `", call.dep, "` "),
-                  "attempted to access internal symbol `",
-                  conditionMessage(e), "`."
-                ),
-                call.outer
-          ) ) }
+          "r2c-internalSymAccess"=function(e)
+            varying_err(e, call, call.outer, par.ext),
+          "r2c-computedConstant"=function(e)
+            varying_err(e, call, call.outer, par.ext)
         )
         # External params need to be validated
         if(
@@ -380,8 +373,10 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
           validate_ext(x, i, par.type, arg.e, name, call, .CALL)
           typeof <- typeof(arg.e)
           size.coef <- list(length(arg.e))
-          vec.dat <-
-            vec_dat(arg.e, "ext", typeof=typeof, size.coef=size.coef, gmax=gmax)
+          vec.dat <- vec_dat(
+            arg.e, "ext", typeof=typeof, size.coef=size.coef, gmax=gmax,
+            iter.var=FALSE
+          )
         }
       }
     # - Match a Symbol In Data -------------------------------------------------
@@ -564,10 +559,10 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
 ## longer needed, and each new group will re-use the allocations from the prior
 ## group.  Allocations are sized to accommodate the largest group.
 ##
-## Temporary vectors are initialized as NULL.  Their allocation size can be
-## inferred from `vdat[['size.coefs']]` and `gmax`, and actual allocation is
-## deferred until after all reconciliations to avoid instantiating vectors that
-## end up unused.
+## Computed vectors (`vdat[['type']][i] == "tmp"`) are initialized as NULL.
+## Their allocation size can be inferred from `vdat[['size.coefs']]` and `gmax`,
+## and actual allocation is deferred until after all reconciliations to avoid
+## instantiating vectors that end up unused.
 ##
 ## This is a description of the input `alloc` (which is also the returned value
 ## after update).
@@ -597,6 +592,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
 ##   allocated/appended/used item(s).  This will point to the result of the most
 ##   recent calculation.  It does not need to be the last vector as we allow
 ##   re-use of free vectors.
+## * iter.var: whether the value is iteration-invariant.
 ## * names: a list used to track bindings, containing:
 ##   * `env.alloc`: environment where each bound symbol resolves to a list with:
 ##     * id: index in `dat` the symbol references.
@@ -630,6 +626,7 @@ append_dat <- function(alloc, vdat, depth) {
   typeof <- vdat[['typeof']]
   new <- vdat[['new']]
   size.coef <- vdat[['size.coef']]
+  iter.var <- vdat[['iter.var']]
 
   if(!is.null(new) && !is.num_naked(list(new)))
     stop("Internal Error: bad data column.")
@@ -657,6 +654,7 @@ append_dat <- function(alloc, vdat, depth) {
   alloc[['depth']] <- c(alloc[['depth']], depth)
   alloc[['type']] <- c(alloc[['type']], type)
   alloc[['typeof']] <- c(alloc[['typeof']], typeof)
+  alloc[['iter.var']] <- c(alloc[['iter.var']], iter.var)
 
   if(length(unique(lengths(alloc[ALLOC.DAT.VEC]))) != 1L)
     stop("Internal Error: irregular vector alloc data.")
@@ -723,22 +721,24 @@ init_dat <- function(call, meta, scope, env) {
 init_vec_dat <- function() {
   list(
     new=NULL, type=NA_character_, typeof=NA_character_,
-    size.coef=list(integer()), gmax=NA_real_
+    size.coef=list(integer()), gmax=NA_real_, iter.var=TRUE
   )
 }
 # See `append_dat` for details on what the parameters are.
 vec_dat <- function(
   new=NULL, type=NA_character_, typeof=NA_character_,
-  size.coef=list(length(new)), gmax
+  size.coef=list(length(new)), gmax, iter.var=TRUE
 ) {
-  vec.dat <-
-    list(new=new, type=type, typeof=typeof, size.coef=size.coef, gmax=gmax)
+  vec.dat <- list(
+    new=new, type=type, typeof=typeof, size.coef=size.coef, gmax=gmax,
+    iter.var=iter.var
+  )
   stopifnot(is.vec_dat(vec.dat))
   vec.dat
 }
 is.vec_dat <- function(x)
   is.list(x) &&
-  all(c('new', 'type', 'size.coef', 'typeof') %in% names(x)) &&
+  all(c('new', 'type', 'size.coef', 'typeof', 'iter.var') %in% names(x)) &&
   is.character(x[['type']]) &&
   isTRUE(x[['type']] %in% c("res", "grp", "ext", "tmp", "sts")) && (
     is.numeric(x[['new']]) || is.integer(x[['new']]) ||
@@ -754,7 +754,8 @@ is.vec_dat <- function(x)
   is.character(x[['typeof']]) && length(x[['typeof']]) == 1L &&
   isTRUE(x[['typeof']] %in% c("double", "integer", "logical")) &&
   is.numeric(x[['gmax']]) && length(x[['gmax']]) == 1L &&
-  !is.na(x[['gmax']]) && x[['gmax']] >= 0
+  !is.na(x[['gmax']]) && x[['gmax']] >= 0 &&
+  is.logical(x[['iter.var']]) && !anyNA(x[['iter.var']])
 
 ## Stack used to track parameters ahead of reduction when processing call.
 init_stack <- function() {
@@ -774,6 +775,11 @@ append_stack <- function(stack, alloc, id=alloc[['i']], depth, argn) {
   stack <- cbind(stack, c(id, id0, depth))
   colnames(stack)[ncol(stack)] <- argn
   stack
+}
+# A call is considerered iteration-varying if any of its arguments are
+call_iter_var <- function(alloc, stack, depth) {
+  stack.cand <- stack[,stack['depth',] == depth + 1L, drop=FALSE]
+  any(alloc[['iter.var']][stack.cand['id',]])
 }
 ## Record Call Data
 ##
@@ -907,7 +913,7 @@ scope_increment <- function(alloc, i.call) {
 #
 # Symbols that are not marked for reconciliation can be ignored because they are
 # not used outside of the control structures (otherwise the preprocessor would
-# have marked them with `rec`).  Thus, it's okay not to e.g.  `guard_symbols`
+# have marked them with `rec`).  Thus, it's okay not to e.g. `guard_symbols`
 # them, etc.
 #
 # Reconciliation is automatically nested for assignments.  So in:
@@ -958,7 +964,7 @@ reconcile_control_flow <- function(
   i.call.T <- names.T.dat[['i.call']]
   call.dat.i <- vapply(call.dat, '[[', 0L, 'call.i')
 
-  # Restore the state of the names object to pre-branch, rest of functoin will
+  # Restore the state of the names object to pre-branch, rest of function will
   # ensure that all symbols in use after the branch get copied back in.
   alloc[['names']] <- names.0.dat[['names']]
   alloc[['names.stack']] <- head(alloc[['names.stack']], -1L)
@@ -1001,7 +1007,6 @@ reconcile_control_flow <- function(
   # - Check Branch Locality and Size Equality ----------------------------------
 
   # Could be a standalone function
-
   size.coef.F <- alloc[['size.coefs']][id.rc.F]
   size.coef.T <- alloc[['size.coefs']][id.rc.T]
   size.eq <- vapply(
@@ -1058,6 +1063,8 @@ reconcile_control_flow <- function(
   # to create the allocations, Step 2 is to re-point the call data to them.
   typeof.F <- alloc[['typeof']][id.rc.F]
   typeof.T <- alloc[['typeof']][id.rc.T]
+  iter.var.F <- alloc[['iter.var']][id.rc.F]
+  iter.var.T <- alloc[['iter.var']][id.rc.T]
   alloc.i.old <- alloc[['i']]
 
   for(i in seq_along(id.rc.F)) {
@@ -1066,8 +1073,10 @@ reconcile_control_flow <- function(
     # Take the most general type from the two branches
     typeof.num <- match(c(typeof.F[i], typeof.T[i]), NUM.TYPES)
     typeof <- NUM.TYPES[max(typeof.num)]
-    vec.dat <-
-      vec_dat(NULL, "tmp", typeof=typeof, size.coef=size.coef, gmax=gmax)
+    vec.dat <- vec_dat(
+      NULL, "tmp", typeof=typeof, size.coef=size.coef, gmax=gmax,
+      iter.var=iter.var.F[i] || iter.var.T[i]
+    )
     # rec=FALSE b/c reconciliation decisions made on 'rec' data from `names`
     # tracking object so this value should not be used anymore.
     alloc <- append_dat(alloc, vec.dat, depth=depth)
@@ -1209,7 +1218,6 @@ branch_used <- function(i, call.names, depths) {
   }
   used
 }
-
 
 #' Find Latest Symbol Instance
 #'
@@ -1357,11 +1365,22 @@ name_bind <- function(
   )
   colnames(alloc[[NM.MAP]])[ncol(alloc[[NM.MAP]])] <- new.name
 
-  # Update/replace the name itself and guard binding
+  # Update/replace the name itself
   alloc[[NM.ENV]][[new.name]] <- list(
     id=id, rec=rec, rec0=rec0, i.assign=i.call
   )
-  alloc[[NM.ENV.VAR]] <- guard_symbols(new.name, alloc[[NM.ENV.VAR]])
+  if(alloc[['iter.var']][id] || alloc[['type']][id] != "ext") {
+    # Protect against use of iteration variant symbol in constant exprs
+    alloc[[NM.ENV.VAR]] <- guard_symbols(
+      new.name, alloc[[NM.ENV.VAR]], alloc[['iter.var']][id]
+    )
+  } else {
+    # Install the value if constant external; this masks the guarding and allows
+    # rebindings to resolve at eval time.
+    alloc[[NM.ENV.VAR]] <- unguard_symbol(
+      new.name, alloc[['dat']][[id]], alloc[[NM.ENV.VAR]]
+    )
+  }
   alloc
 }
 name_bind_if_assign <- function(alloc, call, call.name, rec, i.call) {
@@ -1387,22 +1406,61 @@ name_bind_if_assign <- function(alloc, call, call.name, rec, i.call) {
 # environment chain creates the illusion of all symbols co-existing in one
 # environment.
 #
+# To undo a lock we mask the guarded symbol with the value of the constant that
+# is referenced.
+#
 # This is not a foolproof implementation as someone could find and unlock these
 # bindings within an external expression, but it really takes wanting to do
 # that.
+#
+# @param iter.var whether the expression is iteration variant; this is needed to
+#   distinguish expressions that may be constant, but because they are computed
+#   by r2c they still cannot be referenced by constant parameters or external
+#   constant expressions.
 
-guard_symbols <- function(names, env) {
+guard_symbols <- function(names, env, iter.var) {
   if(length(names)) {
+    class <- if(iter.var) 'r2c-internalSymAccess' else 'r2c-computedConstant'
     env <- new.env(parent=env)
     for(name in names) {
       cond <- simpleCondition(name)
-      class(cond) <- c('internalSymbolAccess', class(cond))
+      class(cond) <- c(class, class(cond))
       makeActiveBinding(name, function() signalCondition(cond), env)
       lockBinding(name, env)
     }
     lockEnvironment(env)
   }
   env
+}
+unguard_symbol <- function(name, value, env) {
+  env <- new.env(parent=env)
+  # this might make it hard for gc to ever release value, although it should
+  # still be able to do so.
+  env[[name]] <- value
+  env
+}
+varying_err <- function(e, call, call.outer, par.ext) {
+  call.dep <- deparseLines(call)
+  err.head <-
+    if(par.ext) 'Constant parameter expression'
+    else 'Unimplemented function call'
+
+  err.msg <-
+    if(class(e)[1L] == 'r2c-internalSymAccess') "internal symbol"
+    else if(class(e)[1L] == 'r2c-computedConstant')
+      "r2c-computed expression via symbol"
+
+  stop(
+    simpleError(
+      paste0(
+        err.head,
+        if(grepl("\n", call.dep)) paste0("\n:", call.dep, "\n")
+        else paste0(" `", call.dep, "` "),
+        "attempted to access ", err.msg, " `",
+        conditionMessage(e), "`.  See `?'r2c-expression-types'."
+      ),
+      call.outer
+  ) )
 }
 ## Lookup a Name In Storage List
 ##
