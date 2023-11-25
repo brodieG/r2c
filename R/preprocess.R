@@ -45,7 +45,7 @@ preprocess <- function(call, optimize=FALSE) {
   #   for closures, in order) (and be in matched order) for closures.
   # * The order these are applied in really matters.
 
-  # Sub in place holders for unsupported funs (reversed by pp_internal)
+  # Sub in place holders for unsupported funs
   tmp <- sub_unsupported(call)
   call <- tmp[['call']]
   unsupported <- tmp[['unsupported']]
@@ -81,6 +81,9 @@ preprocess <- function(call, optimize=FALSE) {
 
   # Collapse any added braces
   call <- collapse_braces(call)
+
+  # Reverse unsupported substitution
+  call <- unsub_unsupported(call, unsupported)
 
   # WARNING: Read warning at top of section before making changes.
 
@@ -230,72 +233,83 @@ pp_internal <- function(
     }
     linfo <- get_lang_info(call)
     func <- linfo[['name']]
-    par.ext <- VALID_FUNS[[c(func, "extern")]]
-    par.ext.names <- names(par.ext)
-    par.ext.types <- vapply(par.ext, "[[", "", "type")
-    par.ext.validate <- lapply(par.ext, "[[", "validate")
 
-    if(!all(par.ext.names %in% names(args)))
-      stop(
-        "Internal Error: designated external parameters missing; is `call` ",
-        "not properly match-called?"
-      )
-    par.ext.loc <- match(par.ext.names, names(args), nomatch=0)
-    par.types <- rep("internal", length(args))
-    par.types[par.ext.loc] <- par.ext.types
-    par.validate <- vector(mode='list', length(args))
-    par.validate[par.ext.loc] <- par.ext.validate
+    if(func %in% names(VALID_FUNS)) {
+      par.type <- PAR.INT.CALL
+      par.ext <- VALID_FUNS[[c(func, "extern")]]
+      par.ext.names <- names(par.ext)
+      par.ext.types <- vapply(par.ext, "[[", "", "type")
+      par.ext.validate <- lapply(par.ext, "[[", "validate")
 
-    passive <- passive && func %in% c(PASSIVE.SYM, 'vcopy')
-
-    # Check if we're in assignment call
-    next.assign <- func %in% ASSIGN.SYM  # not MODIFY.SYM
-    # Assignments only allowed at brace level or top level because we cannot
-    # assure the order of evaluation so safer to just disallow.  We _could_
-    # allow it but it just seems dangerous.
-    if(next.assign && !passive) {
-      call.dep <- deparseLines(clean_call(call, level=2L))
-      msg <- sprintf(
-        "r2c disallows assignments inside arguments. Found: %s", call.dep
-      )
-      stop(simpleError(msg, call.parent))
-    }
-    for(i in seq_along(args)) {
-      if(par.types[i] %in% PAR.EXT) {
-        # Do not recurse into externals; shouldn't be assign symbol
-        if(next.assign) stop("Internal error: controls/flag on assignment.")
-        x <- record_call_dat(
-          x, call=args[[i]], depth=depth + 1L, linfo=get_lang_info(args[[i]]),
-          argn=names(args)[i],
-          par.type=par.types[i], par.validate=par.validate[i],
-          code=code_blank(), assign=FALSE, indent=indent, rec=FALSE
+      if(!all(par.ext.names %in% names(args)))
+        stop(
+          "Internal Error: designated external parameters missing; is `call` ",
+          "not properly match-called?"
         )
-      } else if(par.types[i] == "internal") {  # not yet one of PAR.INT values
-        x <- pp_internal(
-          call=args[[i]], depth=depth + 1L, x=x, argn=names(args)[i],
-          assign=i == 1L && next.assign,
-          call.parent=call, call.parent.name=func, par.validate=par.validate[i],
-          indent=indent +
-            (func %in% c(CTRL.SUB.SYM, FOR.ITER, R2C.FOR)) * 2L,
-          passive=passive, unsupported=unsupported
-        )
-        par.types[i] <- x[['par.type']][length(x[['par.type']])]
-      } else stop("Internal Error: bad parameter type '", par.types[i], "'")
-    }
-    # Are we in a rec chain?  Needed for alloc to know which bindings are
-    # from rec (see reconcile_control_flow).
-    rec <- func == "rec" || (
-      func %in% PASSIVE.BRANCH.SYM &&
-      length(x[['rec']]) && x[['rec']][length(x[['rec']])]
-    )
-    # Generate Code
-    code <- VALID_FUNS[[c(func, "code.gen")]](func, args, par.types)
-    code_valid(code, call)
+      par.ext.loc <- match(par.ext.names, names(args), nomatch=0)
+      par.types <- rep("internal", length(args))
+      par.types[par.ext.loc] <- par.ext.types
+      par.validate <- vector(mode='list', length(args))
+      par.validate[par.ext.loc] <- par.ext.validate
 
+      passive <- passive && func %in% c(PASSIVE.SYM, 'vcopy')
+
+      # Check if we're in assignment call
+      next.assign <- func %in% ASSIGN.SYM  # not MODIFY.SYM
+      # Assignments only allowed at brace level or top level because we cannot
+      # assure the order of evaluation so safer to just disallow.  We _could_
+      # allow it but it just seems dangerous.
+      if(next.assign && !passive) {
+        call.dep <- deparseLines(clean_call(call, level=2L))
+        msg <- sprintf(
+          "r2c disallows assignments inside arguments. Found: %s", call.dep
+        )
+        stop(simpleError(msg, call.parent))
+      }
+      for(i in seq_along(args)) {
+        if(par.types[i] %in% PAR.EXT) {
+          # Do not recurse into externals; shouldn't be assign symbol
+          if(next.assign) stop("Internal error: controls/flag on assignment.")
+          x <- record_call_dat(
+            x, call=args[[i]],
+            depth=depth + 1L, linfo=get_lang_info(args[[i]]),
+            argn=names(args)[i],
+            par.type=par.types[i], par.validate=par.validate[i],
+            code=code_blank(), assign=FALSE, indent=indent, rec=FALSE
+          )
+        } else if(par.types[i] == "internal") {  # not yet one of PAR.INT values
+          x <- pp_internal(
+            call=args[[i]], depth=depth + 1L, x=x, argn=names(args)[i],
+            assign=i == 1L && next.assign,
+            call.parent=call, call.parent.name=func,
+            par.validate=par.validate[i],
+            indent=indent +
+              (func %in% c(CTRL.SUB.SYM, FOR.ITER, R2C.FOR)) * 2L,
+            passive=passive, unsupported=unsupported
+          )
+          par.types[i] <- x[['par.type']][length(x[['par.type']])]
+        } else stop("Internal Error: bad parameter type '", par.types[i], "'")
+      }
+      # Are we in a rec chain?  Needed for alloc to know which bindings are
+      # from rec (see reconcile_control_flow).
+      rec <- func == "rec" || (
+        func %in% PASSIVE.BRANCH.SYM &&
+        length(x[['rec']]) && x[['rec']][length(x[['rec']])]
+      )
+      # Generate Code
+      code <- VALID_FUNS[[c(func, "code.gen")]](func, args, par.types)
+      code_valid(code, call)
+    } else {
+      # Unsupported call recorded as leaf
+      par.type <- PAR.INT.LEAF
+      rec <- FALSE
+      par.validate <- list(NULL)
+      code <- code_blank()
+    }
     # Record linearized call data
     record_call_dat(
       x, call=call, depth=depth, linfo=linfo, argn=argn,
-      par.type=PAR.INT.CALL,
+      par.type=par.type,
       par.validate=par.validate[1L],  # this is never used as its a call
       code=code,
       assign=assign, indent=indent, rec=rec
@@ -325,10 +339,6 @@ pp_internal <- function(
       } else if(grepl("^\\.\\.[0-9]+$", name)) {
         call <- as.name(sprintf(DOT.ARG.TPL, x[['dot.arg.i']]))
         x[['dot.arg.i']] <- x[['dot.arg.i']] + 1L
-      } else if(grepl(UNSUP.CALL.RX, name)) {
-        # This doesn't modify the parent call...  Shouldn't matter but it might
-        # be confusing when displaying the processed call.
-        call <- unsupported[[name]]
       }
     }
     record_call_dat(
@@ -825,9 +835,8 @@ append_null <- function(x) {
 ## Substitute Symbols for Unsupported Calls
 ##
 ## Calls to unsupported function are replaced by symbols so that no further
-## manipulation happens them in preprocessing.  These will be unsubbed by
-## `pp_internal` back to their original expressions, and subsequently they will
-## be evaluated as a constant expression at allocation time.
+## manipulation happens them in preprocessing.  They will be unsubbed after call
+## manipulation, and then evaluated as a constant expression at allocation time.
 ##
 ## @param unsupported list of already substituted calls
 
@@ -848,4 +857,13 @@ sub_unsupported <- function(x, unsupported=list()) {
     }
   }
   list(call=x, unsupported=unsupported)
+}
+unsub_unsupported <- function(x, unsupported) {
+  if(is.symbol(x)) {
+    sym.name <- as.character(x)
+    if(sym.name %in% names(unsupported)) x <- unsupported[[sym.name]]
+  } else if (is.call_w_args(x)) {
+    for(i in seq_along(x)[-1L]) x[[i]] <- unsub_unsupported(x[[i]], unsupported)
+  }
+  x
 }

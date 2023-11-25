@@ -376,7 +376,7 @@ copy_branchdat_rec <- function(
 
     # Add free symbol: for Unsupported calls we want the symbols from the
     # unsupported calls, not the placeholder in `sym.name`
-    data <- add_maybe_unsup_free_symbol(data, sym.name, unsupported)
+    data <- add_maybe_unsup_free_symbols(data, sym.name, unsupported)
 
     # For symbols matching candidate(s): promote candidate if allowed.
     data <- promote_candidates(
@@ -498,8 +498,10 @@ copy_branchdat_rec <- function(
           )
         } else {
           # We still record free symbols to generate the interface for r2cq/l.
-          # See also the unsupported symbol case
-          data <- add_free_symbols(data, x)
+          # See also the external symbol case
+          data <- add_maybe_unsup_free_symbols(
+            data, collect_call_symbols(x[[i]]), unsupported=unsupported
+          )
         }
       }
       data[['passive']] <- passive && data[['passive']]
@@ -538,6 +540,9 @@ copy_branchdat_rec <- function(
   data
 }
 # Register additional free symbols
+#
+# Only use add_maybe_extern_free_symbols.
+#
 # @param x a call
 
 add_free_symbols <- function(data, x) {
@@ -549,7 +554,7 @@ add_free_symbols <- function(data, x) {
   data[['free']] <- union(data[['free']], new.free.syms)
   data
 }
-add_maybe_unsup_free_symbol <- function(data, names, unsupported) {
+add_maybe_unsup_free_symbols <- function(data, names, unsupported) {
   names <- unique(names)
   names.unsup <- names[names %in% names(unsupported)]
   names.other <- setdiff(names, names.unsup)
@@ -926,7 +931,7 @@ promote_candidates <- function(
   # one prior to the self-copy.  Trigger is same as symbol (e.g. x <- vcopy(x))
   br.bal.free <- vapply(cand.prom, "[[", TRUE, "free")
   br.bal.free.sym <- vapply(cand.prom[br.bal.free], "[[", "", "name")
-  add_maybe_unsup_free_symbol(data, br.bal.free.sym, unsupported)
+  add_maybe_unsup_free_symbols(data, br.bal.free.sym, unsupported)
 }
 
 # Remove Promoted Candidates
