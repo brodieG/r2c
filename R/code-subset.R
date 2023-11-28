@@ -122,15 +122,15 @@ code_gen_subassign <- function(fun, pars, par.types) {
 #' "Internal" function that implement subassignment (e.g. `x[s] <- y`) for
 #' `r2c`.  Standard R subassignments are converted to `subassign` so that the
 #' `r2c` [preprocessor][r2c-preprocess] can identify them as a sub-assignment
-#' instead of an a subset nested in an assignment.
+#' instead of a subset nested in an assignment.
 #'
 #' Unlike the R counterpart, or the `r2c` usage of this function,
 #' regular R usage of this function does not modify `x` outside of the internal
 #' scope of the function.  This function is an implementation detail and is
 #' documented only for the rare cases where it becomes visible to the user.
 #'
-#' @seealso Other [intermediate-representation][intermediate representation functions], 
-#' [r2c-preprocess][`r2c` preprocessor].
+#' @seealso Other [intermediate representation
+#'   functions][intermediate-representation], `r2c`[preprocessor][r2c-preprocess].
 #' @keywords internal
 #' @param x a numeric vector
 #' @export

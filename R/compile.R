@@ -99,7 +99,7 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' also directly set the parameter list with the `formals` parameter, or with
 #' `r2cf`.
 #'
-#' As with regular R functions, unbound symbols  are resolved in the lexical
+#' As with regular R functions, unbound symbols are resolved in the lexical
 #' environment of the function.  You can set a different environment on creation
 #' of the function with the `envir` parameter, but currently there is no way to
 #' change it afterwards (`environment(r2c_fun) <- x` will likely just break the

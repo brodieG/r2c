@@ -23,7 +23,9 @@
 #'
 #' * Review [supported functions][r2c-supported-funs].
 #' * Use [the compilation functions][r2c-compile] to compile R.
-#' * [Run][runners] your `r2c` functions iteratively on varying data.
+#' * Execute your `r2c` functions [iteratively with runners][runners]:
+#'   * By [group][group_exec].
+#'   * Across [windows][rolli_exec].
 #'
 #' Details:
 #'
@@ -31,7 +33,7 @@
 #' * [Memory use][r2c-memory].
 #' * [Preprocessing][r2c-preprocess].
 #' * Experimental support for [control structures][r2c-control-structures].
-#' * Iteration [Constant and varying expressions][r2c-expression-types].
+#' * Iteration [constant and varying expressions][r2c-expression-types].
 #'
 #' @docType package
 #' @name r2c-package
@@ -63,16 +65,18 @@ utils::globalVariables(".")  # for vetr .
 
 NULL
 
-#' Supported Functions
+#' Implemented Functions
 #'
-#' `r2c` supports a subset of R functions.  These functions are re-implemented
-#' and optimized for iterated execution while hewing as closely as practicable
-#' to the original R semantics.  `r2c` also allows unsupported function calls
-#' provided they are [iteration-constant][r2c-expression-types].
+#' `r2c` supports a subset of R functions for compilation.  These functions
+#' are re-implemented and optimized for iterated execution while hewing as
+#' closely as practicable to the original R semantics.  `r2c` also allows
+#' arbitrary R function calls provided they are
+#' [iteration-constant][r2c-expression-types], but these are evaluated in R and
+#' not in `r2c` compiled code.
 #'
 #' The following functions are supported by the `r2c` [compiler][r2c-compile],
 #' with semantic differences to their R counterparts noted.  Parameters that
-#' require [constant expressions] are marked as such.
+#' require [constant expressions][r2c-expression-types] are marked as such.
 #'
 #' * Arithmetic: `+`, `-`, `*`, `/`, and `^`.
 #' * Relational: `<`, `<=`, `>`, `>=`, `==`, `!=`.
@@ -87,7 +91,6 @@ NULL
 #'     parameters.
 #'   * `rep` does not take any `...` parameters.
 #' * Concatenation: `c`.
-#'   * Ignores/drops names.
 #' * Subsetting: `x[i]`, `x[s] <- expr`.
 #'   * In 1 dimension with strictly positive numeric indices.
 #'   * Return value of assignment form may not be used.
@@ -104,10 +107,12 @@ NULL
 #'
 #' Except for [constant][r2c-expression-types] parameters, expressions and
 #' variables provided as arguments to `r2c` implemented functions must resolve
-#' to attribute-less numeric, integer, or logical vectors.  Integer or logical
-#' inputs or outputs attract a [performance penalty][r2c-performance].
-#' Parameters marked as constant may only be given [constant
-#' expressions][r2c-expression-types].
+#' to optionally named but otherwise attribute-less numeric, integer, or logical
+#' vectors.  Names are ignored and/or dropped.  Integer or logical inputs or
+#' outputs attract a [performance penalty][r2c-performance].  Parameters marked
+#' as constant may only be given [constant expressions][r2c-expression-types],
+#' and while `r2c` in general allows them to evaluate to any R object, the `r2c`
+#' function they are used with will place restrictions on allowable values.
 #'
 #' Calls must be in the form `fun(...)` (`a fun b` for operators)  where `fun`
 #' is the name of the function, optionally in `pkg::fun` format.  Functions must
@@ -174,7 +179,8 @@ NULL
 #'   the same size irrespective of branch taken, if the corresponding bindings
 #'   are subsequently used.  Assigned values are coerced to a common type.
 #' * Control structures can be nested at most 999 levels.
-#' * [Constant expressions][r2c-expression-types] must be valid in every branch.
+#' * [Constant expressions][r2c-expression-types] must be valid in every branch,
+#'   even if the branch is not taken at run time.
 #'
 #' To clarify the last point, consider:
 #'
@@ -182,11 +188,11 @@ NULL
 #' if(n > 0) sum(seq_len(n)) else 0
 #' ```
 #'
-#' The `n` argument to `seq_len` is treated as a
-#' [constant][r2c-expression-types] so it is checked at allocation time.
+#' The call to `seq_len` is a non-implemented [constant
+#' expression][r2c-expression-types] so it is run at allocation time.
 #' Because `r2c` does not evaluate `n > 0` at allocation time, `r2c` runs
-#' `seq_len`'s validity checks for `n` even if `n` is negative.  Checks like the
-#' `n > 0` above need to be done outside of `r2c`.
+#' `seq_len` even if `n` is negative.  Checks like the `n > 0` above need to be
+#' done outside of `r2c`.
 #'
 #' There are also other minor semantic differences:
 #'
@@ -195,11 +201,10 @@ NULL
 #' * [`for`][base::for] sets `var` to NA_real_ if `length(seq) == 0` instead of
 #'   NULL.
 #'
-#' See the [memory help page][r2c-memory] for background on the equal size
-#' requirements.
-#'
 #' @keywords internal
-#' @seealso [Package Overview][r2c].
+#' @seealso The [memory help page][r2c-memory] for background on the equal
+#'   size requirements, and [preprocessing][r2c-preprocess] for more
+#'   control structure implementation details.  Also: [package overview][r2c].
 #' @name r2c-control-structures
 
 NULL
@@ -208,65 +213,89 @@ NULL
 #'
 #' `r2c` [runners] will vary which parts of their `data` argument are computed
 #' on across iterations, so references to values from `data` are known as
-#' iteration varying (varying).  Expressions that depend directly or indirectly
-#' on such references are also known as varying, and those that do not are
-#' known as constant.  For example, an expressions that references only symbols
-#' that match to the `MoreArgs` parameters of the [runners] will be constant.
-#' Some `r2c` [implemented function][r2c-supported-funs] parameters will only
-#' accept constant expressions.  Currently only direct references to constant
-#' expressions are recognized as constant; rebinding symbols and similar will
-#' cause `r2c` to treat them as varying.  See examples.
+#' (iteration) varying.  Expressions that depend directly or indirectly
+#' on such references are thus varying.  Additionally, when the result
+#' of an `r2c` [implemented function][r2c-supported-funs] call is assigned to a
+#' variable, that variable is considered varying even when the call is
+#' constant.  Other expressions are considered constant.  Some `r2c`
+#' [implemented function][r2c-supported-funs] parameters require constant
+#' expressions; these are known as constant parameters.
 #'
-#' `r2c` uses constant parameters to allow for semantics otherwise precluded by
-#' its [pre-allocated memory][r2c-memory] design.  Normally, `r2c` requires that
-#' the size of the output of an expression be derivable from the **size** of its
-#' inputs alone, as is the case with e.g.  `seq_along(x)`.  But many useful
-#' functions require knowing the value of their inputs to compute output size,
-#' e.g.  `rep(x, length.out=n)`.  `r2c` can implement functions like the latter
-#' when the input value is constant because such values can be computed in R
-#' before any runner iterations are executed (see examples).
+#' `r2c` implements constant parameters to work around limitations of its
+#' [pre-allocated memory][r2c-memory] design.  Normally, `r2c` derives the
+#' size of the output of an expression from the **size** of the inputs, as
+#' is the case with e.g. `seq_along(x)`.  But many useful functions require
+#' knowing the value of their inputs to compute output size, e.g. the value of
+#' `n` in `rep(x, length.out=n)`.  `r2c` can implement functions like the latter
+#' when the input value is constant because such values can be computed in R at
+#' allocation time before any iterations are run (see examples).  Because
+#' constant parameter arguments are evaluated in R, they may involve arbitrary R
+#' expressions provided they are constant and the result of evaluating them is
+#' compatible with the parameter.
 #'
-#' Similarly it is possible to embed arbitrary R sub-expressions within `r2c`
-#' compiled expressions provided that they are constant.  All children of a
-#' constant sub-expression are treated as constant expressions, even if they
-#' contain calls that `r2c` could otherwise compile.  This is for convenience;
-#' the same effect is achieved by using a symbol and passing the result of
-#' computing the expression to that symbol directly at run time.
+#' Calls to [non-implemented functions][r2c-supported-funs] are allowed outside
+#' of constant parameters, provided that they are constant and the result of
+#' evaluating them is compatible with the context they are used in.  These are
+#' also evaluated directly in R at allocation time.  Non-implemented constant
+#' expressions nested within [branches][r2c-control-structures] are always
+#' evaluated, even in branches not taken at run time.
 #'
-#' Constant expressions that are passed to constant parameters, or are a call to
-#' [non-implemented functions][r2c-supported-funs], are evaluated once at
-#' allocation time and cached.  Cached values are re-used both across iterations
-#' and within an iteration if the same expression appears multiple times in the
-#' call.  Due to the caching, constant expressions that cause side-effects, use
-#' `eval`, manipulate frames, or engage in other complex "meta" operations may
-#' have different effects than intended.  Simple attempts to create new bindings
-#' with constant expressions with e.g. `<-` will fail; trying to circumvent
-#' enforced restrictions are likely to cause problems.
+#' Expressions evaluated in R at allocation time are computed once and cached.
+#' Cached values are re-used both across iterations, and within an iteration if
+#' the same expression appears multiple times.  Due to the caching, constant
+#' expressions that cause side-effects, use `eval`, manipulate frames, or engage
+#' in other complex "meta" operations may have different effects than intended.
+#' Simple attempts to create new bindings with constant expressions with e.g.
+#' `<-` will fail; trying to circumvent enforced restrictions is likely to
+#' cause problems.
 #'
-#' Constant expressions that are calls to implemented functions **and** are used
-#' in a varying parameter or top-level are re-evaluated every iteration despite
-#' being constant.  This behavior may change in the future.  Expressions passed
-#' to constant parameters may evaluate to any R object, subject to being
-#' constant and to the restrictions on the `r2c` function parameter they are
-#' matched to.  Varying expressions are illegal in constant parameters.
-#'
-#' Every expression provided to a constant parameter must be constant, but
-#' varying parameters will accept otherwise constant expressions if they abide
-#' by the general `r2c` constraints on parameter values.  For simplicity of
-#' implementation, constant expressions used with varying parameters are treated
-#' as varying, thus not cached.  This may change in the future.
+#' Whether an expression is constant can only be determined once the runner is
+#' provided the data to run on.  Since expressions cannot be determined to be
+#' constant at compilation time, compilation assumes that any expression that
+#' could be variable is variable.  This is why only calls to unimplemented
+#' functions or calls given to constant parameters can be evaluated in R.  Other
+#' calls will have been compiled into the chain of native instructions and thus
+#' must be run by `r2c` each iteration, even if they are constant at run time.
 #'
 #' @family r2c-topics
 #' @keywords internal
 #' @name r2c-expression-types
 #' @examples
+#' ## Unimplemented functions like `:` allowed if constant, and
+#' ## `r2c` implemented functions like `+` accept constant expressions
+#' ## if their result is e.g. numeric as is the case with `a:b` here.
+#' f <- r2cq(x + a:b)
+#' ## No iterations, everything is constant, so ok
+#' f(runif(8), 11, 12)
+#' ## Iterations, but `a` and `b` are in `MoreArgs` thus constant
+#' grp <- factor(rep(letters[1:4], 2))
+#' group_exec(f, runif(8), grp, MoreArgs=list(a=11, b=12))
+#' ## `a` is now group varying, which is illegal
+#' try(group_exec(f, list(runif(8), a=11:18), grp, MoreArgs=list(b=12)))
+#'
 #' ## Constant parameter `times` takes expression `max(y)` as argument
 #' f <- r2cq(rep(x, times=max(y)))
-#' g <- factor(c('a','b', 'b'))
+#' grp <- factor(c('a', 'b', 'b'))
 #' ## When `y` is constant, so is `max(y)` and this works
-#' group_exec(f, data=list(x=1:3), groups=g, MoreArgs=list(y=2:4))
+#' group_exec(f, data=list(x=1:3), grp, MoreArgs=list(y=2:4))
 #' ## But if we make `y` varying, it does not
-#' try(group_exec(f, data=list(x=1:3, y=2:4), groups=g))
+#' try(group_exec(f, data=list(x=1:3, y=2:4), grp))
+#'
+#' ## Constant expressions that are calls to `r2c` implemented functions
+#' ## but are used in non-constant parameters are re-evaluated each iteration.
+#' f <- r2cq(x + mean(y))    # `mean` is an `r2c` implemented function
+#' grp <- factor(rep(letters[1:4], 2))
+#' y <- runif(8)
+#' x <- runif(8)
+#' ## Works, but evaluates `mean(y)` four times
+#' group_exec(f, x, grp, MoreArgs=list(y=y))
+#' f2 <- r2cq(x + Y)
+#' ## Equivalent, but does not re-evaluate `mean(y)`
+#' group_exec(f2, x, grp, MoreArgs=list(Y=mean(y)))
+#' ## Equivalent, but also does not re-evaluate.
+#' my_mean <- function(x) sum(x)/length(x)  # `my_mean` not r2c implemented
+#' f3 <- r2cq(x + my_mean(y))
+#' group_exec(f3, x, grp, MoreArgs=list(y))
 
 NULL
 
@@ -274,22 +303,24 @@ NULL
 #'
 #' `r2c` will preprocess R expressions to implement optimizations, or to convert
 #' calls to a format better suited for translation to C.  Preprocessing will not
-#' affect the semantics of an R expression, but in some cases the pre-processed
-#' call may look quite different from the input expression.  In general `r2c`
-#' attempts to conceal the preprocessed expressions, but in some cases they may
-#' leak via error messages or other pathways.  This documentation page exists so
-#' users that encounter such leaks can get some indication of what is happening.
-#' [`get_r_code(..., raw=TRUE)`][get_r_code]  will show the fully pre-processed
-#' version of the R code.
+#' affect the semantics of an R expression once it is compiled, but the
+#' pre-processed call may look different from the input expression and may not
+#' run as expected in R.  In general `r2c` attempts to conceal the preprocessed
+#' expressions, but in some cases they may leak via error messages or other
+#' pathways.  This documentation page exists so users that encounter such leaks
+#' can get some indication of what is happening.  [`get_r_code(...,
+#' raw=TRUE)`][get_r_code]  will show the fully pre-processed version of the R
+#' code.
 #'
 #' @section Control Structures:
 #'
-#' Preprocessing is most impactful for control structures.  Most R level calls
+#' Preprocessing is most impactful for [control
+#' structures][r2c-control-structures].  Most R level calls
 #' are converted 1-1 into C level calls.  Control structures are more
 #' complicated because we need to generate the call structure itself without a
 #' direct correspondence of R call to structural element.  The
 #' preprocessor [decomposes regular if / else calls][intermediate-representation]
-#' calls as:
+#' calls like:
 #'
 #' ```
 #' if(a) x else y
