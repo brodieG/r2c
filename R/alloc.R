@@ -99,7 +99,8 @@ NULL
 ## `depth` variable semantics are strongly shaped by how it is generated (i.e.
 ## by incrementing it with each level of recursion in the call tree it
 ## originates from).  For example, for a call at depth `depth`, it is a given
-## that all of it's parameters will have a `depth` of `depth+1`.  We use `stack`
+## that all of it's parameters will have a `depth` of `depth+1` (but not all
+## `depth+1` parameters are necessarily part of the call).  We use `stack`
 ## as a mechanism for tracking the current call's parameters.
 ##
 ## @section Special Sub-Calls:
@@ -270,7 +271,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
       size.coef <- size.tmp[['size.coef']] # iteration/group dependant size
       asize <- size.tmp[['asize']]         # required allocation size
 
-      # Bind new symbols if any
+      # Bind new symbols if any (alloc[['i']] contains last computation)
       alloc <-
         name_bind_if_assign(alloc, call, call.name=name, rec=rec, i.call=i)
 

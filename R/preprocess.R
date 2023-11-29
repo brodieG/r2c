@@ -94,7 +94,9 @@ preprocess <- function(call, optimize=FALSE) {
   x[['sym.free']] <- sym.free
 
   # Classify parameters and generate code recursively
-  x <- pp_internal(call=call, depth=0L, x=x, unsupported=unsupported)
+  x <- pp_internal(
+    call=call, depth=0L, x=x, unsupported=unsupported, par.type="internal"
+  )
   x[['call.processed']] <- call
   if(!all(x[['par.type']] %in% PAR.TYPES))
     stop("Internal Error: invalid parameter types.")
@@ -214,14 +216,20 @@ preprocess <- function(call, optimize=FALSE) {
 
 pp_internal <- function(
   call, depth, x, argn="", assign=FALSE, call.parent=NULL,
-  call.parent.name="", par.validate=NULL, indent=0L, passive=TRUE,
-  unsupported
+  call.parent.name="",
+  par.validate=function(x) TRUE, # should only be for a literal only call
+  indent=0L, passive=TRUE, par.type, unsupported
 ) {
   if(depth == .Machine$integer.max)
     stop("Expression max depth exceeded.") # exceedingly unlikely
 
-  if(is.call(call)) {
-    # - Recursion on Params ----------------------------------------------------
+  linfo <- get_lang_info(call)
+  if (
+    is.call(call) &&
+    linfo[['name']] %in% names(VALID_FUNS) &&
+    !par.type %in% PAR.EXT
+  ) {
+    # - r2c Eval Call Recursion on Params --------------------------------------
     # Classify Params
     args <- as.list(call[-1L])
     if(!all(nzchar(names(args))))
@@ -231,104 +239,79 @@ pp_internal <- function(
     if(is.null(names(args))) {
       names(args) <- character(length(args))
     }
-    linfo <- get_lang_info(call)
     func <- linfo[['name']]
 
-    if(func %in% names(VALID_FUNS)) {
-      par.type <- PAR.INT.CALL
-      par.ext <- VALID_FUNS[[c(func, "extern")]]
-      par.ext.names <- names(par.ext)
-      par.ext.types <- vapply(par.ext, "[[", "", "type")
-      par.ext.validate <- lapply(par.ext, "[[", "validate")
+    par.type <- PAR.INT.CALL
+    par.ext <- VALID_FUNS[[c(func, "extern")]]
+    par.ext.names <- names(par.ext)
+    par.ext.types <- vapply(par.ext, "[[", "", "type")
+    par.ext.validate <- lapply(par.ext, "[[", "validate")
 
-      if(!all(par.ext.names %in% names(args)))
-        stop(
-          "Internal Error: designated external parameters missing; is `call` ",
-          "not properly match-called?"
-        )
-      par.ext.loc <- match(par.ext.names, names(args), nomatch=0)
-      par.types <- rep("internal", length(args))
-      par.types[par.ext.loc] <- par.ext.types
-      par.validate <- vector(mode='list', length(args))
-      par.validate[par.ext.loc] <- par.ext.validate
-
-      passive <- passive && func %in% c(PASSIVE.SYM, 'vcopy')
-
-      # Check if we're in assignment call
-      next.assign <- func %in% ASSIGN.SYM  # not MODIFY.SYM
-      # Assignments only allowed at brace level or top level because we cannot
-      # assure the order of evaluation so safer to just disallow.  We _could_
-      # allow it but it just seems dangerous.
-      if(next.assign && !passive) {
-        call.dep <- deparseLines(clean_call(call, level=2L))
-        msg <- sprintf(
-          "r2c disallows assignments inside arguments. Found: %s", call.dep
-        )
-        stop(simpleError(msg, call.parent))
-      }
-      for(i in seq_along(args)) {
-        if(par.types[i] %in% PAR.EXT) {
-          # Do not recurse into externals; shouldn't be assign symbol
-          if(next.assign) stop("Internal error: controls/flag on assignment.")
-          x <- record_call_dat(
-            x, call=args[[i]],
-            depth=depth + 1L, linfo=get_lang_info(args[[i]]),
-            argn=names(args)[i],
-            par.type=par.types[i], par.validate=par.validate[i],
-            code=code_blank(), assign=FALSE, indent=indent, rec=FALSE
-          )
-        } else if(par.types[i] == "internal") {  # not yet one of PAR.INT values
-          x <- pp_internal(
-            call=args[[i]], depth=depth + 1L, x=x, argn=names(args)[i],
-            assign=i == 1L && next.assign,
-            call.parent=call, call.parent.name=func,
-            par.validate=par.validate[i],
-            indent=indent +
-              (func %in% c(CTRL.SUB.SYM, FOR.ITER, R2C.FOR)) * 2L,
-            passive=passive, unsupported=unsupported
-          )
-          par.types[i] <- x[['par.type']][length(x[['par.type']])]
-        } else stop("Internal Error: bad parameter type '", par.types[i], "'")
-      }
-      # Are we in a rec chain?  Needed for alloc to know which bindings are
-      # from rec (see reconcile_control_flow).
-      rec <- func == "rec" || (
-        func %in% PASSIVE.BRANCH.SYM &&
-        length(x[['rec']]) && x[['rec']][length(x[['rec']])]
+    if(!all(par.ext.names %in% names(args)))
+      stop(
+        "Internal Error: designated external parameters missing; is `call` ",
+        "not properly match-called?"
       )
-      # Generate Code
-      code <- VALID_FUNS[[c(func, "code.gen")]](func, args, par.types)
-      code_valid(code, call)
-    } else {
-      # Unsupported call recorded as leaf
-      par.type <- PAR.INT.LEAF
-      rec <- FALSE
-      par.validate <- list(NULL)
-      code <- code_blank()
-    }
-    # Record linearized call data
-    record_call_dat(
-      x, call=call, depth=depth, linfo=linfo, argn=argn,
-      par.type=par.type,
-      par.validate=par.validate[1L],  # this is never used as its a call
-      code=code,
-      assign=assign, indent=indent, rec=rec
-    )
-  } else {
-    # - Symbol or Constant, or Unsupported Call --------------------------------
+    par.ext.loc <- match(par.ext.names, names(args), nomatch=0)
+    par.types <- rep("internal", length(args))
+    par.types[par.ext.loc] <- par.ext.types
+    par.validate <- vector(mode='list', length(args))
+    par.validate[par.ext.loc] <- par.ext.validate
 
-    # NB: PAR.INT.LEAF is used for unsupported _calls_ too.  It should really be
-    # named PAR.EXT.EVAL or some such
-    par.type <- PAR.INT.LEAF
+    passive <- passive && func %in% c(PASSIVE.SYM, 'vcopy')
+
+    # Check if we're in assignment call
+    next.assign <- func %in% ASSIGN.SYM  # not MODIFY.SYM
+    # Assignments only allowed at brace level or top level because we cannot
+    # assure the order of evaluation so safer to just disallow.  We _could_
+    # allow it but it just seems dangerous.
+    if(next.assign && !passive) {
+      call.dep <- deparseLines(clean_call(call, level=2L))
+      msg <- sprintf(
+        "r2c disallows assignments inside arguments. Found: %s", call.dep
+      )
+      stop(simpleError(msg, call.parent))
+    }
+    for(i in seq_along(args)) {
+      x <- pp_internal(
+        call=args[[i]], depth=depth + 1L, x=x, argn=names(args)[i],
+        assign=i == 1L && next.assign,
+        call.parent=call, call.parent.name=func,
+        par.validate=par.validate[i],
+        indent=indent +
+          (func %in% c(CTRL.SUB.SYM, FOR.ITER, R2C.FOR)) * 2L,
+        passive=passive, unsupported=unsupported,
+        par.type=par.types[i]
+      )
+      par.types[i] <- tail(x[['par.type']], 1L)
+    }
+    # Are we in a rec chain?  Needed for alloc to know which bindings are
+    # from rec (see reconcile_control_flow).
+    rec <- func == "rec" || (
+      func %in% PASSIVE.BRANCH.SYM &&
+      length(x[['rec']]) && x[['rec']][length(x[['rec']])]
+    )
+    # Generate Code
+    code <- VALID_FUNS[[c(func, "code.gen")]](func, args, par.types)
+    code_valid(code, call)
+    par.validate <- par.validate[1L]  # this is never used as its a call
+  } else {
+    # - Constant Param, Symbol, Literal, or Unsupported Call -------------------
+    if(!par.type %in% PAR.EXT) {
+      # NB: PAR.INT.LEAF is used for unsupported _calls_ too.  It should really be
+      # named PAR.EXT.EVAL or some such.  Actually, no, since symbol could be
+      # varying and that's not disambiguated until we have teh data
+      par.type <- PAR.INT.LEAF
+    }
     args <- list()
     code <- code_blank()
+    rec <- FALSE
 
     # Deal with `..1`, etc, that may be generated by dots forwarding.
     # We could check for user defined .ARG[0-9] and then start incrementing
     # after max, but too complicated (need to handle case where someone e.g.
-    # defines .ARG9999999999 or whatever to try to overflow us).
-    #
-    # Also handle unsupported expressions.
+    # defines .ARG9999999999 or whatever and it overflow us).
+    # PAR.EXT shouldn't end up using this?
     if(is.name(call)) {
       name <- as.character(call)
       if(grepl(DOT.ARG.RX, name)) {
@@ -341,12 +324,13 @@ pp_internal <- function(
         x[['dot.arg.i']] <- x[['dot.arg.i']] + 1L
       }
     }
-    record_call_dat(
-      x, call=call, depth=depth, linfo=get_lang_info(call), argn=argn,
-      par.type=par.type, par.validate=par.validate,
-      code=code, assign=assign, indent=indent, rec=FALSE
-    )
-} }
+  }
+  record_call_dat(
+    x, call=call, depth=depth, linfo=linfo, argn=argn,
+    par.type=par.type, par.validate=par.validate,
+    code=code, assign=assign, indent=indent, rec=rec
+  )
+}
 
 #' See preprocess for some discussion of what the elements are
 #'
