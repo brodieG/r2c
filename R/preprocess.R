@@ -822,14 +822,17 @@ append_null <- function(x) {
 ## manipulation happens them in preprocessing.  They will be unsubbed after call
 ## manipulation, and then evaluated as a constant expression at allocation time.
 ##
-## @param unsupported list of already substituted calls
+## @param unsupported list of already substituted calls, where the names are the
+##   substitution symbol based on UNSUP.CALL.TPL, and the values are lists with
+##   element call (the original call) and syms (the symbols present in the
+##   call, used to trigger candidates, track free symbols, etc).
 
 sub_unsupported <- function(x, unsupported=list()) {
   if(is.call(x) && !get_lang_name(x) %in% c("(", names(VALID_FUNS))) {
     i <- length(unsupported) + 1L
     name <- sprintf(UNSUP.CALL.TPL, i)
     sym <- as.name(name)
-    val <- list(x)
+    val <- list(list(call=x, syms=collect_call_symbols(x)))
     names(val) <- name
     unsupported <- c(unsupported, val)
     x <- sym
@@ -845,7 +848,7 @@ sub_unsupported <- function(x, unsupported=list()) {
 unsub_unsupported <- function(x, unsupported) {
   if(is.symbol(x)) {
     sym.name <- as.character(x)
-    if(sym.name %in% names(unsupported)) x <- unsupported[[sym.name]]
+    if(sym.name %in% names(unsupported)) x <- unsupported[[sym.name]][['call']]
   } else if (is.call_w_args(x)) {
     for(i in seq_along(x)[-1L]) x[[i]] <- unsub_unsupported(x[[i]], unsupported)
   }

@@ -249,22 +249,12 @@ B.NAMED <- c('bind', 'named')
 # @param unsupported see `sub_unsupported`
 
 copy_branchdat <- function(x, unsupported) {
-  if(is.symbol(x)) {
-    # Special case: a single symbol.  For recursive logic to work cleanly every
-    # symbol needs to be part of a call
-    sym.free <- as.character(x)
-    if(sym.free %in% names(unsupported))
-      sym.free <- collect_call_symbols(unsupported[[sym.free]])
-    x <- en_vcopy(x)
-  } else {
-    # Compute locations requring vcopy
-    branch.dat <- copy_branchdat_rec(x, x0=x, unsupported=unsupported)
-    sym.free <- branch.dat[['free']]
+  # Compute locations requring vcopy
+  branch.dat <- copy_branchdat_rec(x, x0=x, unsupported=unsupported)
+  sym.free <- branch.dat[['free']]
 
-    # Modify the symbols / sub-calls that need to be vcopy'ed
-    x <- inject_rec_and_copy(x, branch.dat)
-  }
-  sym.free[sym.free == '.R2C.DOTS'] <- '...'
+  # Modify the symbols / sub-calls that need to be vcopy'ed
+  x <- inject_rec_and_copy(x, branch.dat)
   list(call=x, sym.free=sym.free)
 }
 # Compute Locations of Required `rec` and `vcopy`s
@@ -374,15 +364,10 @@ copy_branchdat_rec <- function(
     leaf <- TRUE
     data[['leaf.name']] <- sym.name  # "" for literals
 
-    # Add free symbol: for Unsupported calls we want the symbols from the
-    # unsupported calls, not the placeholder in `sym.name`
-    data <- add_maybe_unsup_free_symbols(data, sym.name, unsupported)
-
     # For symbols matching candidate(s): promote candidate if allowed.
     data <- promote_candidates(
-      data, name=sym.name, index=in.branch, unsupported=unsupported
+      data, names=sym.name, index=in.branch, unsupported=unsupported
     )
-
     if(is.null(in.branch) && length(assign.to) && sym.local.cmp) {
       # Outside of branches, aliasing a locally computed symbol makes the others
       # also locally computed.
@@ -497,10 +482,11 @@ copy_branchdat_rec <- function(
             data=data, x0=x0, unsupported=unsupported
           )
         } else {
-          # We still record free symbols to generate the interface for r2cq/l.
-          # See also the external symbol case
-          data <- add_maybe_unsup_free_symbols(
-            data, collect_call_symbols(x[[i]]), unsupported=unsupported
+          # Symbols in external expressions for const params still promote
+          # candidates and potentially contribute to r2cq/l interace.
+          data <- promote_candidates(
+            data, names=collect_call_symbols(x[[i]]), index=in.branch,
+            unsupported=unsupported, subassign=TRUE
           )
         }
       }
@@ -545,26 +531,34 @@ copy_branchdat_rec <- function(
 #
 # @param x a call
 
-add_free_symbols <- function(data, x) {
-  syms <- collect_call_symbols(x)
-  new.free.syms <- syms[
-    !syms %in% data[[B.NAMED]] & nzchar(syms) &
-    !grepl(R2C.PRIV.RX, syms)  # Could these exist here?
+add_free_symbol_names <- function(data, names) {
+  new.free.names <- names[
+    !names %in% data[[B.NAMED]] & nzchar(names) &
+    !grepl(R2C.PRIV.RX, names)  # Could these exist here?
   ]
-  data[['free']] <- union(data[['free']], new.free.syms)
+  data[['free']] <- union(data[['free']], new.free.names)
   data
 }
-add_maybe_unsup_free_symbols <- function(data, names, unsupported) {
+add_free_symbols <- function(data, x) {
+  names <- collect_call_symbols(x)
+  add_free_symbol_names(data, names)
+}
+# Given symbol names, expand any ones representing unsupported expressions into
+# or other special symbols to their own symbol names.
+
+expand_symbols <- function(names, unsupported) {
   names <- unique(names)
+  names[names == R2C.DOTS] <- "..."
   names.unsup <- names[names %in% names(unsupported)]
   names.other <- setdiff(names, names.unsup)
-  for(i in names.unsup) data <- add_free_symbols(data, unsupported[[i]])
-  data[['free']] <- union(
-    data[['free']],
-    names.other[!names.other %in% data[[B.NAMED]] & nzchar(names.other)]
+  res <- unique(
+    c(names.other, unlist(lapply(unsupported[names.unsup], "[[", 'syms')))
   )
-  data
+  if(any(grepl(UNSUP.CALL.RX, res)))
+    stop("Internal Error: nested unsupported symbols should not be possible.")
+  res
 }
+
 
 # Generate Candidate (and Actual) Call Pointers
 #
@@ -888,10 +882,11 @@ gen_callptrs <- function(names, index, br.index, rec, copy, free=FALSE)
 ## Promote Candidates
 ##
 ## Given an encountered symbol, promote matching candidates and update data
-## structures to reflect promotion.
+## structures to reflect promotion.  Additionally, record free symbol data for
+## generating r2cq/l interace.
 
-promote_candidates <- function(
-  data, name, index, unsupported, subassign=FALSE
+promote_candidates1 <- function(
+  data, name, index, subassign=FALSE
 ) {
   cand <- data[[CAND]]
   cand.match <- names(cand) == name
@@ -931,7 +926,21 @@ promote_candidates <- function(
   # one prior to the self-copy.  Trigger is same as symbol (e.g. x <- vcopy(x))
   br.bal.free <- vapply(cand.prom, "[[", TRUE, "free")
   br.bal.free.sym <- vapply(cand.prom[br.bal.free], "[[", "", "name")
-  add_maybe_unsup_free_symbols(data, br.bal.free.sym, unsupported)
+  add_free_symbol_names(
+    data,
+    c(
+      name,              # also add symbol itself if it is free
+      br.bal.free.sym
+    )
+  )
+}
+promote_candidates <- function(
+  data, names, index, unsupported, subassign=FALSE
+) {
+  names <- expand_symbols(names, unsupported)
+  for(i in unique(names))
+    data <- promote_candidates1(data, name=i, index, subassign)
+  data
 }
 
 # Remove Promoted Candidates
