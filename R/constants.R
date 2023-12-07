@@ -59,8 +59,8 @@ stopifnot(
 # - Constants ------------------------------------------------------------------
 
 # Filled in via onLoad from values stored in C (so C and R stay in sync)
-
 IX <- list()
+
 QDOTS <- quote(...)
 QBRACE <- as.name("{")
 QR2C.FOR <- quote(r2c::r2c_for)
@@ -220,6 +220,8 @@ CGEN.OUT.NONE <- 0L
 
 R2C.PRIV.BASE <- ".R2C"
 R2C.PRIV.RX <- sprintf("^%s", R2C.PRIV.BASE)
+R2C.DOTS <- ".R2C.DOTS"
+QR2C.DOTS <- as.name(R2C.DOTS)
 
 # For arguments that show up as `..1`, `..2`, replaced to match pattern below
 DOT.ARG.BASE <- sprintf("%s_DOT_", R2C.PRIV.BASE)

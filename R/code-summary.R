@@ -151,7 +151,7 @@ code_gen_summary <- function(fun, pars, par.types) {
 
   multi <-
     length(pars.int) != 1L ||
-    (length(pars.int) == 1L && identical(pars.int[[1L]], quote(.R2C.DOTS)))
+    (length(pars.int) == 1L && identical(pars.int[[1L]], QR2C.DOTS))
   name <- paste0(FUN.NAMES[fun], if(multi) "_n")
   code_res(
     defn=sprintf(

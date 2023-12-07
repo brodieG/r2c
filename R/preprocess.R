@@ -401,7 +401,7 @@ record_call_dat <- function(
   x[['call']] <- c(
     x[['call']],
     # Undo the dots replacement
-    list(if(identical(call, quote(.R2C.DOTS))) QDOTS else call)
+    list(if(identical(call, QR2C.DOTS)) QDOTS else call)
   )
   x[['code']] <- c(x[['code']], list(code))
   if(length(unique(lengths(x[c('call', 'code')]))) != 1L)
@@ -454,9 +454,9 @@ match_call_rec <- function(call) {
       # the formals of the function we'll generate); we do not want these dots
       # to be matched against anything since that will be done at run-time, not
       # now (i.e.  dots might not even exist at the moment).
-      any.dots <- vapply(call[-1L], identical, TRUE, quote(...))
-      any.r2cdots <- vapply(call[-1L], identical, TRUE, quote(.R2C.DOTS))
-      if(any(any.r2cdots)) stop("Symbol `.R2C.DOTS` is disallowed.")
+      any.dots <- vapply(call[-1L], identical, TRUE, QDOTS)
+      any.r2cdots <- vapply(call[-1L], identical, TRUE, QR2C.DOTS)
+      if(any(any.r2cdots)) stop("Symbol `", R2C.DOTS, "` is disallowed.")
       if(any(any.dots)) call[-1L][which(any.dots)] <- list(quote(.R2C.DOTS))
       # since we don't resolve dots env does not matter.
       call <- match.call(definition=defn, call=call, expand.dots=FALSE)
@@ -794,7 +794,7 @@ expand_dots <- function(x, arg.names) {
       for(j in exp.fields) {
         exp.val <- x[[j]][i]
         exp.vals <- if(j == "linfo") {
-          if(!identical(exp.val, list(list(name=".R2C.DOTS", pkg=""))))
+          if(!identical(exp.val, list(list(name=R2C.DOTS, pkg=""))))
             stop("Internal Error: bad dots lang info.")
           lapply(dots.m.chr, function(x) list(name=x, pkg=""))
         } else {
