@@ -4,47 +4,90 @@
 \alias{r2c-expression-types}
 \title{Iteration Varying and Constant Expressions}
 \description{
-\code{r2c} \link{runners} will vary which parts of their \code{data} argument are computed
+\code{r2c} \link{runners} vary which parts of their \code{data} argument are computed
 on across iterations, so references to values from \code{data} are known as
-iteration varying (varying).  Expressions that depend directly or indirectly
-on such references are also known as varying, and those that do not are
-known as constant.  Some \code{r2c} \link[=r2c-supported-funs]{implemented function}
-parameters will only accept constant expressions.
+(iteration) varying.  Expressions that depend directly or indirectly
+on such references are thus varying.  Additionally, when the result
+of an \code{r2c} \link[=r2c-supported-funs]{implemented function} call is assigned to a
+variable, that variable is considered varying even when the call is
+constant.  Other expressions are considered constant.  Some \code{r2c}
+\link[=r2c-supported-funs]{implemented function} parameters require constant
+expressions; these are known as constant parameters.
 }
 \details{
-\code{r2c} uses constant parameters to allow for semantics otherwise precluded by
-its \link[=r2c-memory]{pre-allocated memory} design.  Normally, \code{r2c} requires that
-the size of the output of an expression be derivable from the \strong{size} of its
-inputs alone, as is the case with e.g.  \code{seq_along(x)}.  But many useful
-functions require knowing the value of their inputs to compute output size,
-e.g.  \code{seq_len(x)}.  \code{r2c} can implement functions like the latter when the
-input value is constant because such values can be computed in R before any
-runner iterations are executed (see examples).
+\code{r2c} implements constant parameters to work around limitations of its
+\link[=r2c-memory]{pre-allocated memory} design.  Normally, \code{r2c} derives the
+size of the output of an expression from the \strong{size} of the inputs, as
+is the case with e.g. \code{seq_along(x)}.  But many useful functions require
+knowing the value of their inputs to compute output size, e.g. the value of
+\code{n} in \code{rep(x, length.out=n)}.  \code{r2c} can implement functions like the latter
+when the input value is constant because such values can be computed in R at
+allocation time before any iterations are run (see examples).  Because
+constant parameter arguments are evaluated in R, they may involve arbitrary R
+expressions provided they are constant and the result of evaluating them is
+compatible with the parameter.
 
-Constant expressions passed to constant parameters are evaluated once at
-allocation time and cached.  In addition to re-use of the cached value across
-iterations, these values are also re-used if the same expression appears for
-a different constant parameter.  Due to the caching, constant expressions
-that cause side-effects, use \code{eval}, manipulate frames, or engage in other
-complex "meta" operations may have different effects than intended.  Constant
-expressions passed to constant parameters may evaluate to any R object,
-subject to the restrictions on the \code{r2c} function parameter they are matched
-to.
+Calls to \link[=r2c-supported-funs]{non-implemented functions} are allowed outside
+of constant parameters, provided that they are constant and the result of
+evaluating them is compatible with the context they are used in.  These are
+also evaluated directly in R at allocation time.  Non-implemented constant
+expressions nested within \link[=r2c-control-structures]{branches} are always
+evaluated, even in branches not taken at run time.
 
-Every expression provided to a constant parameter must be constant, but
-varying parameters will accept otherwise constant expressions if they abide
-by the general \code{r2c} constraints on parameter values.  For simplicity of
-implementation, constant expressions used with varying parameters are treated
-as varying, thus not cached.  This may change in the future.
+Expressions evaluated in R at allocation time are computed once and cached.
+Cached values are re-used both across iterations, and within an iteration if
+the same expression appears multiple times.  Due to the caching, constant
+expressions that cause side-effects, use \code{eval}, manipulate frames, or engage
+in other complex "meta" operations may have different effects than intended.
+Simple attempts to create new bindings with constant expressions with e.g.
+\verb{<-} will fail; trying to circumvent enforced restrictions is likely to
+cause problems.
+
+Whether an expression is constant can only be determined once the runner is
+provided the data to run on.  Since expressions cannot be determined to be
+constant at compilation time, compilation assumes that any expression that
+could be variable is variable.  This is why only calls to unimplemented
+functions or calls given to constant parameters can be evaluated in R.  Other
+calls will have been compiled into the chain of native instructions and thus
+must be run by \code{r2c} each iteration, even if they turn out to be constant at
+run time.
 }
 \examples{
+## Unimplemented functions like `:` allowed if constant, and
+## `r2c` implemented functions like `+` accept constant expressions
+## if their result is e.g. numeric as is the case with `a:b` here.
+f <- r2cq(x + a:b)
+## No iterations, everything is constant, so ok
+f(runif(8), 11, 12)
+## Iterations, but `a` and `b` are in `MoreArgs` thus constant
+grp <- factor(rep(letters[1:4], 2))
+group_exec(f, runif(8), grp, MoreArgs=list(a=11, b=12))
+## `a` is now group varying, which is illegal
+try(group_exec(f, list(runif(8), a=11:18), grp, MoreArgs=list(b=12)))
+
 ## Constant parameter `times` takes expression `max(y)` as argument
 f <- r2cq(rep(x, times=max(y)))
-g <- factor(c('a','b', 'b'))
+grp <- factor(c('a', 'b', 'b'))
 ## When `y` is constant, so is `max(y)` and this works
-group_exec(f, data=list(x=1:3), groups=g, MoreArgs=list(y=2:4))
+group_exec(f, data=list(x=1:3), grp, MoreArgs=list(y=2:4))
 ## But if we make `y` varying, it does not
-try(group_exec(f, data=list(x=1:3, y=2:4), groups=g))
+try(group_exec(f, data=list(x=1:3, y=2:4), grp))
+
+## Constant expressions that are calls to `r2c` implemented functions
+## but are used in non-constant parameters are re-evaluated each iteration.
+f <- r2cq(x + mean(y))    # `mean` is an `r2c` implemented function
+grp <- factor(rep(letters[1:4], 2))
+y <- runif(8)
+x <- runif(8)
+## Works, but evaluates `mean(y)` four times
+group_exec(f, x, grp, MoreArgs=list(y=y))
+f2 <- r2cq(x + Y)
+## Equivalent, but does not re-evaluate `mean(y)`
+group_exec(f2, x, grp, MoreArgs=list(Y=mean(y)))
+## Equivalent, but also does not re-evaluate.
+my_mean <- function(x) sum(x)/length(x)  # `my_mean` not r2c implemented
+f3 <- r2cq(x + my_mean(y))
+group_exec(f3, x, grp, MoreArgs=list(y))
 }
 \concept{r2c-topics}
 \keyword{internal}

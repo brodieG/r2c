@@ -87,8 +87,8 @@ stack_param_missing <- function(params, stack.avail, call, .CALL) {
 # * prod: e.g. `r2c::numeric_along(x, y)`. here the result size is
 #   `length(x) * length(y)`.  `numeric_along` is substituted for things like
 #   `numeric(x)` or `numeric(length(x) * length(y))`.
-# * external: e.g. `numeric(x)` where `x` is an external value (i.e. iteration
-#   independent).
+# * extern: e.g. `numeric(x)` where `x` is an external value (i.e. iteration
+#   constant).
 #
 # Because the size of an output may depend on iteration/group size, we express
 # size as a univariate polynomial of the iteration/group size (we'll call that

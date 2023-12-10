@@ -43,10 +43,10 @@ code_gen_subset <- function(fun, pars, par.types) {
   vetr(
     identical(., "["),
     pars=list(NULL, NULL),
-    par.types=character() && all(. %in% PAR.INT)
+    par.types=character() && all(. %in% PAR.IVARY)
   )
   name <- FUN.NAMES[fun]
-  defn <- sprintf(f_subset, name, toString(F.ARGS.BASE))
+  defn <- sprintf(f_subset, name, toString(CF.ARGS.BASE))
   code_res(defn=defn, name=name)
 }
 # Does *NOT* return the sub-assignment values, so can only be used incontext
@@ -107,11 +107,11 @@ code_gen_subassign <- function(fun, pars, par.types) {
   vetr(
     identical(., "subassign"),
     pars=list(NULL, NULL, NULL),
-    par.types=character() && all(. %in% PAR.INT)
+    par.types=character() && all(. %in% PAR.IVARY)
   )
   name <- FUN.NAMES[fun]
   defn <- sprintf(
-    f_subset_assign, name, toString(F.ARGS.BASE),
+    f_subset_assign, name, toString(CF.ARGS.BASE),
     IX[['I.STAT']], IX[['STAT.RECYCLE']] # these are now available as defines
   )
   code_res(defn=defn, name=name)

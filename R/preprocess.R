@@ -22,12 +22,13 @@ NULL
 #' Generate C Code for Compilation
 #'
 #' Match each call and its parameters, identifying which parameters are
-#' external, and associating the C call to each R call.  The call tree is
-#' linearized depth first, so the parameters are recorded before the call they
-#' belong to.  The depth of the parameters allows us to distinguish what call
-#' they belong to (note a parameter can be a call too).  The order of the
-#' elements in the linearized call implicitly contains all parameter matching
-#' information (i.e. everything has been `match.call`ed already).
+#' iteration constant (and of what type), and associating the C call to each R
+#' call.  The call tree is linearized depth first, so the parameters are
+#' recorded before the call they belong to.  The depth of the parameters allows
+#' us to distinguish what call they belong to (note a parameter can be a call
+#' too).  The order of the elements in the linearized call implicitly contains
+#' all parameter matching information (i.e. everything has been `match.call`ed
+#' already).
 #'
 #' See `alloc` and `init_call_dat` for more details.
 #'
@@ -95,7 +96,7 @@ preprocess <- function(call, optimize=FALSE) {
 
   # Classify parameters and generate code recursively
   x <- pp_internal(
-    call=call, depth=0L, x=x, unsupported=unsupported, par.type="internal"
+    call=call, depth=0L, x=x, unsupported=unsupported, par.type=PAR.IVARY.NUM
   )
   x[['call.processed']] <- call
   if(!all(x[['par.type']] %in% PAR.TYPES))
@@ -151,10 +152,10 @@ preprocess <- function(call, optimize=FALSE) {
           )
         }
   ) } )
-  extra.vars <- c('narg', 'ext.any')
+  extra.vars <- c('narg', 'icnst.any')
   extra.vars.tpl <- logical(length(extra.vars))
   names(extra.vars.tpl) <- extra.vars
-  args.used <- vapply(
+  pars.used <- vapply(
     x[['code']][calls.keep], function(x) unlist(x[extra.vars]), extra.vars.tpl
   )
   code.txt <- c(
@@ -172,14 +173,14 @@ preprocess <- function(call, optimize=FALSE) {
     codes.u,
 
     # C function to be invoked by runners
-    sprintf("void run(\n  %s\n) {", toString(R.ARGS.ALL)),
+    sprintf("void run(\n  %s\n) {", toString(CR.ARGS.ALL)),
 
     paste0(
       "  ",
       c(
-        # Some variables not always used so add dummy uses to suppress warnings
-        if(!any(args.used['narg',]))    "(void) narg;  // unused",
-        if(!any(args.used['ext.any',])) "(void) extn;  // unused",
+        # Some parameters not always used so add dummy uses to suppress warnings
+        if(!any(pars.used['narg',]))      "(void) narg;  // unused",
+        if(!any(pars.used['icnst.any',])) "(void) extn;  // unused",
         "",
         # C calls.
         unlist(calls.fin)
@@ -227,7 +228,7 @@ pp_internal <- function(
   if (
     is.call(call) &&
     linfo[['name']] %in% names(VALID_FUNS) &&
-    !par.type %in% PAR.EXT
+    !par.type %in% PAR.ICNST
   ) {
     # - r2c Eval Call Recursion on Params --------------------------------------
     # Classify Params
@@ -241,22 +242,26 @@ pp_internal <- function(
     }
     func <- linfo[['name']]
 
-    par.type <- PAR.INT.CALL
-    par.ext <- VALID_FUNS[[c(func, "extern")]]
-    par.ext.names <- names(par.ext)
-    par.ext.types <- vapply(par.ext, "[[", "", "type")
-    par.ext.validate <- lapply(par.ext, "[[", "validate")
+    arg.type <- ARG.INT
+    # If we ever add more than one internal type, we need to ensure that's
+    # resolved in the subsequent code at some point.
+    if(length(arg.type) != 1L)
+      stop("Internal Error: resolve multiple internal arg types")
+    par.icnst <- VALID_FUNS[[c(func, "icnst")]]
+    par.icnst.names <- names(par.icnst)
+    par.icnst.types <- vapply(par.icnst, "[[", "", "type")
+    par.icnst.validate <- lapply(par.icnst, "[[", "validate")
 
-    if(!all(par.ext.names %in% names(args)))
+    if(!all(par.icnst.names %in% names(args)))
       stop(
-        "Internal Error: designated external parameters missing; is `call` ",
-        "not properly match-called?"
+        "Internal Error: designated iteration-constant parameters missing; is ",
+        "`call` not properly match-called?"
       )
-    par.ext.loc <- match(par.ext.names, names(args), nomatch=0)
-    par.types <- rep("internal", length(args))
-    par.types[par.ext.loc] <- par.ext.types
-    par.validate <- vector(mode='list', length(args))
-    par.validate[par.ext.loc] <- par.ext.validate
+    par.icnst.loc <- match(par.icnst.names, names(args), nomatch=0)
+    par.types <- rep(PAR.IVARY.NUM, length(args))
+    par.types[par.icnst.loc] <- par.icnst.types
+    par.validate <- replicate(length(args), function(x) TRUE, simplify=FALSE)
+    par.validate[par.icnst.loc] <- par.icnst.validate
 
     passive <- passive && func %in% c(PASSIVE.SYM, 'vcopy')
 
@@ -283,7 +288,6 @@ pp_internal <- function(
         passive=passive, unsupported=unsupported,
         par.type=par.types[i]
       )
-      par.types[i] <- tail(x[['par.type']], 1L)
     }
     # Are we in a rec chain?  Needed for alloc to know which bindings are
     # from rec (see reconcile_control_flow).
@@ -297,11 +301,12 @@ pp_internal <- function(
     par.validate <- par.validate[1L]  # this is never used as its a call
   } else {
     # - Constant Param, Symbol, Literal, or Unsupported Call -------------------
-    if(!par.type %in% PAR.EXT) {
-      # NB: PAR.INT.LEAF is used for unsupported _calls_ too.  It should really be
-      # named PAR.EXT.EVAL or some such.  Actually, no, since symbol could be
-      # varying and that's not disambiguated until we have teh data
-      par.type <- PAR.INT.LEAF
+    if(par.type %in% PAR.ICNST) {
+      arg.type <- ARG.EXT[match(par.type, PAR.ICNST)]
+    } else if(is.call(call) && !linfo[['name']] %in% names(VALID_FUNS)) {
+      arg.type <- ARG.EXT.NUM
+    } else {
+      arg.type <- ARG.INT
     }
     args <- list()
     code <- code_blank()
@@ -327,14 +332,14 @@ pp_internal <- function(
   }
   record_call_dat(
     x, call=call, depth=depth, linfo=linfo, argn=argn,
-    par.type=par.type, par.validate=par.validate,
+    arg.type=arg.type, par.type=par.type, par.validate=par.validate,
     code=code, assign=assign, indent=indent, rec=rec
   )
 }
 
 #' See preprocess for some discussion of what the elements are
 #'
-#' $call: linearized call tree with parameters preceeding calls (recall that a
+#' $call: linearized call tree with parameters preceding calls (recall that a
 #'   call can itself be a parameter to another call nearer the root).
 #' $depth: tree depth of each call or parameter
 #' $linfo: result of calling get_lang_info on call, or NULL for terminals.
@@ -354,15 +359,24 @@ pp_internal <- function(
 #'   point in time snapshot and cannot be used to reconstruct the history of the
 #'   renames.
 #' $call.rename: version of `call` with symbols renamed using `rename`.
-#' $par.type: argument type, one of "ext.num", "ext.any", "int.call",
-#'   "int.leaf".  The first two are "external", and the last two are
-#'   respectively non-terminal and terminal "internal" tokens.  See `?r2cq` for
-#'   details on internal/external.
+#' $par.type: parameter type, one of PAR.TYPES, designates whether a parameter
+#'   requires iteration constant (`PAR.ICNST.NUM`, `PAR.ICNST.ANY`) expressions,
+#'   or can accept iteration varying data (`PAR.IVARY.NUM`).  The former
+#'   requires external expressions (i.e. `eval`ed in R), whereas the latter can
+#'   accept either internal (i.e. computed in `r2c` native code) or external
+#'   numeric.
+#' $arg.type: argument type, one of `ARG.EXT`, or `ARG.INT`. The first
+#'   are "external" in that they require evaluation by `base::eval`, and the
+#'   last is evaluated by `r2c` native code.  We use `arg.type` and not
+#'   `par.type` because parameters that are classified as iteration varying can
+#'   accept external expressions that evaluate to numeric.  See
+#'   `?r2c-expression-types`.
 #' $par.validate: a list of functions, each will validate the result of
-#'   evaluating the corresponding external parameters at allocation time.
-#'   Entries that belong to internal parameters or the call themselves are set
-#'   to NULL.
+#'   evaluating the corresponding iteration-constant parameters at allocation
+#'   time.  Entries that belong to internal parameters or the call themselves
+#'   are set to NULL.
 #' $rec: whether current call is a part of a chain that ends with a `rec`
+#' $is.call: call is a call (as opposed to symbol, terminal, whatever).
 #'
 #' @noRd
 
@@ -377,10 +391,12 @@ init_call_dat <- function()
 
     argn=character(),
     depth=integer(),
+    arg.type=character(),
     par.type=character(),
     assign=logical(),
     indent=integer(),
-    rec=logical()
+    rec=logical(),
+    is.call=logical()
   )
 
 ## Record Expression Data
@@ -394,7 +410,8 @@ init_call_dat <- function()
 ## See `init_call_dat` for parameter details.
 
 record_call_dat <- function(
-  x, call, depth, linfo, argn, par.type, par.validate, code, assign, indent, rec
+  x, call, depth, linfo, argn, arg.type, par.type, par.validate, code,
+  assign, indent, rec
 ) {
   vetr(par.validate=list(NULL))
   # list data
@@ -413,10 +430,12 @@ record_call_dat <- function(
   x[['linfo']] <- c(x[['linfo']], list(linfo))
   x[['argn']] <- c(x[['argn']], argn)
   x[['depth']] <- c(x[['depth']], depth)
+  x[['arg.type']] <- c(x[['arg.type']], arg.type)
   x[['par.type']] <- c(x[['par.type']], par.type)
   x[['assign']] <- c(x[['assign']], assign)
   x[['indent']] <- c(x[['indent']], indent)
   x[['rec']] <- c(x[['rec']], rec)
+  x[['is.call']] <- c(x[['is.call']], is.call(call))
   if(length(unique(lengths(x[CALL.DAT.VEC]))) != 1L)
     stop("Internal Error: irregular vector call data.")
 
@@ -493,10 +512,10 @@ match_call_rec <- function(call) {
       }
     }
     if(length(call) > 1) {
-      par.ext <- VALID_FUNS[[c(func, "extern")]]
+      par.icnst <- VALID_FUNS[[c(func, "icnst")]]
       for(i in seq(2L, length(call), by=1L)) {
         par.name <- names2(call)[i]
-        if(!par.name %in% names(par.ext)) {
+        if(!par.name %in% names(par.icnst)) {
           if(par.name == "...") {
             for(j in seq_along(call[[i]]))
               call[[i]][[j]] <- match_call_rec(call[[i]][[j]])
@@ -570,9 +589,9 @@ transform_call_rec <- function(call) {
     call <- call.transform
   }
   if(is.call(call) && length(call) > 1L) {
-    par.ext.names <- names(VALID_FUNS[[c(func, "extern")]])
+    par.icnst.names <- names(VALID_FUNS[[c(func, "icnst")]])
     for(i in seq(2L, length(call), 1L)) {
-      if(!names2(call)[i] %in% par.ext.names)
+      if(!names2(call)[i] %in% par.icnst.names)
         call[[i]] <- transform_call_rec(call[[i]])
     }
   }
@@ -622,9 +641,9 @@ transform_control <- function(x, i=0L) {
     stop("Exceeded maximum allowable control structure count (", i - 1L,")")
   if(is.call(x)) {
     call.sym <- get_lang_name(x)
-    par.ext.names <- names(VALID_FUNS[[c(call.sym, "extern")]])
-    par.ext <- which(names2(x) %in% par.ext.names)
-    skip <- -c(1L, par.ext)
+    par.icnst.names <- names(VALID_FUNS[[c(call.sym, "icnst")]])
+    par.icnst <- which(names2(x) %in% par.icnst.names)
+    skip <- -c(1L, par.icnst)
     x[skip] <- lapply(x[skip], transform_control, i=i + 1L)
     if(call.sym == "if") {
       if(!length(x) %in% 3:4)

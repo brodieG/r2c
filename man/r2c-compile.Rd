@@ -94,14 +94,17 @@ an "r2c_fun" function; this is an unusual function so please see
 details.
 }
 \description{
-The \verb{r2c*} functions translate eligible R calls into C, compile them into
-native instructions using \verb{R CMD SHLIB}, and return an interface to that
-code in the form of an "r2c_fun" function.  This function will carry out
-out numerical calculations with \code{r2c} native instructions instead of with the
-standard R routines. "r2c_fun" functions are intended to be run with the
-\code{r2c} \link{runners} for fast iterated calculations.  \code{r2c} adheres closely to R
-semantics for the supported use cases.  Look at the examples here and those
-of the \link{runners} to get started.
+The \verb{r2c*} functions translate \link[=r2c-supported-funs]{eligible R calls} into C,
+compile them into native instructions using \verb{R CMD SHLIB}, and return an
+interface to that code in the form of an "r2c_fun" function.  This function
+will carry out out numerical calculations with \code{r2c} native instructions
+instead of with the standard R routines. Expressions to compile can contain
+arbitrary R sub-expressions so long as they are found to be
+\link[=r2c-expression-types]{iteration-constant} at run time.  "r2c_fun" functions
+are intended to be run with the \code{r2c} \link{runners} for fast iterated
+calculations.  \code{r2c} adheres closely to R semantics for the
+supported use cases.  Look at the examples here and those of the \link{runners} to
+get started.
 }
 \section{r2c Generated Functions}{
 
@@ -135,14 +138,13 @@ function (e.g. \code{r2cq(a + b)}).
 For \code{r2cl} and \code{r2cq}, free symbols used as parameters to \code{call} and its
 constituent sub-calls (e.g. the \code{x} and \code{y} in \code{sum(x) + y}) will become
 parameters to the output "r2c_fun" function.  There must be at least one such
-symbol in \code{call}.  Bindings set by \link[=r2c-expression-types]{constant expressions} are ignored when determining whether a
-symbol is free or not.  Parameter order follows that of appearance in the
+symbol in \code{call}.  Parameter order follows that of appearance in the
 call tree after everything is \code{\link{match.call}}ed.  Symbols beginning with
 \code{.R2C} are reserved for use by \code{r2c} and thus disallowed in \code{call}.  You may
 also directly set the parameter list with the \code{formals} parameter, or with
 \code{r2cf}.
 
-As with regular R functions, unbound symbols  are resolved in the lexical
+As with regular R functions, unbound symbols are resolved in the lexical
 environment of the function.  You can set a different environment on creation
 of the function with the \code{envir} parameter, but currently there is no way to
 change it afterwards (\code{environment(r2c_fun) <- x} will likely just break the
@@ -169,7 +171,7 @@ last interrupt check.  There is infrastructure to support within
 iteration-interrupts, but it adds overhead when dealing with many iterations
 with few elements each and thus is disabled at the moment.
 
-Users should not rely on specifics of The internal structure of "r2c_fun"
+Users should not rely on specifics of the internal structure of "r2c_fun"
 functions; these are subject to change without notice in future \code{r2c}
 releases.  The only supported uses of "r2c_fun" functions are use with the
 \link{runners}, standard invocation with the \code{(} operator, and other \code{r2c}

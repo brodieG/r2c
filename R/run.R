@@ -175,9 +175,9 @@ prep_alloc <- function(alloc, res.size) {
     stop("Internal Error: result should be zero length when uninitialized.")
   alloc[['alloc']][['dat']][[alloc[['alloc']][['i']]]] <- numeric(res.size)
 
-  # Extract control parameters, and run sanity checks (not fool proof)
   dat <- alloc[['alloc']][['dat']]
-  extern <- lapply(alloc[['call.dat']], "[[", "extern")
+  # External args that are allowed to evaluate to anything
+  ext.any <- lapply(alloc[['call.dat']], "[[", "stack.ext.any")
   # Ids into call.dat, last one will be the result
   ids <- lapply(alloc[['call.dat']], "[[", "ids")
   if(!all(unlist(ids) %in% seq_along(dat)))
@@ -185,7 +185,7 @@ prep_alloc <- function(alloc, res.size) {
   ids <- lapply(ids, "-", 1L) # 0-index for C
 
   dat_cols <- sum(alloc[['alloc']][['type']] == "grp")
-  list(dat=dat, dat_cols=dat_cols, ids=ids, extern=extern, alloc=alloc)
+  list(dat=dat, dat_cols=dat_cols, ids=ids, ext.any=ext.any, alloc=alloc)
 }
 # Run Once
 #
@@ -218,7 +218,7 @@ one_exec_int <- function(obj, formals, MoreArgs, call) {
     alp[['dat']],
     alp[['dat_cols']],
     alp[['ids']],
-    alp[['extern']],
+    alp[['ext.any']],
     res.size
   )
   if(status) {

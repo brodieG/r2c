@@ -17,11 +17,12 @@ constraints and semantic differences to the equivalents in R:
 \item Control structure return values must be guaranteed to be the same
 size irrespective of the branch taken, if they are subsequently used.
 Return values are coerced to a common type.
-\item Assignments made within control structure branches must be guaranteed to be
+\item Assignments made within control structure branches must be
 the same size irrespective of branch taken, if the corresponding bindings
 are subsequently used.  Assigned values are coerced to a common type.
 \item Control structures can be nested at most 999 levels.
-\item \link[=r2c-expression-types]{Constant expressions} must be valid in every branch.
+\item \link[=r2c-expression-types]{Constant expressions} must be valid in every branch,
+even if the branch is not taken at run time.
 }
 
 To clarify the last point, consider:
@@ -29,11 +30,10 @@ To clarify the last point, consider:
 \if{html}{\out{<div class="sourceCode">}}\preformatted{if(n > 0) sum(seq_len(n)) else 0
 }\if{html}{\out{</div>}}
 
-The \code{n} argument to \code{seq_len} is treated as a
-\link[=r2c-expression-types]{constant} so it is checked at allocation time.
-Because \code{r2c} does not evaluate \code{n > 0} at allocation time, \code{r2c} runs
-\code{seq_len}'s validity checks for \code{n} even if \code{n} is negative.  Checks like the
-\code{n > 0} above need to be done outside of \code{r2c}.
+The call to \code{seq_len} is a non-implemented \link[=r2c-expression-types]{constant expression} so it is run at allocation time.  On the
+other hand, \code{n > 0} is a varying expression only run after allocation, so
+\code{r2c} externally evaluates \code{seq_len(n)} irrespective of the value of \code{n}.
+Checks like the \code{n > 0} above need to be done outside of \code{r2c}.
 
 There are also other minor semantic differences:
 \itemize{
@@ -42,11 +42,10 @@ they  would return NULL.
 \item \code{\link[base:Control]{for}} sets \code{var} to NA_real_ if \code{length(seq) == 0} instead of
 NULL.
 }
-
-See the \link[=r2c-memory]{memory help page} for background on the equal size
-requirements.
 }
 \seealso{
-\link[=r2c]{Package Overview}.
+The \link[=r2c-memory]{memory help page} for background on the equal
+size requirements, and \link[=r2c-preprocess]{preprocessing} for more
+control structure implementation details.  Also: \link[=r2c]{package overview}.
 }
 \keyword{internal}

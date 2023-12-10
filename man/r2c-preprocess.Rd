@@ -6,23 +6,23 @@
 \description{
 \code{r2c} will preprocess R expressions to implement optimizations, or to convert
 calls to a format better suited for translation to C.  Preprocessing will not
-affect the semantics of an R expression, but in some cases the pre-processed
-call may look quite different from the input expression.  In general \code{r2c}
-attempts to conceal the preprocessed expressions, but in some cases they may
-leak via error messages or other pathways.  This documentation page exists so
-users that encounter such leaks can get some indication of what is happening.
-\code{\link[=get_r_code]{get_r_code(..., raw=TRUE)}}  will show the fully pre-processed
-version of the R code.
+affect the semantics of an R expression once it is compiled, but the
+pre-processed call may look different from the input expression and may not
+run as expected in R.  In general \code{r2c} attempts to conceal the preprocessed
+expressions, but in some cases they may leak via error messages or other
+pathways.  This documentation page exists so users that encounter such leaks
+can get some indication of what is happening.  \code{\link[=get_r_code]{get_r_code(..., raw=TRUE)}}  will show the fully pre-processed version of the R
+code.
 }
 \section{Control Structures}{
 
 
-Preprocessing is most impactful for control structures.  Most R level calls
+Preprocessing is most impactful for \link[=r2c-control-structures]{control structures}.  Most R level calls
 are converted 1-1 into C level calls.  Control structures are more
 complicated because we need to generate the call structure itself without a
 direct correspondence of R call to structural element.  The
 preprocessor \link[=intermediate-representation]{decomposes regular if / else calls}
-calls as:
+calls like:
 
 \if{html}{\out{<div class="sourceCode">}}\preformatted{if(a) x else y
 }\if{html}{\out{</div>}}

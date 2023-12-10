@@ -40,10 +40,10 @@ code_gen_seq_along <- function(fun, pars, par.types) {
   vetr(
     identical(., "seq_along"),
     pars=list(NULL),
-    par.types=character() && all(. %in% PAR.INT)
+    par.types=character() && all(. %in% PAR.IVARY)
   )
   name <- FUN.NAMES[fun]
-  defn <- sprintf(f_seq_along, name, toString(F.ARGS.BASE))
+  defn <- sprintf(f_seq_along, name, toString(CF.ARGS.BASE))
   code_res(defn=defn, name=name)
 }
 

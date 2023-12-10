@@ -17,11 +17,11 @@ code_gen_pow <-  function(fun, pars, par.types) {
   vetr(
     identical(., "^"),
     pars=list(NULL, NULL),
-    par.types=character() && all(. %in% PAR.INT)
+    par.types=character() && all(. %in% PAR.IVARY)
   )
   name <- FUN.NAMES[fun]
   defn <- sprintf(
-    bin_op_vec_rec, name, toString(F.ARGS.BASE), "pow", ",",
+    bin_op_vec_rec, name, toString(CF.ARGS.BASE), "pow", ",",
     IX[['I.STAT']], IX[['STAT.RECYCLE']]
   )
   code_res(defn=defn, name=name, headers="<math.h>")
@@ -49,10 +49,10 @@ code_gen_square <- function(fun, pars, par.types) {
   vetr(
     identical(., "square"),
     pars=list(NULL),
-    par.types=character() && all(. %in% PAR.INT)
+    par.types=character() && all(. %in% PAR.IVARY)
   )
   name <- FUN.NAMES[fun]
-  defn <- sprintf(square_code, name, toString(F.ARGS.BASE))
+  defn <- sprintf(square_code, name, toString(CF.ARGS.BASE))
   code_res(defn=defn, name=name, headers="<math.h>")
 }
 #' Raise a Vector to the Power of Two

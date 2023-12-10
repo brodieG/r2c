@@ -2,11 +2,14 @@
 % Please edit documentation in R/r2c-package.R
 \name{r2c-supported-funs}
 \alias{r2c-supported-funs}
-\title{Supported Functions}
+\title{Implemented Functions}
 \description{
-\code{r2c} supports a subset of R functions.  These functions are re-implemented
-and optimized for iterated execution while hewing as closely as practicable
-to the original R semantics.
+\code{r2c} supports a subset of R functions for compilation.  These functions
+are re-implemented and optimized for iterated execution while hewing as
+closely as practicable to the original R semantics.  \code{r2c} also allows
+arbitrary R function calls provided they are
+\link[=r2c-expression-types]{iteration-constant}, but these are evaluated in R and
+not in \code{r2c} compiled code.
 }
 \details{
 The following functions are supported by the \code{r2c} \link[=r2c-compile]{compiler},
@@ -25,22 +28,19 @@ require \link[=r2c-expression-types]{constant expressions} are marked as such.
 \item \code{na.rm} is a \link[=r2c-expression-types]{constant} parameter.
 \item \code{trim} is unsupported.
 }
-\item Sequences: \code{seq_along}, \code{seq_len}, \code{rep}.
+\item Sequences: \code{seq_along}, \code{rep}.
 \itemize{
-\item \code{length.out}, \code{times}, and \code{each} are
-\link[=r2c-expression-types]{constant} parameters.
+\item \code{length.out}, \code{times}, and \code{each} are \link[=r2c-expression-types]{constant}
+parameters.
 \item \code{rep} does not take any \code{...} parameters.
 }
 \item Concatenation: \code{c}.
-\itemize{
-\item Ignores/drops names.
-}
 \item Subsetting: \code{x[i]}, \code{x[s] <- expr}.
 \itemize{
 \item In 1 dimension with strictly positive numeric indices.
 \item Return value of assignment form may not be used.
 }
-\item Initialization: \code{numeric} (and the r2c implemented \code{\link{numeric_along}}).
+\item Initialization: \code{numeric} (and the \code{r2c} provided \code{\link{numeric_along}}).
 \itemize{
 \item \code{length} is a \link[=r2c-expression-types]{constant parameter}.
 }
@@ -58,10 +58,14 @@ constraints and semantic differences to R.
 }
 }
 
-Expressions provided to \link[=r2c-expression-types]{varying} parameters
-must be attribute-less numeric, integer, or logical vectors.  Integer or
-logical inputs or outputs attract a \link[=r2c-performance]{performance penalty}.
-Parameters marked as constant may only be given constant expressions.
+Except for \link[=r2c-expression-types]{constant} parameters, expressions and
+variables provided as arguments to \code{r2c} implemented functions must resolve
+to optionally named but otherwise attribute-less numeric, integer, or logical
+vectors.  Names are ignored and/or dropped.  Integer or logical inputs or
+outputs attract a \link[=r2c-performance]{performance penalty}.  Parameters marked
+as constant may only be given \link[=r2c-expression-types]{constant expressions},
+and while \code{r2c} in general allows them to evaluate to any R object, the \code{r2c}
+function they are used with will place restrictions on allowable values.
 
 Calls must be in the form \code{fun(...)} (\verb{a fun b} for operators)  where \code{fun}
 is the name of the function, optionally in \code{pkg::fun} format.  Functions must

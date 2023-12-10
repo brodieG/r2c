@@ -76,30 +76,31 @@ code_gen_numeric <- function(fun, pars, par.types) {
   vetr(
     identical(., "numeric"),
     pars=list(NULL),
-    par.types=character(1) && all(. %in% PAR.EXT.NUM)
+    par.types=character(1) && all(. %in% PAR.ICNST.NUM)
   )
   name <- FUN.NAMES[fun]
-  defn <- sprintf(f_numeric, name, toString(F.ARGS.BASE))
+  defn <- sprintf(f_numeric, name, toString(CF.ARGS.BASE))
   code_res(defn=defn, name=name)
 }
 code_gen_numeric_along <- function(fun, pars, par.types) {
   vetr(
     identical(., "numeric_along"),
     pars=list(NULL),
-    par.types=character(1) && all(. %in% PAR.INT)
+    par.types=character(1) && all(. %in% PAR.IVARY)
   )
   name <- FUN.NAMES[fun]
-  defn <- sprintf(f_numeric_along, name, toString(F.ARGS.BASE))
+  defn <- sprintf(f_numeric_along, name, toString(CF.ARGS.BASE))
   code_res(defn=defn, name=name)
 }
 code_gen_numeric_alongn <- function(fun, pars, par.types) {
   vetr(
     identical(., "numeric_alongn"),
     pars=list(),
-    par.types=character() && all(. %in% PAR.INT)
+    par.types=character() && all(. %in% PAR.IVARY)
   )
   name <- FUN.NAMES[fun]
-  defn <- sprintf(f_numeric_alongn, name, toString(c(F.ARGS.BASE, F.ARGS.VAR)))
+  defn <-
+    sprintf(f_numeric_alongn, name, toString(c(CF.ARGS.BASE, CF.ARGS.VAR)))
   code_res(defn=defn, name=name, narg=TRUE)
 }
 

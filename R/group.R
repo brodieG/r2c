@@ -100,7 +100,7 @@ group_exec_int <- function(
       alp[['dat']],
       alp[['dat_cols']],
       alp[['ids']],
-      alp[['extern']],
+      alp[['ext.any']],
       gsizes,
       group.res.sizes
     )

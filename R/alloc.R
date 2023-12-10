@@ -29,26 +29,23 @@ NULL
 ## allocations are appended to the storage list that is part of the `alloc`
 ## object (`alloc[['dat']]).  See docs for `append_dat`.
 ##
-## Every leaf expression that might affect allocation requirements  is brought
-## into the storage list if it is not there already.  Leaf expressions include
-## those labeled PAR.INT.LEAF and those labeled PAR.EXT, but note that
-## PAR.EXT.ANY are kept on their own stack and thus don't affect allocation
-## requirements.  External vectors (i.e. not part of the group data) are shallow
-## copied into the storage list (i.e. just referenced, not actually copied, per
-## standard R semantics), except that if they are integer/logical they are
-## coerced and thus copied.  The semantics of lookup should mimic those of e.g.
-## `with`, where we first look through any symbols previously bound in the `r2c`
-## evaluation environment, then in the data in `with`, and finally in the
-## calling environment.
+## Every expression that is required to evaluate to a numeric is brought into
+## the storage list `dat`.  This includes `r2c` computed (internal) values as
+## well as iteration-constant external values.  Symbols that reference external
+## REAL vectors are shallow copied, wheras all others are evaluated / coerced
+## (thus creating new allocations).  Some parameters allow non-numeric
+## iteration-constant values; these values are evaluated and stored in a
+## separate tracking list.  All external evaluations are cached and re-used as
+## described in `?r2c-expression-types`.
 ##
-## The sizes of leaf expressions are tracked in the `stack` array, along with
-## their depth, and where in the storage list they reside.  When we reach a
-## sub-call all its inputs will be in the `stack` with a depth equal to 1 + its
-## own depth.  We can use the input size information along with meta data about
-## the function in the call to compute the output size.  The inputs are then
-## removed from the stack and replaced by the output size from the sub call, and
-## we allocate (or re-use a no-longer needed allocation) to/from the storage
-## list.  Ex-ante calculation of output size is complex (see `compute_size`).
+## Argument sizes are tracked in the `stack` array, along with their depth, and
+## where in the storage list they reside.  When we reach a sub-call all its
+## inputs will be in the `stack` with a depth equal to 1 + its own depth.  We
+## can use the input size information along with meta data about the function in
+## the call to compute the output size.  The inputs are then removed from the
+## stack and replaced by the output size from the sub call, and we allocate (or
+## re-use a no-longer needed allocation) to/from the storage list.  Ex-ante
+## calculation of output size is complex (see `compute_size`).
 ##
 ## This continues until the stack contains the output size and location of the
 ## final call, and the allocation memory list contains all the vectors required
@@ -89,7 +86,7 @@ NULL
 ## would be a fun challenge to add branches, and the linearized format is not
 ## well suited for them for the purpose of ex-ante size calculation.  Rather
 ## than try to transition everything to a recursive structure we resorted to
-## some convolutions to deal with the branches
+## some convolutions to deal with the branches.
 ##
 ## @section Depth:
 ##
@@ -122,7 +119,7 @@ NULL
 ## concatenation of all of them.  Thus, the final call is intercepted and
 ## redirected to the special result vector in the storage list.  Special
 ## handling is required when the result is just a symbol, or branches are
-## involved.  See `copy_branchdat` in preprocess.R.
+## involved.  See `copy_branchdat` in prepro-copy.R.
 ##
 ## @param x preprocessed data as produced by `preprocess`
 ## @return an alloc object:
@@ -187,52 +184,52 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
   # calculations in the call tree, and to allocate all the vectors into a data
   # structure.  This data structure will also include references to external
   # vectors (if there are such references).  The result of evaluating
-  # control/flag parameters is recorded separately in `call.dat`.
+  # constant parameters that can resovle to anything tis recorded separately in
+  # `stack.ext.any`.
   stack <- init_stack()
   stack.ext.any <- list()
   stack.sizes <- list()   # argument sizes (see size.R)
   stack.lcopy <-
     matrix(integer(), nrow=2, dimnames=list(c('lcopy', 'set'), NULL))
   call.dat <- list()
-  external.evals <- list()
+  external.evals <- list() # track `id` in `dat` for numeric externals
   call.names <- vapply(x[['linfo']], "[[", "", "name")
   call.pkgs <- vapply(x[['linfo']], "[[", "", "pkg")
 
-  # The final result calculation or reconciled calles  cannot re-use a slot so
+  # The final result calculation or reconciled calls cannot re-use a slot so
   # must get their own allocations.
   compute.intern <-
-    x[['par.type']] == PAR.INT.CALL & !call.names %in% PASSIVE.SYM
+    x[['arg.type']] %in% ARG.INT & x[['is.call']] &
+    !call.names %in% PASSIVE.SYM
   no.reuse <-
     c(max(c(0L, which(compute.intern))), which(call.names == "rec") - 1L)
 
   for(i in seq_along(x[['call']])) {
     ext.id <- ""
-    par.type <- x[['par.type']][[i]]
-    par.ext <- par.type %in% PAR.EXT
+    arg.type <- x[['arg.type']][[i]]
+    arg.ext <- arg.type %in% ARG.EXT
+    par.icnst <- x[['par.type']][[i]] %in% PAR.ICNST
+
     reuse <- FALSE
 
     call <- x[['call']][[i]]
     depth <- x[['depth']][[i]]
     argn <- x[['argn']][[i]]
     pkg <- name <- ""
-    if(par.type != PAR.EXT.ANY) {
+    if(arg.type != ARG.EXT.ANY) {
       name <- call.names[i]
       pkg <- call.pkgs[i]
     }
-    # The `id` value does some heavy lifting here.  We rely on it being zero to
-    # catch unsupported calls that need to be evaluated even though they get
-    # classified as PAR.INT.LEAF.
-    id <- if(par.type != PAR.INT.CALL) name_to_id(alloc, name) else 0L
+    rec <- x[['rec']][[i]]  # do we need to reconcile?
+    id <- if(is.name(call)) name_to_id(alloc, name) else 0L
     vec.dat <- NULL
 
-    rec <- x[['rec']][[i]]  # do we need to reconcile?
-
     # - Process Call -----------------------------------------------------------
-    if(par.type == PAR.INT.CALL) {
+    if(is.call(call) && arg.type %in% ARG.INT) {
       # Internal call to evaluate: use accrued stack and function type to
       # compute result size.  Allocation and stack reduction happen later.
       check_fun(name, pkg, env)
-      ftype <- VALID_FUNS[[c(name, "type")]] # see cgen() docs
+      ftype <- VALID_FUNS[[c(name, "size.type")]] # see cgen() docs
 
       # Check inputs are valid types (subset/subassign with logical not valid)
       stack.input <- stack_inputs(stack, depth)
@@ -308,11 +305,14 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
         numeric(), "tmp", typeof="logical", size.coef=list(integer()), gmax=gmax
       )
     # - External ---------------------------------------------------------------
-    } else if (par.ext || !id) {
-      # ext.any evals should not mix with internal values.
-      if(id && par.type == PAR.EXT.ANY)
+    } else if (arg.ext || (!id && !is.call(call))) {
+      # Either an argument is known to require external evaluation, or it
+      # is a symbol/literal that doesn't map to a known `r2c` binding.  Both of
+      # these require a one time `base::eval` prior to caching.
+      if(id && arg.type == ARG.EXT.ANY)
+        # ext.any evals should not be placed in the `data` list.
         stop("Internal Error: name-external exp conflict.")
-      if(par.ext && id) {
+      if(arg.ext && id) {
         # An id should never resolve to 'ext' anyway...
         if(!alloc[['type']][id] %in% c('ext')) {
           stop(
@@ -324,6 +324,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
         # important if we reference same external symbol multiple times and it
         # is e.g. integer, which would require coercion to numeric each time.
         # Drawback is expressions with side-effects will not work correctly.
+        # Debatable whether we should allow calls to be cached as we do here.
         ext.id <- paste0(
           c(deparse(call, control="niceNames"), fingerprint_call(call, alloc)),
           collapse="\n"
@@ -333,36 +334,36 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
         if(!is.null(external.evals[[ext.id]])) {
           id <- external.evals[[ext.id]]
           if(!id) stop("Internal Error: external.evals cache corrupted.")
-          # Similar logic "Symbol in Data" Section
+          # Similar logic "Internal Symbol" Section
           alloc[['i']] <- id
           # Update symbol depth (from Symbol in Data, maybe N/A here?)
           if(alloc[['depth']][id] > depth) alloc[['depth']][id] <- depth
         }
       }
-      # Need to eval parameter if not cached.  We intercept any attemps to use
-      # internal parameters via the active bindings created by guard_symbol.
-      # add a child environment?  What about branches and nested functions?
+      # Need to externally eval uncached args.  We intercept any attemps to use
+      # internal symbols via the active bindings created by guard_symbol.
       if(!id) {
         tryCatch(
           arg.e <- eval(call, envir=alloc[[NM.ENV.VAR]]),
           error=function(e) stop(simpleError(conditionMessage(e), call.outer)),
           "r2c-internalSymAccess"=function(e)
-            varying_err(e, call, call.outer, par.ext),
+            varying_err(e, call, call.outer, par.icnst),
           "r2c-computedConstant"=function(e)
-            varying_err(e, call, call.outer, par.ext)
+            varying_err(e, call, call.outer, par.icnst)
         )
-        # External params need to be validated
+        # Validated external args even if they resolve to an internal id
         if(
-          par.type %in% PAR.EXT &&
+          arg.ext &&
           !isTRUE(err.msg <- x[['par.validate']][[i]](arg.e))
         ) {
           stop(
             simpleError(
-              paste0("Invalid external parameter: ", err.msg), call.outer
+              paste0("Invalid iteration-constant parameter: ", err.msg),
+              call.outer
           ) )
         }
         # Other post processing/recording.
-        if(par.type == PAR.EXT.ANY) {
+        if(arg.type == ARG.EXT.ANY) {
           if(!nzchar(argn))
             stop("Internal Error: missing arg name for non-num external")
           ext.any <- list(arg.e)
@@ -370,10 +371,10 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
           stack.ext.any <- c(stack.ext.any, ext.any)
         } else {
           # These must all be naked numeric; it does result in double validation
-          # for external evals that correspond to external parameters.
-          if(!par.type %in% PAR.INT && !nzchar(argn))
-            stop("Internal Error: missing arg name for external param")
-          validate_ext(x, i, par.type, arg.e, name, call, .CALL)
+          # for external evals that correspond to iteration constant parameters.
+          if(!arg.ext && !nzchar(argn))
+            stop("Internal Error: missing arg name for external argument")
+          validate_ext(x, i, arg.e, name, call, .CALL)
           typeof <- typeof(arg.e)
           size.coef <- list(length(arg.e))
           vec.dat <- vec_dat(
@@ -382,9 +383,10 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
           )
         }
       }
-    # - Match a Symbol In Data -------------------------------------------------
-    } else if (id) {  # see prior else if for `id`
-      # Similar logic in Control/ExternalSection
+    # - Symbol -----------------------------------------------------------------
+    } else if (id) {
+      # Similar logic in External Section.  NB: external symbols also get `id`
+      # values after initial evaluation, so they can show up here too.
       alloc[['i']] <- id
       # Update symbol depth (needed for assigned-to symbols)
       if(alloc[['depth']][id] > depth) alloc[['depth']][id] <- depth
@@ -399,7 +401,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
       if(nzchar(ext.id)) external.evals[[ext.id]] <- alloc[['i']]
     }
     # Call actions that need to happen after allocation data updated
-    if(par.type == PAR.INT.CALL) {
+    if(arg.type %in% ARG.INT && is.call(call)) {
       # Release allocation after call parameters incorporated
       alloc <- alloc_free(alloc, depth)
       # Append call data (different than append_dat)
@@ -466,7 +468,7 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
       stack.ext.any <- list()
     }
     # Append new data/computation result to stack
-    if(par.type != PAR.EXT.ANY)
+    if(arg.type != ARG.EXT.ANY)
       stack <- append_stack(stack, alloc=alloc, depth=depth, argn=argn)
 
     names_clean(alloc, i)  # Drop expired symbols
@@ -552,15 +554,16 @@ alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
 ## Track Required Allocations for Intermediate vectors
 ##
 ## r2c keeps a list of every vector that it uses in computations, including the
-## original data vectors, any referenced external vectors, and any temporary
-## allocated vectors.  The temporary allocated vectors usage is tracked so that
-## they may be re-used if their previously values are no longer needed.  The
-## tracking is done via their depth in the call tree, and also whether any
-## symbols were bound to them (using the `names` matrix).  Once allocated, a
-## vector is never truly freed until the whole function execution ends.  It will
-## however be re-used within a group if the originally allocated vector is no
-## longer needed, and each new group will re-use the allocations from the prior
-## group.  Allocations are sized to accommodate the largest group.
+## original data vectors, any externally computed numeric vectors, and any
+## temporary allocated vectors.  The temporary allocated vectors (for r2c calcs)
+## usage is tracked so that they may be re-used if their previously values are
+## no longer needed.  The tracking is done via their depth in the call tree, and
+## also whether any symbols were bound to them (using the `names` matrix).  Once
+## allocated, a vector is never truly freed until the whole function execution
+## ends.  It will however be re-used within a group if the originally allocated
+## vector is no longer needed, and each new group will re-use the allocations
+## from the prior group.  Allocations are sized to accommodate the largest
+## group.
 ##
 ## Computed vectors (`vdat[['type']][i] == "tmp"`) are initialized as NULL.
 ## Their allocation size can be inferred from `vdat[['size.coefs']]` and `gmax`,
@@ -804,7 +807,8 @@ call_iter_var <- function(alloc, stack, depth) {
 ##
 ## * call: the call
 ## * name: the name of the function that's being called (excludes `pkg::` part)
-## * stack.ext.any: evaluated external parameters that can be non-numeric.
+## * stack.ext.any: externally evaluated iteration constant arguments that can
+##   be non-numeric.
 
 append_call_dat <- function(
   call.dat, call, call.name, stack, stack.ext.any, alloc, depth, call.i
@@ -1477,10 +1481,10 @@ unguard_symbol <- function(name, value, env) {
   env[[name]] <- value
   env
 }
-varying_err <- function(e, call, call.outer, par.ext) {
+varying_err <- function(e, call, call.outer, par.icnst) {
   call.dep <- deparseLines(call)
   err.head <-
-    if(par.ext) 'Constant parameter expression'
+    if(par.icnst) 'Constant parameter expression'
     else 'Unimplemented function call'
 
   err.msg <-
@@ -1512,12 +1516,10 @@ name_to_id <- function(alloc, name) {
 }
 ## Check That External Vectors are OK
 
-validate_ext <- function(x, i, par.type, arg.e, name, call, .CALL) {
-  if(par.type == PAR.INT.LEAF && !is.num_naked(list(arg.e))) {
+validate_ext <- function(x, i, arg.e, name, call, .CALL) {
+  if(!is.num_naked(list(arg.e))) {
     # Next call, if any
-    next.call.v <- which(
-      seq_along(x[['call']]) > i & x[['par.type']] == PAR.INT.CALL
-    )
+    next.call.v <- which(seq_along(x[['call']]) > i & x[['is.call']])
     err.call <-
       if(length(next.call.v)) x[['call']][[next.call.v[1L]]]
       else call

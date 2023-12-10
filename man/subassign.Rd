@@ -16,7 +16,7 @@ subassign(x, s, y)
 "Internal" function that implement subassignment (e.g. \code{x[s] <- y}) for
 \code{r2c}.  Standard R subassignments are converted to \code{subassign} so that the
 \code{r2c} \link[=r2c-preprocess]{preprocessor} can identify them as a sub-assignment
-instead of an a subset nested in an assignment.
+instead of a subset nested in an assignment.
 }
 \details{
 Unlike the R counterpart, or the \code{r2c} usage of this function,
@@ -25,7 +25,6 @@ scope of the function.  This function is an implementation detail and is
 documented only for the rare cases where it becomes visible to the user.
 }
 \seealso{
-Other \link[=intermediate representation functions]{intermediate-representation},
-\link[=`r2c` preprocessor]{r2c-preprocess}.
+Other \link[=intermediate-representation]{intermediate representation functions}, \code{r2c}\link[=r2c-preprocess]{preprocessor}.
 }
 \keyword{internal}

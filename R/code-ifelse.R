@@ -35,10 +35,10 @@ code_gen_if_test <- function(fun, pars, par.types) {
   vetr(
     identical(., IF.TEST),
     pars=list(NULL),
-    par.types=character() && all(. %in% PAR.INT)
+    par.types=character() && all(. %in% PAR.IVARY)
   )
   name <- FUN.NAMES[fun]
-  defn <- sprintf(f_iftest, name, toString(F.ARGS.BASE))
+  defn <- sprintf(f_iftest, name, toString(CF.ARGS.BASE))
   code_res(
     defn=defn, name=name,
     c.call.gen=function(...)
@@ -49,10 +49,10 @@ code_gen_if_true <- function(fun, pars, par.types) {
   vetr(
     identical(., "if_true"),
     pars=list(NULL),
-    par.types=character() && all(. %in% PAR.INT)
+    par.types=character() && all(. %in% PAR.IVARY)
   )
   name <- FUN.NAMES[fun]
-  defn <- sprintf(f_ifother, name, toString(F.ARGS.BASE))
+  defn <- sprintf(f_ifother, name, toString(CF.ARGS.BASE))
   code_res(
     defn=defn, name=name, c.call.gen=function(...) "} else {",
     out.ctrl=CGEN.OUT.CALL
@@ -62,10 +62,10 @@ code_gen_if_false <- function(fun, pars, par.types) {
   vetr(
     identical(., "if_false"),
     pars=list(NULL),
-    par.types=character() && all(. %in% PAR.INT)
+    par.types=character() && all(. %in% PAR.IVARY)
   )
   name <- FUN.NAMES[fun]
-  defn <- sprintf(f_ifother, name, toString(F.ARGS.BASE))
+  defn <- sprintf(f_ifother, name, toString(CF.ARGS.BASE))
   code_res(
     defn=defn, name=name, c.call.gen=function(...) "}", out.ctrl=CGEN.OUT.CALL
   )
@@ -74,10 +74,10 @@ code_gen_r2c_if <- function(fun, pars, par.types) {
   vetr(
     identical(., "r2c_if"),
     pars=list(NULL, NULL),
-    par.types=character() && all(. %in% PAR.INT)
+    par.types=character() && all(. %in% PAR.IVARY)
   )
   name <- FUN.NAMES[fun]
-  defn <- sprintf(f_ifother, name, toString(F.ARGS.BASE))
+  defn <- sprintf(f_ifother, name, toString(CF.ARGS.BASE))
   code_res(defn=defn, name=name, out.ctrl=CGEN.OUT.NONE)
 }
 code_gen_if <- function(...) {

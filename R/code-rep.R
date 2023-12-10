@@ -98,8 +98,8 @@ rep_size <- function(alloc, idx, gmax, gmin) {
   if(!is.size_coef(coefs)) stop("Internal Error: expected size coef.")
   if(!all(alloc[['type']][idx[2:4]] == "ext"))
     stop(
-      "Internal Error: `times`, `length.out` and `each` parameters to `rep` ",
-      "must be external."
+      "Internal Error: values of `times`, `length.out` and `each` parameters ",
+      "to `rep` must be externally computed."
     )
   # These should be validated already (not their interactions)
   times <- alloc[['dat']][[idx[2L]]]
@@ -117,7 +117,7 @@ rep_size <- function(alloc, idx, gmax, gmin) {
   length.out <- round(length.out[1L])
   each <- round(each[1L])
 
-  # Return a new size.coef, computed depending on the external params
+  # Return a new size.coef, computed depending on the external arguments
   size.coef <- if(!is.na(length.out)) {
     # length.out dominates
     list(length.out)
@@ -159,10 +159,12 @@ code_gen_rep <- function(fun, pars, par.types) {
   vetr(
     identical(., "rep"),
     pars=list(NULL, NULL, NULL, NULL),
-    par.types=character(4) && all(.[-1L] %in% PAR.EXT.NUM) && .[1L] %in% PAR.INT
+    par.types=
+      character(4) && all(.[-1L] %in% PAR.ICNST.NUM) &&
+      .[1L] %in% PAR.IVARY.NUM
   )
   name <- FUN.NAMES[fun]
-  defn <- sprintf(f_rep, name, toString(F.ARGS.BASE))
+  defn <- sprintf(f_rep, name, toString(CF.ARGS.BASE))
   code_res(defn=defn, name=name)
 }
 

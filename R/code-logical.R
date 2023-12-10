@@ -46,10 +46,10 @@ code_gen_lgl2 <- function(fun, pars, par.types) {
   vetr(
     . %in% c("&&", "||"),
     pars=list(NULL, NULL),
-    par.types=character() && all(. %in% PAR.INT)
+    par.types=character() && all(. %in% PAR.IVARY)
   )
   name <- FUN.NAMES[fun]
-  defn <- sprintf(f_lgl2, name, toString(F.ARGS.BASE), LGL.OP[fun], fun)
+  defn <- sprintf(f_lgl2, name, toString(CF.ARGS.BASE), LGL.OP[fun], fun)
   code_res(defn=defn, name=name, defines=LGL.DEFN[fun])
 }
 
@@ -100,10 +100,10 @@ code_gen_ifelse <- function(fun, pars, par.types) {
   vetr(
     identical(., "ifelse"),
     pars=list(NULL, NULL, NULL),
-    par.types=character() && all(. %in% PAR.INT)
+    par.types=character() && all(. %in% PAR.IVARY)
   )
   name <- fun
-  defn <- sprintf(f_ifelse, name, toString(F.ARGS.BASE))
+  defn <- sprintf(f_ifelse, name, toString(CF.ARGS.BASE))
   code_res(defn=defn, name=name)
 }
 

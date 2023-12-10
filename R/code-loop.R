@@ -44,10 +44,10 @@ code_gen_for_init <- function(fun, pars, par.types) {
   vetr(
     identical(., "for_init"),
     pars=list(NULL, NULL, NULL),
-    par.types=character() && all(. %in% PAR.INT)
+    par.types=character() && all(. %in% PAR.IVARY)
   )
   name <- FUN.NAMES[fun]
-  defn <- sprintf(f_for_init, name, toString(F.ARGS.BASE))
+  defn <- sprintf(f_for_init, name, toString(CF.ARGS.BASE))
   code_res(
     defn=defn, name=name,
     c.call.gen=function(...)
@@ -58,10 +58,10 @@ code_gen_for_iter <- function(fun, pars, par.types) {
   vetr(
     identical(., "for_iter"),
     pars=list(NULL, NULL, NULL),
-    par.types=character() && all(. %in% PAR.INT)
+    par.types=character() && all(. %in% PAR.IVARY)
   )
   name <- FUN.NAMES[fun]
-  defn <- sprintf(f_for_iter, name, toString(F.ARGS.BASE))
+  defn <- sprintf(f_for_iter, name, toString(CF.ARGS.BASE))
   code_res(
     defn=defn, name=name,
     c.call.gen=function(...)
@@ -72,10 +72,10 @@ code_gen_for_n <- function(fun, pars, par.types) {
   vetr(
     identical(., FOR.N),
     pars=list(NULL),
-    par.types=character() && all(. %in% PAR.INT)
+    par.types=character() && all(. %in% PAR.IVARY)
   )
   name <- FUN.NAMES[fun]
-  defn <- sprintf(f_for_other, name, toString(F.ARGS.BASE))
+  defn <- sprintf(f_for_other, name, toString(CF.ARGS.BASE))
   code_res(
     defn=defn, name=name, c.call.gen=function(...) "} } else {",
     out.ctrl=CGEN.OUT.CALL
@@ -85,10 +85,10 @@ code_gen_for_0 <- function(fun, pars, par.types) {
   vetr(
     identical(., FOR.0),
     pars=list(NULL),
-    par.types=character() && all(. %in% PAR.INT)
+    par.types=character() && all(. %in% PAR.IVARY)
   )
   name <- FUN.NAMES[fun]
-  defn <- sprintf(f_for_other, name, toString(F.ARGS.BASE))
+  defn <- sprintf(f_for_other, name, toString(CF.ARGS.BASE))
   code_res(
     defn=defn, name=name, c.call.gen=function(...) "}",
     out.ctrl=CGEN.OUT.CALL
@@ -98,10 +98,10 @@ code_gen_r2c_for <-function(fun, pars, par.types) {
   vetr(
     identical(., "r2c_for"),
     pars=list(NULL, NULL, NULL),
-    par.types=character() && all(. %in% PAR.INT)
+    par.types=character() && all(. %in% PAR.IVARY)
   )
   name <- FUN.NAMES[fun]
-  defn <- sprintf(f_for_other, name, toString(F.ARGS.BASE))
+  defn <- sprintf(f_for_other, name, toString(CF.ARGS.BASE))
   code_res(defn=defn, name=name, out.ctrl=CGEN.OUT.NONE)
 }
 code_gen_for <- function(...) {
@@ -119,10 +119,10 @@ code_gen_lset <- function(fun, pars, par.types) {
   vetr(
     identical(., "lset"),
     pars=list(NULL, NULL),
-    par.types=character() && all(. %in% PAR.INT)
+    par.types=character() && all(. %in% PAR.IVARY)
   )
   name <- FUN.NAMES[fun]
-  defn <- sprintf(f_rec, name, toString(F.ARGS.BASE))
+  defn <- sprintf(f_rec, name, toString(CF.ARGS.BASE))
   code_res(defn=defn, name=name, out.ctrl=CGEN.OUT.NONE)
 }
 
@@ -143,10 +143,10 @@ code_gen_lcopy <- function(fun, pars, par.types) {
   vetr(
     identical(., "lcopy"),
     pars=list(NULL, NULL),
-    par.types=character() && all(. %in% PAR.INT)
+    par.types=character() && all(. %in% PAR.IVARY)
   )
   name <- FUN.NAMES[fun]
-  defn <- sprintf(f_lcopy, name, toString(F.ARGS.BASE))
+  defn <- sprintf(f_lcopy, name, toString(CF.ARGS.BASE))
   code_res(defn=defn, name=name)
 }
 

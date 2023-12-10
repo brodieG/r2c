@@ -97,7 +97,7 @@ B.NAMED <- c('bind', 'named')
 # @section External Memory References:
 #
 # External memory references are symbols that resolve to memory allocated
-# outside of `r2c`, either those bound to the iteration varying data, or to the
+# outside of `r2c`, either those bound to the iteration constant data, or to the
 # enclosing environment chain.  We have a problem when the result of an `r2c`
 # expression is such a value, e.g. one that simply returns such
 # an external reference:
@@ -292,7 +292,7 @@ copy_branchdat <- function(x, unsupported) {
 #
 # @seealso `copy_branchdat` for context, `inject_rec_and_copy` for how we
 #   actually modify the call, `generate_candidate` for additional details on
-#   what requires reconciliation / copy..
+#   what requires reconciliation / copy.
 # @param index integer vector with the coordinates of `x` in the outermost
 #   expression (see `callptr`).
 # @param assign.to character vector of symbol names that are part of current
@@ -319,7 +319,7 @@ copy_branchdat <- function(x, unsupported) {
 #   * "bind": a list containing branch-local bindings, branch-local computed
 #     bindings, global bindings (all, and all0 for those re-injected at
 #     beginning of call by e.g. subassign), and every encountered binding
-#     (named).  See Tracking Bindings above.
+#     (named).  See B.ALL etal.
 #   * "copy": a list with elements "cand", and "act". Each is a list
 #     of `callptr` generated objects used to track calls that need to be
 #     reconciled and/or vcopied (potentially for "cand", definitively).
@@ -355,9 +355,9 @@ copy_branchdat_rec <- function(
 
   if (!is.call(x)) {
     # Could be either a symbol, or alternatively a literal (e.g. `42`).
-    # If a a literal, it will be checked for numeric-ness by the allocator.  It
-    # should never be the case that external parameters become candidates,
-    # except if they are sub-assign targets?
+    # If a literal, it will be checked for numeric-ness by the allocator.  It
+    # should never be the case that iteration-constant parameters become
+    # candidates, except if they are sub-assign targets?
     sym.local.cmp <- sym.name %in% data[[B.LOC.CMP]]
     sym.global <- sym.name %in% c(data[[B.ALL]], data[[B.ALL0]])
     passive <- !sym.local.cmp
@@ -461,7 +461,7 @@ copy_branchdat_rec <- function(
         # shouldn't matter since never used after branch.
         rec.skip <- 1:2
       }
-      par.ext.names <- names(VALID_FUNS[[c(sym.name, "extern")]])
+      par.ext.names <- names(VALID_FUNS[[c(sym.name, "icnst")]])
 
       # Recurse on subcomponents (literals too)
       for(i in seq_along(x)[-rec.skip]) {
@@ -1337,8 +1337,8 @@ copy_fordat <- function(
       rec.skip <- if(name %in% ASSIGN.SYM) {
         if(name == FOR.ITER) 1:3 else 1:2
       } else 1L
-      # Skip external params
-      par.ext.names <- names(VALID_FUNS[[c(name, "extern")]])
+      # Skip iteration constant params
+      par.ext.names <- names(VALID_FUNS[[c(name, "icnst")]])
       rec.skip <- union(rec.skip, which(names2(x) %in% par.ext.names))
 
       # Recurse

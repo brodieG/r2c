@@ -45,7 +45,7 @@ code_gen_concat <- function(fun, pars, par.types) {
   code_res(
     defn=sprintf(
       f_concat, name,
-      toString(c(F.ARGS.BASE, F.ARGS.VAR))
+      toString(c(CF.ARGS.BASE, CF.ARGS.VAR))
     ),
     name=name, narg=TRUE
   )

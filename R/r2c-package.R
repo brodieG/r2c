@@ -175,7 +175,7 @@ NULL
 #' * Control structure return values must be guaranteed to be the same
 #'   size irrespective of the branch taken, if they are subsequently used.
 #'   Return values are coerced to a common type.
-#' * Assignments made within control structure branches must be guaranteed to be
+#' * Assignments made within control structure branches must be
 #'   the same size irrespective of branch taken, if the corresponding bindings
 #'   are subsequently used.  Assigned values are coerced to a common type.
 #' * Control structures can be nested at most 999 levels.
@@ -189,10 +189,10 @@ NULL
 #' ```
 #'
 #' The call to `seq_len` is a non-implemented [constant
-#' expression][r2c-expression-types] so it is run at allocation time.
-#' Because `r2c` does not evaluate `n > 0` at allocation time, `r2c` runs
-#' `seq_len` even if `n` is negative.  Checks like the `n > 0` above need to be
-#' done outside of `r2c`.
+#' expression][r2c-expression-types] so it is run at allocation time.  On the
+#' other hand, `n > 0` is a varying expression only run after allocation, so
+#' `r2c` externally evaluates `seq_len(n)` irrespective of the value of `n`.
+#' Checks like the `n > 0` above need to be done outside of `r2c`.
 #'
 #' There are also other minor semantic differences:
 #'
@@ -211,7 +211,7 @@ NULL
 
 #' Iteration Varying and Constant Expressions
 #'
-#' `r2c` [runners] will vary which parts of their `data` argument are computed
+#' `r2c` [runners] vary which parts of their `data` argument are computed
 #' on across iterations, so references to values from `data` are known as
 #' (iteration) varying.  Expressions that depend directly or indirectly
 #' on such references are thus varying.  Additionally, when the result
@@ -255,7 +255,8 @@ NULL
 #' could be variable is variable.  This is why only calls to unimplemented
 #' functions or calls given to constant parameters can be evaluated in R.  Other
 #' calls will have been compiled into the chain of native instructions and thus
-#' must be run by `r2c` each iteration, even if they are constant at run time.
+#' must be run by `r2c` each iteration, even if they turn out to be constant at
+#' run time.
 #'
 #' @family r2c-topics
 #' @keywords internal

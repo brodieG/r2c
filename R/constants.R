@@ -19,40 +19,40 @@
 
 # - C Fun Parameters -----------------------------------------------------------
 
-ARGS.NM.BASE <- c('data', 'lens', 'di')
-ARGS.NM.VAR <- 'narg'
-ARGS.NM.EXTERN <- 'extn'
-ARGS.NM.ALL <- c(ARGS.NM.BASE, ARGS.NM.VAR, ARGS.NM.EXTERN)
+C.ARGS.NM.BASE <- c('data', 'lens', 'di')
+C.ARGS.NM.VAR <- 'narg'
+C.ARGS.NM.EXTERN <- 'extn'
+C.ARGS.NM.ALL <- c(C.ARGS.NM.BASE, C.ARGS.NM.VAR, C.ARGS.NM.EXTERN)
 
-ARGS.TYPE.F <- c('double **', 'R_xlen_t *', 'int *')
-ARGS.TYPE.R <- c('double **', 'R_xlen_t *', 'int **')
+## CF for function, CR for overall runner
+CF.ARGS.TYPE <- c('double **', 'R_xlen_t *', 'int *')
+CR.ARGS.TYPE <- c('double **', 'R_xlen_t *', 'int **')
 
-## F for function, R for overall runner
-F.ARGS.BASE <- paste(ARGS.TYPE.F, ARGS.NM.BASE)
-R.ARGS.BASE <- paste(ARGS.TYPE.R, ARGS.NM.BASE)
+CF.ARGS.BASE <- paste(CF.ARGS.TYPE, C.ARGS.NM.BASE)
+CR.ARGS.BASE <- paste(CR.ARGS.TYPE, C.ARGS.NM.BASE)
 
-F.ARGS.VAR <- paste('int', ARGS.NM.VAR)
-R.ARGS.VAR <- paste('int *', ARGS.NM.VAR)
+CF.ARGS.VAR <- paste('int', C.ARGS.NM.VAR)
+CR.ARGS.VAR <- paste('int *', C.ARGS.NM.VAR)
 
-F.ARGS.EXTERN <- R.ARGS.EXTERN <- 'SEXP extn'
+CF.ARGS.EXTERN <- CR.ARGS.EXTERN <- 'SEXP extn'
 
-F.ARGS.ALL <- c(F.ARGS.BASE, F.ARGS.VAR, F.ARGS.EXTERN)
-R.ARGS.ALL <- c(R.ARGS.BASE, R.ARGS.VAR, R.ARGS.EXTERN)
+CF.ARGS.ALL <- c(CF.ARGS.BASE, CF.ARGS.VAR, CF.ARGS.EXTERN)
+CR.ARGS.ALL <- c(CR.ARGS.BASE, CR.ARGS.VAR, CR.ARGS.EXTERN)
 
-CALL.BASE <- c(ARGS.NM.BASE[1L:2L], paste0(ARGS.NM.BASE[3L], "[%1$d]"))
-CALL.VAR <- paste0(ARGS.NM.VAR, "[%1$d]")
+CALL.BASE <- c(C.ARGS.NM.BASE[1L:2L], paste0(C.ARGS.NM.BASE[3L], "[%1$d]"))
+CALL.VAR <- paste0(C.ARGS.NM.VAR, "[%1$d]")
 # this should be length 1 (see checks)
-CALL.EXTERN <- paste0("VECTOR_ELT(", ARGS.NM.EXTERN, ", %1$d)")
+CALL.EXTERN <- paste0("VECTOR_ELT(", C.ARGS.NM.EXTERN, ", %1$d)")
 CALL.ALL <- c(CALL.BASE, CALL.VAR, CALL.EXTERN)
 
 ## Sanity checks
 pat <- "\\[%1\\$d\\]|\\bSEXP\\b|\\bdouble\\b|\\bint\\b|\\bR_xlen_t\\b|[ +*]"
 stopifnot(
-  identical(gsub(pat, "", F.ARGS.ALL), ARGS.NM.ALL),
-  identical(gsub(pat, "", R.ARGS.ALL), ARGS.NM.ALL),
+  identical(gsub(pat, "", CF.ARGS.ALL), C.ARGS.NM.ALL),
+  identical(gsub(pat, "", CR.ARGS.ALL), C.ARGS.NM.ALL),
   identical(
     gsub(pat, "", c(CALL.BASE, CALL.VAR)),
-    ARGS.NM.ALL[-length(ARGS.NM.ALL)] # CALL.EXTERN hard to compare
+    C.ARGS.NM.ALL[-length(C.ARGS.NM.ALL)] # CALL.EXTERN hard to compare
   )
 )
 
@@ -143,21 +143,35 @@ PASSIVE.BRANCH.SYM <- setdiff(PASSIVE.SYM, BRANCH.EXEC.SYM)
 # For `record_call_dat` and `alloc_dat`, fields that are supposed to be scalar
 # for each allocation/call
 CALL.DAT.VEC <- c(
-  'argn', 'depth', 'par.type', 'assign', 'indent', 'rec', 'par.validate',
-  'linfo'
+  'argn', 'depth', 'arg.type', 'par.type', 'assign', 'indent', 'rec',
+  'par.validate', 'linfo', 'is.call'
 )
 ALLOC.DAT.VEC <- c(
   'ids0', 'alloc', 'size.coefs', 'depth', 'type', 'typeof', 'iter.var'
 )
 
 # Parameter types
-PAR.EXT.ANY <- "ext.any"
-PAR.EXT.NUM <- "ext.num"
-PAR.EXT <- c(num=PAR.EXT.NUM, any=PAR.EXT.ANY)
-PAR.INT.LEAF <- "int.leaf"
-PAR.INT.CALL <- "int.call"
-PAR.INT <- c(PAR.INT.LEAF, PAR.INT.CALL)
-PAR.TYPES <- c(PAR.INT, PAR.EXT)
+PAR.ICNST.ANY <- "cnst.any"
+PAR.ICNST.NUM <- "cnst.num"
+PAR.ICNST <- c(num=PAR.ICNST.NUM, any=PAR.ICNST.ANY)
+
+PAR.IVARY <- PAR.IVARY.NUM <- "var.num"
+
+PAR.TYPES <- c(PAR.ICNST, PAR.IVARY)
+
+# R call argument types
+ARG.EXT.ANY <- "ext.any"
+ARG.EXT.NUM <- "ext.num"
+ARG.EXT <- c(num=ARG.EXT.NUM, any=ARG.EXT.ANY)
+
+# Only one internal argument type, but keep structure for externals
+ARG.INT.NUM <- "int.num"
+ARG.INT <- ARG.INT.NUM <- c(num=ARG.INT.NUM)
+
+# Argument size types
+SIZE.TYPES <- c(
+  "constant", "arglen", "vecrec", "eqlen", "extern", "concat", "prod"
+)
 
 # Packages allowable in `::`
 VALID.PKG <- c('base', 'r2c')

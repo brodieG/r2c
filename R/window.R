@@ -89,7 +89,7 @@ roll_call <- function(
       prep[['dat']],
       prep[['dat_cols']],
       prep[['ids']],
-      prep[['extern']],
+      prep[['ext.any']],
       ...
     )
     # Result vector is modified by reference

@@ -147,7 +147,7 @@ code_gen_summary <- function(fun, pars, par.types) {
       character() && length(.) == length(pars) &&
       all(. %in% PAR.TYPES)
   )
-  pars.int <- pars[par.types %in% PAR.INT]
+  pars.int <- pars[par.types %in% PAR.IVARY]
 
   multi <-
     length(pars.int) != 1L ||
@@ -156,10 +156,10 @@ code_gen_summary <- function(fun, pars, par.types) {
   code_res(
     defn=sprintf(
       f_summary[[name]], name,
-      toString(c(F.ARGS.BASE, if(multi) F.ARGS.VAR))
+      toString(c(CF.ARGS.BASE, if(multi) CF.ARGS.VAR))
     ),
     name=name, narg=multi, headers="<math.h>",
-    ext.any=FALSE,
+    icnst.any=FALSE,
     defines=if(name %in% names(SUM.DEFN)) SUM.DEFN[name]
   )
 }
@@ -198,10 +198,10 @@ code_gen_length <- function(fun, pars, par.types) {
   vetr(
     identical(., "length"),
     pars=list(NULL),
-    par.types=character() && all(. %in% PAR.INT)
+    par.types=character() && all(. %in% PAR.IVARY)
   )
   name <- FUN.NAMES[fun]
-  defn <- sprintf(f_length, name, toString(F.ARGS.BASE))
+  defn <- sprintf(f_length, name, toString(CF.ARGS.BASE))
   code_res(defn=defn, name=name)
 }
 

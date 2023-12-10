@@ -15,7 +15,11 @@ For a quick start:
 \itemize{
 \item Review \link[=r2c-supported-funs]{supported functions}.
 \item Use \link[=r2c-compile]{the compilation functions} to compile R.
-\item \link[=runners]{Run} your \code{r2c} functions iteratively on varying data.
+\item Execute your \code{r2c} functions \link[=runners]{iteratively with runners}:
+\itemize{
+\item By \link[=group_exec]{group}.
+\item Across \link[=rolli_exec]{windows}.
+}
 }
 
 Details:
@@ -24,6 +28,6 @@ Details:
 \item \link[=r2c-memory]{Memory use}.
 \item \link[=r2c-preprocess]{Preprocessing}.
 \item Experimental support for \link[=r2c-control-structures]{control structures}.
-\item Iteration \link[=r2c-expression-types]{Constant and varying expressions}.
+\item Iteration \link[=r2c-expression-types]{constant and varying expressions}.
 }
 }
