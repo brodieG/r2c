@@ -1,17 +1,109 @@
 # Current
 
-Tracking free symbols in branches.
+# Sub-assign Candidates
 
-  if(a) tmp <- b
-  else tmp <- vcopy(tmp)
-  tmp
+Candidates generated out of branch for use by by sub-assign.
 
-  if(a) tmp <- b
-  b
+What happens if we sub-assign to a candidate generated in branch?
+
+Typically, a candidate is only triggered if it is used after the branch.  Maybe
+always trigger for the out of branch candidates.
+
+Should triggered candidates be added to the globals list?  What about branch
+local?  Maybe the latter?
+
+# Use Before Set With Branches
+
+**Modification of Prior Use b4 Set Logic**
+
+Problem we're dealing now is that `lset` may happen inside a branch, so the
+lset targets need to be reconciled.  It is not just the first use before set
+we track, it is the first use before set in each branch.
+
+In terms of implementation we'll need to add a branch split in the
+`copy_fordat` logic.  The control structures are already transformed.  To do
+this we'll switch the implementation to environments.n
+
+Mechanics should be:
+
+* There is always a symbol tracking environment.
+* When we encounter a symbol:
+  * Look it up in environment chain.
+  * Look it up in current environment.
+  * If missing from current, test it exists in chain:
+    * Yes: copy of the most recently reachable one and add it to current.
+    * No: instantiate a new one in current.
+* When we enter a control structure:
+  * Create two new environment, each with the sym track env as parent.
+  * Process the two branche separately.
+    * `last.assign` overwrites any existing ones.
+  * On exit, reconcile the two branches:
+    * For symbols that exist in both environments:
+      * If either branch has a use before set, even if there are no sets in that
+        branch, that use should be considered to have happened at the control
+        structure.  This is because sets in the other branch should count
+        against it.  So all such symbols should have their first use recorded as
+        the parent branch.  Doesn't matter if there is a set or not, just that
+        there isn't one just before.
+      * Take the later of the `first.assign` of each branch.  If one is missing
+        it doesn't matter because we moved any first uses to the parent control.
+      * Merge the `last.assign`.
+      * Overwrite parent symbol if it exists (this okay to do without further
+        reconciliation because if it existed it would have been copied into the
+        children as a starting point).
+    * For symbols that only exist in one.
+      * These symbols don't exist in the parent chain either because of how we
+        create the children (copies of parents).
+      * If there is a use before set, declare it at the control?  I don't think
+        this matters.
+      * Copy the symbol straight into the parent environment.
+
+We know that branches will assign on both sides.  If a symbol is not assigned
+at all on one side and didn't exist prior, it will eventually get an e.g.
+`x <- vcopy(x)`.  But at the point we're doing this, we won't see that.  Can
+we ignore it, yes, probably because it might cause un unnecessary copy but
+that's not a big deal.
+
+We must be aggressive in copying because a loop could be toggling branches
+each iteration, so a set in either branch could happen before use in other:
+
+    x <- 1
+    for(i in n) {
+      if(a) {
+        x
+      } else {
+        x <- 2
+      }
+    }
+
+For nested loops, what is the effect of parent loops?  Is it really none?  For
+any of this to be an issue, there must be use of the variable in the loop, and a
+set in the loop.  I guess a parent loop can't affect a child loop, but a child
+loop will affect a parent loop.
+
+Each nested for loop can then get it's own independent environment, we just need
+to updated the parent loop on exit.  So:
+
+* If parent has a recorded use, no need to change it b/c it will be earlier, but
+  if not, copy over the first use.
+* If parent has a first.assign, no need to change it, but if not, use the child
+  one.
+* If children have a last assign, overwrite the parent.  The branch
+  reconciliation should ensure the last assign across siblings is consistent.
+
+When it comes to allocation we have another problem.  In:
+
+    fib <- rec(x = vcopy(x = lset(rec.i = 1L, x = fib + i)))
+
+We really would prefer to either have:
+
+    fib <- lset(rec.i = 1L, x = rec(x = vcopy(x = fib + i)))
+
 
 # Use Before Set in Loops (self-assignment)
 
 **This affects all loop assignments, not just self assignments**
+**Logic here does not properly account for branches, see above**
 
 Interesting problem with:
 
@@ -415,14 +507,14 @@ Pretty terrible.  With the convolution example:
     a <- runif(10000)
     b <- runif(10000)
     system.time(res0 <- r2c_f1a(a, b, length(a) + length(b) - 1))
-    ##   user  system elapsed 
-    ##  4.300   0.035   4.471 
+    ##   user  system elapsed
+    ##  4.300   0.035   4.471
     system.time(res1 <- r2c:::convolve(a, b))
-    ##   user  system elapsed 
-    ##  0.036   0.000   0.038 
+    ##   user  system elapsed
+    ##  0.036   0.000   0.038
     system.time(res2 <- f1a(a, b, length(a) + length(b) - 1))
-    ##   user  system elapsed 
-    ## 12.782   0.106  13.419 
+    ##   user  system elapsed
+    ## 12.782   0.106  13.419
     identical(res0, res1)
     ## [1] TRUE
     identical(res0, res2)
@@ -431,8 +523,8 @@ Pretty terrible.  With the convolution example:
     enableJIT(0)
     ... rebuild f1a ...
     system.time(res2 <- f1a(a, b, length(a) + length(b) - 1))
-    ##    user  system elapsed 
-    ## 167.941   2.021 178.702 
+    ##    user  system elapsed
+    ## 167.941   2.021 178.702
 
 3x faster than R with compilation, but 100 times slower than the straight up C
 code.  Nothing seems too weird from examining the profiler data:
@@ -801,6 +893,8 @@ Basically vecrec with a known element sets a minimum size?
 
 # Names in Branches
 
+## General
+
 Problem is that the logic in the FALSE branch will see the names bound in the
 TRUE branch currently.  We can't just remove the relevant names because
 otherwise we might free the related memory, but we can hide it.  Hiding a single
@@ -820,6 +914,69 @@ Every else branch must be able to see everything except what was just assigned
 inside the matched TRUE, including all sub-branches of that.  If we record the
 state of names at the `if_test` step, then we can mark all those that should be
 ignored.
+
+## Tracking with Environments
+
+We want to use environments instead of the names matrix to track symbols across
+branches.
+
+For each symbol, we need at a maximum (and hopefully less as some of this info
+will be implicit in the new environment structure):
+
+* ids: the data id
+* scope: used to protect data symbols, but if we increment environment nesting
+    correctly this protection should happen naturally.
+* i.max: the latest a symbol is used?
+* i.assign: when a symbol was assigned?  Maybe we don't need this anymore.
+* rec: whether the symbol requires reconciliation and what level.
+* rec0: original reconciliation level.
+* br.hide: shouldn't need this anymore.
+
+In theory we should be able to drop a lot of this tracking data.  Strawman is
+we'll need:
+
+* ids: so `name_to_id` does something
+* i.max: maybe?
+* rec: whether this symbol should be reconciled.
+
+This should greatly simplify the logic.  We just need to look at all the
+`names_` functions.  One immediate thing we need to reconcile is how
+`append_dat` adds names (direct use of `names_bind`) vs the more traditional
+`names_update`.
+
+By using environments the main thing we gain is the ability to branch by
+creating child environments, yet still find the relevant symbols.
+
+What gets more complicated is the ability to remove expired symbols and easily
+check what ids are still referenced as we do when looking for free slots.
+
+Let's say we add a name to an environment, along with the id it points to.
+
+* If it exists in the current environment then we can free the old reference.
+* When we reconcile TRUE/FALSE environments we can also free an old reference.
+
+So, keep a stack of references along with their self expiry step.  We only care
+about the id number and the expiry step.  We could include the original symbol
+as well for debugging purposes, but it is not needed.  Every time we update the
+environment, either by adding, replacing, or reconciling, we need to update the
+stack.  It is okay that this stack does
+not have any of the branching features because it links directly to the linear
+allocation list, and the branching is tracked through the environments.
+
+Scope should be handled by nested environments.  It's a smidge tricky because we
+use this also for branches, but it should be okay.
+
+I think we do actually want to associate each id with a specific symbol, that
+way we only remove the id/symbol combination.
+
+Probably want a new `name_bind` or `update` function.
+
+Maybe want to add `env.ext` and `env.names` to `alloc`?  And at that point the
+names stack should just be part of the object too.  Yes, but the environment
+stacks probably need to remain external, which is not great?
+
+Can we just remove use of `names_bind` directly and always go through
+`names_update`?  Probably.
 
 # Passive vs Not and Chains
 
@@ -1041,7 +1198,7 @@ We care about:
 Again running into the issue that we need to distinguish between a local symbol
 that is a candidate and a local symbol that is computed.
 
-    if (a) r2c::rec(r2c::vcopy(z)) 
+    if (a) r2c::rec(r2c::vcopy(z))
     else {
       if (
         if (b) r2c::rec(r2c::vcopy(x))

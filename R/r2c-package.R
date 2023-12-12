@@ -21,9 +21,10 @@
 #'
 #' For a quick start:
 #'
-#' * Review [supported functions][r2c-supported-funs].
-#' * Use [the compilation functions][r2c-compile] to compile R.
-#' * Execute your `r2c` functions [iteratively with runners][runners]:
+#' * [Supported functions][r2c-supported-funs]: which R functions `r2c` can
+#'   compiles.
+#' * [Compilation functions][r2c-compile]: how to compile R with `r2c`.
+#' * [Runners][runners], to execute your code iteratively:
 #'   * By [group][group_exec].
 #'   * Across [windows][rolli_exec].
 #'
@@ -32,8 +33,10 @@
 #' * [Performance considerations][r2c-performance].
 #' * [Memory use][r2c-memory].
 #' * [Preprocessing][r2c-preprocess].
-#' * Experimental support for [control structures][r2c-control-structures].
-#' * Iteration [constant and varying expressions][r2c-expression-types].
+#' * [Control structures][r2c-control-structures] (experimental).
+#' * [Expression Types]: to understand where it is allowable to use
+#'   non-supported functions and why some supported function parameters are
+#'   required to be constant.
 #'
 #' @docType package
 #' @name r2c-package
@@ -233,12 +236,13 @@ NULL
 #' expressions provided they are constant and the result of evaluating them is
 #' compatible with the parameter.
 #'
-#' Calls to [non-implemented functions][r2c-supported-funs] are allowed outside
+#' Calls to non-[implemented functions][r2c-supported-funs] are allowed outside
 #' of constant parameters, provided that they are constant and the result of
-#' evaluating them is compatible with the context they are used in.  These are
-#' also evaluated directly in R at allocation time.  Non-implemented constant
-#' expressions nested within [branches][r2c-control-structures] are always
-#' evaluated, even in branches not taken at run time.
+#' evaluating them is compatible with the context they are used in.  Like
+#' constant parameters these are also evaluated directly in R at allocation
+#' time.  Non-implemented constant expressions nested within
+#' [branches][r2c-control-structures] are always evaluated, even in branches not
+#' taken at run time.
 #'
 #' Expressions evaluated in R at allocation time are computed once and cached.
 #' Cached values are re-used both across iterations, and within an iteration if

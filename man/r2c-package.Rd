@@ -13,9 +13,10 @@ overhead.
 \details{
 For a quick start:
 \itemize{
-\item Review \link[=r2c-supported-funs]{supported functions}.
-\item Use \link[=r2c-compile]{the compilation functions} to compile R.
-\item Execute your \code{r2c} functions \link[=runners]{iteratively with runners}:
+\item \link[=r2c-supported-funs]{Supported functions}: which R functions \code{r2c} can
+compiles.
+\item \link[=r2c-compile]{Compilation functions}: how to compile R with \code{r2c}.
+\item \link[=runners]{Runners}, to execute your code iteratively:
 \itemize{
 \item By \link[=group_exec]{group}.
 \item Across \link[=rolli_exec]{windows}.
@@ -27,7 +28,9 @@ Details:
 \item \link[=r2c-performance]{Performance considerations}.
 \item \link[=r2c-memory]{Memory use}.
 \item \link[=r2c-preprocess]{Preprocessing}.
-\item Experimental support for \link[=r2c-control-structures]{control structures}.
-\item Iteration \link[=r2c-expression-types]{constant and varying expressions}.
+\item \link[=r2c-control-structures]{Control structures} (experimental).
+\item \link{Expression Types}: to understand where it is allowable to use
+non-supported functions and why some supported function parameters are
+required to be constant.
 }
 }

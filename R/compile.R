@@ -60,11 +60,11 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' will carry out out numerical calculations with `r2c` native instructions
 #' instead of with the standard R routines. Expressions to compile can contain
 #' arbitrary R sub-expressions so long as they are found to be
-#' [iteration-constant][r2c-expression-types] at run time.  "r2c_fun" functions
-#' are intended to be run with the `r2c` [runners] for fast iterated
-#' calculations.  `r2c` adheres closely to R semantics for the
-#' supported use cases.  Look at the examples here and those of the [runners] to
-#' get started.
+#' [iteration-constant][r2c-expression-types] at run time; these will be
+#' evaluated in R.  "r2c_fun" functions are intended to be run with the `r2c`
+#' [runners] for fast iterated calculations.  `r2c` adheres closely to R
+#' semantics for the supported use cases.  Look at the examples here and those
+#' of the [runners] to get started.
 #'
 #' @section r2c Generated Functions:
 #'

@@ -27,12 +27,13 @@ constant parameter arguments are evaluated in R, they may involve arbitrary R
 expressions provided they are constant and the result of evaluating them is
 compatible with the parameter.
 
-Calls to \link[=r2c-supported-funs]{non-implemented functions} are allowed outside
+Calls to non-\link[=r2c-supported-funs]{implemented functions} are allowed outside
 of constant parameters, provided that they are constant and the result of
-evaluating them is compatible with the context they are used in.  These are
-also evaluated directly in R at allocation time.  Non-implemented constant
-expressions nested within \link[=r2c-control-structures]{branches} are always
-evaluated, even in branches not taken at run time.
+evaluating them is compatible with the context they are used in.  Like
+constant parameters these are also evaluated directly in R at allocation
+time.  Non-implemented constant expressions nested within
+\link[=r2c-control-structures]{branches} are always evaluated, even in branches not
+taken at run time.
 
 Expressions evaluated in R at allocation time are computed once and cached.
 Cached values are re-used both across iterations, and within an iteration if

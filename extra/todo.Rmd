@@ -14,6 +14,8 @@
 
 ## Unitizer
 
+* Can't tell what the current file we're reviewing is.  At a minimum have 'B'
+  also show the file name in addition to all the tests.
 * Annoying that after a re-install, there is no way to rerun the top level
   summary from multiple unitizer runs.  Basically, need a "re-run all requiring
   review" in addition to re-run all updated.
@@ -34,7 +36,44 @@
 
 ## Current
 
+* Something not right about recovering a reference "r2c_fun" in unitizer:
+
+    unitizer> get_r_code(ref(f1a))
+    Error in dat.contents[["R.version"]] : subscript out of bounds  
+
+* Should grouping be done directly on data?  E.g.:
+
+    group_exec(f, group(dat, g))
+
+  This makes for much cleaner re-use of the data, otherwise we need to manually
+  sort and track the grouping.  It's a little less flexible, and requires typing
+  "group" which otherwise would not be needed.  Do we add a different interface?
+
+  How about instead:
+
+    exec(group(dat, g)), f, x)
+
+  Hmm, not really.  We're trying to get something in exchange for having to type
+  "group", such as NSE we would otherwise get from `with`.
+
+  Seems like the way to handle this is with S3 methods where we can accept
+  either a grouped df, in which case the function has signature:
+
+    exec(dat, f, params)
+
+  Or a regular df in which case:
+
+    exec(dat, g, f, params)
+
+  Do we want to go down that road?
+
+* Strictly it's iterated calculations, not iterated statistics, but it doesn't
+  make a whole lot of sense to use r2c without stats as you probably could do
+  just fine with regular R (but what about e.g. reversing by group - could
+  reverse whole thing, and then order by group
+
 * Copyright banners in tests have wrong title.
+
 * Doc improvements:
   * Spruce up r2c landing page.
   * Better structuring of topics?
@@ -43,19 +82,6 @@
 
 * Think through implication of saving parameter validation functions in r2c_fun
   object in terms of environment capture, etc.
-
-* In alloc.R what's the deal with call.outer vs .CALL?
-
-* WTH is going on:
-
-    microbenchmark::microbenchmark(sum_prod_loop(a, a), sum_prod_vec(a, a), times=10)
-    Unit: milliseconds
-                    expr       min       lq     mean    median        uq      max
-     sum_prod_loop(a, a)  87.69433  90.4110 103.8416  93.97704  95.81529 203.3326
-      sum_prod_vec(a, a) 140.93150 141.5957 156.6167 144.88217 145.41362 273.1965
-     neval
-        10
-        10
 
 ## Next
 
@@ -90,6 +116,36 @@ eye on how bad these get.
   to repeatedly convert them to/from symbols?
 
 ### Error Messages
+
+* Would be nice if creating bindings in constant exps would explain why this is
+  disallowed.
+
+    > f <- r2cq(mean(x, na.rm=(y <- 3)))
+    > f(1:10)
+    Error in mean(x = x, trim = 0, na.rm = (y <- 3)) : 
+      cannot add bindings to a locked environment
+
+* In alloc.R what's the deal with call.outer vs .CALL?  .CALL is the actual call
+  e.g. `r2c_sum()`, whereas `call.outer` is the outermost `r2c` expression inside
+  the `r2c` function, e.g. `sum(x)`.  It's not clear that using `call.outer` is
+  correct, at least for the missing symbol.
+
+    g <- function(x) sum(x)
+    g('boom')
+    ## Error in sum(x) : invalid 'type' (character) of argument
+    g()
+    ## Error in g() : argument "x" is missing, with no default
+
+    f()
+    ## Error in sum(... = x, na.rm = FALSE) : 
+    ##   argument "x" is missing, with no default
+    f('hello')
+    ## Error in f("hello") : 
+    ##   External argument `x` for `sum(... = x, na.rm = FALSE)` is not unclassed numeric (type: character).
+    group_exec(f, 'hello', 1)
+    ## Error in group_exec(fun = f, data = "hello", groups = 1) : 
+    ##   For argument `data`, `"hello"` should be type "integer-like", type "list", or type "numeric" (is "character")
+* Invariant / external / varying / constant in docs, error messages, etc.
 
 * Error message generation for different size in branches when sizes are
   complex in some way that makes sense to the user that has no idea about the
@@ -142,6 +198,15 @@ Error in r2cq(x + "a")(5) :
 
 ### Other
 
+* Nested functions?  I.e. recurse into un-implemented functions, and if they are
+  made solely of implemented functions, then compile them.  Recursion not
+  possible, except the tail variety (and then that will require extra thought).
+
+* Should we try to harmonize window and group runners under one interface?
+  Probably not.
+
+* Should the data argument be first for better support of piping?
+
 * Create `R2C_RXLT_MAX` as a proxy for `R_XLEN_T_MAX` so that we can test our
   overflow checks?  Seems unlikely we'll ever get to this.
 
@@ -164,20 +229,7 @@ Error in r2cq(x + "a")(5) :
 * Should we preprocess `rep` into `rep.int`, `rep_len`, `rep_along`, etc., so
   that we don't have the branches in the C code?  Maybe eventually.
 
-* Should we just used nested environments for name bindings, where each name
-  just binds the alloc id?  Problem with this is it's not easy to query the data
-  (great for looking up names though).  This might simplify the name management
-  logic a bit.
-
-* `:`, `seq`, etc?
-
 * `mean(x) * mean(x)` should re-use `mean(x)` but doesn't?
-
-* Should we drop everything in `alloc$names` matrix and stack) that can be
-  recovered from `alloc` via `id0` to mitigate potential synchronization issues?
-  The stack is probably the bigger issue, where potentially a named vector would
-  work as right now all the fields there are in `alloc`.  `names` actually
-  doesn't seem to have any of those.
 
 * Add `get_r_function` to recover an R function with formals, etc.
 * `clean_call` should have additional levels to remove `vcopy` / `rec` (Done).
@@ -225,7 +277,7 @@ Error in r2cq(x + "a")(5) :
 * Explore `fma` (floating multiply add).
 
 * Should we be using `islessgreater` and similar?  Probably since the R NaN is
-  not quiet by default.
+  not quiet by default.  Does R do this?
 
 * Be more aggressive about specifying lengths in args.reg (e.g. binops don't
   right now)?
@@ -239,33 +291,7 @@ Error in r2cq(x + "a")(5) :
   name that makes sense.
 * Add warning for any/all coercion of doubles?
 
-* Can we improve the stand-alone execution so it doesn't suffer the penalty of
-  generating the useless group vector?  We should be able to do it through
-  `process_groups`, i.e. generating its output, especially if the sorted version
-  does not include the order vector.
-
 * Should we have safety tests in the code to be controlled by a debug mode flag?
-
-### Interrupts
-
-Currently we have `LOOP_W_INTERRUPTN` throughout the code base, but it is
-actually disabled.  The hope would be we can figure out why it causes slowdowns
-with small groups (but otherwise performs fine).
-
-There are some places where we are not using it consistently (again, it
-shouldn't matter):
-
-* `rep` does not implement interrupts because using `INTERRUPTN` is not
-  straightforward there and those interrupts are disabled currently anyway.
-* Uses of `memcpy`, which implicitly are a loop.  One problem is that if we add
-  an interruptible version of this it is possible the compiler won't recognize
-  what we're trying to do?
-* Generally, we don't have support for nested loops for the interrupts, although
-  we should be able to make this work just by using the interrupt on the inner
-  loops as .
-
-
-### Generic
 
 * Improve the ability to provide what group had a bad length `&&` error, and
   possibly the flexibility to warn based on value of
@@ -302,6 +328,23 @@ shouldn't matter):
 * Rename depth to height.  No, rename depth to level.  The use of height and
   depth with an upside down tree is ridiculous and not my fault.
 
+### Interrupts
+
+Currently we have `LOOP_W_INTERRUPTN` throughout the code base, but it is
+actually disabled.  The hope would be we can figure out why it causes slowdowns
+with small groups (but otherwise performs fine).
+
+There are some places where we are not using it consistently (again, it
+shouldn't matter):
+
+* `rep` does not implement interrupts because using `INTERRUPTN` is not
+  straightforward there and those interrupts are disabled currently anyway.
+* Uses of `memcpy`, which implicitly are a loop.  One problem is that if we add
+  an interruptible version of this it is possible the compiler won't recognize
+  what we're trying to do?
+* Generally, we don't have support for nested loops for the interrupts, although
+  we should be able to make this work just by using the interrupt on the inner
+  loops as .
 
 ## For CRAN
 
@@ -362,10 +405,6 @@ shouldn't matter):
   be correct, but will make readme a bit more complicated).  Also, error message
   is very confusing in this case as `mean.default` is also from the base
   namespace, even though the masking is defined at the global level.
-* Add destructors that will unload the shlib and delete file file when the
-  corresponding object is garbage collected (finalizer).
-* Add check to `r2c` funs that verify the `r2c` version, the R version, and the
-  platform (anything else)?
 * Figure out a better way to store the object than embedding it with `bquote` in
   the function (e.g. retrieve from the call like `rlang`, but not sure that's
   better).
@@ -375,8 +414,8 @@ shouldn't matter):
   size or size of groups?
 * Better introspection tools for intermediate products so we can see what they
   are.
-* Are names sufficient to disqualify from nakedness?  How do names behave in
-  recycling?  Do we want to allow other attributes to persist?
+* Are names sufficient to disqualify from nakedness (no)?  How do names behave
+  in recycling (dropped now)?  Do we want to allow other attributes to persist?
 * Make sure to have a function that uses the `ctrl` functionality to check that
   it works properly (once we switch to `flag` for most functions).
 * Make sure pointer arrays are aligned.  Use `malloc`?  If so internal code
@@ -390,11 +429,6 @@ shouldn't matter):
   to be addressed.
 * Ensure all entry point names are unique and that there are no collisions.
   Maybe this can be done on registration?
-* Special case where all groups are same size and there is an external vector of
-  that size?
-* Add capability to specify functions in non-standard ways (e.g. `base::sum`, or
-  `(get("sum", as.environment("package:base"))`)?  Maybe not, that seems like
-  potential trouble.  Certainly document also things like `f <- sum; f(x)`.
 * Is it faster to compute complex expressions pairwise (i.e. full vector scan of
   two vectors), or do each row in full once?
 * Look into using R_GetCCallable (see WRE) instead of what we're doing now.  It
@@ -411,5 +445,4 @@ shouldn't matter):
   takes the place of an argument?  Generating a pointer for each column then may
   be less efficient.
 * Lags and similar (i.e. `x[i] = x[i] * x[i - 1]`).
-* Re-use repeated expressions.
 

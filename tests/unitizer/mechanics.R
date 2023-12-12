@@ -119,6 +119,7 @@ unitizer_sect("Formals / Symbol Resolution", {
   f6(5, 1)
   group_exec(f6, 1:6, rep(1:2, 3))
   group_exec(f6, 1:6, rep(1:2, 3), MoreArgs=list(100:101))
+
 })
 unitizer_sect("brackets/assign", {
   external <- 1:5
@@ -164,14 +165,91 @@ unitizer_sect("optimization", {
   get_r_code(r2c_int)
   get_r_code(r2cf(intercept, optimize=FALSE))
 })
-unitizer_sect("extern syms", {
-  ## Check that caching of external symbols works
+unitizer_sect("external caching", {
+  # Check that caching of external symbols works
   f7 <- r2cq(sum(x, na.rm=z) + mean(x, na.rm=z))
   makeActiveBinding("w", function(...) {message('hello'); TRUE}, environment())
   group_exec(f7, list(x=1:6), rep(1:2, each=3), MoreArgs=list(z=w))
 
-  ## Error if we try to use internal arg for external param
+  # Error if we try to use internal arg for external param
   group_exec(f7, list(z=w), 1, MoreArgs=list(6))
+
+  # Only generate formals for constants that point to symbols
+  r2c:::preprocess(quote(sum(x, na.rm=na.rm)))[['sym.free']]
+  r2c:::preprocess(quote(sum(x, na.rm=R.Version()[['major']] > 3)))[['sym.free']]
+  # Same, but with a constant expression
+  r2c:::preprocess(quote(a:b))[['sym.free']]
+
+  # Cannot use non-constant symbols in pure constant expressions
+  f7a <-r2cf(function(a, b, x=0) a:b)
+  group_exec(f7a, list(), 1, MoreArgs=list(a=1, b=3))
+  group_exec(f7a, list(a=1), 1, MoreArgs=list(b=3))
+
+  # Constant symbols recognized past assignment
+  f7b <- r2cf(function(a, b) {
+    x <- b
+    a:x
+  })
+  f7b(1, 5)
+  group_exec(f7b, list(), 1, list(1,5))
+  group_exec(f7b, list(1), 1, list(5))
+  group_exec(f7b, list(b=5), 1, list(1))
+
+  # Constant expressions ok in loops
+  f7c <- r2cf(function(a, b) {
+    res <- numeric(2)
+    for(i in seq_along(a)) {
+      res <- coef(lm(a ~ b))
+    }
+    res
+  })
+  f7c(1:3, 1:3)
+  # but not if non-constant
+  group_exec(f7c, list(1:3), rep(1, 3), MoreArgs=list(1:3))
+
+  # Computed expressions not ok (unfortunately) indirectly in externals
+  f7d <- r2cf(function(a, b) {
+    x <- a + b
+    coef(lm(x ~ a))
+  })
+  f7d(1:3, 1:3)
+
+  # Use b4 set vars are computed via `vcopy` so cannot be used in const exps
+  f7e <- r2cf(function(a, b) {
+    res <- numeric(2)
+    for(i in seq_along(a)) {
+      res <- coef(lm(a ~ b))
+      a <- a + i
+    }
+  })
+  f7e(1:3, 1:3)
+
+  # Correctly identify when symbols rebound change expression (and don't cache)
+  # We see two messages due to no caching, and the second call triggers error
+  identity2 <- function(x) {
+    message('identity!')
+    x
+  }
+  f7f <- r2cf(
+    function(x, a) {
+      res <- identity2(x)
+      if(a) x <- 2
+      res + identity2(x)
+    }
+  )
+  f7f(10, TRUE)
+  f7f(10, FALSE)
+  # Externals here don't depend on internal symbols, so should work and cache
+  # (only one message b/c we don't set `check=TRUE`).
+  f7f2 <- r2cf(
+    function(x, a) {
+      res <- identity2(x)
+      if(a) x <- 2 else x <- identity2(x)
+      res + x
+    }
+  )
+  f7f2(10, TRUE)
+  f7f2(10, FALSE)
 })
 
 unitizer_sect("double colon", {
