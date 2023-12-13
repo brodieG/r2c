@@ -19,7 +19,7 @@ double_size_tpl <- '
   if(lend >= 0 && lend < R_XLEN_T_MAX) {
     R_xlen_t len = (R_xlen_t) lend;%s
   } else {
-    Rf_error("Invalid vector size (got %%%%%%%%f)", data[di[0]][0]);
+    Rf_error("Invalid vector size (got %%%%f)", data[di[0]][0]);
   }'
 
 f_numeric_core <- '

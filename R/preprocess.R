@@ -163,8 +163,8 @@ preprocess <- function(call, optimize=FALSE) {
     paste(
       "#include",
       c(
-        headers, '"r2c-const.h"', "<R.h>", "<Rinternals.h>", "<R_ext/Utils.h>",
-        '"loop-interrupt.h"'
+        headers, "<stdint.h>", '"r2c-const.h"', "<R.h>", "<Rinternals.h>",
+        "<R_ext/Utils.h>", '"loop-interrupt.h"'
       )
     ),
     if(length(defines)) c("", defines),

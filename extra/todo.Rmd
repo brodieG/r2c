@@ -72,8 +72,6 @@
   just fine with regular R (but what about e.g. reversing by group - could
   reverse whole thing, and then order by group
 
-* Copyright banners in tests have wrong title.
-
 * Doc improvements:
   * Spruce up r2c landing page.
   * Better structuring of topics?

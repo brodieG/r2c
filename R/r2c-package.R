@@ -22,8 +22,8 @@
 #' For a quick start:
 #'
 #' * [Supported functions][r2c-supported-funs]: which R functions `r2c` can
-#'   compiles.
-#' * [Compilation functions][r2c-compile]: how to compile R with `r2c`.
+#'   compile.
+#' * [Compilation facilities][r2c-compile]: how to compile R with `r2c`.
 #' * [Runners][runners], to execute your code iteratively:
 #'   * By [group][group_exec].
 #'   * Across [windows][rolli_exec].
