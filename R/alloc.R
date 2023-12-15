@@ -17,141 +17,166 @@
 
 NULL
 
-#' Allocate Required Storage
-#'
-#' This is internal documentation.  Please be sure to read `?r2c-compile` and
-#' the documentation for the `preprocess` internal function before reading this.
-#'
-#' We iterate through the linearized call list (see `preprocess` for details) to
-#' determine the memory needs to support the evaluation of the function, and
-#' pre-allocate this memory.  The allocations are sized to fit the largest
-#' iteration (and thus should fit all iterations).  The allocations are appended
-#' to the storage list that is part of the `alloc` object (`alloc[['dat']]).
-#' See docs for `append_dat`.
-#'
-#' Every leaf expression that might affect allocation requirements (i.e.
-#' excluding control and flag values) is brought into the storage list if
-#' it is not there already.  External vectors (i.e. not part of the group data)
-#' are shallow copied into the storage list (i.e. just referenced, not actually
-#' copied, per standard R semantics).  The semantics of lookup should mimic
-#' those of e.g. `with`, where we first look through any symbols previously
-#' bound in the evaluation environment, then in the data in `with`, and finally
-#' in the calling environment.
-#'
-#' The sizes of leaf expressions are tracked in the `stack` array, along with
-#' their depth, and where in the storage list they reside.  When we reach a
-#' sub-call all its inputs will be in the `stack` with a depth equal to 1 + its
-#' own depth.  We can use the input size information along with meta data about
-#' the function in the call to compute the output size.  The inputs are then
-#' removed from the stack and replaced by the output size from the sub call, and
-#' we allocate (or re-use a no-longer needed allocation) to/from the storage
-#' list.  For outputs that have iteration-dependent size, we record the size
-#' as NA (this will need to change in the future to accommodate more complex
-#' functions like `c`), and allocate a vector large enough for the largest
-#' group.  Recording the size as NA allows us to propagate that the output is
-#' of group-size.
-#'
-#' This continues until the stack contains the output size and location of the
-#' final call, and the allocation memory list contains all the vectors required
-#' to hold intermediate calculations.  We record the state of the stack at each
-#' sub-call along with other other useful data in `call.dat`.
-#'
-#' Control and flags are tracked in separate stacks that are also merged into
-#' `call.dat`.
-#'
-#' @section Depth:
-#'
-#' An allocation is considered "freed" as soon as we emerge above the call
-#' level (depth) for which it was originally made, unless it is also referenced
-#' by a symbol that is still in use (designated `alloc[['names']]`).  The
-#' `depth` variable semantics are strongly shaped by how it is generated (i.e.
-#' by incrementing it with each level of recursion in the call tree it
-#' originates from).  For example, for each call, it is a given that all of
-#' it's parameters will have a `depth` of `depth+1`.  We use `stack` as a
-#' mechanism for tracking the current call's parameters.
-#'
-#' @section Special Sub-Calls:
-#'
-#' Assignments and braces are considered special because neither of them do any
-#' computations.  Assignments change the lifetime of the expression assigned to
-#' the symbol to last until the last use of that symbol-instance (a
-#' symbol-instance lifetime ends if it is overwritten).  A storage list element
-#' containing the value bound to the symbol cannot be re-used until after the
-#' lifetime ends.  Braces just "output" the last expression they contain.  Both
-#' braces and assignments register on the stack by having their last input also
-#' be the output.  This works fine because both these functions are no-op at the
-#' C level so there is no risk of corrupting the input.
-#'
-#' @section Result Vector:
-#'
-#' All the allocations in the storage list are sized to contain a single
-#' iteration (group, window, etc.), but the result vector will hold the
-#' concatenation of all of them.  Thus, the final call is intercepted and
-#' redirected to the special result vector in the storage list.
-#'
-#' This is trivial to do so long as what is written to the result is a sub-call
-#' (e.g. something like `sum(x)` or `x + y`).  If instead it is just a symbol
-#' referencing a previous sub-call or external vector (e.g. just `x`), we would
-#' have to back-trace through the history of all the assignments to figure out
-#' what sub-call was effectively responsible for producing that value, and
-#' redirect that one to write to the result vector.  To simplify `r2c`
-#' modifies the last expression to be `r2c_copy(expression)` if it turns out
-#' that `expression` is a symbol.  See `copy_last` in preprocess.R
-#'
-#' @param x preprocess data as produced by `preprocess`
-#' @return an alloc object:
-#'
-#' alloc
-#'   $alloc: see `append_dat`.
-#'   $call.dat: each actual call with a C counterpart
-#'     $call: the R call
-#'     $ids: ids in `alloc$dat` for parameters, and then result
-#'     $ctrl: evaluated control parameters
-#'     $flag: computed flag parameter value
-#'   $stack:
-#'     matrix used to track parameter sizes, but the time it's returned it
-#'     should just have the size of the final return
-#'
-#' @noRd
-#' @param x the result of preprocessing an expression
+## Allocate Required Storage
+##
+## This is internal documentation.  Please be sure to read `?r2c-compile` and
+## the documentation for the `preprocess` internal function before reading this.
+##
+## We iterate through the linearized call list (see "Linearization"` for
+## details) to determine the memory needs to support the evaluation of the
+## function, and pre-allocate this memory.  The allocations are sized to fit
+## the largest iteration (and thus should fit all iterations).  The
+## allocations are appended to the storage list that is part of the `alloc`
+## object (`alloc[['dat']]).  See docs for `append_dat`.
+##
+## Every expression that is required to evaluate to a numeric is brought into
+## the storage list `dat`.  This includes `r2c` computed (internal) values as
+## well as iteration-constant external values.  Symbols that reference external
+## REAL vectors are shallow copied, wheras all others are evaluated / coerced
+## (thus creating new allocations).  Some parameters allow non-numeric
+## iteration-constant values; these values are evaluated and stored in a
+## separate tracking list.  All external evaluations are cached and re-used as
+## described in `?r2c-expression-types`.
+##
+## Argument sizes are tracked in the `stack` array, along with their depth, and
+## where in the storage list they reside.  When we reach a sub-call all its
+## inputs will be in the `stack` with a depth equal to 1 + its own depth.  We
+## can use the input size information along with meta data about the function in
+## the call to compute the output size.  The inputs are then removed from the
+## stack and replaced by the output size from the sub call, and we allocate (or
+## re-use a no-longer needed allocation) to/from the storage list.  Ex-ante
+## calculation of output size is complex (see `compute_size`).
+##
+## This continues until the stack contains the output size and location of the
+## final call, and the allocation memory list contains all the vectors required
+## to hold intermediate calculations.  We record the state of the stack at each
+## sub-call along with other other useful data in `call.dat`.
+##
+## Control and flags are tracked in separate stacks that are also merged into
+## `call.dat`.
+##
+## @section Linearization:
+##
+## Linearization is very convenient when we have a sequence of calls that reduce
+## their parameters into a single result.  This is because we can keep all sorts
+## of meta data in parallel lists that map 1-1 with each call component.
+## Otherwise we need a complex recursive structure that matches the call
+## and also carries the meta data, and it is more awkward to deal with
+## that.  Linearization is done by `preprocess`.  An example:
+##
+##     x + y * z
+##
+## When linearized becomes:
+##
+##     expression          depth
+##
+##     x               2-------+
+##                             |
+##     y                  3--+ |
+##     z                  3--+ |
+##                           | |
+##     y * z           2-----+-+
+##                             |
+##     x + y * z     1---------+
+##
+## Processing the expressions sequentially can be done straightforwardly with a
+## simple stack.
+##
+## Unfortunately much after the initial implementation we decided it
+## would be a fun challenge to add branches, and the linearized format is not
+## well suited for them for the purpose of ex-ante size calculation.  Rather
+## than try to transition everything to a recursive structure we resorted to
+## some convolutions to deal with the branches.
+##
+## @section Depth:
+##
+## An allocation is considered "freed" as soon as we emerge above the call
+## level (depth) for which it was originally made, unless it is also referenced
+## by a symbol that is still in use (designated `alloc[['names']]`).  The
+## `depth` variable semantics are strongly shaped by how it is generated (i.e.
+## by incrementing it with each level of recursion in the call tree it
+## originates from).  For example, for a call at depth `depth`, it is a given
+## that all of it's parameters will have a `depth` of `depth+1` (but not all
+## `depth+1` parameters are necessarily part of the call).  We use `stack`
+## as a mechanism for tracking the current call's parameters.
+##
+## @section Special Sub-Calls:
+##
+## Assignments and braces are considered special because neither of them do any
+## computations.  Assignments change the lifetime of the expression assigned to
+## the symbol to last until the last use of that symbol-instance (a
+## symbol-instance lifetime ends if it is overwritten).  A storage list element
+## containing the value bound to the symbol cannot be re-used until after the
+## lifetime ends.  Braces just "output" the last expression they contain.  Both
+## braces and assignments register on the stack by having their last input also
+## be the output.  This works fine because both these functions are no-op at the
+## C level so there is no risk of corrupting the input.
+##
+## @section Result Vector:
+##
+## All the allocations in the storage list are sized to contain a single
+## iteration (group, window, etc.), but the result vector will hold the
+## concatenation of all of them.  Thus, the final call is intercepted and
+## redirected to the special result vector in the storage list.  Special
+## handling is required when the result is just a symbol, or branches are
+## involved.  See `copy_branchdat` in prepro-copy.R.
+##
+## @param x preprocessed data as produced by `preprocess`
+## @return an alloc object:
+##
+## alloc
+##   $alloc: see `append_dat`.
+##   $call.dat: each actual call with a C counterpart
+##     $call: the R call
+##     $ids: ids in `alloc$dat` for parameters, and then result
+##     $ctrl: evaluated control parameters
+##     $flag: computed flag parameter value
+##   $stack:
+##     matrix used to track call-parameter relationships; when returned it
+##     should just have one column representing the return value of the r2c
+##     expression.
+##
+## @param x the result of preprocessing an expression
 
-alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
+alloc <- function(x, data, gmax, gmin, par.env, MoreArgs, .CALL) {
   call.len <- length(x[['call']])
   call.outer <- x[['call']][[call.len]]
 
   # - Initialize ---------------------------------------------------------------
-  env <- list2env(MoreArgs, parent=par.env)
+  env <- env0 <- list2env(MoreArgs, parent=par.env)
+  env <- list2env(data, parent=env)
 
   # Call indices where various interesting things happen
   meta <- list(
     i.call.max=length(x[['call']]),                # call count
     i.sym.max=latest_symbol_instance(x[['call']])  # last symbol maybe touched
   )
-  i.last.action <- latest_action_call(x[['call']]) # last computing call
-
-  alloc <- init_dat(x[['call']], meta=meta, scope=0L)
+  alloc <- init_dat(x[['call']], meta=meta, scope=0L, env=env)
   # Status control placeholder.
   sts.vec <- numeric(IX[['STAT.N']])
-  vdat <- vec_dat(sts.vec, "sts", typeof='double', group=0, size=IX[['STAT.N']])
+  vdat <-
+    vec_dat(sts.vec, type="sts", typeof='double', gmax=gmax, iter.var=FALSE)
   alloc <- append_dat(alloc, vdat=vdat, depth=0L)
-
   # Result placeholder, to be alloc'ed once we know group sizes.
-  vdat <- vec_dat(numeric(), size=0L, type="res", typeof='double', group=0)
+  vdat <- vec_dat(numeric(), type="res", typeof='double', gmax=gmax)
   alloc <- append_dat(alloc, vdat=vdat, depth=0L)
 
-  # Add group data.
+  # Add group data; we skip invalid data here, but we keep all the invalid data
+  # in the search path and check for validity if it is used.  So it's okay to
+  # have bad data if it isn't use.  Look for calls to `eval` later.
   if(!all(nzchar(names(data)))) stop("All data must be named.")
   data.naked <- data[is.num_naked(data)]
-  data.used <- integer()
   for(i in seq_along(data.naked)) {
     datum <- data.naked[[i]]
     dname <- names(data.naked)[i]
     typeof <- typeof(datum)
-    vdat <- vec_dat(datum, type="grp", typeof=typeof, group=1, size=NA_real_)
-    alloc <- append_dat(alloc, vdat=vdat, depth=0L, name=dname)
+    vdat <-
+      vec_dat(datum, type="grp", typeof=typeof, size.coef=list(0:1), gmax=gmax)
+    alloc <- append_dat(alloc, vdat=vdat, depth=0L)
+    alloc <- name_bind(alloc, new.name=dname, rec=FALSE, i.call=0L)
   }
-  # Bump scope so the data cannot be overwritten
-  alloc[['scope']] <- alloc[['scope']] + 1L
+  # Bump scope / envs so data symbols are not `names_clean`ed.
+  alloc <- scope_increment(alloc, i.call=0L)
 
   # - Process ------------------------------------------------------------------
 
@@ -159,276 +184,498 @@ alloc <- function(x, data, gmax, par.env, MoreArgs, .CALL) {
   # calculations in the call tree, and to allocate all the vectors into a data
   # structure.  This data structure will also include references to external
   # vectors (if there are such references).  The result of evaluating
-  # control/flag parameters is recorded separately in `call.dat`.
-
+  # constant parameters that can resovle to anything tis recorded separately in
+  # `stack.ext.any`.
   stack <- init_stack()
-  stack.ctrl <- stack.flag <- list()
+  stack.ext.any <- list()
+  stack.sizes <- list()   # argument sizes (see size.R)
+  stack.lcopy <-
+    matrix(integer(), nrow=2, dimnames=list(c('lcopy', 'set'), NULL))
   call.dat <- list()
+  external.evals <- list() # track `id` in `dat` for numeric externals
+  call.names <- vapply(x[['linfo']], "[[", "", "name")
+  call.pkgs <- vapply(x[['linfo']], "[[", "", "pkg")
+
+  # The final result calculation or reconciled calls cannot re-use a slot so
+  # must get their own allocations.
+  compute.intern <-
+    x[['arg.type']] %in% ARG.INT & x[['is.call']] &
+    !call.names %in% PASSIVE.SYM
+  no.reuse <-
+    c(max(c(0L, which(compute.intern))), which(call.names == "rec") - 1L)
 
   for(i in seq_along(x[['call']])) {
-    type <- x[['type']][[i]]
+    ext.id <- ""
+    arg.type <- x[['arg.type']][[i]]
+    arg.ext <- arg.type %in% ARG.EXT
+    par.icnst <- x[['par.type']][[i]] %in% PAR.ICNST
+
+    reuse <- FALSE
+
     call <- x[['call']][[i]]
     depth <- x[['depth']][[i]]
     argn <- x[['argn']][[i]]
     pkg <- name <- ""
-    if(!type %in% CTRL.FLAG) {
-      tmp <- get_lang_info(call)
-      name <- tmp[['name']]
-      pkg <- tmp[['pkg']]
+    if(arg.type != ARG.EXT.ANY) {
+      name <- call.names[i]
+      pkg <- call.pkgs[i]
     }
-    vec.dat <- init_vec_dat()
+    rec <- x[['rec']][[i]]  # do we need to reconcile?
+    id <- if(is.name(call)) name_to_id(alloc, name) else 0L
+    vec.dat <- NULL
 
     # - Process Call -----------------------------------------------------------
-    if(type == "call") {
-      # Based on previously accrued stack and function type, compute call result
-      # size, allocate for it, etc.  Stack reduction happens later.
+    if(is.call(call) && arg.type %in% ARG.INT) {
+      # Internal call to evaluate: use accrued stack and function type to
+      # compute result size.  Allocation and stack reduction happen later.
       check_fun(name, pkg, env)
-      ftype <- VALID_FUNS[[c(name, "type")]]
+      ftype <- VALID_FUNS[[c(name, "size.type")]] # see cgen() docs
 
-      # If data inputs are know to be integer, and function returns integer for
-      # those, make it known the result should be integer.
-      res.typeof <- if(
-        VALID_FUNS[[c(name, "preserve.int")]] &&
-        all(alloc[['typeof']][stack['id', ]] == "integer")
-      ) "integer" else "double"
+      # Check inputs are valid types (subset/subassign with logical not valid)
+      stack.input <- stack_inputs(stack, depth)
+      input.type <- alloc[['typeof']][stack.input['id', ]]
+      names(input.type) <- colnames(stack.input)
+      VALID_FUNS[[c(name, "in.type.validate")]](input.type)
 
-      # Compute result size
-      if(ftype[[1L]] == "constant") {
-        # Always constant size, e.g. 1 for `sum`
-        asize <- size <- ftype[[2L]]
-        group <- 0
-      } else if(ftype[[1L]] %in% c("arglen", "vecrec")) {
-        # Length of a specific argument, like `probs` for `quantile`
-        # `depth + 1L` should be params to current call (this is only true for
-        # the stack, not necessarily for other things in `x`)
-        sizes.tmp <- compute_call_res_size(stack, depth, ftype)
+      # Preserve input type of logical/integer if inputs and function allow it
+      res.type.mode <- VALID_FUNS[[c(name, "res.type")]]
+      res.typeof <- if(grepl('^preserve', res.type.mode)) {
+        if(res.type.mode == "preserve.last") {
+          input.type[length(input.type)]
+        } else if (res.type.mode == "preserve.which") {
+          type.which <- VALID_FUNS[[c(name, "res.type.which")]]
+          NUM.TYPES[max(match(input.type[type.which], NUM.TYPES))]
+        } else {
+          min.type <- if(res.type.mode == 'preserve') 1L else 2L
+          NUM.TYPES[max(c(match(input.type, NUM.TYPES), min.type))]
+        }
+      } else VALID_FUNS[[c(name, "res.type")]]
 
-        # asize uses max group size instead of NA so we can allocate for it
-        asize  <- vec_rec_max_size(sizes.tmp, gmax)
-        size <- vec_rec_known_size(sizes.tmp[1L,])  # knowable sizes could be NA
-        group <- max(sizes.tmp[2L,])                # any group size in the lot?
-      } else stop("Internal Error: unknown function type.")
+      # For control structures, determine if result is used so that we know
+      # whether to enforce eqlen or not.  Alternatively we could try to mark
+      # this at the `copy_branchdat` level to keep this branch result use
+      # detection in one place, but that requires marking the call tree.
 
-      # Cleanup expired symbols, and bind new ones
-      alloc <- names_update(alloc, i, call, call.name=name)
+      waive.eqlen <-
+        if(name %in% BRANCH.EXEC.SYM) !branch_used(i, call.names, x[['depth']])
+        else FALSE
+
+      # Compute expression result size
+      size.tmp <- compute_size(
+        alloc, stack, depth, gmax=gmax, gmin=gmin, ftype=ftype,
+        waive.eqlen=waive.eqlen, call=call, .CALL=.CALL
+      )
+      size.coef <- size.tmp[['size.coef']] # iteration/group dependant size
+      asize <- size.tmp[['asize']]         # required allocation size
+
+      # Bind new symbols if any (alloc[['i']] contains last computation)
+      alloc <-
+        name_bind_if_assign(alloc, call, call.name=name, rec=rec, i.call=i)
 
       # Prepare new vec data (if any), and tweak objet depending on situation.
-      # Alloc is made later, but only if vec.dat[['new']] is not null.
-      vec.dat <- vec_dat(NULL, "tmp", typeof=res.typeof, group=group, size=size)
-      if(i == i.last.action) {
-        # Last computing call should be written to result slot, vec.dat still
-        # used to populate the stack.
-        vec.dat[['type']] <- "res"
-        alloc <- alloc_result(alloc, vec.dat)
-      } else if(!name %in% c(PASSIVE.SYM, ASSIGN.SYM)) {
+      if(!name %in% c(PASSIVE.SYM, MODIFY.SYM)) {
+        vec.dat <- vec_dat(
+          NULL, "tmp", typeof=res.typeof, size.coef=size.coef, gmax=gmax,
+          iter.var=call_iter_var(alloc, stack, depth)
+        )
         # We have a computing expression in need of a free slots.
         # (NB: PASSIVE includes ASSIGN, but use both in case that changes).
         free <-
           !is.finite(alloc[['depth']]) &
-          !alloc[['ids']] %in% alloc[['names']]['ids',]
+          !alloc[['ids']] %in% alloc[[NM.MAP]]['id',]
         fit <- free & alloc[['type']] == "tmp" & alloc[['alloc']] >= asize
         # If none fit prep for new allocation, otherwise reuse free alloc
-        if(!any(fit)) vec.dat[['new']] <- numeric(asize)
-        else alloc <- reuse_dat(alloc, fit, vec.dat, depth=depth)
+        if(any(fit) && !i %in% no.reuse) {
+          alloc <- reuse_dat(alloc, fit, vec.dat, depth=depth)
+          vec.dat <- NULL
+        }
       } else if (name %in% PASSIVE.SYM) {
         # Don't do anything for these, effectively causing `dat[[i]]` to remain
-        # unchanged for use by the next call.
+        # unchanged for use by the next call, except we do update the `typeof`
+        # for e.g. when logical gets turned to numeric by uplus
+        alloc[['typeof']][alloc[['i']]] <- res.typeof
       } else stop("Internal Error: unexpected call allocation state.")
 
     # - Assigned-To Symbol -----------------------------------------------------
     } else if(x[['assign']][i]) {
       # in e.g. `x <- y`, this is the `x`, which isn't actually data,
-      # We don't need to record it but we do for consistency.
-      vec.dat <- vec_dat(numeric(), "tmp", typeof="double", group=0, size=0)
-    # - Control Parameter / External -------------------------------------------
-    } else if (
-      type %in% CTRL.FLAG || !name %in% colnames(alloc[['names']])
-    ) {
-      # Need to eval parameter
-      tryCatch(
-        arg.e <- eval(call, envir=data, enclos=env),
-        error=function(e) stop(simpleError(conditionMessage(e), call.outer))
+      # We don't need to record it but we do for consistency.  This is just
+      # a stub that shouldn'really get used anywhere it an impact.
+      vec.dat <- vec_dat(
+        numeric(), "tmp", typeof="logical", size.coef=list(integer()), gmax=gmax
       )
-      if(type == "control") {
-        if(!nzchar(argn)) stop("Internal Error: missing arg name for control.")
-        ctrl <- list(arg.e)
-        names(ctrl) <- argn
-        stack.ctrl <- c(stack.ctrl, ctrl)
-      } else if (type == "flag") {
-        if(!nzchar(argn)) stop("Internal Error: missing arg name for flag")
-        flag <- list(arg.e)
-        names(flag) <- argn
-        stack.flag <- c(stack.flag, flag)
-      } else {
-        # Validate non-control external args after eval, and add to vec.dat
-        validate_ext(x, i, type, arg.e, name, call, .CALL)
-        typeof <- typeof(arg.e)
-        size <- length(arg.e)
-        vec.dat <- vec_dat(arg.e, "ext", typeof=typeof, group=0, size=size)
+    # - External ---------------------------------------------------------------
+    } else if (arg.ext || (!id && !is.call(call))) {
+      # Either an argument is known to require external evaluation, or it
+      # is a symbol/literal that doesn't map to a known `r2c` binding.  Both of
+      # these require a one time `base::eval` prior to caching.
+      if(id && arg.type == ARG.EXT.ANY)
+        # ext.any evals should not be placed in the `data` list.
+        stop("Internal Error: name-external exp conflict.")
+      if(arg.ext && id) {
+        # An id should never resolve to 'ext' anyway...
+        if(!alloc[['type']][id] %in% c('ext')) {
+          stop(
+            "Parameter `", argn ,"` must resolve to iteration invariant ",
+            "external data."
+      ) } }
+      if(is.language(call)) {
+        # Cache the call so we don't re-evaluate if re-encounter.  Particularly
+        # important if we reference same external symbol multiple times and it
+        # is e.g. integer, which would require coercion to numeric each time.
+        # Drawback is expressions with side-effects will not work correctly.
+        # Debatable whether we should allow calls to be cached as we do here.
+        ext.id <- paste0(
+          c(deparse(call, control="niceNames"), fingerprint_call(call, alloc)),
+          collapse="\n"
+        )
+        if(!nzchar(ext.id))
+          stop("Symbol with zero length name disallowed.")
+        if(!is.null(external.evals[[ext.id]])) {
+          id <- external.evals[[ext.id]]
+          if(!id) stop("Internal Error: external.evals cache corrupted.")
+          # Similar logic "Internal Symbol" Section
+          alloc[['i']] <- id
+          # Update symbol depth (from Symbol in Data, maybe N/A here?)
+          if(alloc[['depth']][id] > depth) alloc[['depth']][id] <- depth
+        }
       }
-
-    # - Match a Symbol In Data -------------------------------------------------
-    } else if (id <- name_to_id(alloc, name)) {
+      # Need to externally eval uncached args.  We intercept any attemps to use
+      # internal symbols via the active bindings created by guard_symbol.
+      if(!id) {
+        tryCatch(
+          arg.e <- eval(call, envir=alloc[[NM.ENV.VAR]]),
+          error=function(e) stop(simpleError(conditionMessage(e), call.outer)),
+          "r2c-internalSymAccess"=function(e)
+            varying_err(e, call, call.outer, par.icnst),
+          "r2c-computedConstant"=function(e)
+            varying_err(e, call, call.outer, par.icnst)
+        )
+        # Validated external args even if they resolve to an internal id
+        if(
+          arg.ext &&
+          !isTRUE(err.msg <- x[['par.validate']][[i]](arg.e))
+        ) {
+          stop(
+            simpleError(
+              paste0("Invalid iteration-constant parameter: ", err.msg),
+              call.outer
+          ) )
+        }
+        # Other post processing/recording.
+        if(arg.type == ARG.EXT.ANY) {
+          if(!nzchar(argn))
+            stop("Internal Error: missing arg name for non-num external")
+          ext.any <- list(arg.e)
+          names(ext.any) <- argn
+          stack.ext.any <- c(stack.ext.any, ext.any)
+        } else {
+          # These must all be naked numeric; it does result in double validation
+          # for external evals that correspond to iteration constant parameters.
+          if(!arg.ext && !nzchar(argn))
+            stop("Internal Error: missing arg name for external argument")
+          validate_ext(x, i, arg.e, name, call, .CALL)
+          typeof <- typeof(arg.e)
+          size.coef <- list(length(arg.e))
+          vec.dat <- vec_dat(
+            arg.e, "ext", typeof=typeof, size.coef=size.coef, gmax=gmax,
+            iter.var=FALSE
+          )
+        }
+      }
+    # - Symbol -----------------------------------------------------------------
+    } else if (id) {
+      # Similar logic in External Section.  NB: external symbols also get `id`
+      # values after initial evaluation, so they can show up here too.
       alloc[['i']] <- id
       # Update symbol depth (needed for assigned-to symbols)
       if(alloc[['depth']][id] > depth) alloc[['depth']][id] <- depth
-      data.used <- union(data.used, id)
     } else stop("Internal Error: unexpected token.")
 
     # - Update Stack / Data ----------------------------------------------------
 
-    # Append new data to our data array.  Not all branches produce data; those
-    # that do have non-NULL vec.dat[['new']].
-    if(!is.null(vec.dat[['new']]))
+    # Append new data to our data array.  Not all calls produce data.
+    if(!is.null(vec.dat)) {
       alloc <- append_dat(alloc, vec.dat, depth=depth)
-
+      # Cache if external and generated a ext.id
+      if(nzchar(ext.id)) external.evals[[ext.id]] <- alloc[['i']]
+    }
     # Call actions that need to happen after allocation data updated
-    if(type == "call") {
+    if(arg.type %in% ARG.INT && is.call(call)) {
       # Release allocation after call parameters incorporated
       alloc <- alloc_free(alloc, depth)
       # Append call data (different than append_dat)
       call.dat <- append_call_dat(
-        call.dat, call=call, call.name=name, stack=stack, depth=depth,
-        alloc=alloc, ctrl=stack.ctrl, flag=stack.flag
+        call.dat, call=call, call.name=name,
+        stack=stack, stack.ext.any=stack.ext.any, depth=depth,
+        alloc=alloc, call.i=i
       )
+      # Handle name reconciliation for control flow calls.  Recall that call
+      # linearization causes paramters to be seen before the call that computes
+      # on them.  Also, because we make the control flow test a separate
+      # expression (e.g `if()` becomes `if_test(); r2c_if()`) the test and
+      # execution calls sandwich all the branch calls.
+      if (name %in% BRANCH.START.SYM) {
+        # Track current object envs for backtracking
+        alloc <- names_stack_push(alloc, i.call=i)
+      } else if(name %in%  BRANCH.MID.SYM) {
+        # End of TRUE branch
+        alloc <- names_stack_switch(alloc, i.call=i)
+      } else if (name %in% BRANCH.END.SYM) {
+        # Just completed FALSE branch, reconcile allocations, symbols, etc.
+        if(length(x[['call']]) < i + 1L)
+          stop("Internal Error: missing outer control after control components.")
+        rcf.dat <- reconcile_control_flow(
+          alloc, call.dat, stack, stack.lcopy=stack.lcopy,
+          i.call=i, depth=depth, gmax=gmax, gmin=gmin,
+          calls=x[['call']]
+        )
+        alloc <- rcf.dat[['alloc']]
+        call.dat <- rcf.dat[['call.dat']]
+        stack <- rcf.dat[['stack']]
+        stack.lcopy <- rcf.dat[['stack.lcopy']]
+      }
+      # Handle loop use-before-set reconciliations.  For each `lcopy` call we
+      # need to find the target memory, and change whatever `lset` is pointing
+      # to to be written there.  See `copy_fordat`.
+      if(name == L.SET) {
+        stack.lcopy <- lset_update(stack.lcopy, alloc, call)
+      } else if (name == L.COPY) {
+        # "Copy" the contents of the L.SET memory to the first use memory.  To
+        # do this we edit the memory slots assigned to the call originally to
+        # match up to the L.SET and L.USE memory.
+        lcopy.id <- call[['rec.i']]
+        if(!lcopy.id %in% stack.lcopy['lcopy',])
+          stop("Internal Error: lcopy cannot find matching lset.")
+        tmp.ids <- call.dat[[length(call.dat)]][['ids']]
+        # Sanity check that all the sets (there may be more than one with nested
+        # branches inside loops) have been reconciled.
+        lset.id <- unique(stack.lcopy['set', stack.lcopy['lcopy',] == lcopy.id])
+        if(length(lset.id) > 1)
+          stop("Internal Error: inconsistent lset ids for lcopy id ", lcopy.id)
+
+        # Copy from the set location to the use location; we kept a reference to
+        # the use memory with the .R2C.FOR.SYM.N variable (position 2).  Note
+        # this makes the call ids of e.g. a containing "{" calls out of date
+        # which doesn't matter except for the use/set sanity check at end.
+        tmp.ids[2:3] <- c(lset.id, tmp.ids[2L])
+        # No need to update param `stack` b/c we're about to drop the slots we
+        # manipulated at current depth
+        call.dat[[length(call.dat)]][['ids']] <- tmp.ids
+      }
       # Reduce stack
       stack <- stack[,stack['depth',] <= depth, drop=FALSE]
-      stack.ctrl <- stack.flag <- list()
+      stack.ext.any <- list()
     }
     # Append new data/computation result to stack
-    if(!type %in% CTRL.FLAG)
+    if(arg.type != ARG.EXT.ANY)
       stack <- append_stack(stack, alloc=alloc, depth=depth, argn=argn)
+
+    names_clean(alloc, i)  # Drop expired symbols
   }
   # - Finalize -----------------------------------------------------------------
 
-  # Remove unused data, and re-index to account for that
-  ids.all <- seq_along(alloc[['dat']])
-  ids.keep <- ids.all[
-    alloc[['type']] %in% c("res", "ext", "tmp", "sts") |
-    ids.all %in% data.used
-  ]
+  # Return value should be redirected to result; need to make sure that if this
+  # id is written to in multiple places..
+  last.call <- call.dat[[length(call.dat)]]
+  last.alloc <- last.call[['ids']][length(last.call[['ids']])]
+  res.alloc <- which(alloc[['type']] == "res")
+
+  for(i in seq_along(call.dat)) {
+    id.replace <- call.dat[[i]][['ids']] == last.alloc
+    call.dat[[i]][['ids']][id.replace] <- res.alloc
+  }
+  alloc[['i']] <- res.alloc
+  for(i in c('size.coefs', 'typeof', 'alloc'))
+    alloc[[i]][res.alloc] <- alloc[[i]][last.alloc]
+
+  # Check stack status
+  if(ncol(stack) != 1L || stack['id',] != last.alloc)
+    stop("Internal Error: unexpected stack state at exit.")
+
+  # Drop unused data and re-index
+  ids.keep <- sort(
+    union(
+      unlist(lapply(call.dat, "[[", "ids")),
+      seq_along(alloc[['dat']])[alloc[['type']] %in% c('res', 'sts')]
+  ) )
   call.dat <- lapply(
     call.dat, function(x) {
       x[['ids']] <- match(x[['ids']][x[['ids']] %in% ids.keep], ids.keep)
       x
   } )
-  stack['id',] <- match(stack['id',], ids.keep)
-
-  alloc.fin <- lapply(
-    alloc[c('dat', 'alloc', 'depth', 'type', 'typeof')], "[", ids.keep
-  )
+  alloc.fin <- lapply(alloc[c('dat', ALLOC.DAT.VEC)], "[", ids.keep)
   alloc.fin[['i']] <- match(alloc[['i']], ids.keep)
-  list(alloc=alloc.fin, call.dat=call.dat, stack=stack)
-}
 
+  # Instantiate vectors to hold intermediate calcs; result vector initialized
+  # separately
+  vec.to.inst <- alloc.fin[['type']] == 'tmp'
+  alloc.fin[['dat']][vec.to.inst] <-
+    lapply(alloc.fin[['alloc']][vec.to.inst], numeric)
+
+  # Sanity check usage order: id that are not a result id must appear as a
+  # result id, grp, or ext prior to use.  Passive exempted b/c they don't touch
+  # the memory (and quirks in the code mean the checks would fail for them, e.g.
+  # use b4 set lcopy, assign sym).
+  call.passive <- vapply(call.dat, '[[', '', 'name') %in% PASSIVE.SYM
+  if(!all(call.passive)) {
+    call.dat.ids <- do.call(
+      rbind,
+      lapply(
+        seq_along(call.dat)[!call.passive],
+        function(x) {
+          ids <- call.dat[[x]][['ids']]
+          if(!length(ids)) stop("Internal Error: zero length call dat.")
+          res <- logical(length(ids))
+          res[length(ids)] <- TRUE
+          cbind(step=x, ids, res)
+    } ) )
+    id.set <-
+      call.dat.ids[call.dat.ids[, 'res'] == 1, c('step', 'ids'), drop=FALSE]
+    id.use <-
+      call.dat.ids[call.dat.ids[, 'res'] != 1, c('step', 'ids'), drop=FALSE]
+    id.use <- id.use[
+      !alloc.fin[['type']][id.use[,'ids']] %in% c("sts", "grp", "ext"),,
+      drop=FALSE
+    ]
+    # For each id, find the earliest step in call.dat it is used in
+    tmp <- tapply(id.use[,'step'], id.use[,'ids'], min)
+    id.use.min <- cbind(id=as.integer(names(tmp)), step.min=as.vector(tmp))
+    # For those same ids, find the earliest step it is set in
+    id.set.step <- id.set[match(id.use.min[,'id'], id.set[, 'ids']), 'step']
+    if(anyNA(id.set.step) || any(id.use.min[,'step.min'] <= id.set.step))
+      stop("Internal Error: attempt to use alloc before setting it.")
+  }
+
+  list(alloc=alloc.fin, call.dat=call.dat)
+}
 # - Data Structures ------------------------------------------------------------
 
 ## Track Required Allocations for Intermediate vectors
 ##
 ## r2c keeps a list of every vector that it uses in computations, including the
-## original data vectors, any referenced external vectors, and any temporary
-## allocated vectors.  The temporary allocated vectors usage is tracked so that
-## they may be re-used if their previously values are no longer needed.  The
-## tracking is done via their depth in the call tree, and also whether any
-## symbols were bound to them (using the `names` matrix).  Once allocated, a
-## vector is never truly freed until the whole function execution ends.  It will
-## however be re-used within a group if it becomes available, and all allocated
-## vectors will be re-used for each group.
+## original data vectors, any externally computed numeric vectors, and any
+## temporary allocated vectors.  The temporary allocated vectors (for r2c calcs)
+## usage is tracked so that they may be re-used if their previously values are
+## no longer needed.  The tracking is done via their depth in the call tree, and
+## also whether any symbols were bound to them (using the `names` matrix).  Once
+## allocated, a vector is never truly freed until the whole function execution
+## ends.  It will however be re-used within a group if the originally allocated
+## vector is no longer needed, and each new group will re-use the allocations
+## from the prior group.  Allocations are sized to accommodate the largest
+## group.
 ##
-## This is a description of the input `dat` (which is also the returned value
+## Computed vectors (`vdat[['type']][i] == "tmp"`) are initialized as NULL.
+## Their allocation size can be inferred from `vdat[['size.coefs']]` and `gmax`,
+## and actual allocation is deferred until after all reconciliations to avoid
+## instantiating vectors that end up unused.
+##
+## This is a description of the input `alloc` (which is also the returned value
 ## after update).
 ##
-## * dat: (this is `dat[['dat']]`) the actual data, for "tmp" type (i.e.
-##   generated by computation of a sub-call) this will be written to so should
-##   not be accessible via R.
-## * ids: an integer identifier for each item in `dat` (I think this is just
-##   `seq_along(dat)`, but that seems silly and not sure now).
-## * ids0: a unique identifier for each allocation, differs from `ids`
-##   as soon as there is a re-use of a previous allocation.  This is to detect
-##   deviations between the stack and allocations.
-## * alloc: the true size of the vector (should be equivalent to
-##   `lengths(dat[['dat']])`?).
-## * size: the size of the vector in use (can be less than 'alloc' if a smaller
-##   vector is assigned to a freed bigger slot), can be NA for vectors that
-##   are group size.
-## * type: one of "tmp" (allocated), "grp" (from the data we're generating
-##   groups from, "ext" (any other data vector), "res" (the result), "sts"
-##   (status flags, e.g. recycle warning).
+## * dat: (this is `alloc[['dat']]`) the actual data vectors.  The "tmp" ones
+##   (i.e. those generated by computation of a sub-call) are not instantiated
+##   until later (NULL placeholders).  Once instantiated they are modified by C
+##   code so should never be returned to the user.
+## * scope: intended to represent function scopes, but currently only serves to
+##   separate the data scope where the inputs live, and the scope where
+##   intermediate calculations are kept (since we don't support functions).
+## * ids0: a unique identifier for each allocation, differs from column rank in
+##   `dat` as soon as there is a re-use of a previous allocation.  This is a
+##   sentinel to detect deviations between the stack and allocations.
+## * type: one of:
+##   * "tmp": Computed/allocated.
+##   * "grp": From the iteration/group variant data.
+##   * "ext": Any other data vector.
+##   * "res": The result.
+##   * "sts": Status flags, e.g. recycle warning.
 ## * typeof: the intended data format at the end of the computation.  Used to
-##   try to track integer-ness (if any).
+##   try to track whether a vector could be interpreted as logical or integer.
+## * type: what type of vector:
+## * alloc: the true size of the vector (should be equivalent to
+##   `lengths(dat[['dat']])` for instantiated vectors).
+## * size.coefs: a list of `size.coef` elements as described in `compute_size`.
 ## * depth: the depth at which allocation occurred, only relevant for
 ##   `type == "tmp"`
-## * i: scalar integer the index of the most recently allocated/appended
-##   item(s).  This will point to the result of the most recent calculation.
-## * names: a matrix where the (possibly duplicated) column names are symbols,
-##   row `ids` are the ids in `dat` each symbol is bound to, `scope` is the
-##   scope level the symbol was created in, and `i.max` is the largest index in
-##   the linearized call list that the symbol exists in as a leaf (indicating
-##   that beyond that the name binding need not prevent release of memory).
-## * group: whether the allocation is of group size.  This is distinct to
-##   `type=="grp"`, which refers to data from the original group varying data.
-##   This designation is needed so that if a group sized allocation is bound to
-##   a variable, that that allocation is group sized is still available when the
-##   variable is retrieved later (it's possible this is a bit duplicative of NA
-##   size).
+## * i: scalar integer the index in `data` of the most recently
+##   allocated/appended/used item(s).  This will point to the result of the most
+##   recent calculation.  It does not need to be the last vector as we allow
+##   re-use of free vectors.
+## * iter.var: whether the value is iteration-invariant.
+## * names: a list used to track bindings, containing:
+##   * `env.alloc`: (aka NM.ENV) environment where each bound symbol resolves to
+##     a list with:
+##     * id: index in `dat` the symbol references.
+##     * rec: whether the symbol can be used for reconciliation.
+##     * rec0: whether the symbol needs to be reconciled in this branch (see
+##       `reconcile_control_flow`.
+##   * `env.var`: (aka NM.ENV.VAR) environment where each binding resolves to an
+##      active binding designed to identify misuse of varying symbols (see
+##     `guard_symbols`).
+##   * `alloc.map`: (aka NM.MAP) matrix with (possibly duplicated) column names
+##     matching symbols intended to quickly identify what in `dat` is bound to
+##     symbols so we know what is available to free. Acts as a reverse lookup
+##     for `env.alloc` (i.e. lookup by id, not name).  Rows are:
+##     * id: which of the `dat` values the name is bound to.
+##     * scope: corresponds to `scope` field of `alloc`.
+##     * i.call: which call index bound the symbol, so we can disambiguate calls
+##       with the same symbols possibly bound to different values (`id` is mot
+##       enough due to re-use).
+## * names.stack, names.stack.T: each is a list of lists, where the sub lists
+##   contain the call index as well as a copy of the `names` element at that
+##   call index.  These stacks are used respectively to track `names` state at
+##   the beginning of each control structure and at the end of the TRUE branch.
+##   The end of the FALSE branch is implicit in the current `names` object.
 ##
 ## We're mixing return value elements and params, a bit, but there are some
 ## differences, e.g.:
 ##
-## @param dat the allocation data structure
+## @param alloc the allocation data structure
 ## @param vdat see vec_dat
 ## @param name group data comes with names, or things that are assigned to
 ##   symbols
-## @param size could differ from `length(vdat[['new']])` when new is a special
-##   size vector like a group dependent one.
 ## @return dat, updated
 
-append_dat <- function(dat, vdat, name=NULL, depth) {
-  if(is.null(name)) name <- ""
+append_dat <- function(alloc, vdat, depth) {
   if(!is.vec_dat(vdat)) stop("Internal Error: bad vec_dat.")
   type <- vdat[['type']]
   typeof <- vdat[['typeof']]
   new <- vdat[['new']]
-  size <- vdat[['size']]
-  group <- vdat[['group']]
-  if(is.null(new)) stop("Internal Error: cannot append null data.")
+  size.coef <- vdat[['size.coef']]
+  iter.var <- vdat[['iter.var']]
 
-  if(!is.num_naked(list(new))) stop("Internal Error: bad data column.")
+  if(!is.null(new) && !is.num_naked(list(new)))
+    stop("Internal Error: bad data column.")
   if(!type %in% c("res", "grp", "ext", "tmp", "sts"))
     stop("Internal Error: bad type.")
-  if(is.na(size) && !type %in% c("grp", "tmp"))
-    stop("Internal Eror: NA sizes only for temporary allocs or group.")
+  if(type != "tmp" && (length(size.coef) != 1L || any(lengths(size.coef)) > 2L))
+    stop("Internal Eror: complex sizes only for computed allocs.") # and res?
+  # groups should have non-constant size coefficients
+  if(any(lengths(size.coef) > 1L) && !type %in% c("grp", "tmp"))
+    stop("Internal Eror: complex sizes only for temporary allocs or group.")
+  if(type != "tmp" && is.null(new))
+    stop("Internal Error: NULL data allowed only for internal allocations.")
 
-  new.num <- if(is.integer(new)) as.numeric(new) else new
-  dat[['dat']] <- c(dat[['dat']], list(new.num))
+  new.num <- if(is.integer(new) || is.logical(new)) as.numeric(new) else new
+  alloc[['dat']] <- c(alloc[['dat']], list(new.num))
+  asize <- compute_asize_from_size(size.coef, vdat[['gmax']])
 
-  dat[['i']] <- length(dat[['dat']])
-  id0.new <- dat[['id0']] <- dat[['id0']] + 1L
+  alloc[['i']] <- length(alloc[['dat']])
+  id0.new <- alloc[['id0']] <- alloc[['id0']] + 1L
 
   # need to test whether data.frame would slow things down too much
-  dat[['ids0']] <- c(dat[['ids0']], id0.new)
-  dat[['alloc']] <- c(dat[['alloc']], length(new)) # true size
-  dat[['size']] <- c(dat[['size']], size)          # could be NA
-  dat[['depth']] <- c(dat[['depth']], depth)
-  dat[['type']] <- c(dat[['type']], type)
-  dat[['typeof']] <- c(dat[['typeof']], typeof)
-  dat[['group']] <- c(dat[['group']], group)
+  alloc[['ids0']] <- c(alloc[['ids0']], id0.new)
+  alloc[['alloc']] <- c(alloc[['alloc']], asize)                     # true size
+  alloc[['size.coefs']] <- c(alloc[['size.coefs']], list(size.coef)) # list of lists
+  alloc[['depth']] <- c(alloc[['depth']], depth)
+  alloc[['type']] <- c(alloc[['type']], type)
+  alloc[['typeof']] <- c(alloc[['typeof']], typeof)
+  alloc[['iter.var']] <- c(alloc[['iter.var']], iter.var)
 
-  vec.el <- c(
-    'ids0', 'alloc', 'size', 'depth', 'type', 'typeof', 'group'
-  )
-  if(length(unique(lengths(dat[vec.el]))) != 1L)
+  if(length(unique(lengths(alloc[ALLOC.DAT.VEC]))) != 1L)
     stop("Internal Error: irregular vector alloc data.")
 
-  # Append dat should never overwrite names in the existing scope
-  names <- dat[['names']]
-  if(
-    name %in% colnames(names[,names['scope',] == dat[['scope']], drop=FALSE])
-  )
-    stop("Internal error: cannot append names existing in current scope.")
-  if(nzchar(name)) dat <- names_bind(dat, name)
-
-  dat
+  alloc
 }
 ## We Have Unused Allocations to Reuse
 reuse_dat <- function(alloc, fit, vec.dat, depth) {
@@ -436,27 +683,42 @@ reuse_dat <- function(alloc, fit, vec.dat, depth) {
   target <- which.min(fit)
   slot <- seq_along(alloc[['dat']])[fit][target]
 
+  # Copy over the fields from vec.dat into `alloc`.
+  update.vecs <- setdiff(ALLOC.DAT.VEC, c('ids0', 'alloc', 'depth'))
+  for(i in update.vecs) alloc[[i]][slot] <- vec.dat[[i]]
+
   alloc[['depth']][slot] <- depth
-  alloc[['size']][slot] <- vec.dat[['size']]
-  alloc[['typeof']][slot] <- vec.dat[['typeof']]
   alloc[['ids0']][slot] <- alloc[['id0']] <- alloc[['id0']] + 1L
-  alloc[['group']][slot] <- vec.dat[['group']]
   alloc[['i']] <- slot
   alloc
 }
-init_dat <- function(call, meta, scope) {
-  list(
-    # Allocation data
+# @param env environment the downstream of data and more args
+# @return Allocation data (see `append_dat` for docs)
+
+NM.ENV <- c('names', 'env.alloc')
+NM.ENV.VAR <- c('names', 'env.var')
+NM.MAP <- c('names', 'alloc.map')
+init_dat <- function(call, meta, scope, env) {
+  data <- list(
     dat=list(),
-    names=rbind(ids=integer(), scope=integer(), i.max=integer()),
+    names=list(
+      env.alloc=new.env(parent=emptyenv()),
+      env.var=new.env(parent=env),
+      alloc.map=matrix(
+        integer(), nrow=3L,
+        dimnames=list(c('id', 'scope', 'i.call'), character())
+      )
+    ),
+    names.stack=list(),
+    names.stack.T=list(),
 
     # Equal length vector data
     alloc=numeric(),
+    size.coefs=list(),
     depth=integer(),
     ids0=integer(),
     type=character(),
     typeof=character(),
-    group=numeric(),     # because it is used in a numeric matrix too
 
     # Other data
     i=0L,
@@ -464,56 +726,77 @@ init_dat <- function(call, meta, scope) {
     scope=scope,
     meta=meta
   )
+  if(
+    !all(ALLOC.DAT.VEC %in% names(data)) &&
+    !all(lengths(data[ALLOC.DAT.VEC]) == 0L)
+  )
+    stop("Internal Error: Bad alloc data initialization.")
+
+  lockEnvironment(data[[NM.ENV.VAR]])
+  data
 }
 init_vec_dat <- function() {
   list(
-    new=NULL, type=NA_character_, typeof=NA_character_, group=NA_real_,
-    size=NA_real_
+    new=NULL, type=NA_character_, typeof=NA_character_,
+    size.coef=list(integer()), gmax=NA_real_, iter.var=TRUE
   )
 }
+# See `append_dat` for details on what the parameters are.
 vec_dat <- function(
-  new=NULL, type=NA_character_, typeof=NA_character_, group=NA_real_,
-  size=NA_real_
+  new=NULL, type=NA_character_, typeof=NA_character_,
+  size.coef=list(length(new)), gmax, iter.var=TRUE
 ) {
-  vec.dat <- list(new=new, type=type, typeof=typeof, group=group, size=size)
+  vec.dat <- list(
+    new=new, type=type, typeof=typeof, size.coef=size.coef, gmax=gmax,
+    iter.var=iter.var
+  )
   stopifnot(is.vec_dat(vec.dat))
   vec.dat
 }
 is.vec_dat <- function(x)
-  is.list(x) && all(c('new', 'type', 'group', 'size') %in% names(x)) &&
+  is.list(x) &&
+  all(c('new', 'type', 'size.coef', 'typeof', 'iter.var') %in% names(x)) &&
   is.character(x[['type']]) &&
-  isTRUE(x[['type']] %in% c("res", "grp", "ext", "tmp", "sts")) &&
-  (is.numeric(x[['new']]) || is.integer(x[['new']]) || is.null(x[['new']])) &&
-  is.numeric(x[['group']]) && length(x[['group']]) == 1L &&
-  !is.na(x[['group']]) &&
-  is.numeric(x[['size']]) && length(x[['size']]) == 1L &&
+  isTRUE(x[['type']] %in% c("res", "grp", "ext", "tmp", "sts")) && (
+    is.numeric(x[['new']]) || is.integer(x[['new']]) ||
+    is.logical(x[['new']]) || is.null(x[['new']])
+  ) &&
+  # See `append_dat`
+  is.size_coef(x[['size.coef']]) && (
+    x[['type']] == "tmp" ||
+    length(x[['size.coef']]) == 1L && (
+      (x[['type']] == "grp" && length(x[['size.coef']][[1L]] == 2L)) ||
+      length(x[['size.coef']][[1L]] == 1L)
+  ) ) &&
   is.character(x[['typeof']]) && length(x[['typeof']]) == 1L &&
-  isTRUE(x[['typeof']] %in% c("double", "integer"))
+  isTRUE(x[['typeof']] %in% c("double", "integer", "logical")) &&
+  is.numeric(x[['gmax']]) && length(x[['gmax']]) == 1L &&
+  !is.na(x[['gmax']]) && x[['gmax']] >= 0 &&
+  is.logical(x[['iter.var']]) && !anyNA(x[['iter.var']])
 
 ## Stack used to track parameters ahead of reduction when processing call.
 init_stack <- function() {
   matrix(
-    numeric(), nrow=5L,
+    numeric(), nrow=3L,
     dimnames=list(
       c(
         'id',      # index in our allocated data structure
         'id0',     # unique id for integrity checks
-        'depth',
-        'size',    # size, possibly NA if unknown
-        'group'    # size affected by group
+        'depth'
       ),
       NULL
 ) ) }
 append_stack <- function(stack, alloc, id=alloc[['i']], depth, argn) {
   if(!id) stop("Internal Error: an alloc id must be specified.")
   id0 <- if(!id) id else alloc[['ids0']][id]
-
-  size <- alloc[['size']][id]
-  group <- alloc[['group']][id]
-
-  stack <- cbind(stack, c(id, id0, depth, size, group))
+  stack <- cbind(stack, c(id, id0, depth))
   colnames(stack)[ncol(stack)] <- argn
   stack
+}
+# A call is considerered iteration-varying if any of its arguments are
+call_iter_var <- function(alloc, stack, depth) {
+  stack.cand <- stack[,stack['depth',] == depth + 1L, drop=FALSE]
+  any(alloc[['iter.var']][stack.cand['id',]])
 }
 ## Record Call Data
 ##
@@ -523,15 +806,15 @@ append_stack <- function(stack, alloc, id=alloc[['i']], depth, argn) {
 ## @return list containing:
 ##
 ## * call: the call
-## * ctrl, flag: evaluated control and flag data
+## * name: the name of the function that's being called (excludes `pkg::` part)
+## * stack.ext.any: externally evaluated iteration constant arguments that can
+##   be non-numeric.
 
 append_call_dat <- function(
-  call.dat, call, call.name, stack, alloc, depth, ctrl, flag
+  call.dat, call, call.name, stack, stack.ext.any, alloc, depth, call.i
 ) {
   if(!is.call(call))
     stop("Internal Error: only calls should be appended to call dat.")
-  ctrl_val_f <- VALID_FUNS[[c(call.name, "ctrl.validate")]]
-  flag <- ctrl_val_f(ctrl, flag, call)
 
   param.ids <- stack['id', stack['depth',] > depth]
   param.ids0 <- stack['id0', stack['depth',] > depth]
@@ -546,7 +829,14 @@ append_call_dat <- function(
     )
   # alloc[['i']] is the last made allocation, which will be the result
   ids <- c(param.ids, alloc[['i']])
-  c(call.dat, list(list(call=call, ids=ids, ctrl=ctrl, flag=flag)))
+  c(
+    call.dat,
+    list(
+      list(
+        call=call, name=call.name, ids=ids,
+        stack.ext.any=stack.ext.any, call.i=call.i
+    ) )
+  )
 }
 # "free" the data produced by arguments.  Not in the malloc sense, just an
 # indication that next time this function is called it can re-use the
@@ -569,12 +859,385 @@ alloc_result <- function(alloc, vdat){
   # 'depth', 'id0', are not relevant anymore as the stack is done.
   alloc[['i']] <- slot
   alloc[['typeof']][slot] <- vdat[['typeof']]
-  alloc[['group']][slot] <- vdat[['group']]
-  alloc[['size']][slot] <- vdat[['size']]
+  alloc[['size.coefs']][slot] <- vdat[['size.coef']]
   alloc
 }
 
+# Record Binding Info
+#
+# We do this when we change scope or when we enter control structures.  That way
+# once we complete a branch or exit scope we have the information required to
+# reconstruct binding info prior to branch/scope.  At the moment we only use
+# scope to protect the data symbols.
+#
+# Needs to be stack to handle , e.g. in `if(a) b else {if(c) d}` (i.e. things
+# nested in the TRUE branch).
+#
+# @param i.call the current index in the call list, not really needed for
+#   `names.stack` but we use it for consistence with `names.stack.T`.
+
+names_stack_push <- function(alloc, i.call) {
+  alloc[['names.stack']] <- c(
+    alloc[['names.stack']], list(list(names=alloc[['names']], i.call=i.call))
+  )
+  respawn_name_stack_env(alloc)
+}
+# Record end of TRUE stack and backtrack to start FALSE branch.
+
+names_stack_switch <- function(alloc, i.call) {
+  if(!length(alloc[['names.stack']]))
+    stop("Internal Error: attempt to pop names stack when empty.")
+  alloc[['names.stack.T']] <- c(
+    alloc[['names.stack.T']],
+    list(list(names=alloc[['names']], i.call=i.call))
+  )
+  names.dat <- alloc[['names.stack']][[length(alloc[['names.stack']])]]
+  alloc[['names']] <- names.dat[['names']]
+  respawn_name_stack_env(alloc)
+}
+# Start new environment for tracking symbols
+#
+# This ensures we can keep each branch level's symbols distinct.
+
+respawn_name_stack_env <- function(alloc) {
+  alloc[[NM.ENV]] <- new.env(parent=alloc[[NM.ENV]])
+  # This might not be necessary as binding symbols automatically extends chain.
+  alloc[[NM.ENV.VAR]] <- new.env(parent=alloc[[NM.ENV.VAR]])
+  lockEnvironment(alloc[[NM.ENV.VAR]])
+  alloc
+}
+scope_increment <- function(alloc, i.call) {
+  alloc[['scope']] <- alloc[['scope']] + 1L
+  # This might not be right if we actually implement scopes, but works for our
+  # current simple (protect `data` variablees) purpose.
+  names_stack_push(alloc, i.call)
+}
+
+# Reconcile Allocations Across Branches
+#
+# Based on how the preprocessor works, we know that allocations that are bound
+# to the same symbol after a branch, and were `rec`ed, must be redirected to
+# the same allocation.  The `rec`ed symbols are those that are used later in
+# the call.
+#
+# We compare the snapshot of bindings at the end of the "TRUE" branch (recall
+# for loops this is the body of the loop) to that at the end of the "FALSE"
+# branch (for loops this is the r2c generated for0 (i.e. loop not taken/0
+# iteration loop) branch).  Every time we encounter the FALSE branch call we can
+# look at the end of `names.stack.T` as that will be the snapshot from the most
+# recent prior "TRUE" branch, and the preprocessor ensures that "TRUE" and
+# "FALSE" branches are always paired (injecting "empty" branches and self-copy
+# symbols as necessary).
+#
+# Symbols that are not marked for reconciliation can be ignored because they are
+# not used outside of the control structures (otherwise the preprocessor would
+# have marked them with `rec`).  Thus, it's okay not to e.g. `guard_symbols`
+# them, etc.
+#
+# Reconciliation is automatically nested for assignments.  So in:
+#
+#   if(a) x <- rec(...)
+#   else {
+#     if (b) x <- rec(...) else x <- rec(...)
+#   }
+#   x
+#
+# The reconciliation status of the nested if/else `x` automatically carries
+# to the outer if/else without needing an additional `rec` to explicitly match
+# to it. Then in:
+#
+#   if(a) x <- y
+#   else {
+#     if (b) x <- rec(...) else x <- rec(...)
+#     x
+#   }
+#
+# We need to recognize that there is no problem in not reconciling the outer `x`
+# because the binding is not used further.
+#
+# See "preproc-copy.R" for context.
+#
+# @param stack, stack.lcopy, call.dat: objects that contains allocation id
+#   references that may need updating to the reconciled id.
+# @param i.call the `call.dat` index of the current call (i.e. the FALSE
+#   branch), so we can find it in `call.dat` by looking at `call.i` values
+#   therein.
+# @param depth for append_dat
+# @param calls full call list for genereting error messages
+
+reconcile_control_flow <- function(
+  alloc, call.dat, stack, stack.lcopy, i.call, calls, depth, gmax, gmin
+) {
+  # - Prep Data ----------------------------------------------------------------
+
+  names.F <- alloc[['names']]
+  names.T.dat <- alloc[['names.stack.T']][[length(alloc[['names.stack.T']])]]
+  names.T <- names.T.dat[['names']]
+  names.0.dat <- alloc[['names.stack']][[length(alloc[['names.stack']])]]
+  names.0 <- names.0.dat[['names']]
+
+  # Boundaries of control structure and its branches as call indices
+  i.call.0 <- names.0.dat[['i.call']]
+  i.call.F <- i.call
+  i.call.T <- names.T.dat[['i.call']]
+  call.dat.i <- vapply(call.dat, '[[', 0L, 'call.i')
+
+  # Restore the state of the names object to pre-branch, rest of function will
+  # ensure that all symbols in use after the branch get copied back in.
+  alloc[['names']] <- names.0.dat[['names']]
+  alloc[['names.stack']] <- head(alloc[['names.stack']], -1L)
+  alloc[['names.stack.T']] <- head(alloc[['names.stack.T']], -1L)
+
+  # - Shared Bindings ----------------------------------------------------------
+
+  # Identify shared bindings across branches that need to be reconciled.  Okay
+  # to inherit a reconciliation from a child branch set, but also not required
+  # to use it if reconcilation not required at this level.
+  names.rc.F <- cand_rec_bind(names.F)
+  names.rc.T <- cand_rec_bind(names.T)
+
+  must.rc.F <- names(names.rc.F)[names.rc.F]
+  must.rc.T <- names(names.rc.T)[names.rc.T]
+  if(
+    !all(must.rc.T %in% names(names.rc.F)) ||
+    !all(must.rc.F %in% names(names.rc.T))
+  )
+    stop("Internal Error: mismatched symbols to reconcile.")
+  # Only keep those that must be reconciled at this level (ok to drop inherited)
+  names.rc.F <- names.rc.F[union(must.rc.F, must.rc.T)]
+  names.rc.T <- names.rc.T[union(must.rc.F, must.rc.T)]
+
+  # Identify return values from both branches and check if they need to
+  # be reconciled (if no set to 0)
+  id.ret.F <- cand_ret(call.dat, call.dat.i, i.call.F)
+  id.ret.T <- cand_ret(call.dat, call.dat.i, i.call.T)
+  if(xor(length(id.ret.F), length(id.ret.T)))
+    stop("Internal Error: inconsistent reconcile for branch return value.")
+  rec.ret <- length(id.ret.F) > 0L
+
+  # All ids that need to be reconciled (tack return at end if needed)
+  names.rc.id.F <- get_name_item(names(names.rc.F), names.F, 'id')
+  names.rc.id.T <- get_name_item(names(names.rc.T), names.T, 'id')
+  id.rc.F <- c(names.rc.id.F, id.ret.F)
+  id.rc.T <- c(names.rc.id.T, id.ret.T)
+  rc.sym.names <- c(names(names.rc.F), if(rec.ret) "<return-value>")
+
+  # - Check Branch Locality and Size Equality ----------------------------------
+
+  # Could be a standalone function
+  size.coef.F <- alloc[['size.coefs']][id.rc.F]
+  size.coef.T <- alloc[['size.coefs']][id.rc.T]
+  size.eq <- vapply(
+    seq_along(size.coef.F),
+    function(i)
+      length(size_eqlen(list(size.coef.F[[i]], size.coef.T[[i]]), gmax, gmin)),
+    0L
+  )
+  if(any(size.neq <- size.eq != 1L)) {
+    # Reconstitute the call
+    call.r2c_if <- calls[[i.call.F + 1L]]
+    call.if_test <- calls[[i.call.0]]
+    call.rec <-
+      clean_call(call("{", call.if_test, call.r2c_if), level=2L)
+    # this is going to make zero sense to the user since we don't expose the
+    # univariate polynomial business in docs anywhere.
+    ssT <- paste0(size_coefs_as_string(size.coef.T[size.neq]), collapse="; ")
+    ssF <- paste0(size_coefs_as_string(size.coef.F[size.neq]), collapse="; ")
+    stop(
+      "Assigned variables and return value must be same size across branches; ",
+      "potential size discrepancy for ",
+      toString(
+        sprintf(
+          "`%s` (TRUE: %s vs FALSE: %s)", rc.sym.names[size.neq], ssT, ssF
+      ) ),
+      " in:\n", deparseLines(call.rec)
+    )
+  }
+  # Alloc sizes must also be equal (this could only differ after above check if
+  # we messed up logic elsewhere)
+  asize.eq <-
+    lengths(alloc[['dat']])[id.rc.F] == lengths(alloc[['dat']])[id.rc.T]
+  if(!all(asize.eq))
+    stop("Internal Error: mismatched allocated sizes across branches.")
+
+  # All the targets for reconciliation must be `r2c` allocated.
+  if(any(alloc[['type']][c(id.rc.F, id.rc.T)] != 'tmp'))
+    stop("Internal Error: reconciliation allocs not r2c generated.")
+
+  # Allocations to remap should all be branch local. For this to be TRUE, the
+  # i.assign values must be inside the i.call.X boundaries
+  i.assign.F <- get_name_item(names(names.rc.F), names.F, 'i.assign')
+  i.assign.T <- get_name_item(names(names.rc.T), names.T, 'i.assign')
+  if(any(i.assign.F <= i.call.T | i.assign.F > i.call.F))
+    stop("Internal Error: reconcile allocation not branch local in FALSE.")
+  if(any(i.assign.T <= i.call.0 | i.assign.T > i.call.T))
+    stop("Internal Error: reconcile allocation not branch local in TRUE.")
+
+  # - Reconcile ----------------------------------------------------------------
+
+  # Reconcile allocations so they point to the same id.  We must use entirely
+  # new allocations because we are not tracking how and where the currently
+  # available allocations have been used in the different branches.  Step 1 is
+  # to create the allocations, Step 2 is to re-point the call data to them.
+  typeof.F <- alloc[['typeof']][id.rc.F]
+  typeof.T <- alloc[['typeof']][id.rc.T]
+  iter.var.F <- alloc[['iter.var']][id.rc.F]
+  iter.var.T <- alloc[['iter.var']][id.rc.T]
+  alloc.i.old <- alloc[['i']]
+
+  for(i in seq_along(id.rc.F)) {
+    # Size and generate allocation
+    size.coef <- size.coef.T[[i]]
+    # Take the most general type from the two branches
+    typeof.num <- match(c(typeof.F[i], typeof.T[i]), NUM.TYPES)
+    typeof <- NUM.TYPES[max(typeof.num)]
+    vec.dat <- vec_dat(
+      NULL, "tmp", typeof=typeof, size.coef=size.coef, gmax=gmax,
+      iter.var=iter.var.F[i] || iter.var.T[i]
+    )
+    # rec=FALSE b/c reconciliation decisions made on 'rec' data from `names`
+    # tracking object so this value should not be used anymore.
+    alloc <- append_dat(alloc, vec.dat, depth=depth)
+    # Adjust the call data for the id remapping.  This should be done for all
+    # calls within the branch
+    new.id <- alloc[['i']]
+    new.id0 <- alloc[['ids0']][new.id] # might be the same as new.id always?
+    call.dat <- update_cdat_alloc(  # true branch
+      call.dat, old=id.rc.T[i], new=new.id,
+      start=i.call.0 + 1L, end=i.call.T
+    )
+    call.dat <- update_cdat_alloc(  # false branch
+      call.dat, old=id.rc.F[i], new=new.id,
+      start=i.call.T + 1L, end=i.call.F
+    )
+    # Update the name info in the parent environment.
+    # Last value is the return value, so no names to update for that.
+    if(i < length(id.rc.F) || !rec.ret) {
+      alloc <- name_bind(
+        alloc, rc.sym.names[i],
+        # Assume assignment happens at if_false, which not strictly correct;
+        # Can we get the actual i.call?  Probably from NM.MAP?
+        i.call=i.call.F,
+        rec=TRUE, rec0=FALSE, id=new.id
+      )
+    }
+    # Update the loop reconcilitation ids
+    stack.lcopy['set', stack.lcopy['set',] %in% c(id.rc.T[i], id.rc.F[i])] <-
+      new.id
+
+    # Finally update stack just in case
+    stack.up <- c('id', 'id0')
+    stack.up.val <- c(new.id, new.id0)
+    stack[stack.up, stack['id',] == id.rc.F[i]] <- stack.up.val
+    stack[stack.up, stack['id',] == id.rc.T[i]] <- stack.up.val
+  }
+  # In the case of no result reconciliation, reset the alloc.id
+  if(!rec.ret) alloc[['i']] <- alloc.i.old
+
+  list(alloc=alloc, call.dat=call.dat, stack=stack, stack.lcopy=stack.lcopy)
+}
+get_name_item <- function(names, names.dat, item) {
+  vapply(names, function(i) names.dat[['env.alloc']][[i]][[item]], 0L)
+}
+
+# Identify Bindings that Should Be Reconciled
+#
+# @return logical with names the symbols that should be reconciled, and TRUE
+#   values correponding to those that must be reconciled (rec0) vs FALSE for
+#   those that inherit reconciliation status and thus may not need to be.
+
+cand_rec_bind <- function(names) {
+  env <- names[['env.alloc']]
+  nm.syms <- names(env)
+  nm.syms.rec <- vapply(nm.syms, function(x) env[[x]][['rec']], TRUE)
+  nm.syms.rec0 <- vapply(nm.syms, function(x) env[[x]][['rec0']], TRUE)
+  syms.rec.all <- logical(length(nm.syms))
+  names(syms.rec.all) <- nm.syms
+  syms.rec.all[nm.syms.rec0] <- TRUE
+  syms.rec.all[nm.syms.rec | nm.syms.rec0]
+}
+# Determine whether branch return values need reconciliation
+
+cand_ret <- function(call.dat, call.dat.i, i.call) {
+  # Identify return values from both branches and check if they need to
+  # be reconciled (if no set to 0)
+  call.i <- which(call.dat.i == i.call)
+  call.dat.sub <- call.dat[[call.i]]
+  if(is.rec_ret(call.dat.sub[['call']]))
+    call.dat.sub[['ids']][length(call.dat.sub[['ids']])]
+  else integer()
+}
+# Determine if Call Return is Rec Tagged
+
+is.rec_ret <- function(x) {
+  if(is.call(x)) {
+    call.sym <- get_lang_name(x)
+    if(call.sym == "rec") TRUE
+    else if(call.sym %in% PASSIVE.SYM && !call.sym %in% MODIFY.SYM)
+      is.rec_ret(x[[length(x)]])
+    else FALSE
+  } else FALSE
+}
+
+# Update Call Data Allocations
+#
+# Find all the in-branch usage of the allocation that needs to be reconciled,
+# and point them to the new allocation.
+#
+# @param old the id of the old allocation (from alloc[['alloc']])
+# @param new the id of the new allocation
+# @param start the point at which the symbol we're reconciling was assigned
+# @parem end the end of the current branch
+
+update_cdat_alloc <- function(call.dat, old, new, start, end) {
+  # Call dat does not contain every index in the original call list, so we need
+  # to map those indices to those available in call.dat
+  c.i <- vapply(call.dat, '[[', 1L, 'call.i')
+
+  # In the eligible range, remap all the ids.  UPDATE: is it actually possible
+  # to have the id to remap outside of the eligible range?  Things to reconcile
+  # need to be computed locally, so it seems like no and thus this is a
+  # redundant check.
+  for(i in which(c.i >= start & c.i <= end)) {
+    call.dat[[i]][['ids']][call.dat[[i]][['ids']] == old] <- new
+  }
+  call.dat
+}
+
 # - Other Helper Functions -----------------------------------------------------
+
+# Retrieve parent id from linearized call list
+#
+# @param depths the call depth of every sub-call
+# @param i the current call index in the linearized call list
+
+linear_parent <- function(i, depths) {
+  depth <- depths[i]
+  parent.cand <- which(seq_along(depths) > i & depths < depth)
+  if(length(parent.cand)) min(parent.cand) else 0L
+}
+# Determine if a branch return value is used, can only ever return FALSE if a
+# branch is involved.
+#
+# This should be used conditional on the first call being a BRANCH.EXEC.SYM.
+
+branch_used <- function(i, call.names, depths) {
+  continue.syms <- c(BRANCH.EXEC.SYM, BRANCH.MID.SYM, BRANCH.END.SYM, "{")
+  name <- call.names[i]
+  used <- TRUE
+  if(name %in% continue.syms) {
+    i.par <- linear_parent(i, depths)
+    if(i.par) {
+      name.par <- call.names[i.par]
+      if(name.par == "{" && i.par > i + 1L) {
+        used <- FALSE
+      } else if (name.par %in% continue.syms) {
+        used <- branch_used(i.par, call.names, depths)
+      } else TRUE
+    }
+  }
+  used
+}
 
 #' Find Latest Symbol Instance
 #'
@@ -582,6 +1245,11 @@ alloc_result <- function(alloc, vdat){
 #' we're settling on them having different lookup semantics.  So this will be
 #' cause some inefficiency in some cases where a symbol will not be released as
 #' early as it should just because it's used as a control/flag.
+#'
+#' If a symbol is re-assigned, it will not be released until the last use after
+#' the final re-assign.  This means earlier assignments could be held onto
+#' longer than needed if e.g. there is a gap between last use from previous
+#' assignment and re-assignment.
 #'
 #' @noRd
 #' @param x object as produced by preproc
@@ -598,8 +1266,10 @@ latest_symbol_instance <- function(x) {
 
   # Unfortunately loops complicate matters as an early symbol can be re-used
   # after first loop iteration, so get all the loops, and extract all the leaf
-  # symbols used by each loop.
-  loop.syms <- lapply(call, collect_loop_call_symbols)
+  # symbols used by each loop.  We will pretend each of these is potentially
+  # used up to the last point of the loop.  DO NOT CHANGE this assumption
+  # lightly as we depend on it for bindings that are used before write in loops.
+  loop.syms <- lapply(call, collect_loop_call_symbols)  # linearized calls here
   loop.reps <- rep(seq_along(loop.syms), lengths(loop.syms))
   loop.max <- tapply(loop.reps, unlist(loop.syms), max)
 
@@ -630,87 +1300,11 @@ latest_action_call <- function(x) {
     stop("Internal Error: no active return call found.")
   max(call.active.i)
 }
-## Identify Missing Parameters on Stack
-##
-## Ends execution with Error
+# Retrieve Inputs to Current Call From Stack
 
-stack_param_missing <- function(params, stack.avail, call, .CALL) {
-  stop(
-    simpleError(
-      paste0(
-        "Parameter(s) ",
-        deparse1(params[!params %in% stack.avail]),
-        " missing but required for sizing in ", deparse1(call)
-      ),
-      .CALL
-  ) )
-}
+stack_inputs <- function(stack, depth)
+  stack[, stack['depth',] == depth + 1L, drop=FALSE]
 
-## Compute Max Possible Size
-##
-## This is affected by maximum group size as well as any non-group parameters.
-## This allows us to keep track of what the most significant size resulting from
-## prior calls is in the presence of some calls affected by group sizes.  That
-## way, if e.g. at some point we have a small group, but the limiting size is
-## from the non-group data, that info isn't lost.
-##
-## IMPORTANT: the result of this alone _must_ be combined with preserving
-## whether the data was group data or not.
-
-vec_rec_known_size <- function(x) {
-  tmp <- x[!is.na(x)]             # non-group sizes
-  if(!length(tmp)) NA_real_
-  else if(any(tmp == 0)) 0
-  else max(tmp)
-}
-# only difference with above is we use the max group size for alloc
-
-vec_rec_max_size <- function(x, gmax) {
-  if(
-    !is.numeric(x) || !is.matrix(x) || nrow(x) != 2 ||
-    any(is.na(x[1L,] & !x[2L,]))
-  )
-    stop("Internal error, malformed size data.")
-
-  size <- x[1L,]
-  group <- as.logical(x[2L,])
-  size[is.na(size) | group] <- gmax
-  if(any(size == 0)) 0 else max(size)
-}
-
-compute_call_res_size <- function(stack, depth, ftype) {
-  stack.cand <- stack['depth',] == depth + 1L
-  if(is.character(ftype[[2L]])) {
-    param.cand.tmp <- colnames(stack)[stack.cand]
-    if(!all(param.cand.match <- ftype[[2L]] %in% param.cand.tmp))
-      stack_param_missing(
-        ftype[[2L]][!param.cand.match], param.cand.tmp,
-        call, .CALL
-      )
-    param.cand <-
-      seq_len(ncol(stack))[colnames(stack) %in% ftype[[2L]] & stack.cand]
-  } else if(is.integer(ftype[[2L]])) {
-    param.cand <- seq_along(stack)[stack.cand][ftype[[2L]]]
-    if(anyNA(param.cand))
-      stack_param_missing(
-        ftype[[2L]][is.na(param.cand)], seq_along(stack)[stack.cand],
-        call, .CALL
-      )
-  } else stop("Internal Error: unexpected arg index type.")
-
-  # Arglen needs to disambiguate multiple params (e.g. `...` may show up
-  # multiple times in `colnames(stack)` for any given depth).
-  if(length(ftype) > 2L && is.function(ftype[[3L]])) {
-    param.cand.tmp <- ftype[[3L]](param.cand)
-    if(
-      !is.integer(param.cand.tmp) ||
-      !all(param.cand.tmp %in% param.cand)
-    )
-      stop("Internal Error: parameter disambiguation for sizing failed.")
-    param.cand <- param.cand.tmp
-  }
-  stack[c('size', 'group'), param.cand, drop=FALSE]
-}
 
 ## Check function validity
 check_fun <- function(name, pkg, env) {
@@ -721,6 +1315,12 @@ check_fun <- function(name, pkg, env) {
     else get(name, envir=env, mode="function"),
     silent=TRUE
   )
+  if(inherits(got.fun, "try-error")) {
+    stop(
+      "Failed retrieving `", name, "` with error: ",
+      conditionMessage(attr(got.fun, 'condition'))
+    )
+  }
   if(!identical(got.fun, VALID_FUNS[[c(name, "fun")]])) {
     tar.fun <- VALID_FUNS[[c(name, "fun")]]
     env.fun <-
@@ -733,53 +1333,176 @@ check_fun <- function(name, pkg, env) {
         paste0(" (resolves to one from ", format(environment(got.fun)), ")")
 ) } }
 
-#' Helper Functions for Symbol Management
-#'
-#' * `names_clean` drops name that have no future references to them, which
-#'   makes it safe to release any memory that they've been bound to.
-#' * `names_free` frees any allocation previously bound to a symbol, use this
-#'   when you give a symbol a new binding in the same scope.
-#' * `names_bind` record new symbols and their binding to the data allocation.
-#'
-#' @noRd
+## Helper Functions for Symbol Management
+##
+## * `names_clean` drops name that have no future references to them, which
+##   makes it safe to release any memory that they've been bound to.
+## * `name_bind` record new symbols and their binding to the data allocation.
+##
+## We need to track names both to be able to recover what allocation they are
+## bound to, but also to populate the special environment we use to detect
+## varying symbol use by constant expressions.
+##
+## For `names_clean` we don't drop the symbols from the allocation environment.
+## That's unclean but it shouldn't matter as those symbols should not be used
+## anymore.  Feels slightly uncomfortable, but in order to properly clean we
+## would need to have a list tracking each environment associated with each
+## name.
+##
+## See `append_dat` for details on NM.MAP, etc.
 
 names_clean <- function(alloc, i.call) {
-  names <- alloc[['names']]
-  # Drop out ouf scope names
-  names <- names[, names['scope',] <= alloc[['scope']], drop=FALSE]
-  # Drop expired names
-  alloc[['names']] <- names[, names['i.max',] >= i.call, drop=FALSE]
+  name.map <- alloc[[NM.MAP]]
+  name.map <- name.map[,name.map['scope',] <= alloc[['scope']], drop=FALSE]
+  in.scope <- name.map['scope',] == alloc[['scope']]
+  i.max <- alloc[['meta']][['i.sym.max']][colnames(name.map)]
+
+  # names_clean should be run after all call alloc processing is done
+  alloc[[NM.MAP]] <- name.map[, i.max >= i.call & in.scope, drop=FALSE]
   alloc
 }
-names_free <- function(alloc, new.names) {
-  names <- alloc[['names']]
-  to.free <-
-    names['scope', ] == alloc[['scope']] &
-    colnames(names) %in% new.names
-  alloc[['names']] <- names[, !to.free, drop=FALSE]
-  alloc
-}
-names_bind <- function(alloc, new.name) {
-  new.name.dat <- c(
-    ids=alloc[['i']],
-    scope=alloc[['scope']],
-    i.max=unname(alloc[['meta']][['i.sym.max']][new.name])
+name_bind <- function(
+  alloc, new.name, i.call, rec, rec0=rec, id=alloc[['i']]
+) {
+  # Drop existing symbol
+  sym.map <- alloc[[NM.MAP]]
+  if(!is.null(sym.info <- alloc[[NM.ENV]][[new.name]])) {
+    # Name exists in current env, drop one matching ref from alloc mapping.
+    # No need to check scope because we push names stack when we update scope.
+    alloc.stack.id <- head(
+      which(
+        sym.map['id',] == sym.info[['alloc']] &
+        colnames(sym.map) == new.name
+      ), 1L
+    )
+    # Possible name was dropped already via names_clean so check b4 drop
+    if(length(alloc.stack.id))
+      alloc[[NM.MAP]] <- alloc[[NM.MAP]][-alloc.stack.id]
+  }
+  # Add alloc mapping
+  alloc[[NM.MAP]] <- cbind(
+    alloc[[NM.MAP]], c(id=id, scope=alloc[['scope']], i.call=i.call)
   )
-  if(is.na(new.name.dat['i.max'])) new.name.dat['i.max'] <- 0L
-  alloc[['names']] <- cbind(alloc[['names']], new.name.dat)
-  colnames(alloc[['names']])[ncol(alloc[['names']])] <- new.name
-  alloc
-}
-names_update <- function(alloc, i, call, call.name) {
-  alloc <- names_clean(alloc, i)
-  if(call.name %in% ASSIGN.SYM) {
-    # Remove protection from prev assignment to same name, and bind previous
-    # computation (`alloc[[i]]`) to it.
-    sym <- get_target_symbol(call, call.name)
-    alloc <- names_free(alloc, sym)
-    alloc <- names_bind(alloc, sym)
+  colnames(alloc[[NM.MAP]])[ncol(alloc[[NM.MAP]])] <- new.name
+
+  # Update/replace the name itself
+  alloc[[NM.ENV]][[new.name]] <- list(
+    id=id, rec=rec, rec0=rec0, i.assign=i.call
+  )
+  if(alloc[['iter.var']][id] || alloc[['type']][id] != "ext") {
+    # Protect against use of iteration variant symbol in constant exprs
+    alloc[[NM.ENV.VAR]] <- guard_symbols(
+      new.name, alloc[[NM.ENV.VAR]], alloc[['iter.var']][id]
+    )
+  } else {
+    # Install the value if constant external; this masks the guarding and allows
+    # rebindings to resolve at eval time.
+    alloc[[NM.ENV.VAR]] <- unguard_symbol(
+      new.name, alloc[['dat']][[id]], alloc[[NM.ENV.VAR]]
+    )
   }
   alloc
+}
+name_bind_if_assign <- function(alloc, call, call.name, rec, i.call) {
+  if(call.name %in% ASSIGN.SYM) { # not MODIFY.SYM
+    sym <- get_target_symbol(call, call.name)
+    alloc <- name_bind(alloc, sym, i.call=i.call, rec=rec)
+  }
+  alloc
+}
+# Create a Finger Print for Calls
+#
+# Disambiguates calls that deparse the same but might have different values
+# because the symbols they use have been re-bound.  This is to resovle a similar
+# type of problem as dealt with reuse_calls but seems easier to do it this way
+# here since we have the name mapping data.
+
+fingerprint_call <- function(call, alloc) {
+  syms <- sort(unique(collect_call_symbols(call)))
+  syms.dat <- mget(
+    syms, alloc[[NM.ENV]], ifnotfound=list(NULL), inherits=TRUE
+  )
+  syms.bound <- syms.dat[!vapply(syms.dat, is.null, TRUE)]
+  syms.id <- vapply(syms.bound, "[[", 0L, "id")
+  syms.nm <- gsub("<", "\\<", names(syms.id))
+  syms.nm <- gsub(">", "\\>", names(syms.id))
+  # Need to account for scope correctly here?
+  # Are we really accounting for scope correctly when we rebind symbols?
+  if(length(syms.nm)) paste0("<", syms.nm, ">: ", syms.id, collapse=", ")
+  else character()
+}
+
+# Prevent External Expression from Accessing Internal Symbols
+#
+# External expressions are disallowed from accessing iteration varying symbols
+# because external expressions are only evaluated once and thus cannot
+# correctly be calculated with iteration varying data.
+#
+# We implement these by setting for each iteration varying symbol (a data symbol
+# or a symbol set in an r2c expression) an active binding that triggers a
+# condition if it is used.  This way, anytime we evaluate an external
+# expression, we will detect any internal symbols used.
+#
+# Each symbol or set of symbols added is set to its own environment so we can
+# lock it to prevent evaluated expressions from adding/removing symbols.  The
+# environment chain creates the illusion of all symbols co-existing in one
+# environment.
+#
+# To undo a lock we mask the guarded symbol with the value of the constant that
+# is referenced.
+#
+# This is not a foolproof implementation as someone could find and unlock these
+# bindings within an external expression, but it really takes wanting to do
+# that.
+#
+# @param iter.var whether the expression is iteration variant; this is needed to
+#   distinguish expressions that may be constant, but because they are computed
+#   by r2c they still cannot be referenced by constant parameters or external
+#   constant expressions.
+
+guard_symbols <- function(names, env, iter.var) {
+  if(length(names)) {
+    class <- if(iter.var) 'r2c-internalSymAccess' else 'r2c-computedConstant'
+    env <- new.env(parent=env)
+    for(name in names) {
+      cond <- simpleCondition(name)
+      class(cond) <- c(class, class(cond))
+      makeActiveBinding(name, function() signalCondition(cond), env)
+      lockBinding(name, env)
+    }
+    lockEnvironment(env)
+  }
+  env
+}
+unguard_symbol <- function(name, value, env) {
+  env <- new.env(parent=env)
+  # this might make it hard for gc to ever release value, although it should
+  # still be able to do so.
+  env[[name]] <- value
+  env
+}
+varying_err <- function(e, call, call.outer, par.icnst) {
+  call.dep <- deparseLines(call)
+  err.head <-
+    if(par.icnst) 'Constant parameter expression'
+    else 'Unimplemented function call'
+
+  err.msg <-
+    if(class(e)[1L] == 'r2c-internalSymAccess') "internal symbol"
+    else if(class(e)[1L] == 'r2c-computedConstant')
+      "r2c-computed expression via symbol"
+
+  stop(
+    simpleError(
+      paste0(
+        err.head,
+        if(grepl("\n", call.dep)) paste0("\n:", call.dep, "\n")
+        else paste0(" `", call.dep, "` "),
+        "attempted to access ", err.msg, " `",
+        conditionMessage(e), "`.  See `?'r2c-expression-types'."
+      ),
+      call.outer
+  ) )
 }
 ## Lookup a Name In Storage List
 ##
@@ -787,18 +1510,16 @@ names_update <- function(alloc, i, call, call.name) {
 ## generated.
 
 name_to_id <- function(alloc, name) {
-  if (id <- match(name, rev(colnames(alloc[['names']])), nomatch=0)) {
-    # Reconvert the name id into data id (`rev` simulates masking)
-    id <- ncol(alloc[['names']]) - id + 1L
-    alloc[['names']]['ids', id]
-  }
+  if(nzchar(name))
+    get0(name, alloc[[NM.ENV]], ifnotfound=list(id=0L))[['id']]
+  else 0L
 }
 ## Check That External Vectors are OK
 
-validate_ext <- function(x, i, type, arg.e, name, call, .CALL) {
-  if(type == "leaf" && !is.num_naked(list(arg.e))) {
+validate_ext <- function(x, i, arg.e, name, call, .CALL) {
+  if(!is.num_naked(list(arg.e))) {
     # Next call, if any
-    next.call.v <- which(seq_along(x[['call']]) > i & x[['type']] == 'call')
+    next.call.v <- which(seq_along(x[['call']]) > i & x[['is.call']])
     err.call <-
       if(length(next.call.v)) x[['call']][[next.call.v[1L]]]
       else call
@@ -812,5 +1533,21 @@ validate_ext <- function(x, i, type, arg.e, name, call, .CALL) {
   ) ) }
 }
 
+# Record in the lcopy stack the memory slot associated with the set loop use
+# before set data.
+#
+# @param stack.rec an lcopy stack
+# @param alloc the allocation object
+# @param call an `lset` call
+# @param call.name to allow distinguishing which call it is w/o having to
+#   convert symbol again.
 
+lset_update <- function(stack.lcopy, alloc, call) {
+  if(!is.integer(call[['rec.i']]))
+    stop("Internal Error: bad lset call.")
+  lcopy.id <- call[['rec.i']]
+
+
+  cbind(stack.lcopy, c(lcopy=lcopy.id, set=alloc[['i']]))
+}
 

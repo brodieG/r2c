@@ -1,0 +1,125 @@
+# Subset
+
+## Types of Indices
+
+Do we only allow strictly positive?  Maybe we can get away with zeroes b/c the
+result is smaller, but the mismatch between the pre-computed size and the
+runtime size is a little concerning.
+
+Negative indices seem out of the question since we cannot know what the size of
+the result will be before run time.  We can know it will be no larger than the
+larger of the index or the data vector.  Since we set the size of the result,
+maybe this is okay so long as the actual result is smaller than the pre-computed
+one?  One way this goes wrong is for the final return vector
+
+## Subset assign
+
+### Copy to First
+
+One problem with a sub-assign self-copying to first is that it invalidates some
+of the assumptions we made about vcopy.  In particular, by `vcopy`ing to first
+any expressions between the beginning and the sub-assign will not realize that
+the symbol was already copied.  Does this matter?  For the result it shouldn't
+because it's the last thing.  For branches it probably shouldn't either since we
+have to rec/vcopy everything anyway, but it feels a bit unclean.
+
+But it is important to note that a sub-assign does not create a binding.
+
+### Transform
+
+We've put the subassign transform in possibly a weird place?  `uplus`/`uminus`
+happen in the regular transform.  `if/else` can't because otherwise the
+rename/reuse code won't deal with it.
+
+It will likely be beneficial to move the subassign into the regular transform.
+It should be possible to use the transform logic for the assignment to do the
+conversions.
+
+### Copy
+
+Are there any situations where we need to copy?
+
+    x[rev(seq_along(x))] <- x
+
+That's pretty much the only one?  But we need to be wary of variations.
+
+    x[rev(seq_along(x))] <- {y; x}
+
+How does this get implemented?  We need an `assign.to.sub` or some such, and if
+the same symbol is found in the assignment chain.
+
+What breaks the chain?
+
+    x[rev(seq_along(x))] <- x[rev(seq_along(x))]
+
+Also note the return value of the sub-assign is what is assigned:
+
+    x <- 1:10
+    (x[2:3] <- 99:100)
+    ## [1]  99 100
+
+This is ugly.  We don't really have a mechanism for handling this?  Do we
+prevent use of the return value of an assignment of this sort?  The alternative
+is that we always copy the selected values in question to a secondary result.  I
+don't think we can have a pointer into the parent vector with the corresponding
+entries because they may not even be contiguous, and even if they were it seems
+likely all the allocation assumptions would break.  Maybe if we detect cases
+where the output is unused we have a different subset-assign function vs in the
+cases where it is used?
+
+* Prevent sub-assignment as RHS of anything except braces, `if_true` and similar.
+* Prevent sub-assignment as return value if used.
+* `vcopy` if target symbol is external.
+* `vcopy` if source is same as target.
+
+These seem to be done.
+
+How do we handle the external symbol?  Do we have to do something like:
+
+    (vcopy(x))[a] <- y  # not sufficient, we also have to bind x, see next
+
+Yikes.  And it's not just external symbols, it is group symbols too.  We can't
+just write to them.  Each such usage needs:
+
+    x <- vcopy(x)
+    x[a] <- y
+
+But we can't know before allocation time which ones need this treatment?  No, we
+can, at `preproc-copy` they are all external.  These also need to be copied in
+branches?  Hmm, maybe not.
+
+So maybe the pattern is if we turn:
+
+    x[a] <- y
+
+Into
+
+    x <- x
+    x[a] <- y
+
+And let `copy_branchdat` recognize that the RHS of the first one needs to be
+copied if `x` is external.  Ideally it would do this in the cases where it
+"knows" `x` is sub-assigned to later.  This is not something built into the
+current system as we only check that a symbol is used, not what context it is
+used in.  Maybe it's not too hard to add this?  We need a different class of
+candidate.
+
+But it would be much better if we did the conversion in `copy_branchdat`
+otherwise we haven't kept track of what is external and what isn't.
+
+Maybe an alternative is to do a pass that looks for assignment but can keep
+track of external symbols.  That probably works because we can do the `vcopy`s
+at the very beginning.  Except that we then rely heavily on branches
+guaranteeing an `x <- vcopy(x)` for the case where a symbol is defined in e.g.
+the TRUE branch.  Worse, if it is defined in the FALSE branch, then we won't
+detect that the `x <- vcopy(x)` will be added in the TRUE branch.
+
+Can we get away with injecting:
+
+   {
+     x <- vcopy(x)
+     x[a] <- y
+   }
+
+On encountering one of these?  And do we do it with a candidate actual system?
+It can be independent, and if applied backwards it should work.

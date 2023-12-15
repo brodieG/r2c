@@ -19,20 +19,25 @@
 #include "r2c.h"
 
 const struct const_dat consts[] = {
-  { "I.STAT",       I_STAT },
-  { "I.RES",        I_RES },
-  { "I.GRP",        I_GRP },
-  { "STAT.N",       STAT_N },
-  { "STAT.RECYCLE", STAT_RECYCLE }
+  { "I.STAT",       I_STAT,        INTSXP },
+  { "I.RES",        I_RES,         INTSXP },
+  { "I.GRP",        I_GRP,         INTSXP },
+  { "STAT.N",       STAT_N,        INTSXP },
+  { "STAT.RECYCLE", STAT_RECYCLE,  INTSXP },
+  { "R_XLEN_T_MAX", R_XLEN_T_MAX,  REALSXP },
 };
 const int CONST_N = sizeof(consts) / sizeof(struct const_dat);
 
 //; Return shared constants from C to R
-SEXP R2C_constants() {
+SEXP R2C_constants(void) {
   SEXP res = PROTECT(Rf_allocVector(VECSXP, CONST_N));
   SEXP res_names = PROTECT(Rf_allocVector(STRSXP, CONST_N));
   for(int i = 0; i < CONST_N; ++i) {
-    SET_VECTOR_ELT(res, i, PROTECT(Rf_ScalarInteger(consts[i].value)));
+    if(consts[i].type == INTSXP) {
+      SET_VECTOR_ELT(res, i, PROTECT(Rf_ScalarInteger((double)consts[i].value)));
+    } else {
+      SET_VECTOR_ELT(res, i, PROTECT(Rf_ScalarReal((double)consts[i].value)));
+    }
     SET_STRING_ELT(res_names, i, PROTECT(Rf_mkChar(consts[i].name)));
     UNPROTECT(2);
   }

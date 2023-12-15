@@ -53,7 +53,10 @@ unitizer_sect('basic', {
   identical(r2c_arith(y, z, x, n0, 2), base_arith(y, z, x, n0, 2))
   identical(r2c_arith(y, z, x, 2, n0), base_arith(y, z, x, 2, n0))
 
+  # Currently unimplemented but works as a constant exp
   r2c_mod <- r2cq(x %% y)
   identical(r2c_mod(x, 1:5), x %% (1:5))
+  # But doesn't work as varying
+  group_exec(r2c_mod, x, rep(1:2, 50), MoreArgs=list(1:5))
 })
 

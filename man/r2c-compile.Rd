@@ -40,8 +40,8 @@ r2cq(
 )
 }
 \arguments{
-\item{x}{an object to compile into an "r2c_fun", for \code{r2cf} an R function, for
-\code{r2cq} an expression that will be captured unevaluated, for \code{r2cl} an R
+\item{x}{an object to compile into an "r2c_fun", for \code{r2cf} an R function,
+for \code{r2cq} an expression that will be captured unevaluated, for \code{r2cl} an R
 expression escaped with \code{\link{quote}}.  See details.}
 
 \item{dir}{NULL (default), or character(1L) name of a file system directory
@@ -68,6 +68,15 @@ will only delete folders that have the same directory root as one generated
 by \code{tempfile()} to avoid accidents.  If you manually provide \code{dir} you will
 need to manually delete the directory yourself.}
 
+\item{optimize}{TRUE (default) or FALSE whether to enable "compiler"
+optimizations. Currently it is just the automatic re-use of repeated
+computation results.  You can use \code{\link{get_r_code}} to see if optimizations
+were applied.}
+
+\item{envir}{environment to use as the enclosure of the function evaluation
+environment.  It defaults to the environment from which the compilation
+function is called, or for \code{r2cf} the environment of \code{fun}.  See details.}
+
 \item{formals}{character vector of the names of the parameters for the
 resulting "r2c_fun", a list of formals as generated with e.g. \code{\link{alist}}, or
 NULL (default).  NULL causes all free symbols in \code{x} to become parameters
@@ -85,19 +94,37 @@ an "r2c_fun" function; this is an unusual function so please see
 details.
 }
 \description{
-The \verb{r2c*} functions translate eligible R calls into C, compile them into
-native instructions using \verb{R CMD SHLIB}, and return an interface to that
-code in the form of an "r2c_fun" function.  This function will carry out
-out numerical calculations with \code{r2c} native instructions instead of with the
-standard R routines. "r2c_fun" functions are intended to be run with the
-\code{r2c} \link{runners} for fast iterated calculations.
+The \verb{r2c*} functions translate \link[=r2c-supported-funs]{eligible R calls} into C,
+compile them into native instructions using \verb{R CMD SHLIB}, and return an
+interface to that code in the form of an "r2c_fun" function.  This function
+will carry out out numerical calculations with \code{r2c} native instructions
+instead of with the standard R routines. Expressions to compile can contain
+arbitrary R sub-expressions so long as they are found to be
+\link[=r2c-expression-types]{iteration-constant} at run time; these will be
+evaluated in R.  "r2c_fun" functions are intended to be run with the \code{r2c}
+\link{runners} for fast iterated calculations.  \code{r2c} adheres closely to R
+semantics for the supported use cases.  Look at the examples here and those
+of the \link{runners} to get started.
 }
-\details{
+\section{r2c Generated Functions}{
+
+
 While "r2c_fun" functions can be called in the same way as normal R
 functions, there is limited value in doing so.  "r2c_fun" functions are
 optimized to be invoked invoked indirectly with \link{runners}.  In many common
 cases it is likely that using an "r2c_fun" directly instead of with a runner
 will be slower than evaluating the corresponding R expression.
+
+The lifecycle of an \code{r2c} function has two stages.
+\enumerate{
+\item Compilation, with \code{r2cq} or similar.
+\item Execution, either direct or via \link{runners}, which comprises:
+\itemize{
+\item A one time memory allocation sized to largest iteration (this memory
+is re-used for every iteration).
+\item Iterative execution over groups/windows.
+}
+}
 
 Each of the \verb{r2c*} functions addresses different types of input:
 \itemize{
@@ -108,79 +135,62 @@ function (e.g. \code{r2cq(a + b)}).
 "r2c_fun" function (e.g. \code{r2cl(quote(a + b))}).
 }
 
-Currently the following functions are supported in \code{x} (or in the body of \code{x}
-for \code{r2cf}):
-\itemize{
-\item Binary operators: \code{+}, \code{-}, \code{*}, \code{/}, and \code{^}.
-\item Statistics: \code{mean}, \code{sum}, \code{length}.
-\item Assignment and braces: \verb{<-}, \code{=}, and \verb{\{}.
-}
-
-Calls must be in the form \code{fun(...)} (\verb{a fun b} for operators)  where \code{fun}
-is the name of the function.  Functions must be bound to their original
-symbols for them to be recognized.  For \code{r2c} provided functions like
-\code{\link{mean1}} you may use the \code{::} form to compile expressions that contain them
-without attaching the \code{{r2c}} package.  Empty braces are disallowed, and
-assignments may only be done at the top level or at a brace level (see
-examples).  References to external variables (i.e. not in \code{data} or
-\code{MoreArgs}) that cause side effects (e.g. \link[=bindenv]{active bindings},
-promises the evaluation of which cause side effects)
-may cause unexpected results.  All external references are evaluated once
-before any other computations are carried out.
-
-For \code{r2cl} and \code{r2cq}, symbols used as parameters to \code{call} and its
+For \code{r2cl} and \code{r2cq}, free symbols used as parameters to \code{call} and its
 constituent sub-calls (e.g. the \code{x} and \code{y} in \code{sum(x) + y}) will become
 parameters to the output "r2c_fun" function.  There must be at least one such
-symbol in \code{call}.  Parameter order follows that of appearance in the call
-tree after everything is \code{\link{match.call}}ed.  Symbols beginning with \code{.R2C} are
-reserved for use by \code{r2c} and thus disallowed in \code{call}.  You may also
-directly set the parameter list with the \code{formals} parameter, or with \code{r2cf}.
+symbol in \code{call}.  Parameter order follows that of appearance in the
+call tree after everything is \code{\link{match.call}}ed.  Symbols beginning with
+\code{.R2C} are reserved for use by \code{r2c} and thus disallowed in \code{call}.  You may
+also directly set the parameter list with the \code{formals} parameter, or with
+\code{r2cf}.
 
-Parameters used with "r2c_fun" supported functions are categorized into data
-parameters and control parameters.  For example, in \code{sum(x, na.rm=TRUE)}, \code{x}
-is considered a data parameter and \code{na.rm} a control parameter.  Control
-parameters are evaluated the same as external references (see above).  All
-data parameters must be attribute-less numeric vectors.  Integer vectors are
-supported, but they are coerced to numeric (and thus copied) before use.  If
-all data inputs are integer and the R counterpart functions in \code{call} support
-integer output, the result will be returned as integer by coercing (thus
-copying) the otherwise numeric result to integer.  There are no general
-type restrictions on control parameters, but each implemented function will
-only accept values for them that would make sense for the R counterparts.
-
-Outside of the aforementioned constraints, \code{r2c} attempts to mimic the
-corresponding R function semantics to the \code{identical} level, but there may be
-corner cases that differ, particularly those involving missing or infinite
-values.
-
-Like with regular functions, unbound symbols are resolved in the lexical
-environment of the function.  Currently there is no way to change the
-function environment (\code{environment(r2c_fun) <- x} will likely just break the
+As with regular R functions, unbound symbols are resolved in the lexical
+environment of the function.  You can set a different environment on creation
+of the function with the \code{envir} parameter, but currently there is no way to
+change it afterwards (\code{environment(r2c_fun) <- x} will likely just break the
 function).
+}
 
-\code{r2c} may process the provided call either to apply optimizations (see
-\code{optimize} parameter), or because a call needs to be modified to work
-correctly with \code{r2c}.  The processing leaves call semantics unchanged.  If
-\code{r2c} modified a call, \code{\link{get_r_code}} will show a "processed" member with the
-modified call.
+\section{Details}{
 
-The structure of "r2c_fun" functions is subject to change without notice in
-future \code{r2c} releases.  The only supported uses of them are standard
-invocation with the \code{(} operator and use with \code{r2c} functions that accept
-them as inputs.
+
+\code{r2c} will \link[=r2c-preprocess]{preprocess} the provided call either to apply
+optimizations (see \code{optimize} parameter), or because a call needs to be
+modified to work correctly with \code{r2c}.  The processing leaves call semantics
+unchanged.  If \code{r2c} modified a call, \code{\link{get_r_code}} will show a "processed"
+member with the modified call.
 
 \code{r2c} requires a C99 or later compatible implementation with floating point
 infinity defined and the \code{R_xlen_t} range representable without precision
-loss as double precision floating point.  It is unknown whether R supports C
-implementations that fail this requirement, and if it does they are probably
-rare.
+loss as double precision floating point.  Platforms that support R and fail
+this requirement are likely rare.
+
+Interrupts are supported at the \link{runner} level, e.g. \emph{between} groups or
+windows, each time a preset number of elements has been processed since the
+last interrupt check.  There is infrastructure to support within
+iteration-interrupts, but it adds overhead when dealing with many iterations
+with few elements each and thus is disabled at the moment.
+
+Users should not rely on specifics of the internal structure of "r2c_fun"
+functions; these are subject to change without notice in future \code{r2c}
+releases.  The only supported uses of "r2c_fun" functions are use with the
+\link{runners}, standard invocation with the \code{(} operator, and other \code{r2c}
+functions that accept "r2c_fun" functions as arguments.
 }
+
 \examples{
-r2c_sum_sub <- r2cq(sum(x - y))
-r2c_sum_sub <- r2cl(quote(sum(x - y)))  ## equivalently
-sum_sub <- function(x, y) sum(x - y)
-r2c_sum_sub <- r2cf(sum_sub)            ## equivalently
-r2c_sum_sub(-1, c(1, 2, 3))
+r2c_mean_area <- r2cq(mean(x * y))
+r2c_mean_area <- r2cl(quote(mean(x * y)))   ## equivalently
+mean_area <- function(x, y) mean(x * y)
+r2c_mean_area <- r2cf(mean_area)            ## equivalently
+## Intended use is with runners
+with(
+  iris,
+  group_exec(r2c_mean_area, list(Sepal.Width, Sepal.Length), Species)
+)
+## Standard invocation supported but, it is of limited value.
+## We'll use standard invocation in the examples for clarity.
+r2c_mean_area(iris[['Sepal.Width']], iris[['Sepal.Length']])
 
 ## Set parameter order for r2cq
 r2c_sum_sub2 <- r2cq(sum(x - y), formals=c('y', 'x'))
@@ -221,9 +231,27 @@ identical(r2c_slope(u, v), r2c_slope2(u, v))
 slope2 <- function(x, y)
   sum((x_mux <- x - mean(x)) * (y - mean(y))) / sum(x_mux^2)
 try(r2c_slope2 <- r2cf(slope2))  # Error
+
+## For loops are slow; don't use them when there is an internally
+## vectorized alternative.
+sum_prod_loop_r <- function(x, y) {
+  res <- 0
+  for(i in seq_along(x)) res <- res + x[i] * y[i]
+  res
+}
+sum_prod_loop <- r2cf(sum_prod_loop_r)
+sum_prod_vec <- r2cq(sum(x * y))
+a <- runif(5e6)
+system.time(sum_prod_vec(a, a))
+system.time(sum_prod_loop(a, a))
+## Make sure R fun byte-compiled
+sum_prod_loop_r <- compiler::cmpfun(sum_prod_loop_r)
+system.time(sum_prod_loop_r(a, a))
 }
 \seealso{
 \code{\link{runners}} to iterate "r2c_fun" functions on varying data,
-\code{\link{get_c_code}} for functions to retrieve meta data from the function,
-including the generated C code and the compiler output.
+\code{\link{r2c-inspect}} for functions to retrieve meta data from the function
+including the generated C code and the compiler output,
+\link[=r2c-preprocess]{preprocessing} for how \code{r2c} modifies R calls before
+translation to C.
 }

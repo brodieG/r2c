@@ -13,16 +13,15 @@
 ##
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
-code_gen_pow <-  function(fun, args.reg, args.ctrl, args.flags) {
+code_gen_pow <-  function(fun, pars, par.types) {
   vetr(
     identical(., "^"),
-    args.reg=list(NULL, NULL),
-    args.ctrl=list() && length(.) == 0L,
-    args.flags=list() && length(.) == 0L
+    pars=list(NULL, NULL),
+    par.types=character() && all(. %in% PAR.IVARY)
   )
-  name <- "power"
+  name <- FUN.NAMES[fun]
   defn <- sprintf(
-    bin_op_vec_rec, name, toString(F.ARGS.BASE), "pow", ",",
+    bin_op_vec_rec, name, toString(CF.ARGS.BASE), "pow", ",",
     IX[['I.STAT']], IX[['STAT.RECYCLE']]
   )
   code_res(defn=defn, name=name, headers="<math.h>")
@@ -42,20 +41,18 @@ static void %1$s(%2$s) {
     lens[dires] = 0;
     return;
   }
-  // Mod iterate by region?
   R_xlen_t i;
-  for(i = 0; i < len; ++i) res[i] = e1[i] * e1[i];
+  LOOP_W_INTERRUPT1(len, res[i] = e1[i] * e1[i];);
   lens[dires] = len;
 }'
-code_gen_square <- function(fun, args.reg, args.ctrl, args.flags) {
+code_gen_square <- function(fun, pars, par.types) {
   vetr(
     identical(., "square"),
-    args.reg=list(NULL),
-    args.ctrl=list() && length(.) == 0L,
-    args.flags=list() && length(.) == 0L
+    pars=list(NULL),
+    par.types=character() && all(. %in% PAR.IVARY)
   )
-  name <- "sqr"
-  defn <- sprintf(square_code, name, toString(F.ARGS.BASE))
+  name <- FUN.NAMES[fun]
+  defn <- sprintf(square_code, name, toString(CF.ARGS.BASE))
   code_res(defn=defn, name=name, headers="<math.h>")
 }
 #' Raise a Vector to the Power of Two
@@ -78,7 +75,7 @@ pow_transform <- function(call) {
   exp <- call[[3L]]
   if(is.integer(exp)) exp <- as.numeric(exp)
   if(identical(exp, 2)) {
-    f <- call("::", as.name("r2c"), as.name("square"))
+    f <- pkg_fun("square")
     call <- as.call(list(f, x=call[[2L]]))
   }
   ## # We'll add these once we implement the re-used calculations

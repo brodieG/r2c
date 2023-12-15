@@ -13,270 +13,596 @@
 ##
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
-#' @include code-assign-control.R
+#' @include code-assign-braces.R
+#' @include code-ifelse.R
+#' @include code-loop.R
 #' @include code-summary.R
-#' @include code-arith.R
+#' @include code-seq.R
+#' @include code-bin.R
 #' @include code-pow.R
+#' @include code-logical.R
+#' @include code-unary.R
+#' @include code-subset.R
+#' @include code-numeric.R
+#' @include code-concat.R
+#' @include code-rep.R
 
 NULL
 
 is.valid_arglen <- function(type)
-  (is.character(type[[2L]]) || is.integer(type[[2L]])) &&
+  is.character(type[[2L]]) &&
   length(type[[2L]]) == 1L &&
   !is.na(type[[2L]]) &&
   (length(type) <= 2L || is.function(type[[3L]]))
 
+is.valid_n_arglen <- function(type)
+  length(type) >= 2L && is.character(type[[2L]]) && !anyNA(type[[2L]])
+
+# should rationalize these...
 is.valid_vecrec <- function(type)
-  type[[1L]] == "vecrec" &&
-  (is.character(type[[2L]]) || is.integer(type[[2L]])) &&
-  !anyNA(type[[2L]])
+  is.valid_n_arglen(type) && type[[1L]] == "vecrec"
+
+is.valid_eqlen <- function(type)
+  is.valid_n_arglen(type) && type[[1L]] == "eqlen"
+
+is.valid_extern <- function(type)
+  is.valid_n_arglen(type) && type[[1L]] == "extern" &&
+  length(type[[2L]]) >= 1L
+
+is.valid_concat <- function(type)
+  is.valid_n_arglen(type) && type[[1L]] == "concat"
+
+is.valid_prod <- function(type)
+  is.valid_n_arglen(type) && type[[1L]] == "prod"
 
 is.valid_constant <- function(type)
-  is.integer(type[[2L]]) &&
+  typeof(type[[2L]]) == "double" &&
   length(type[[2L]]) == 1L &&
   !is.na(type[[2L]]) &&
   type[[2L]] >= 0L
 
-#' Initializer for Function Registration Entries
-#'
-#' @section Code Generation:
-#'
-#' Code generation is handled by the function provided in `code.gen`.  The
-#' function should return a list with three character vectors, each
-#' representing:
-#'
-#' * Definition of the C function.
-#' * Name of the C function.
-#' * Call to use to invoke the function.
-#'
-#' Right now one must manually verify that the definition is consistent with the
-#' call format.  The call format is generated with `code_res`, but unfortunately
-#' the actual function definition needs to be manually coded to match what
-#' `code_res` does.  `code_gen_summary` is a good one to look at for
-#' inspiration.
-#'
-#' Default parameters that every C function should have are in `ARGS.NM.BASE`,
-#' and include:
-#'
-#' * data: an array of pointers to double, which includes every every allocation
-#'   that exists at any point in time in the process, including those required
-#'   to support the inputs and the output of the C function.
-#' * lens: an array of `R_xlen_t` values, each one representing how many items
-#'   the corresponding array of doubles in `data` has.
-#' * di: an array of integers that represents, in order, the indices of the data
-#'   parameters (i.e. not control or flag) of the function, in `data`.  So for
-#'   example, `data[di[0]]` returns a pointer to the data backing the first data
-#'   parameter for the function.  If a function takes `n` args, then
-#'   `data[di[n]]` points to where the result of the function should be written
-#'   to.
-#'
-#' Generally a C function with `n` arguments is supposed to compute on the data
-#' in `data[di[0:(n-1)]]` and record the result into `data[di[n]]` and the
-#' length of the result into `lens[di[n]]` (although the latter in theory should
-#' be known ahead of time - maybe this allows a check?).
-#'
-#' For functions with variable arguments (e.g. because they have `...` in their
-#' signature), be sure to include `F.ARGS.VAR` in the definition, and to use
-#' `narg=TRUE` for `code_res` (see "code-summary.R" which handles both the case
-#' with a single parameter, and many parameters).
-#'
-#' @noRd
-#' @param name character(1L) symbol that will reference the function
-#' @param fun the function we're trying to emulate
-#' @param defn NULL if fun is a closure, otherwise a function template to use
-#'   for [`match.call`]'s `definition` parameter.  Also can be NULL for
-#'   primitives that only do positional matching.
-#' @param ctrl.params character names of all the formal parameters that are
-#'   to be evaluated once up front and not for each group in the data.  If any
-#'   data columns are referenced by these parameters, the entire data column
-#'   will be used for them, not the group varying subsets of them.  Any
-#'   parameters here are exclusive of those listed in `flag.params`.
-#' @param flag.params character names as for `ctrl.params`, except this is
-#'   specifically for parameters that evaluated to TRUE or FALSE, so that they
-#'   may be conveyed to the function without the need to use `VECTOR_ELT`, etc.,
-#'   to access the specific control parameter.  Any parameters here are
-#'   exclusive of those listed in `ctrl.params`.
-#' @param type list(2:3) containing the type of function in "constant", "arglen",
-#'   or "vecrec" at position one, and additional meta data at position two or
-#'   three that can be depending on the value in position one:
-#'
-#'   * constant: a positive non-NA integer indicating the constant result size
-#'     (e.g. 1L for `mean`)
-#'   * arglen: character(1L) the name of the argument to use the length of as
-#'     the result size (e.g. `probs` for [`quantile`]), also allows specifying a
-#'     function at position 3 to e.g. pick which of multiple arguments matching
-#'     `...` to use for the length.
-#'   * vecrec: character(n) the names of the arguments to use to compute result
-#'     size under assumption of recycling to longest, or zero if any argument is
-#'     zero length.
-#'
-#' @param code.gen a function that generates the C code corresponding to an R
-#'   function, which accepts three parameters (see details for the expected
-#'   function semantics):
-#'
-#'   * Name of the R function.
-#'   * A numeric vector of argument sizes of non-control parameters,
-#'     where arguments of group size are given NA size.
-#'   * A list of the evaluated control parameters.
-#'
-#' @param ctrl.validate a function to validate both control and flag parameters,
-#'   should `stop`, or return the flag parameters encoded into an integer.
-#'
-#' @return a list containing the above information after validating it.
+# Initialize Iteration-Constant Parameter List (see `cgen`).
+#
+# @param type one of "num" or "any", where "num" represents parameters that are
+#   expected to evalauate to naked numeric, and "any" those that can evalaute to
+#   anything.
+# @param validate a function that takes one parameter that should return TRUE or
+#   a text string describing why the parameter is not valid.
 
-fap_fun <- function(
-  name, fun, defn=if(typeof(fun) == 'closure') fun,
-  ctrl.params=character(), flag.params=character(),
-  type, code.gen, ctrl.validate=function(...) 0L, transform=identity,
-  preserve.int=FALSE
+icnst_par <- function(type="num", validate=function(x) TRUE) {
+  vetr(
+    character(1L) && . %in% c("num", "any"),
+    is.function(.) && length(formals(.)) == 1L
+  )
+  structure(list(type=PAR.ICNST[type], validate=validate), class='icnst_par')
+}
+## Validation functions for iteration-constant parameters.
+
+# mean uses isTRUE(na.rm).  Sum not sure, mabye !isFALSE(na.rm)
+valid_narm <- function(na.rm) vet(LGL.1, na.rm)
+valid_trim <- function(trim) {
+  if(!isTRUE(trim.test <- vet(NULL || identical(., 0), trim)))
+    paste0(
+      c("`trim` must be set to default value (", trim.test, ")"),
+      collapse="\n"
+    )
+  else TRUE
+}
+valid_length <- function(length) vet(NUM.1.POS, length)
+
+## Initializer for Function Registration Entries
+##
+## @section Code Generation:
+##
+## Code generation is handled by the function provided in `code.gen` which are
+## run during preprocessing.  The function should return a list with three
+## character vectors, each representing:
+##
+## * Name of the C function.
+## * Call to use to invoke the function.
+## * Definition of the C function.
+##
+## The call is generated with `code_res`, but the actual function definition
+## needs to be manually written to match the call generated by `code_res`.
+## `code_gen_summary` is a good one to look at for inspiration.
+##
+## Default parameters that every C function should have are in `C.ARGS.NM.BASE`,
+## and include:
+##
+## * data: an array of pointers to double, which includes every every allocation
+##   that exists at any point in time in the process, including those required
+##   to support the inputs and the output of the C function, as well as those
+##   produced by evaluation of iteration invariant numeric external expressions.
+## * lens: an array of `R_xlen_t` values, each one representing how many items
+##   the corresponding array of doubles in `data` has.
+## * di: an array of integers that represents, in order, the indices of the data
+##   parameters (i.e. internal or external numeric) of the function, in `data`.
+##   So for example, `data[di[0]]` returns a pointer to the data backing the
+##   first data parameter for the function.  If a function takes `n` args, then
+##   `data[di[n]]` points to where the result of the function should be written
+##   to.
+##
+## Additionally functions with non-numeric external parameters should include:
+##
+## * ctrl: a list of arbitrary iteration invariant objects.  In the future the
+##   hope is to add facilities to convert these into numeric so they can just
+##   live in the data array.
+##
+## Generally the C counterpart of an r2c function with `n` internal arguments is
+## supposed to compute on the data in `data[di[0:(n-1)]]` and record the result
+## into `data[di[n]]` and the length of the result into `lens[di[n]]` (although
+## the latter in theory should be known ahead of time - we use this to check
+## size calcs correct).
+##
+## For functions with variable arguments (e.g. because they have `...` in their
+## signature), be sure to include `CF.ARGS.VAR` in the definition, and to use
+## `narg=TRUE` for `code_res` (see "code-summary.R" which handles both the case
+## with a single parameter, and many parameters).
+##
+## @param name character(1L) symbol that will reference the function
+## @param fun the function we're trying to emulate
+## @param defn NULL if fun is a closure, otherwise a function template to use
+##   for [`match.call`]'s `definition` parameter.  Also can be NULL for
+##   primitives that only do positional matching.
+## @param icnst named list, with each member corresponding to an
+##   iteration-constant parameter of the same name (not to be confused with
+##   size-constant, see "type" next).  The members are generated with
+##   `icnst_par`.  `r2c` function parameters that don't match any of the members
+##   registered here are considered "iteration-varying" (see `?"r2c-compile"`,
+##   `?"r2c-expression-types"`).
+## @param size.type list(2:3) containing the length-type (i.e. result size) of
+##   function with at position one a scalar character in "constant" , "arglen",
+##   "vecrec", "eqlen", "concat", "product", or "extern" (see size.R for details
+##   on the meanings of these).  At position two additional meta data that
+##   varies based on the value at position one:
+##
+##   * constant: a positive non-NA integer indicating the constant result size
+##     (e.g. 1L for `mean`), not to be confused with iteration-constant;
+##     size-constant allows values to change, but not vector size, whereas
+##     iteration-constant fixes both values and size.
+##   * arglen: character(1L) the name of the argument to use the length of as
+##     the result size (e.g. `probs` for [`quantile`]).
+##   * vecrec, eqlen, concat, product, extern: character(n) the names of the
+##     arguments to use to compute result size.
+##
+##   Additionally, at position three we can see:
+##
+##   * arglen: allows specifying a function at position 3 that is given
+##     parameter names and returns which of them to use, e.g. to pick which of
+##     multiple arguments matching `...` to use for the length.
+##   * extern: in addition to the above, at position 3 a function to resolve a
+##     size from the values of an external argument.  The function will be
+##     passed the `alloc` list along with the indices of the inputs used by the
+##     call in the r2c expression, and `gmax`/`gmin` values (e.g. for `numeric`,
+##     `rep.int`).
+##
+## @param code.gen a function that generates the C code corresponding to an R
+##   function during the preprocessing steps.  Accepts as parameters:
+##
+##   * Name of the R function.
+##   * A list of the unevaluated expressions provided as parameters.
+##   * A character vector with the types of each of the unevaluated parameters,
+##     where the types are from PAR.TYPES
+##
+##   The second and third argument are currently only used to detect whether we
+##   should generate the single or multi-arg versions of e.g. `sum`.  For most
+##   functions the name of the functions alone wholly determines what the C
+##   function and calls to it look like.  Almost all of the handling of
+##   constaint/varying and internal/external is done at the allocation step.
+##
+## @param in.type.validate a function to validate input types.  Will be given a
+##   named character vector with the values the possible types (e.g. "double",
+##   "logical") and the names the parameter names they were matched to.
+##   It's possible to have duplicate names with "...".
+## @param res.type one of "double", "integer", "logical", "preserve.int",
+##   "preserve.last", or "preserve".  "preserve" will cause all output to be
+##   "logical" if all inputs are "logical", "integer" if there is a mix of
+##   "logical" and "integer" (including all "integer"), and "double" if any
+##   doubles are present.  "preserve.int" is like "preserve", except the only
+##   possible output types are "integer" and "double".  "preserve.last" is like
+##   "preserve" except it only considers the last input (e.g. as for braces).
+##   "preserve.which" is like "preserve", but applies to the parameters
+##   designated by `res.type.which`.
+## @param res.type.which for use when `res.type == "preserve.which"`.
+## @param primitive.nomatch TRUE or FALSE whether the function is a primitive
+##   that doesn't match its parameters like `-`.
+##
+## @return a list containing the above information after validating it.
+
+cgen <- function(
+  name, fun=get(name, baseenv(), mode="function"),
+  defn=if(typeof(fun) == 'closure') fun,
+  icnst=list(), size.type, code.gen,
+  in.type.validate=function(types) TRUE,
+  transform=identity,
+  res.type="double", res.type.which=1L, primitive.nomatch=FALSE
 ) {
   vetr(
     name=CHR.1,
     fun=is.function(.),
-    # really should have put some parens to resolve ambiguity below
-    defn=typeof(.) == "closure" || NULL,
-    ctrl.params=identity(
-      is.null(defn) || all(. %in% names(formals(defn))) && !"..." %in% .
-    ),
-    flag.params=identity(
-      is.null(defn) ||
-      all(. %in% names(formals(defn))) && !"..." %in% . && length(.) < 32L
-    ),
-    type=list() && length(.) %in% 2:3,
+    defn=(typeof(.) == "closure"),
+    icnst=list(),
+    size.type=list() && length(.) %in% 1:3,
     code.gen=is.function(.),
-    ctrl.validate=is.function(.),
+    in.type.validate=is.function(.),
     transform=is.function(.),
-    preserve.int=LGL.1
+    res.type=CHR.1 &&
+      . %in% c(
+        'logical', 'double', 'preserve.int', 'preserve',
+        'preserve.last', 'preserve.which'
+      ),
+    res.type.which=INT.POS.STR,
+    primitive.nomatch=LGL.1
   )
-  if(length(intersect(ctrl.params, flag.params)))
-    stop("Control and Flag parameters may not overlap.")
-  # Limitation in vetr prevents this being done directly above
+  # Limitation in vetr prevents following checks from being done above
+  if(
+    anyDuplicated(names(icnst)) ||
+    !all(vapply(icnst, inherits, TRUE, "icnst_par"))
+  )
+    stop("Internal Error: badly specified constant parameter names.")
+
+  # Check-reorder constant formal params
+  if(length(icnst)) {
+    formals <- if(typeof(defn) == 'closure') formals(defn) else formals(closure)
+    if(
+      (!all(names(icnst) %in% names(formals)) || "..." %in% names(icnst))
+    )
+      stop(
+        "Internal Error: iteration-constant params missing from defn or ",
+        "includes '...'."
+      )
+    icnst <- icnst[order(match(names(icnst), names(formals)))]
+  }
   stopifnot(
-    is.character(type[[1L]]) && length(type[[1L]]) == 1L && !is.na(type[[1L]]),
-    type[[1L]] %in% c("constant", "arglen", "vecrec"),
+    is.character(size.type[[1L]]) && length(size.type[[1L]]) == 1L &&
+    !is.na(size.type[[1L]]), size.type[[1L]] %in% SIZE.TYPES,
     (
-      (type[[1L]] == "constant" && is.valid_constant(type)) ||
-      (type[[1L]] == "arglen" && is.valid_arglen(type)) ||
-      (type[[1L]] == "vecrec" && is.valid_vecrec(type))
+      (size.type[[1L]] == "constant" && is.valid_constant(size.type)) ||
+      (size.type[[1L]] == "arglen" && is.valid_arglen(size.type)) ||
+      (size.type[[1L]] == "vecrec" && is.valid_vecrec(size.type)) ||
+      (size.type[[1L]] == "eqlen" && is.valid_eqlen(size.type)) ||
+      (size.type[[1L]] == "extern" && is.valid_extern(size.type)) ||
+      (size.type[[1L]] == "concat" && is.valid_concat(size.type)) ||
+      (size.type[[1L]] == "prod" && is.valid_prod(size.type))
     ),
     # positional matching or match.call?
-    type[[1L]] == "constant" ||
-      (is.null(defn) && is.integer(type[[2L]])) ||
-      (!is.null(defn) && is.character(type[[2L]]))
+    size.type[[1L]] %in% c("constant") ||
+    (
+      size.type[[1L]] %in% setdiff(SIZE.TYPES, "constant")
+      # used to support integer here for positional matching, but now we force
+      # names everywhere (see match_call_rec).
+    )
   )
   list(
-    name=name, fun=fun, defn=defn, ctrl=ctrl.params, flag=flag.params,
-    type=type, code.gen=code.gen, ctrl.validate=ctrl.validate,
-    transform=transform, preserve.int=preserve.int
+    name=name, fun=fun, defn=defn, icnst=icnst,
+    size.type=size.type, code.gen=code.gen,
+    transform=transform, res.type=res.type, res.type.which=res.type.which,
+    in.type.validate=in.type.validate, primitive.nomatch=primitive.nomatch
   )
 }
+BIN.DEFN <- function(e1, e2) NULL
+## Specialized for binops
+cgen_bin <- function(name, res.type="preserve.int") {
+  cgen(
+    name, defn=BIN.DEFN,
+    size.type=list("vecrec", c("e1", "e2")), code.gen=code_gen_bin,
+    res.type=res.type, transform=unary_transform, primitive.nomatch=TRUE
+  )
+}
+## Specialized for binops that require inclusion of macros (logicals)
+cgen_bin2 <- function(name, res.type="preserve.int") {
+  cgen(
+    name, defn=BIN.DEFN,
+    size.type=list("vecrec", c("e1", "e2")), code.gen=code_gen_bin2,
+    res.type=res.type, primitive.nomatch=TRUE
+  )
+}
+
 # Make sure "(" is not added to this list as it's pre-processed away.
-VALID_FUNS <- list(
-  # - Base Funs ----------------------------------------------------------------
-  fap_fun(
-    "sum", base::sum, function(..., na.rm=FALSE) NULL,
-    flag.params="na.rm",
-    type=list("constant", 1L),
-    code.gen=code_gen_summary,
-    ctrl.validate=ctrl_val_summary,
-    preserve.int=TRUE
+VALID_FUNS <- c(
+  # - Base Stats ---------------------------------------------------------------
+  list(
+    cgen(
+      "sum", defn=function(..., na.rm=FALSE) NULL,
+      icnst=list(na.rm=icnst_par("num", valid_narm)),
+      size.type=list("constant", 1),
+      code.gen=code_gen_summary,
+      res.type='preserve.int'
+    ),
+    cgen(
+      "mean", defn=base::mean.default,
+      icnst=list(
+        na.rm=icnst_par("num", valid_narm),
+        trim=icnst_par("any", valid_trim)
+      ),
+      size.type=list("constant", 1),
+      code.gen=code_gen_summary
+    ),
+    cgen(
+      "length", defn=function(x) NULL, size.type=list("constant", 1),
+      code.gen=code_gen_length
+    ),
+    cgen(
+      "all", defn=function(..., na.rm=FALSE) NULL,
+      icnst=list(na.rm=icnst_par("num", valid_narm)),
+      size.type=list("constant", 1),
+      code.gen=code_gen_summary,
+      res.type='logical'
+    ),
+    cgen(
+      "any", defn=function(..., na.rm=FALSE) NULL,
+      icnst=list(na.rm=icnst_par("num", valid_narm)),
+      size.type=list("constant", 1),
+      code.gen=code_gen_summary,
+      res.type='logical'
+    )
   ),
-  fap_fun(
-    "mean", fun=base::mean, defn=base::mean.default,
-    flag.params="na.rm",
-    ctrl.params="trim",
-    type=list("constant", 1L),
-    code.gen=code_gen_summary,
-    ctrl.validate=ctrl_val_summary
-  ),
-  fap_fun(
-    "length", base::length, defn=NULL,
-    type=list("constant", 1L), code.gen=code_gen_length
-  ),
-  fap_fun(
-    "+", base::`+`, defn=NULL,
-    type=list("vecrec", 1:2), code.gen=code_gen_arith,
-    preserve.int=TRUE
-  ),
-  fap_fun(
-    "-", base::`-`, defn=NULL,
-    type=list("vecrec", 1:2), code.gen=code_gen_arith,
-    preserve.int=TRUE
-  ),
-  fap_fun(
-    "*", base::`*`, defn=NULL,
-    type=list("vecrec", 1:2), code.gen=code_gen_arith,
-    preserve.int=TRUE
-  ),
-  fap_fun(
-    "/", base::`/`, defn=NULL,
-    type=list("vecrec", 1:2), code.gen=code_gen_arith
-  ),
+  # - Vec Binops ---------------------------------------------------------------
+
+  lapply(c("+", "-", "*", "/"), cgen_bin),
+  list(
+    cgen(
+       # needs transform, could be folded into cgen_bin like e.g. uminus
+       "^", defn=BIN.DEFN,
+       size.type=list("vecrec", c("e1", "e2")), code.gen=code_gen_pow,
+       transform=pow_transform
+  ) ),
+  # See also "Other Logical" and "Unary"
+  lapply(c(">", ">=", "<", "<=", "==", "!="), cgen_bin2, res.type="logical"),
+  lapply(c("|", "&"), cgen_bin2, res.type='logical'),
   ## # Not implemented for now given not just a simple counterpart, but
-  ## # could add a function like square to deal with it..
-  ## fap_fun(
-  ##   "%%", base::`%%`, defn=function(e1, e2) NULL,
-  ##   type=list("vecrec", c("e1", "e2")), code.gen=code_gen_arith,
-  ##   preserve.int=TRUE
+  ## # could add a function like square to deal with it..  See myfmod in
+  ## src/arithmetic.c in R sources
+  ## cgen(
+  ##   "%%", base::`%%`, defn=BIN.DEFN,
+  ##   size.type=list("vecrec", c("e1", "e2")), code.gen=code_gen_arith,
+  ##   res.type='preserve.int'
   ## ),
-  fap_fun(
-    "^", base::`^`, defn=NULL,
-    type=list("vecrec", 1:2), code.gen=code_gen_pow,
-    transform=pow_transform
+  # - Unary Ops ----------------------------------------------------------------
+
+  ## + and - are remapped to uplus and uminus via a transform by cgen_bin as
+  ## we don't allow the same function name to have different sizing methods
+  list(
+    cgen(
+      "uplus", fun=uplus, size.type=list("arglen", "x"), code.gen=code_gen_unary,
+      res.type="preserve.int"
+    ),
+    cgen(
+      "uminus", fun=uminus, size.type=list("arglen", "x"),
+      code.gen=code_gen_unary, res.type="preserve.int"
+    ),
+    # See also "Vec Binops" and "Other Logical"
+    cgen(
+      "!", defn=function(x) NULL, size.type=list("arglen", "x"),
+      code.gen=code_gen_unary,
+      res.type="logical"
+    )
+  ),
+  # - Subset -----------------------------------------------------------------
+
+  list(
+    cgen(
+      "[", defn=function(x, i) NULL,
+      size.type=list("arglen", "i"), code.gen=code_gen_subset,
+      res.type="preserve.which", res.type.which=1L,
+      in.type.validate=subset_input_val
+    ),
+    # assign uses transform to generate subassign calls when child is `[`
+    cgen(
+      "subassign", fun=subassign,
+      size.type=list("arglen", "x"), code.gen=code_gen_subassign,
+      res.type="preserve.which", res.type.which=c(1L,3L),
+      in.type.validate=subset_input_val
+    )
+  ),
+
+  # - Other Logical ------------------------------------------------------------
+
+  # See also "Vec Binops" and "Unary"
+  list(
+    cgen(
+      "&&", defn=BIN.DEFN,
+      size.type=list("constant", 1), code.gen=code_gen_lgl2,
+      res.type="logical"
+    ),
+    cgen(
+      "||", defn=BIN.DEFN, size.type=list("constant", 1), code.gen=code_gen_lgl2,
+      res.type="logical"
+    ),
+    cgen(
+      "ifelse", size.type=list("arglen", "test"), code.gen=code_gen_ifelse,
+      res.type="preserve" # not faithful to what R does
+    )
   ),
   # - Assign / Control----------------------------------------------------------
 
-  fap_fun(
-    "<-", fun=base::`<-`, defn=NULL,
-    type=list("arglen", 2L),
-    code.gen=code_gen_assign
+  list(
+    # see subset for [<-, although transform to subassign done here
+    cgen(
+      "<-", defn=function(x, value) NULL,
+      size.type=list("arglen", "value"), code.gen=code_gen_assign,
+      res.type="preserve.last", transform=assign_transform
+    ),
+    cgen(
+      "=", defn=function(x, value) NULL,
+      size.type=list("arglen", "value"), code.gen=code_gen_assign,
+      res.type="preserve.last"
+    ),
+    cgen(
+      "{", defn=function(...) NULL,
+      # arglen of last argument matching dots
+      size.type=list("arglen", "...", function(x) x[length(x)]),
+      code.gen=code_gen_braces, res.type="preserve.last",
+      transform=transform_braces
+    ),
+    # result of this one is not used outside of the C code
+    cgen(
+      IF.TEST, size.type=list("constant", 1), code.gen=code_gen_if_test,
+      res.type="logical", fun=if_test
+    ),
+    cgen(
+      "if_true", size.type=list("arglen", "expr"), code.gen=code_gen_if_true,
+      fun=if_true, res.type="preserve"
+    ),
+    cgen(
+      "if_false", size.type=list("arglen", "expr"), code.gen=code_gen_if_false,
+      fun=if_false, res.type="preserve"
+    ),
+    # `res.type` gets special handling in `reconcile_control_flow` for `r2c_if`.
+    cgen(
+      "r2c_if", size.type=list("eqlen", c("true", "false")),
+      code.gen=code_gen_r2c_if, fun=r2c_if, res.type="preserve"
+    ),
+    # This one can't actually generate code and needs to be first decomposed
+    # into the above if_test/r2c_if/if_true/if_false, but we need it here so the
+    # early parsing passes recognize it as an allowed function.
+    cgen(
+      "if",
+      # This is special cased in match_call_rec.
+      defn=function(cond, cons.expr, alt.expr) NULL, primitive.nomatch=TRUE,
+      # Below not actually use due to decomposition of `if` -> `r2c_if`.
+      size.type=list("eqlen", c('cons.expr', 'alt.expr')),
+      code.gen=code_gen_if, res.type="preserve"
+    ),
+    # Result of this one is only used directly in C code, but passive pass
+    # through of type so we need to preserve that.
+    cgen(
+      FOR.INIT, size.type=list("constant", 1), code.gen=code_gen_for_init,
+      res.type="preserve.which", res.type.which=2L, fun=for_init
+    ),
+    cgen(
+      FOR.ITER, size.type=list("constant", 1), code.gen=code_gen_for_iter,
+      res.type="preserve.which", res.type.which=2L, fun=for_iter
+    ),
+    cgen(
+      FOR.N, size.type=list("arglen", "expr"), code.gen=code_gen_for_n,
+      fun=for_n, res.type="preserve"
+    ),
+    cgen(
+      FOR.0, size.type=list("arglen", "expr"), code.gen=code_gen_for_0,
+      fun=for_0, res.type="preserve"
+    ),
+    # `res.type` gets special handling in `reconcile_control_flow` for `r2c_if`.
+    cgen(
+      R2C.FOR, size.type=list("eqlen", c("for.n", "for.0")),
+      code.gen=code_gen_r2c_for, fun=r2c_for, res.type="preserve"
+    ),
+    # This is a stub function like `if`.
+    cgen(
+      "for", defn=function(var, seq, expr) NULL, primitive.nomatch=TRUE,
+      size.type=list("arglen", "expr"), code.gen=code_gen_for,
+      res.type="preserve"
+    )
   ),
-  fap_fun(
-    "=", fun=base::`=`, defn=NULL,
-    type=list("arglen", 2L),
-    code.gen=code_gen_assign
-  ),
-  fap_fun(
-    "{", fun=base::"{", defn=function(...) NULL,
-    # arglen of last argument matching dots
-    type=list("arglen", "...", function(x) x[length(x)]),
-    code.gen=code_gen_braces
-  ),
+  # - Sequence -----------------------------------------------------------------
 
+  list(
+    cgen(
+      "seq_along", defn=function(along.with) NULL,
+      size.type=list("arglen", "along.with"), code.gen=code_gen_seq_along,
+      res.type='preserve'
+    ),
+    cgen(
+      "rep", defn=function(x, times=1, length.out=NA_real_, each=1) NULL,
+      size.type=list(
+        "extern", c("x", "times", "each", "length.out"), rep_size
+      ),
+      icnst=list(
+        times=icnst_par("num", valid_times),
+        length.out=icnst_par("num", valid_length.out),
+        each=icnst_par("num", valid_each)
+      ),
+      code.gen=code_gen_rep,
+      res.type="preserve.which", res.type.which=1L,
+    )
+  ),
+  # - Miscellaneous ------------------------------------------------------------
+  list(
+    cgen(
+      "numeric", defn=function(length=0L) NULL,
+      # Is length redundant? One is to classify, and to the other compute size.
+      size.type=list("extern", "length", numeric_size),
+      icnst=list(length=icnst_par("num", valid_length)),
+      code.gen=code_gen_numeric, res.type="double"
+    ),
+    cgen(
+      "numeric_along", fun=numeric_along,
+      size.type=list("arglen", "along.with"),
+      code.gen=code_gen_numeric_along, res.type="double"
+    ),
+    cgen(
+      "numeric_alongn", fun=numeric_alongn,
+      size.type=list("prod", "..."),
+      code.gen=code_gen_numeric_alongn, res.type="double"
+    ),
+    cgen(
+      "c", defn=function(...) NULL,
+      size.type=list("concat", "..."),
+      code.gen=code_gen_concat,
+      res.type="preserve"
+    )
+  ),
   # - r2c funs -----------------------------------------------------------------
-  fap_fun(
-    "mean1", fun=mean1, defn=mean1,
-    flag.params="na.rm",
-    type=list("constant", 1L),
-    code.gen=code_gen_summary,
-    ctrl.validate=ctrl_val_summary
-  ),
-  fap_fun(
-    "square", fun=square, defn=square,
-    type=list("arglen", "x"),
-    code.gen=code_gen_square
-  ),
-  fap_fun(
-    "vcopy", fun=vcopy, defn=NULL,
-    type=list("arglen", 1L),
-    code.gen=code_gen_copy
+  list(
+    cgen(
+      "mean1", fun=mean1,
+      icnst=list(na.rm=icnst_par("num", valid_narm)),
+      size.type=list("constant", 1),
+      code.gen=code_gen_summary
+    ),
+    cgen(
+      "square", fun=square, defn=square,
+      size.type=list("arglen", "x"),
+      code.gen=code_gen_square
+    ),
+    cgen(
+      "vcopy", fun=vcopy,
+      size.type=list("arglen", "x"),
+      code.gen=code_gen_copy,
+      res.type="preserve"   # for uplus
+    ),
+    cgen(
+      "rec", fun=rec,
+      size.type=list("arglen", "x"),
+      code.gen=code_gen_rec,
+      res.type="preserve"
+    ),
+    cgen(
+      "lset", fun=lset,
+      size.type=list("arglen", "x"),
+      code.gen=code_gen_lset,
+      res.type="preserve"
+    ),
+    cgen(
+      "lcopy", fun=lcopy,
+      size.type=list("arglen", "x"),
+      code.gen=code_gen_lcopy,
+      res.type="preserve"
+    )
   )
 )
 names(VALID_FUNS) <- vapply(VALID_FUNS, "[[", "", "name")
 # even though we allow ::, we don't allow duplicate function names for
 # simplicity.
-stopifnot(!anyDuplicated(names(VALID_FUNS)))
+stopifnot(
+  !anyDuplicated(names(VALID_FUNS)),
+  identical(sort(names(VALID_FUNS)), sort(names(FUN.NAMES)))
+)
 
 code_blank <- function()
   list(
-    defn="", name="", call="", narg=FALSE, flag=FALSE, ctrl=FALSE,
-    headers=character()
+    defn="", name="", call="", narg=FALSE, icnst.any=FALSE,
+    headers=character(), defines=character(), out.ctrl=CGEN.OUT.NONE
   )
 code_valid <- function(code, call) {
   isTRUE(check <- vet(CHR.1, code[['defn']])) &&
     isTRUE(check <- vet(CHR.1, code[['name']])) &&
     isTRUE(check <- vet(CHR.1, code[['call']])) &&
-    isTRUE(check <- vet(CHR, code[['headers']]))
+    isTRUE(check <- vet(CHR || NULL, code[['headers']])) &&
+    isTRUE(check <- vet(CHR || NULL, code[['defines']])) &&
+    isTRUE(
+      check <- vet(INT.1 && all_bw(., 0, CGEN.OUT.DFLT), code[['out.ctrl']])
+    )
   if(!isTRUE(check))
     stop("Generated code format invalid for `", deparse1(call), "`:\n", check)
 
@@ -289,49 +615,104 @@ code_valid <- function(code, call) {
 # not implemented such, and the assumption simplifies things).
 
 call_valid <- function(call) {
-  fun <- call[[1L]]
-  if(is.call(fun)) {
-    if(is.dbl_colon_call(fun) && as.character(fun[[2L]]) %in% VALID.PKG) {
-      fun <- as.character(fun[[3L]])
-    } else {
-      stop("`", deparse1(call[[1L]]), "` is not a supported function.")
-    }
+  if(is.call(call)) {
+    fun.c <- get_lang_info(call)
+    pkg <- fun.c[['pkg']]
+    fun <- fun.c[['name']]
+
+    if(nzchar(pkg) && !pkg %in% VALID.PKG)
+      stop(
+        "Package `", pkg, "` not a supported package in ", deparse1(call)
+      )
+    else if (!nzchar(pkg) && !fun %in% names(VALID_FUNS))
+      stop("`", fun, "` is not a supported function.")
+
+    if(fun %in% INTERNAL.FUNS)
+      stop(
+        "`", fun,
+        "` is an internal r2c function and invalid as an input to compilation."
+      )
+    fun
   }
-  if(!is.chr_or_sym(fun))
-    stop(
-      "only calls in form `symbol(<parameters>)` are supported (i.e. not ",
-      deparse1(call), ")."
-    )
-  func <- as.character(fun)
-  if(!func %in% names(VALID_FUNS))
-    stop("`", deparse1(call[[1L]]), "` is not a supported function.")
-  func
+
 }
-#' Organize Code Generation Output
+#' Default C Call Generation
 #'
-#' Additionally, generates the call to the function.
+#' Calls outside of controls follow a clear pattern that this function
+#' implements.  See `code_res` for parameter description.
 #'
 #' @noRd
-#' @param narg TRUE if function has variable number of arguments
-#' @param flag TRUE if function has flag parameters
-#' @param ctrl TRUE if function has control parameters
-#' @param noop TRUE if function is a noop, in which case will be commented out
 
-code_res <- function(
-  defn, name, narg=FALSE, flag=FALSE, ctrl=FALSE,
-  headers=character(), noop=FALSE
-) {
-  call <- sprintf(
-    "%s%s(%s%s%s%s);",
-    if(noop) "// NO-OP: " else "",
+c_call_gen <- function(name, narg, icnst.any) {
+  sprintf(
+    "%s(%s%s%s);",
     name,
     toString(CALL.BASE),
     if(narg) paste0(", ", CALL.VAR) else "",
-    if(flag) paste0(", ", CALL.FLAG) else "",
-    if(ctrl) paste0(", ", CALL.CTRL) else ""
+    if(icnst.any) paste0(", ", CALL.EXTERN) else ""
+  )
+}
+## Organize C Code Generation Output
+##
+## There are three types of C output:
+##
+## * Call to the C function
+## * Definition of C function
+## * Deparsing of R function as comment for context
+##
+## Different R level calls require outputting different mixes of the above,
+## where the default standard call like `mean(x)` will output all three.
+## Exceptions include so called NO-OP calls that don't actually require a C
+## function call such as assignments or braces.  These don't compute anything
+## directly.  Additionally, control functions don't map R calls directly to C
+## calls, but still use proxy R calls as stand-ins for e.g. the braces, the
+## `else`, etc.  So those have an associated output that is "executed" at
+## run-time, but e.g. don't have corresponding definitions or deparsed R
+## commentary.
+##
+## Every R call, including proxy R calls, maintains a spot in the data
+## indexing, flag, and control arrays, even if they are not run at the C level.
+## This simplifies the logic of the allocation code.  Additionally, every R call
+## must generate a C function definition and a call, irrespective of whether the
+## definition and/or call are emitted to the final C output file.  This
+## requirement is due to some sanity checks that preceded the possibility of
+## calls/definitions that might not get emitted.
+##
+## @noRd
+## @seealso `cgen` for the actual C code generation, `preprocess` for the
+##   assembly into the final C file.
+## @param narg TRUE if function has variable number of arguments
+## @param icnst.any TRUE if function has non-numeric iteration-constant params.
+## @param headers character vector with header names that need to be #included
+## @param defines character with #define directives
+## @param out.ctrl scalar integer sum of various `CGEN.OUT.*` constants (see
+##   constants.R) that control which parts of the C output are generated and
+##   how.  The actual final C file is produced by `preprocess` (consulting these
+##   values).
+## @param c.call.gen function to generate the C call.  Primarily used to allow
+##   generation of control flow code that follows different patterns than all
+##   the others, including cases where there is no function call at all, only
+##   e.g. braces or an else statement.
+
+code_res <- function(
+  defn, name, narg=FALSE, icnst.any=FALSE,
+  headers=character(), defines=character(), out.ctrl=CGEN.OUT.DFLT,
+  c.call.gen=c_call_gen
+) {
+  if(is.na(name)) stop("Internal Error: mismapped function name.")
+  if(
+    bitwAnd(out.ctrl, CGEN.OUT.MUTE) && !name %in% FUN.NAMES[PASSIVE.SYM]
+  )
+    stop("Internal Error: cannot mute ", name, ", as not in PASSIVE.SYM")
+
+  c_call <- paste0(
+    c.call.gen(name, narg=narg, icnst.any=icnst.any), collapse="\n"
   )
   list(
-    defn=defn, name=name, call=call, headers=headers,
-    narg=narg, flag=flag, ctrl=ctrl, noop=noop
+    defn=defn, name=name,
+    call=c_call,
+    headers=if(is.null(headers)) character() else headers,
+    defines=if(is.null(defines)) character() else defines,
+    narg=narg, icnst.any=icnst.any, out.ctrl=out.ctrl
   )
 }

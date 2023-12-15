@@ -1,0 +1,2213 @@
+# Current
+
+# Sub-assign Candidates
+
+Candidates generated out of branch for use by by sub-assign.
+
+What happens if we sub-assign to a candidate generated in branch?
+
+Typically, a candidate is only triggered if it is used after the branch.  Maybe
+always trigger for the out of branch candidates.
+
+Should triggered candidates be added to the globals list?  What about branch
+local?  Maybe the latter?
+
+# Use Before Set With Branches
+
+**Modification of Prior Use b4 Set Logic**
+
+Problem we're dealing now is that `lset` may happen inside a branch, so the
+lset targets need to be reconciled.  It is not just the first use before set
+we track, it is the first use before set in each branch.
+
+In terms of implementation we'll need to add a branch split in the
+`copy_fordat` logic.  The control structures are already transformed.  To do
+this we'll switch the implementation to environments.n
+
+Mechanics should be:
+
+* There is always a symbol tracking environment.
+* When we encounter a symbol:
+  * Look it up in environment chain.
+  * Look it up in current environment.
+  * If missing from current, test it exists in chain:
+    * Yes: copy of the most recently reachable one and add it to current.
+    * No: instantiate a new one in current.
+* When we enter a control structure:
+  * Create two new environment, each with the sym track env as parent.
+  * Process the two branche separately.
+    * `last.assign` overwrites any existing ones.
+  * On exit, reconcile the two branches:
+    * For symbols that exist in both environments:
+      * If either branch has a use before set, even if there are no sets in that
+        branch, that use should be considered to have happened at the control
+        structure.  This is because sets in the other branch should count
+        against it.  So all such symbols should have their first use recorded as
+        the parent branch.  Doesn't matter if there is a set or not, just that
+        there isn't one just before.
+      * Take the later of the `first.assign` of each branch.  If one is missing
+        it doesn't matter because we moved any first uses to the parent control.
+      * Merge the `last.assign`.
+      * Overwrite parent symbol if it exists (this okay to do without further
+        reconciliation because if it existed it would have been copied into the
+        children as a starting point).
+    * For symbols that only exist in one.
+      * These symbols don't exist in the parent chain either because of how we
+        create the children (copies of parents).
+      * If there is a use before set, declare it at the control?  I don't think
+        this matters.
+      * Copy the symbol straight into the parent environment.
+
+We know that branches will assign on both sides.  If a symbol is not assigned
+at all on one side and didn't exist prior, it will eventually get an e.g.
+`x <- vcopy(x)`.  But at the point we're doing this, we won't see that.  Can
+we ignore it, yes, probably because it might cause un unnecessary copy but
+that's not a big deal.
+
+We must be aggressive in copying because a loop could be toggling branches
+each iteration, so a set in either branch could happen before use in other:
+
+    x <- 1
+    for(i in n) {
+      if(a) {
+        x
+      } else {
+        x <- 2
+      }
+    }
+
+For nested loops, what is the effect of parent loops?  Is it really none?  For
+any of this to be an issue, there must be use of the variable in the loop, and a
+set in the loop.  I guess a parent loop can't affect a child loop, but a child
+loop will affect a parent loop.
+
+Each nested for loop can then get it's own independent environment, we just need
+to updated the parent loop on exit.  So:
+
+* If parent has a recorded use, no need to change it b/c it will be earlier, but
+  if not, copy over the first use.
+* If parent has a first.assign, no need to change it, but if not, use the child
+  one.
+* If children have a last assign, overwrite the parent.  The branch
+  reconciliation should ensure the last assign across siblings is consistent.
+
+When it comes to allocation we have another problem.  In:
+
+    fib <- rec(x = vcopy(x = lset(rec.i = 1L, x = fib + i)))
+
+We really would prefer to either have:
+
+    fib <- lset(rec.i = 1L, x = rec(x = vcopy(x = fib + i)))
+
+
+# Use Before Set in Loops (self-assignment)
+
+**This affects all loop assignments, not just self assignments**
+**Logic here does not properly account for branches, see above**
+
+Interesting problem with:
+
+    get_r_code(r2c.for <- r2cq({
+      res <- 0
+      # This is slow, use `sum(x)` instead...
+      for(i in seq_along(x)) res <- res + x[i]
+      res
+    }), raw=TRUE)
+    r2c.for(1:10)
+
+We have:
+
+     $ :List of 5
+      ..$ call         : language res <- 0
+      ..$ ids          : Named num [1:3] 4 5 5
+      ..$ call.i       : int 3
+
+But then:
+
+     $ :List of 5
+      ..$ call         : language res + x[i = i]
+      ..$ ids          : Named num [1:3] 5 13 19
+      ..$ call.i       : int 22
+
+    ...
+
+     $ :List of 5
+      ..$ call         : language res <- r2c::rec(x = res + x[i = i])
+      ..$ ids          : Named num [1:3] 12 19 19
+      ..$ call.i       : int 24
+
+The problem is we need `call.i == 22` to write to slot 5.  Our entire allocation
+mechanism doesn't work when we have this circular assignment (need to think
+through if self-subassignment is similar?).  Is there a solution to this?  Is
+the problem really just with loops?  Yes, most likely.  Might be related to the
+fact that there are some issues that it doesn't seem like reconciliation is
+happening correctly?  Not sure (probably a different issue):
+
+    if(for_init(data, lens, di[5])) {
+
+      // r2c::for_iter(var = i, seq = .R2C_for_seq_1, seq.i = .R2C_for_seqi_1)
+      while(for_iter(data, lens, di[6])) {
+
+        // x[i = i]
+        subset(data, lens, di[7]);
+        // res + x[i = i]
+        add(data, lens, di[8]);
+        // res <- r2c::rec(x = res + x[i = i])
+        // NOOP: assign(data, lens, di[10]);
+
+      } } else {
+
+        // r2c::vcopy(x = res)
+        vcopy(data, lens, di[12]);
+        // res <- r2c::rec(x = r2c::vcopy(x = res))
+        // NOOP: assign(data, lens, di[14]);
+        // numeric(length = 0)
+        numeric(data, lens, di[15]);
+
+      }
+    }
+
+Here the two branches of the for loop don't write the result to the same
+location (nor do the assignments?).
+
+So within loops we need assignments to write to the existing memory location, so
+there is the additional constraint that a symbol can't be changed in size?  More
+specifically we need to reconcile the first and last assignments to a symbol.
+
+Unlike typical reconciliation this affects all symbols.  So for each loop, we
+need to:
+
+* Track the first and last assignment to each symbol.  Actually, not that
+  simple, we need:
+  * For each symbol written to in a loop, find the last time it's written.
+  * Find the first time that symbol is read from in the loop.
+* On loop exit (`for_n` only):
+  * Check that the two pairwise allocations from above are equal size.
+  * Reconcile them into a common allocation.
+
+What if the second assignment is loop-external?
+
+    y <- 1
+    w <- 2          // and what if this is fully external
+    for(i in x) {
+      z <- y + x
+      y <- w
+    }
+
+Should become:
+
+    y <- vcopy(1)   // mem 1
+    w <- vcopy(2)   // mem 2
+    for(i in x) {
+      z <- y + x
+      y <- w        // Redirect
+    }
+
+    y <- vcopy(1)   // mem 1
+    w <- vcopy(2)   // mem 2
+    for(i in x) {
+      z <- y + x
+      y <- w + 1    // Redirect
+    }
+
+    y <- vcopy(1)   // mem 1
+    for(i in x) {
+      z <- y + x
+      y <- vcopy(w) // Redirect vcopy.
+    }
+
+It becomes obvious the redirect can only happen after the first iteration.  So
+do we need a `for_1`?  Urgh.  Alternative is to require a vcopy every iteration.
+That's probably okay, especially that's only needed for loop-external stuff.  So
+we can do a different `copy_branchdat` that's easier because all we need to do
+is track what symbols are used in a loop and find if they are assigned to in
+that loop (or any child loop).
+
+During alloc we need to record the memory location of whatever is associated
+with the symbol, and the new expression (guaranteed to be loop local from
+preproc addition of vcopy) can be redirected to that when it's found.  The
+challenge is finding which is the last expression in the loop.  Probably what we
+do is during preproc we do `loop_rec(vcopy(...))` and during alloc we remove
+that?  That's not great b/c then we're messing with the `call.dat` list which
+might break stuff.  The alternative is to use meta data in `call.dat`; yes,
+let's do that (no that doesn't work, instead just have a no-op `loop_rec`).
+
+Watch out for stuff like:
+
+    for(i in x) {
+      y <- w
+      v <- u
+      # z <- u * w
+      u <- w <- i + v  // also watch out for `i`
+    }
+
+Is this actually a problem?  Do we need:
+
+    u <- mean(x)     // u is internal
+    w <- vcopy(w)    // if external, add this; could hoist all the way out if
+                     // branch locality doesn't matter.
+    for(i in x) {
+      y <- loop_target(w, 1)
+      v <- loop_target(u, 2)
+      # We can only redirect to one location, so if we do this we need a vcopy
+      # for the outer assignment.  This is because the pre loop values are in
+      # different locations.
+      u <- loop_rec(vcopy(w <- loop_rec(i + v, <target>), <target>)
+    }
+
+In preproc_copy (do before `copy_branchdat`):
+
+* Track loop coordinate in a stack so we know where to inject any external
+  vcopies we need.
+* Track first:
+  * Assign of every symbol in a loop; just the name.
+  * Use of every symbol in a loop not already in the first assign vector, with
+    loop nesting level and tree coordinates of use.
+* For each assignment to a symbol already in the first use array at current or
+  lesser level, record tree-coordinate of assignment expression attached to the
+  first use tracking list?  If one already exists, overwrite.
+* On loop exit, for each recorded assignment that points to a loop internal
+  memory (how do we know it's loop internal? - might need to track `call.dat`
+  index of each allocation):
+  * Inject a self-`vcopy` before the beginning of the loop:
+    * Always, we only record non-loop locals so this has to be loop external.
+    * Should also include an artificial `.R2C_FOR_SYM_N` reference to ensure
+      this memory is not released/reused in the loop.
+  * Add an `luse(..., N)` to the first use symbol.
+  * Add an `lset(..., N)` to the last assign expression; this probably needs to
+    add a `.R2C_FOR_SYM_N_2` assignment or some such to ensure `...` is not
+    overwritten by a later expression.
+  * Add a `lvcopy(.R2C_FOR_SYM_N, N)`, the symbol reference
+    prevents freeing of the memory from our initial self-`vcopy`.  This needs to
+    be done at the very end of the loop because the symbol we are going to
+    overwrite might have other references used after the last assign.
+  * We could just use `.R2C_FOR_SYM_N` as the reference throughout, but that
+    means conversions to/from symbol throughout.
+  * Add a `numeric(0)` at the end of the loop.  This could / should be part of
+    the loop function itself?
+
+In `pp_internal`: Nothing?
+
+In `alloc`:
+
+* When hit a `luse`, record the loop target id as well as the memory
+  index assigned to it.
+* Make sure that `reconcile_control_flow` isn't touching any memory indices in
+  the loop target list.  This would happen if we exit a branch that included the
+  target before we hit the last assign, which I think can't happen because the
+  last assign can't be at a branch/loop level below the first use.
+* When hit a `lset` look up the matching loop target and:
+  * Check that both the size is the same; not sure that `asize` matters because
+    the only thing we're going to be copying is the last-write expression.
+* When we hit `lvcopy`, go back and copy the `lset` expression to the
+  matching `luse`.  For this to work we need to make sure the slot the `lset`
+  expression was written to was not freed (and thus possibly overwritten).
+  Should we just suspend all freeing while in loops?  Maybe that's simpler than
+  trying to preserve the symbols.  But it seems riskier in that it's not
+  entirely clear what it will do to free/update/bind.  Main issue with this is
+  we could have the same name existing more than once in the names data, which
+  seems problematic.  So I think we need the new symbol to protect the memory.
+
+
+Feels like there is a way to break this:
+
+    b <- vcopy(b)      // #2 <- b
+    z <- b             // #2 <- z   -- NOT okay
+    for(i in x) {
+      a <- luse(b, 1)  // #2 <- a?
+      e <- b           // #2 <- e   -- NOT okay b/c used after lset
+      b <- mean(y)     // #3 <- b
+      d <- vcopy(c)    // #4 <- d
+      b <- lset(d, 1)
+      f <- e + 1       // #5 <- f   -- using an alias of `b`!
+    }
+
+It does feel something goes wonky here.  If we change `d` to write to #2, it
+will overwrite whatever `z` is referencing.  So we need to make a new copy of
+`b`.
+
+Seems like we need to add a commands at the very end of each loop that copy the
+values of the new assignment to the location of the old variable at the end of
+the loop.  This will interfere with loop return value unless we also force loop
+return value to be `numeric(0)`, which we should do anyway.
+
+Also loop variables used before write need to be `vcopy'ed` prior to loop entry
+as well.  With a simplified loop:
+
+    b <- x + y         // #2 <- b
+    z <- b             // #2 <- z   -- NOT okay
+    for(i in x) {
+      a <- b           // #2 <- a?
+      e <- b           // #2 <- e   -- NOT okay b/c used after lset
+      d <- vcopy(c)    // #4 <- d
+      b <- d
+      f <- e + 1       // #5 <- f
+    }
+
+Produces something like:
+
+    b <- x + y         // #2 <- b
+    z <- b             // #2 <- z
+    b <- vcopy(b)      // #3 <- b
+    for(i in x) {
+      a <- luse(b, 1)  // #3 <- a?
+      e <- b           // #3 <- e   -- NOT okay b/c used after lset
+      d <- vcopy(c)    // #4 <- d
+      b <- lset(d, 1)
+      f <- e + 1       // #5 <- f
+      copy_in_place(1) // copies contents of `d` to memory of `b`
+    }
+
+Loops don't release symbols until the end of the loop, but what about explicit
+re-assignment?
+
+    for(i in x) {
+      a <- luse(b, 1)  // #3 <- a?
+      c <- a + 1
+      a <- mean(x)     // memory of `luse(b, 1)` potentially released?
+      b <- x + y       // above memory used?
+
+      // Or are we always safe because we only ever use `luse` on a symbol
+
+      e <- a
+      a <- mean(x)     // this releases a? (name yes, but memory held by e)
+      b <- lset(d + 1, 1)       // this could write to old a memory?
+      f <- e + 1       // #5 <- f
+      copy_in_place(1) // copies contents of `d` to memory of `b`
+    }
+
+So as we process in alloc, need to make sure the memory associated with `b` is
+not released.  We can do that by binding a special symbol in the initial vcopy,
+and somehow including that symbol in the loop body:
+
+    b <- .R2C_FOR_SYM_1 <- vcopy(b)
+    for(i in x) {
+      ...
+      a <- luse(b, .R2C_FOR_SYM_1)
+      ...
+      b <- lset(d + 1, .R2C_FOR_SYM_1)
+      ...
+      copy_mem(.R2C_FOR_SYM_1)
+    }
+
+What if?
+
+    b <- .R2C_FOR_SYM_1 <- vcopy(b)
+    for(i in x) {
+      ...
+      a <- e <- luse(b, .R2C_FOR_SYM_1)
+      ...
+      b <- lset(d + 1, .R2C_FOR_SYM_1)
+      ...
+      copy_mem(.R2C_FOR_SYM_1)
+    }
+
+This seems okay.  `e` also should be updated same way.
+
+    b <- .R2C_FOR_SYM_1 <- vcopy(b)
+    for(i in x) {
+      ...
+      a <- e <- luse(b, .R2C_FOR_SYM_1)
+      c <- f
+      ...
+      b <- f <- lset(d + 1, .R2C_FOR_SYM_1)
+      ...
+      lrec(.R2C_FOR_SYM_1)
+    }
+
+We will need to modify `copy_branch_dat` so that `luse` and `lset`
+don't interfere with assignment chains.  It might be okay so long as we are only
+using those on leaves as seems likely to be the case.  Testing of combined
+loop/branch reconcile will be important.
+
+What happens if `last.assign` is something annoying like:
+
+    for(i in ...) {
+      b <- a + 1
+      ...
+      if(x) {
+        a <- mean(x)
+      } else {
+        a <- mean(y)
+      }
+    }
+
+This creates several annoying interactions:
+
+* The use of `a` happens before the branch!  But that's okay because we're going
+  to inject a use just before the end of the branch (otherwise we wouldn't
+  trigger the `copy_branchdat` candidate logic).
+
+    a <- vcopy(a)    // what if this doesn't exist yet?
+    for(i in ...) {
+      ...
+      if(x) {
+        # fine and dandy
+        a <- rec(mean(y))
+        b <- a + 1
+      } else {
+        # use before set!
+        b <- luse(a) + 1
+        a <- rec(lset(mean(x)))
+      }
+    }
+    a
+
+If we're not careful here we don't recognize that the second case is independent
+of the first.  We could branch the two and treat them independently, but then we
+have to reconcile across branches.  There are all permutations of needing to do
+something and not.  Including the possibility that we need to copy at end of
+loop into a branch reconciled memory location.  This seems possibly bad.  Might
+be okay.  We can try it and if it doesn't work we'll kill loops.  In this case
+we want the `if` reconciliation to happen first, that way when we get to the
+`for` reconciliation we'll update the `a` binding in both `if` branches
+even though the `lset` is only in the second branch.  It probably doesn't matter
+that we do the `copy_fordat` before `copy_branchdat` for the same reason; last
+assign could be in TRUE branch, but due to branch rec both branches will use the
+same memory for the target of the binding after branch rec.
+
+Might be a bit tricky to have a `brec` (branch rec) see through an `lset`?
+
+Can branches and loop be merged in the same logic?  Not quite the same though.
+For loops we ensure we have a fresh allocation for a symbol and redirect, but
+for branches instead we always create a new allocation.
+
+The last assign list affects all prior loops.  So ideally it would be some
+structure that for any given `llvl`, allows us to query all `llvl` at or greater
+than the current `llvl`.
+
+Do we need to `vcopy` an external symbol used by `luse`?  And how does that
+interact with
+
+Need to think really carefully about passive nature of luse/lset and if/else
+branch logic.  Seems like we have it working by making them both passive and
+leaves.
+
+# Loops and Nested Branches
+
+One potential issue is that we end up with a potential vcopy reconciliation
+needing to happen inside a for loop.
+
+# Loop Performance
+
+Pretty terrible.  With the convolution example:
+
+    f1a <- function(a, b, c) {
+      ab <- numeric(c)
+      for(i in seq_along(a)) {
+        for(j in seq_along(b)) {
+          ab[i + j - 1] <- ab[i + j - 1] + a[i] * b[j]
+        }
+      }
+      ab
+    }
+    r2c_f1a <- r2cf(f1a, dir=".")
+    ## Warning message:
+    ## In dir.create(dir) : './.' already exists
+    a <- runif(10000)
+    b <- runif(10000)
+    system.time(res0 <- r2c_f1a(a, b, length(a) + length(b) - 1))
+    ##   user  system elapsed
+    ##  4.300   0.035   4.471
+    system.time(res1 <- r2c:::convolve(a, b))
+    ##   user  system elapsed
+    ##  0.036   0.000   0.038
+    system.time(res2 <- f1a(a, b, length(a) + length(b) - 1))
+    ##   user  system elapsed
+    ## 12.782   0.106  13.419
+    identical(res0, res1)
+    ## [1] TRUE
+    identical(res0, res2)
+    ## [1] TRUE
+
+    enableJIT(0)
+    ... rebuild f1a ...
+    system.time(res2 <- f1a(a, b, length(a) + length(b) - 1))
+    ##    user  system elapsed
+    ## 167.941   2.021 178.702
+
+3x faster than R with compilation, but 100 times slower than the straight up C
+code.  Nothing seems too weird from examining the profiler data:
+
+    5.34 s      96.4%	325.00 ms        run
+    1.26 s      22.7%	1.26 s           add
+    902.00 ms   16.2%	902.00 ms        subtract
+    791.00 ms   14.2%	791.00 ms        subset
+    766.00 ms   13.8%	766.00 ms        subassign
+    355.00 ms    6.4%	355.00 ms        subset
+    309.00 ms    5.5%	309.00 ms        multiply
+    253.00 ms    4.5%	253.00 ms        subset
+    238.00 ms    4.2%	238.00 ms        for_iter
+    143.00 ms    2.5%	143.00 ms        seq_along
+    7.00 ms      0.1%	0 s              <Unknown Address>
+    6.00 ms      0.1%	6.00 ms          add
+    1.00 ms      0.0%	1.00 ms          subtract
+
+Issue is probably each of the above has it's own call/loop overhead, where the
+pure C version just has (tight part of the loop):
+
+    ;     for(int j = 1; j <= nb; j++) xab[i + j - 2] += xa[i - 1] * xb[j -1];
+         210: 66 0f 10 0c f3                movupd  (%rbx,%rsi,8), %xmm1
+         215: 66 0f 10 54 f3 10             movupd  16(%rbx,%rsi,8), %xmm2
+         21b: 48 89 cf                      movq    %rcx, %rdi
+         21e: 48 c1 ff 1d                   sarq    $29, %rdi
+         222: 66 41 0f 10 1c 3f             movupd  (%r15,%rdi), %xmm3
+         228: 66 41 0f 10 64 3f 10          movupd  16(%r15,%rdi), %xmm4
+         22f: 66 0f 59 c8                   mulpd   %xmm0, %xmm1
+         233: 66 0f 58 cb                   addpd   %xmm3, %xmm1
+         237: 66 0f 59 d0                   mulpd   %xmm0, %xmm2
+         23b: 66 0f 58 d4                   addpd   %xmm4, %xmm2
+         23f: 66 41 0f 11 0c 3f             movupd  %xmm1, (%r15,%rdi)
+         245: 66 41 0f 11 54 3f 10          movupd  %xmm2, 16(%r15,%rdi)
+         24c: 48 83 c6 04                   addq    $4, %rsi
+         250: 4c 01 e1                      addq    %r12, %rcx
+         253: 48 39 f0                      cmpq    %rsi, %rax
+         256: 75 b8                         jne     0x210 <_R2C_convolve+0x210>
+
+We can try to special case the length 1 scenario?
+
+# Loop Decomposition
+
+    for(i in seq_long(x)) {
+      y[i] <- x[i]
+      y
+    }
+
+Should become:
+
+    for_init(i_exp)
+    r2c_for(for_n(n_exp), for_zero(x_exp))
+
+Which in C land becomes
+
+    if(for_init()) {
+      while(for_inc(data, lens, di[1])) {
+        ...
+      }
+    } else {
+      ...
+    }
+
+So the calls we see are going to be:
+
+    i_exp       >
+    for_init()  >  if(for_init(...)) while(for_inc(...)) {
+    n_exp       >
+    for_n()     >  } else {
+    z_exp       >
+    for_zero()  >  }
+    r2c_for()   >
+
+Can we have a single function generate two function calls?  No, that's really
+not going to work, we need something like:
+
+    i_exp       >
+    for_init()  >  if(for_init(...))  {  // compute vector
+    for_inc()   >    while(for_inc(...)) {
+    n_exp       >
+    for_n()     >  } } else {  // not great, but otherwise alignment breaks
+    z_exp       >
+    for_zero()  >  }
+    r2c_for()   >
+
+`for_init` checks the length of the iteration vector.  I can't think of an
+obvious way to get around the extra layers.
+
+    i.exp
+    for_inc(i.exp, i, i.val)
+
+    r2c_for(
+      for_n({
+        v <- x[i]
+        ...
+        i <- i + 1L   // but this overwrites existing i
+      }),
+      for_0({
+        ...
+      })
+    )
+
+There is a hidden vector.  We need hidden loop counters.  That can't be modified
+by a sub-assign.  So then:
+
+    .R2C_for_i_0 <- vcopy(i.exp)
+
+Do we always copy `i.exp`, or only if it is a symbol and modified.  This means
+we need a new place to trigger vcopy.
+
+    for(i in i.exp) {
+      y <- z[i]^2
+      x[i] <- y
+    }
+
+Needs to become:
+
+    for_init_vec(.R2C_for_v_0 <- vcopy(i.exp))
+    for_begin()
+    x <- vcopy(x)  // so i.exp doesn't intefere if we were to allow sideffects
+    for_init_i(.R2C_for_i_0 <- 0)
+    r2c_for(
+      for_n(
+        {
+          .R2C_for_i_0 <- .R2C_for_i_0 + 1
+          i <- .R2C_for_v_0[.R2C_for_i_0]
+          y <- z[i]^2
+          x[i] <- y
+        },
+        length(.R2C_for_v_0)
+      ),
+      for_0({
+        ...
+      })
+    )
+
+In C:
+
+    .R2C_for_v_0 <- vcopy(i.exp) |
+    for_init_vec(...)            |
+    x <- vcopy(x)                |
+    for_begin()                  | if(for_init_v(data, lens, di[1])) {
+    .R2C_for_i_0 <- 0            |    <.R2C_for_i_0 <- 0>
+    for_inc_i()                  |    while(for_inc_i(data, lens, di[3])) {
+                                 |      <for_n_exp>
+                                 | } } else {
+                                 |  <for_0_exp>
+                                 | }
+
+    for_init(.R2C_for_seq_0 <- modify_candidate(i.exp), .R2C_for_seqi_0 <- 0)
+    for_iter(i.var, .R2C_for_v_0, .R2C_for_i_0 <- 0)
+    r2c_for(
+      for_n({
+        y <- z[i]^2
+        x[i] <- y
+      }),
+      for_0({
+        ...
+      })
+    )
+
+Issues to resolve:
+
+* Preprocess into above.
+  * Figure out how we'll set the target for `x <- vcopy(x)`.
+* Figure out the corresponding C code?
+
+Major issue is placing the vcopy in the right spot.  We might need to generate a
+placeholder so that any sub-assign vcopies go therein.  What about vcopies from
+nested if/else statements?  Presumably those need to stay inside the `if/else`.
+What about nested for loops?  These can probably seek to find the outermost
+`for`.  We only every need to copy these once.  In fact, we can just put them at
+the very beginning of the code and it should be fine.  What about interaction
+with the iterator expression?  That's probably fine; we just need to make sure
+that the vector is not external.  We don't care if the iterator modifies it.
+
+Do we convert into a subset
+
+So different for the simple branch because we need the `for_inc` to iterate the
+values.  What does `for_inc` do?  Could it accept a counter variable directly
+from C?  It would be convenient.  The alternative would be to have an explicit
+increment of a pointer to a vector, but that gets kind of wacky b/c we don't do
+that anywhere else (we'd have a scalar aliased as some offset into a vector).
+
+The most natural thing would be to have a `for_inc` function that copies from
+the looped vector into the counter variable.  That is annoyingly inefficient but
+maybe something we accept for now given that the whole loop implementation is
+not going to be particularly efficient.
+
+simple test:
+
+```
+f <- r2cq({
+  for(i in seq_along(x)) {
+    x[i] <- x[i] + i
+  }
+  x
+})
+```
+
+
+# Loop in relation to if
+
+Same concept of prelude/epilogue.  Same concept of an empty else branch to
+handle the allocation.  Main difference is going to be that the prelude needs to
+update the `i` variable somehow, and reset all the offsets.
+
+Also, unlike in `if` where we evaluate the condition as a stand-alone statement,
+we probably don't want to do that with a `for` loop (what about a while loop?).
+The "probably don't want" to is in consideration of the possibility of a smarter
+way of generating the sequence (or maybe we start looking into altrep?).
+
+Separately, does it matter if there are break/continues in the loop?  I guess we
+disallowed them for expression re-use optimization?
+
+One meaningful issue is that if we do have symbols written to in the loop that
+are used after we'll automatically end up with a vcopy that happens every
+iteration.  In practice it shouldn't matter too much because that vcopy is only
+needed if we don't use a computing expression, which if we don't that assignment
+shouldn't be in the loop in the first place.
+
+# Loop implementation
+
+Loop variables can be created in a child frame to the data.
+
+Each loop body will generate a `run` statement, e.g.:
+
+```
+run(...) {
+
+}
+run_loop_1(...) {
+  for(intmax_t i = 0; i < len; ++i) {
+    run(...);
+  }
+}
+run_loop_0(...) {
+  for(intmax_t i = 0; i < len; ++i) {
+    statement_0(...);
+    statement_1(...);
+    run_loop_1(...);
+  }
+}
+```
+
+Probably want two types of loops, loops where we know the start and end as
+constants or other derivable data (`seq_along`), and others where we have an
+unknown vector?  Might not be able to allow the second type, because at that
+point we can't know how large a vector that is assigned to with e.g. `x[i] <- y`
+will get.
+
+```
+for(i in seq_along(x))
+  y[i] <- x[i] + 1
+```
+
+Is the latter:
+
+```
+for(i in x)
+  y[i] <- z[i] + 1
+```
+
+At the allocation stage we need to determine the size of `y`.  It's fine if
+we're just referring to an external symbol (or even a group symbol) as we can
+check the content sizes.  But things like:
+
+```
+for(i in rev(x))
+```
+
+Get messier.  Likely we just allow symbols, or `seq_along`, or constant
+expressions like `a:b` where `a` and `b` are known at allocation time (changing
+them inside loop is fine since):
+
+> The seq in a for loop is evaluated at the start of the loop; changing it
+> subsequently does not affect the loop.
+
+But they can't be computed within the `r2c` code.
+
+# Sizing
+
+Is there a problem with situations like `a + b` where `length(a)` is NA (group
+size) and `length(b)` is either larger than any group, or larger than some
+groups?  Specifically, how do we deal with:
+
+    if(x) a + b
+    else a
+
+These are equal size for all groups where `length(a) > length(b)`, but not the
+converse.
+
+We made some effort to keep track of this with `vecrec_known_size`, but that
+info just gets merged into `size` and gets confusing.
+
+Did this matter prior to branches?  Probably not because we just needed the
+allocation size to be big enough for either, and then at runtime it would be
+determined which branch of the binops to take.
+
+To resolve this we need to check in the reconcile the following:
+
+    Browse[1]> alloc[['size']][c(3,5,6)]
+    [1] NA  1  1
+    Browse[1]> alloc[['group']][c(3,5,6)]
+    [1] 1 0 1
+
+The issue here is that 'size' is known size, but we separately track the 'group'
+flag.  So we're overloading the meaning of NA in size; we cannot ever rely on it
+because it is only ever NA when all args are NA.  It should really be called
+'known.size' instead of size, and then we need to directly check against the
+'group' field before making decisions.
+
+So we need to go through all uses of 'size' and make sure they are correctly
+handling the group.  Also maybe rename to 'size.known' and clearly document what
+this means (in particular 'size.known' can only be taken at face value if
+'group' is 0).
+
+What about more interesting example where we have one (or more group size), and
+multiple fixed sizes, e.g.,
+
+    a + (g + b)
+
+Where g is group size and we could have any of:
+
+    a < b < g
+    a < g < b
+    g < a < b
+
+Probably okay so long as no interactions of e.g. a x b or some such?
+
+One problem is that if we're told that something has known size 1, but is also
+part of a group, we need more information to be able to decide what the size of
+thing is in any given iteration.  If that outcome was from a vecrec, then we
+know that the size is the max of iteration size and known size.
+
+So we've got:
+
+* constant: just a number
+* vecrec: possibly NA, a number, or a number + group.
+* eqlen: identical size and group, or gmax == gmin and more flexibility.
+* arglen: any of the other options
+
+Do we always want max arg size?  What about stuff like 1 + numeric()?
+
+Future ones
+
+* concat:
+
+So we need some representation of size.
+
+vecrec produces:
+
+* 0 if one of the args is zero.
+* Max of group or known arg if known arg is not zero.
+
+Only vecrec can (currently) produce weird size arguments.  When are the things
+equal (size group)?
+
+* 5, 0   vs    5, 1  equal if gmax == gmin == 1
+
+* 5, 1   vs    3, 1  equal if gmin >= 5
+* 5, 1   vs   NA, 1  equal if gmin > 5?
+* 0, 1   vs   NA, 1  Can't be equal unless gma
+
+Basically vecrec with a known element sets a minimum size?
+
+# Names in Branches
+
+## General
+
+Problem is that the logic in the FALSE branch will see the names bound in the
+TRUE branch currently.  We can't just remove the relevant names because
+otherwise we might free the related memory, but we can hide it.  Hiding a single
+level should be straightforward.
+
+
+    x <- 0
+    if(a) {
+      x <- 1
+      if(b) x <- x + 1
+      else x               # needs to see 1, 0
+      x                    # needs to see reconciled 2 and 1, 0
+
+    } else x               # needs to see 0
+
+Every else branch must be able to see everything except what was just assigned
+inside the matched TRUE, including all sub-branches of that.  If we record the
+state of names at the `if_test` step, then we can mark all those that should be
+ignored.
+
+## Tracking with Environments
+
+We want to use environments instead of the names matrix to track symbols across
+branches.
+
+For each symbol, we need at a maximum (and hopefully less as some of this info
+will be implicit in the new environment structure):
+
+* ids: the data id
+* scope: used to protect data symbols, but if we increment environment nesting
+    correctly this protection should happen naturally.
+* i.max: the latest a symbol is used?
+* i.assign: when a symbol was assigned?  Maybe we don't need this anymore.
+* rec: whether the symbol requires reconciliation and what level.
+* rec0: original reconciliation level.
+* br.hide: shouldn't need this anymore.
+
+In theory we should be able to drop a lot of this tracking data.  Strawman is
+we'll need:
+
+* ids: so `name_to_id` does something
+* i.max: maybe?
+* rec: whether this symbol should be reconciled.
+
+This should greatly simplify the logic.  We just need to look at all the
+`names_` functions.  One immediate thing we need to reconcile is how
+`append_dat` adds names (direct use of `names_bind`) vs the more traditional
+`names_update`.
+
+By using environments the main thing we gain is the ability to branch by
+creating child environments, yet still find the relevant symbols.
+
+What gets more complicated is the ability to remove expired symbols and easily
+check what ids are still referenced as we do when looking for free slots.
+
+Let's say we add a name to an environment, along with the id it points to.
+
+* If it exists in the current environment then we can free the old reference.
+* When we reconcile TRUE/FALSE environments we can also free an old reference.
+
+So, keep a stack of references along with their self expiry step.  We only care
+about the id number and the expiry step.  We could include the original symbol
+as well for debugging purposes, but it is not needed.  Every time we update the
+environment, either by adding, replacing, or reconciling, we need to update the
+stack.  It is okay that this stack does
+not have any of the branching features because it links directly to the linear
+allocation list, and the branching is tracked through the environments.
+
+Scope should be handled by nested environments.  It's a smidge tricky because we
+use this also for branches, but it should be okay.
+
+I think we do actually want to associate each id with a specific symbol, that
+way we only remove the id/symbol combination.
+
+Probably want a new `name_bind` or `update` function.
+
+Maybe want to add `env.ext` and `env.names` to `alloc`?  And at that point the
+names stack should just be part of the object too.  Yes, but the environment
+stacks probably need to remain external, which is not great?
+
+Can we just remove use of `names_bind` directly and always go through
+`names_update`?  Probably.
+
+# Passive vs Not and Chains
+
+## As a return value
+
+    x <- y <- mean(x)
+
+If either `x` or `y` are used, we need the entire outer expression copied.  That
+means we need to know at the `first.assign` level all the symbols the expression
+was assigned to.
+
+If only one of `x` or `y` is used, we don't need the first inner expression to
+be copied, but if both are we do.  However, we don't implement complex triggers
+that e.g. are only met when all names are triggered.  And it likely gets way
+more complex as there are more bindings, and the interactions of them.
+
+If neither `x` or `y` are used, then we just need a reconcile on the outside.
+
+Vs.
+
+    x <- y <- z
+
+The same as above, except we always need to copy the outside.
+
+## As a `in.branch` (but not return):
+
+    w <- x <- y <- mean(x)
+
+* Copy `y <- mean(x)` if `x` or `w` used.
+* Copy `x <- y <- mean(x)` if `w` used.
+
+    w <- x <- y <- z
+
+* Copy `y <- z` if `x` or `w` used.
+* Copy `x <- y <- z` if `w` used.
+* Copy `z` if `w`, `x` or `y` used and `z` is non-local-computed.
+* Copy `z` if `z` is local comp but used outside.
+
+# Nested Reconciliation
+
+We want to avoid requiring reconciliation in the last `if/else`, but we also
+want to make sure two reconciliations happen in the nested one.  So we probably
+need a reconciliation counter along with a nesting counter?
+
+    if(a) {
+      x1 <- mean(x)
+      if(b) x1 <- sum(x)
+    } else {
+      x1 <- sum(x^2)
+    }
+    if(b) x1 else x1 + 1
+    x1
+
+# Reconcile
+
+* Any symbols bound in branches used after that branch:
+  * Reconcile: all.
+  * Copy: those bound to non-local memory, and balance branches.
+* Branch return value:
+  * Reconcile: all, including if truly last.
+  * Copy: those bound to non-local memory.
+* Final value (when not branch):
+  * Copy: if bound to external memory.
+
+What do we do about:
+
+    if(a) {
+      x <- mean(x)    # 1 -> 4 -> 5
+      y <- mean(y)    # 2      -> 5
+    } else {
+      x <- mean(z)    # 3 -> 4 -> 5
+      y <- x          # 3 -> 4 -> 5
+    }
+
+We can't just rebind a symbol without copying because one branch might point to
+the same memory, but another mightn't.  So each assignment, even when nesting, must
+generate a copy always.
+
+    y <- if (a) {
+      x <- mean(z)
+      rec(vcopy(x))
+    }
+    y + x
+
+Current problem: need to recognize that a last value that is an alias to a local
+computed binding does not require a copy if it is not in a branch.  But we have
+no mechanism to track aliases to locally computed bindings.
+
+
+
+# Merging
+
+Branch or final result never generate candidates, only assignments do.
+
+We have:
+
+* Original candidates.
+* New candidates in each branch.
+  * Add assignment in opposite branch to match the symbol.
+* Promoted original candidates in each branch.
+  * Remove candidate from alternate branch so it doesn't get double promoted?
+    Shouldn't matter though.
+* Overwritten candidates in each branch.
+  * Should be okay?
+
+Seems like locality cannot include nested branches?  So any symbol that is
+re-assigned in a nested branch becomes non-local.  Also needs to be balanced.
+
+    if(a) {
+      x <- z
+      if(b) {
+        z <- x
+        x <- y
+        w <- mean(z)
+        w + x
+      } else {
+        # x <- vcopy(x)  # is this needed?  YES!! RESIST TEMPTATION.
+        mean(z)
+      }
+      x + w            # this should trigger
+    } else {
+      x <- mean(z)
+    }
+
+We need to be able to know if a symbol is branch local.  On branch exit, symbols
+that are branch local and are either computed or will become computed by virtue
+of `vcopy` can be considered global?  They can be if they are computed across
+all branches being merged.  So, first we decide if a symbol use needs to be
+`vcopy`'ed.  If it does, then we make it a candidate and it becomes branch
+local / computed.  Subsequent uses of it should not trigger it, but once we exit
+the branch, it should become global (b/c it will be if it is triggered).
+
+So basically, on merge, anything that was local in the branch becomes global.
+
+Is there such a thing as a non-computed local symbol for these purposes?
+Probably not.
+
+# Return Global Computed
+
+    x <- mean(z); y <- mean(w); if(a) x else y
+
+What about:
+
+    > pp3c <- r2c:::preprocess(call3c, optimize = TRUE)
+    > r2c:::clean_call(pp3c[["call.processed"]])
+    {
+        x <- y <- mean(x)
+        if (a)
+            r2c::rec(y <- x)
+        else r2c::rec(r2c::vcopy(y))
+    }
+
+This happened when trying to fix:
+
+    > r2c:::pp_clean(call3g3)
+    {
+        x <- if (a)
+            r2c::rec(y <- mean(z))
+        else numeric(0)
+        x
+    }
+
+Problem is ultimately we don't want to vcopy `mean(z)` when `y` is unused, but
+we do need to `vcopy(x)`.  The key is we need to add a
+
+If symbol used:
+
+    rec(vcopy(y <- rec(vcopy(x)))
+    rec(vcopy(x <- rec(mean(x))))
+
+If symbol unused:
+
+    rec(vcopy(y <- x))
+    rec(x <- mean(x))
+
+So use the following:
+
+* Actual `rec` on the outer call always.
+* If computed expression:
+  * Candidate `vcopy` on the outer call.
+  * Candidate `rec` on the inner call.
+* If non-local symbol:
+  * Actual `vcopy` on the outer call.
+  * Candidate `vcopy`/`rec` on the inner call.
+
+We care about:
+
+* Is it in branch.
+* Is it branch result.
+* Is it an assignment of a non-computed expression.
+* Is it an assignment of a computed expression.
+* Is it overall result.
+
+    if (a)
+      r2c::rec(r2c::vcopy(z))
+    else
+      r2c::rec(
+        if (if (b) r2c::rec(r2c::vcopy(x)) else r2c::rec(r2c::vcopy(y)))
+          r2c::rec(r2c::vcopy(w))
+        else
+          r2c::rec(r2c::vcopy(u))
+      )
+
+
+    {
+        y <- mean(w)
+        if (a)
+            r2c::rec(r2c::vcopy(z))
+        else r2c::rec(
+          if (b)
+            r2c::rec(
+              if (c) r2c::rec(r2c::vcopy(x))
+              else r2c::rec(r2c::vcopy(y))
+            )
+          else r2c::rec(r2c::vcopy(u))
+        )
+    }
+
+Again running into the issue that we need to distinguish between a local symbol
+that is a candidate and a local symbol that is computed.
+
+    if (a) r2c::rec(r2c::vcopy(z))
+    else {
+      if (
+        if (b) r2c::rec(r2c::vcopy(x))
+        else r2c::rec(r2c::vcopy(y))
+      )
+        r2c::rec(r2c::vcopy(w))
+      else r2c::rec(r2c::vcopy(u))
+    }
+
+# Symbol Tracking
+
+For each assigned symbol/instance, we need to track when it's cleared vs used to
+e.g. determine whether it is used outside of ifelse.  For ifelse purposes, we
+can just record name/index of things that are used after ifelse.  To do this, we
+create candidates, and promote them on use recording the use index.  We then
+keep the latest use index for each symbol/creation index.
+
+Each linearized call entry can track its tree index too?
+
+How do we know the variable was used outside of current if/else though?  In the
+other preproc we know because we track the local symbols.
+
+    if(a) {
+      x <- z
+      y <- x
+      z <- mean(y)
+    }
+    x + y
+    y
+
+
+# Constraint Overview
+
+The over riding constraint is that every symbol must resolve to an unambiguous
+size.  `if` and `for` control structures can create ambiguity in sizes (e.g.
+different sizes in branches of if, different sizes within the loop / loop can
+act like a branch if not taken).
+
+Disallow cases where a variable might not be created that is later used:
+
+* for:
+  * Zero iterations (maybe).
+  * `break` / `continue`
+* if:
+  * Brand new symbol.
+  * Not all branches contain it.
+  * What if the symbol exists from elsewhere?
+
+Additionally:
+
+* for:
+  * variables read and written from must be consistent size before and
+    after loop
+  * variables must remain constant size in the loop (e.g. cannot grow)
+  * variables written to in loop must be either unchanged in size, or the loop
+    must be guaranteed to have at least one iteration.
+* if:
+  * variables written to must be the same size across all branches; branches
+    that don't write ok so long as prior var same size.
+
+Need to think about what compatible allocations are.  Certainly different
+branches must produce the same size result.  Does the result need to end up in
+the same allocation id?
+
+# Dead Code Removal
+
+1. Remove all non-last statements that are neither bound to symbols nor are last
+   in a braces call.
+2. Remove all unused bindings leaving the RHS around (self-assignments corner
+   case).
+3. Repeat until no changes?
+
+For implementation, start at end(s) (plural for cases where we end in branches)?
+
+(`{x <- y <- z; x}` is interesting - how do we resolve it - this was an earlier
+question).
+
+What to do about braces that don't have their return value used (just
+assignments).  Should be able to keep trimming from end until first assignment.
+
+# C Implementation / Allocation
+
+Probably the way a loop would work is:
+
+```
+for(i in 1:10) {
+  mean(x + i)
+}
+```
+
+```
+void run(
+  double ** data, R_xlen_t * lens, int ** di, int * narg, int * flag, SEXP ctrl
+) {
+  (void) narg; // unused
+  (void) ctrl; // unused
+
+  dibase = *di;
+  flagbase= *flag;
+  for(i = 0; i < n; ++i) {
+    // - Loop Overhead ---------------------------------------------------------
+
+    // Reset baseline position for everythign that gets tracked.
+    di = dibase;
+    flag = flagbase;
+
+    // Do something to update the value of `i` in the data
+    update_loop_var(data, lens, *di++, *flag);
+    ++flag; // Why is flag here?
+
+    // - Normal Code -----------------------------------------------------------
+    // mean(x)
+    mean(data, lens, *di++, *flag);
+    ++flag;
+  }
+  // If there are no iterations at all, we need to skip ahead to what *di and
+  // *flag would have been.
+}
+```
+
+What about `if`? e.g.:
+
+```
+test <- mean(x)
+if(test > .5) {
+  y <- mean(x)
+} else if (test < .25) {
+  y <- sum(x)
+} else {
+  y <- sum(z)
+}
+```
+
+```
+void run(
+  double ** data, R_xlen_t * lens, int ** di, int * narg, int * flag, SEXP ctrl
+) {
+  (void) narg; // unused
+  (void) ctrl; // unused
+
+  // mean(x)
+  mean(data, lens, *di++, *flag);
+  ++flag;
+
+  // test <- mean(x) NO-OP
+  // NO-OP: assign(data, lens, *di++);
+  ++flag; ++di;
+
+  // test > 0.5
+  gt(data, lens, *di++);
+  ++flag;
+
+  if(r2c_if(data, lens, *di, *flag))
+  {
+    ++flag; ++di;
+    // mean(x)
+    mean(data, lens, *di++, *flag);
+    ++flag;
+    // y <- mean(x) NO-OP
+    // NO-OP: assign(data, lens, *di++);
+    ++flag; ++di;
+  }
+  else
+  {
+    flag+=3; di+=3;
+    if(r2c_if(data, lens, *di, *flag))
+    {
+      ++flag; ++di;
+      // sum(x)
+      mean(data, lens, *di++, *flag);
+      ++flag;
+      // y <- sum(x) NO-OP
+      // NO-OP: assign(data, lens, *di++);
+      ++flag; ++di;
+    }
+    else
+    {
+      flag+=3; di+=3;
+      if(r2c_if(data, lens, *di, *flag))
+      {
+        ++flag; ++di;
+        // sum(z)
+        mean(data, lens, *di++, *flag);
+        ++flag;
+        // y <- sum(z) NO-OP
+        // NO-OP: assign(data, lens, *di++);
+        ++flag; ++di;
+      }
+    }
+  }
+}
+```
+
+But we probably need to do something as follows to ensure the offsets are all
+correct.
+
+```
+di_save = di;
+flag_save = flag;
+if(r2c_if(data, lens, *di, *flag))
+{
+  ++flag; ++di;
+  // mean(x)
+  mean(data, lens, *di++, *flag);
+  ++flag;
+  // y <- mean(x) NO-OP
+  // NO-OP: assign(data, lens, *di++);
+  ++flag; ++di;
+}
+else
+{
+  flag = flag_save + 3; di = di_save + 3;
+  // sum(x)
+  sum(data, lens, *di++, *flag);
+  ++flag;
+  // y <- sum(x) NO-OP
+  // NO-OP: assign(data, lens, *di++);
+  ++flag; ++di;
+}
+di = di_save + 5;
+flag = flag_save + 5;
+```
+
+Must every `if` always emit an `else`?  There is the implicit `else`, so
+probably better to do so since then naturally we have the reconciliation (for
+allocations) of the "yes" branch vs an empty branch.
+
+A bit tricky to think about where the result of the `if/else` should be stored.
+
+```
+// Input
+if(X, A, if(Y, B, C)
+
+// Becomes
+X
+A
+
+Y
+B
+C
+
+if(Y, B, C)
+
+if(X, A, if(Y, B, C))
+```
+
+This is good, except that everything but the last statement might not run.  So
+the code processor needs to add some special things?
+
+```
+
+__COND__
+X
+__YES__:1
+A
+__NO__:3
+  __COND__
+  Y
+  __YES__:1
+  B
+  __NO__:1
+  C
+
+if(X, A, if(Y, B, C))
+```
+
+So maybe what we really need is the code linearization to produce:
+
+```
+X
+list(
+  A,
+  list(
+    Y,
+    list(
+      B,
+      C
+) ) )
+```
+
+Should `Y` be on a different level?  Probably.  This would signal the allocator
+to fork itself at each level, and on exit of each fork evaluate the different
+branches to ensure they have self consistent sets of live symbols.  For this to
+work properly on exit need to reconcile all the allocations and make sure that
+the same symbols point to the same allocations, and that they are the same size.
+If they point to different allocations, how do we reconcile them?  We can't
+necessarily just swap them as each allocation creates a potential chain of
+re-uses (although we know that surviving symbols will still be using their
+allocation).  We could require that assignments use a fresh allocation?  This is
+hard to know ahead of time as the assignment first just evaluates it's
+expression, and only after locks up the memory.  The problem is that in one
+branch, an assignment might end up using an over-large allocation, and in
+another a just right one.
+
+A naive view is that we look at all the new allocations created by the two
+branches, and generate a new set of allocations that will fit both.  Then we
+remap all the allocations to the new set, ensuring that persistent symbols get
+assigned the same allocation.  This should work?  Need to think through the
+possibility that the order in which the allocations are used creates a problem,
+but it seems that so long as every allocation has a corresponding new allocation
+bigger than or equal to itself, it should work itself out?
+
+# If code Generation
+
+How does code generation fit in?  That happens before the allocation.  Probably
+code generation needs to recognize functions that wrap their parameters.  We
+need to track:
+
+* Indentation level.
+* Prelude before each argument (for if/else)
+* Epilogue (just closing brace)
+
+So prelude would be:
+
+    flag_save = flag;
+    di_save = di;
+    if(r2c_if(data, lens, *di, *flag))
+    {
+      ++flag; ++di; // can't ++di in call?  I guess we could
+
+And epilogue:
+
+    }
+
+With then another prelude:
+
+    else
+    {
+      flag = flag_save + ?;
+      di = di + ?;
+
+And final epilogue:
+
+    }
+    flag = flag_save + ?;
+    di = di + ?;
+
+It does mean we subvert the entire logic of code generation as we have to do it
+between arguments, not after all the arguments are processed as is normally the
+case.  Currently we have a 1-1 correspondence with a call and a
+`record_call_dat`.  Is it okay to break it?
+
+Currently for each `record_call_dat` call, there is an element added to the
+`x[['call']]` list, with allocation implications.  Also there is a pairwise
+correspondence from those to what gets generated at the C level.  There is no
+concept of enclosure at the code gen phase, so we could possibly add the
+prelude, and maybe the epilogue, but it's non trivial?
+
+So we need a different function specialized for `if` (and maybe loops) that
+slots into to the `pp_internal` stack.  It will:
+
+* Process parameter 1 (the test) as normal.
+* Insert the `r2c_if` call with the code generation of the prelude.
+
+So maybe:
+
+```
+if(a) {
+  b
+  c
+} else {
+  d
+  e
+}
+```
+
+Becomes:
+
+```
+// if_test can't quite be a no-op as those automatically get commented out
+r2c_if_test(a)       // generate if(...), NO-OP-ish as it just accesses the value
+r2c_if_true()        // generate prelude, NO-OP
+{
+  b
+  c
+}
+r2c_if_true_end()    // generate epilogue, NO-OP
+r2c_if_false()       // generate prelude, NO-OP
+{
+  d
+  e
+}
+r2c_if_false_end()   // generate epilogue, NO-OP
+```
+
+Maybe better once we don't need to increment indices b/c we specify them
+directly:
+
+
+```
+r2c_if_test(a)
+{
+  b
+  c
+}
+r2c_else()    // NO-OP
+{
+  d
+  e
+}
+r2c_endif()   // NO-OP
+```
+
+For the last two the problem is the code generation needs to override the
+default and produce:
+
+   }
+   else
+   {
+
+And:
+
+   }
+
+An alternative might be:
+
+```
+if(a) b else c
+```
+
+Becomes:
+
+```
+r2c_if_test(a)
+r2c_if(r2c_if_true(b), r2c_if_false(c))
+```
+
+Which expands to:
+
+```
+a
+r2c_if_test(a)  // -> if(r2c_test(a)) {
+b
+r2c_if_true(b)  // -> } else {             NO-OP
+c
+r2c_if_false(c) // -> }                    NO-OP
+r2c_if(r2c_if_true(b), r2c_if_false(c))
+```
+
+The main advantage of this is that it allows the `r2c_if` call to get all the
+data related to it's arguments, including argument lengths, within the existing
+structure.
+
+Make sure to register all of these in `PASSIVE.SYM` (or should we change it to
+be `ACTIVE.SYM` that requires registration?).
+
+All of this needs to be done before we get into `pp_internal` like the other
+pre-preprocessing steps.  But we don't really want to expose this stuff to the
+user, right?  One possibility would be to add to `r2c:::clean_call` the ability
+to re-collapse the above back into the original if/else call the way we handle
+`...` names and other things.
+
+If we do it this way, the dedicated logic that we need to add is something that
+can track the positions of the offsets.
+
+**Maybe instead of doing stuff like di++ we do `mean(.., di[n])`**
+
+That would massively simplify all the loops and everything else too.  We just
+need to be sure to count all the calls carefully.
+
+* Process parameter 2 (the yes condition) as normal, with a new indent level
+  specified.
+  * We need to recover how many total calls were processed so we can generate
+    the correct offsets for the no condition prologue.
+* Insert the epilogue.
+* Insert the `r2c_else` call with the code generation of the prelude.
+* Process parameter 2 (the no condition) as normal, with a new indent level
+  specified.
+  * We need to recover how many total calls were processed so we can generate
+    the correct offsets for the ...
+* Insert the epilogue.
+
+When we do this, in `x[['call']]` we store a list?  Not ideal for code
+generation, though it would be useful for the allocation.
+
+So we need a mechanism for dealing with the epilogue that doesn't naturally have
+a corresponding call.  Maybe we also have `r2c_endif` and `r2c_endelse` as
+no-ops?  Or some other class of call that doesn't even get a comment?  One key
+thing with no-ops is that they still generate entries in the offset arrays.
+Perhaps we change no-ops not to do that?  Or just leave it as is.  Let's start
+with as is with special `if` and `loop` preprocessing.
+
+Need to handle the possibility of returning a NULL, should it just be a zero
+length value?  It's okay for `if` to return different length results so long as
+they are not written to a variable (but code that does this is likely a little
+weird).
+
+# If Allocation
+
+Each `if` and `else` is a special call with one argument, as opposed to one
+`if/else` with three arguments (condition/yes/no).  The allocation forks at the
+`if` and at the `else`, and once the `else` is complete the allocation is
+reconciled, including the return value of the `if`.
+
+Probably should check that there is always an `r2c_else` after an `if`.
+
+Do we need an empty call for the epilogues?  Maybe.
+
+If we hit `if_true`, then it gets complicated, because we won't hit it until
+we've hit all the contents...
+
+Basically, we need to split the linearized call list back into its branches,
+which will be really annoying.  So we need to make two versions?  But the `i`
+indices are baked in from the preproc when we generate the code.  We are still
+free to do whatever with the allocation array, but it's not trivial to do things
+self consistently.
+
+Instead maybe we can just save a snapshot of the allocation data once we hit the
+`if_true`.  It would go in a stack, and each time we hit an `if_false` call, it
+would unwind the stack and compare the two allocation structures to make sure
+they are compatible with each other:
+
+* Compatibility is just that the symbols with lifetimes exceeding the if/else
+  are equal size.
+* Make sure they point to the same memory.  This may require shuffling things
+  around.
+* More specifically, we're looking to make sure that:
+    * Every unexpired symbol in the names array points to the same memory
+      location and has the same allocated size.
+    * If locations are not the same (but both exist), we need to reconcile
+      locations.
+    * Any mismatch in existence is an error.
+    * Any mismatch in size is an error.
+
+I think we just need to keep the names array.
+
+Can we encourage the allocator to re-use the same memory for the same symbol if
+it fits?  Won't help with a symbol getting written to multiple times at
+different sizes (this is not disallowed, just we cannot guarantee the same
+memory will be used).  Additionally, this is non-trivial because when memory if
+first assigned, it is at the computation step, which is nested inside the
+assignment and can't easily know it's result will have a symbol bound to it.
+
+Problem is we cannot just move things to a free slot because the slot might not
+have been free at the time the symbol was written to.  So do we just allocate a
+new vector for every symbol written to in either loop?  Likely we do this for
+any symbols that end up at different addresses.
+
+Once we "move" the symbols, we need to go back and fix any references to the
+symbols in question in the "ids" field of the `call.dat` elements?  But imagine
+some symbol got written to free slot 5, how do we know that in any given
+`call.dat` element the 5 referenced our symbol, vs something else that
+temporarily occupied the slot?  For each name, we need to know what step it was
+assigned on, so we can work back and update all the references up to that point.
+
+We probably can't take advantage of e.g. the else branch using a particular slot
+with the hopes we can declare that the earlier `if` branch must be able to use
+that too.
+
+One big problem in:
+
+    if(1) x <- y
+    x
+
+Where `x` could be part of data or external.  We can reconcile, but we can't
+write to the data.  This means for this to work we need to duplicate `x`.
+Basically all symbols that are written to in `if` must be in the current scope,
+or must be copied into the current scope.  I.e. we need equivalent of:
+
+    x <- z
+    if(1) x <- y
+    x
+
+Although this is okay too:
+
+    if(1) x <- y
+    else x <- z
+    x
+
+Assuming of course that `y` and `z` are themselves from the current scope.  And
+if they are not?  We need to `vcopy` each of them to a new common location so
+that `x` can satisfy the requirement.  Other cases to think about:
+
+    if(1) x <- {y}
+    else x <- z
+    x
+
+How do we fix this up?  Really challenging because we need this to happen in the
+`preprocess` step.  Also creates the potential from inefficiencies since now we
+guarantee that we have to copy `y` and `z` when in reality we only need one or
+the other?
+
+From a `preprocess` perspective this is probably okay because we know (or can
+known what all the foreign symbols are).  So if we see that foreign objects are
+referenced in an `if/else` or control, we add a `vcopy` for them, preferably in
+the branches (what about empty else? Just make it non-empty with the vcopy,
+loops will either need to do it before the loop (and possibly again in the loop)
+or have a loop-else branch - probably need to be before if there is the
+possibility of a break/continue).  The `vcopy` is only necessary if the symbol
+is just re-assigned.  As soon as it's computed on we don't care anymore.
+
+So we're looking for the special case where external symbols are transitively
+referenced via repeated assignment, and more specifically, where the
+re-assignment happens in `if/else` and differently across the branches, and the
+symbol is used later.
+
+As a shortcut, can we just vcopy all external symbols used in branches as part
+of an assignment?
+
+How does this work with scope and potentially nested functions?  `preprocess`
+does not currently have a concept of scope (but alloc does).
+
+What about:
+
+    x <- mean(a)
+    y <- mean(b)
+    if(x > .5) u <- x else u <- y
+
+Same problem.  Only time we avoid this problem is if the source of the
+allocation is inside the `if/else` on both sides.
+
+    x <- mean(a)
+    if(x > .5) u <- x
+    else {
+      y <- mean(b)
+      u <- y + x
+    }
+
+Here this is still a problem as we can't have `mean(a)` and `mean(b)` occupy the
+same memory.
+
+To recap, any assignment from a symbol external to the `if/else` to a symbol
+that survives the `if/else` must include a `vcopy`.
+
+    x <- mean(a)
+    if(x > .5) u <- vcopy(x)   # add vcopy here
+    else {
+      y <- mean(b)
+      u <- y + x               # don't need vcopy here
+    }
+
+So an extension of the `copy_last` business:
+
+* Find all surviving symbols
+* Of those, do any of them correspond to an alloc from outside the `if/else`?
+* Add a `vcopy` to the point that they get assigned.
+
+Simpler:
+
+* Are we in if/else?
+* If yes is there a sym <- sym assignment?
+* If yes was the symbol defined in the current `ifelse`?
+* If no, add a vcopy.
+* What if it was defined in a nested `ifelse`?  That's probably okay.
+
+So track all symbol assignments in the current `ifelse`.  Each nested `ifelse`
+gets its own tracking.
+
+# Merge `copy_oos` and `copy_last`
+
+OOS(S) -> Out of Scope (Symbol)
+
+In theory, if we get rid of redundant code, and we copy both first assignment to
+in-scope symbol as well as return of out of scope symbol we should solve both
+problems, and do so more elegantly than we currently are.
+
+OOS assignment okay so long as it's not in an if/else block to a symbol that
+survives the block.  So track if a symbol is out of scope.  If in an if block
+and we try to copy it, then vcopy.  If not in an if block, then new symbol also
+marked out of scope.  OOS symbols are those not part of the in-scope list.
+In-scope are all assignments that happen in-scope.
+
+If fall out of scope (e.g. exit `if/else`, end of function), then vcopy.  What
+about nested functions?  Do they establish a scope for the purposes of this
+stuff?  Maybe, even something like `force(x)` has to because we will consider
+the return value to be in-scope?
+
+So if we vcopy on first use by `<-` in a scope, or on first exit of a scope
+where now scope is generally curly braces or `if` / `else` (do we force curly
+braces everywhere they are optional for single statements)?  This might create
+unnecessary copies, but if we then backtrack and eliminate dead code then the
+copies won't happen.
+
+So, curly braces establish a scope (this type of scope anyway)?  Well, not
+really, only the function curly braces and control structure curly braces.  We
+don't need to vcopy some random set of curly braces (but we don't allow random
+sets of curly braces?).
+
+    a <- mean(x)
+    b <- { a }     // doesn't need vcopy
+    b
+
+vs
+
+    b <- { a }
+    b              // vcopy needed here
+
+vs
+
+    b <- a
+    b              // vcopy needed here
+
+vs
+
+    a              // vcopy needed here
+
+The most general version is we make a `vcopy` anytime an OOSS is used by a
+passive function.  So what about the `{` in:
+
+    a <- mean(x)
+    b <- { a }     // doesn't need vcopy
+    b
+
+vs
+    a <- mean(x)
+    c <- mean(y)
+    b <- if(e) a else c
+    b
+
+vs
+
+    a <- mean(x)
+    c <- mean(y)
+    if(e) b <- a else b <- c
+    y
+
+These seem like different considerations.  In the first case we just need the
+data bound to `a` to be somewhere that could be declared to be the result.  In
+the others we need the data of either `a` or `c` to be explicitly copied to a
+common location.
+
+So maybe merging wholesale is not an option, but we still can probably use the
+same code.
+
+But back to first use of an OOSS by a passive function generates a vcopy.  What
+makes a symbol an OOSS?  It is an external symbol, where external means from
+data/args or from outside a control structure.
+
+# Rebinding Symbols
+
+Things like:
+
+    x <- y <- z
+
+Should be:
+
+    x <- vcopy(y <- vcopy(z))
+
+For any symbols that are written to and survive for re-use.  What about:
+
+    x <- z      # does this need a `vcopy`?  No.
+    x <- x + y
+
+So it's not just OOS stuff, it's OOS that get's used by a passive function in a
+disallowed context (return value, if branch).
+
+For shared memory across symbols, the problem is one of them gets written to.
+
+Maybe for branches missing the symbols we add:
+
+    x <- vcopy(x)
+
+And for branches that have them we could also just add them (error message might
+be confusing when `x` doesn't exist).  Error message probably enough to not do
+this.
+
+So, for all symbols written to in `if/else`, first statement is to make `vcopy`
+of them?  But what if the symbol is first created there?
+
+That's probably cleanest.  The OOS business remains for the branches.  For
+return values we can tell whether a symbol is "tmp" or not, so we only `vcopy`
+it if it is not "tmp".
+
+We need to address:
+
+* OOS symbols returned.
+* OOS symbols re-assigned in if/else (including indirectly via passive funs).
+* Symbols with shared bindings (i.e. one or more other variables point to same
+  memory) re-assigned in if/else (including indirectly via passive funs).
+
+Eventually:
+
+* Symbols with shared bindings before they are modified (e.g. with `[<-`).
+
+This means we need to compute shared bindings in `preprocess`...  Also suggests
+we want to get rid of dead code.
+
+One challenge for both multi-bindings and OOS is we really want to eliminate
+them where they are used.  This requires inserting a `vcopy` of the original
+symbol right before they are used.  For branches that don't have the symbols
+used in both branches this is problematic?
+
+For branches, we have the following situations:
+
+* Symbol pre-exists, or not.
+* Assigned to in only one branch, or not.
+* Symbol is problematic, or not (OOS or points to multi-bound memory).
+
+* Source problematic
+* Target problematic (for no assignment + exists case)
+
+Variables:
+
+* `source.external`
+* `target.external`
+* `target.missing`
+* `assign.call`: whether part of assignment call chain (assign <- passive <- x)
+* `assign.both`
+* `in.if`
+* `is.last`
+
+```
+source.external <- is.symbol(x) && !x %in% in.scope
+if(source.external) {
+  if(is.last) {
+    x <- vcopy(x)
+  } else if (assign.call && in.if) {
+    # What if the symbol isn't used outside the `if`, but is used later
+    # within the `if`?  Then dead code removal won't remove the vcopy.
+    x <- vcopy(x)
+
+    if(!assign.both) {
+      # how do we know the assignment to this symbol happens in both branches?
+
+    }
+  }
+
+
+|| (assign.call && in.if)) && source.external) {
+  if(
+
+}
+```
+
+We cannot re-use an existing allocation bound to our symbol no matter what
+because of things like:
+```
+x <- mean(y)     # 3 -> 4
+if(a) {
+  y <- x         # 4 -> 4
+} else {
+  x <- mean(x)   # 4 -> 5
+  z <- mean(y)   # 3 -> 4
+  y <- x         # 5 -> 5  cannot become 5 -> 4
+}
+
+Should:
+
+    x <- y
+    if(a) x <- y
+
+Become:
+
+    x <- y
+    if(a) x <- y
+    else x <- vcopy(x)
+
+Or:
+
+    x <- vcopy(y)
+    if(a) x <- vcopy(y)
+
+Need to know all surviving symbols written in each branch.  Opposite branch will
+gain `x <- vcopy(x)` at beginning for missing symbols, but if `x` doesn't exist
+there will be an error.
+
+
+There might be special cases where we can get away with it, but it's a lot of
+work to figure them out.
+
+So how do we track all the symbols that are assigned in each branch and survive?
+Every time a symbol is assigned to it is killed, every time it is used it is
+resurrected.  But to track this properly you essentially have to either re-do
+the search as of each point in the stack, or rename all the symbols so that an
+assignment cannot re-use an existing name.  But in this version of the rename we
+don't need to do special renaming for if/else (in fact don't want to as
+otherwise we wouldn't know about survival, except if we do dead code removal).
+
+This is all to avoid extraneous `vcopy`.  If we allow extraneous `vcopy` then it
+is simpler since then we don't have to identify surviving symbols.
+
+Really difficult to track surviving symbols because of overwrites, possibly even
+overwrites in branches.  If we ignore overwrites, then it becomes easier at the
+cost of false positives, but we still need a mechanism for tracking position of
+each call before we linearize the calls.  Can we process the tree backwards?  If
+we do that we'll know perfectly that a symbol has been re-used after the `if`
+call (a bit tricky to track intermediate `if` branches that only assign in one
+branch).
+
+So maybe backwards pass applying `vcopy2`, and forward pass either removing such
+`vcopy2` or renaming them to `vcopy` if the symbol is a foreign reference?  What
+about requiring that every symbol must exist in both branches?  The second
+forward pass could check for this.
+
+Once we have the `vcopy` in place, we're guaranteed that every symbol forwarded
+in a special context (`if/else`, return) will point to a temporary allocation
+that we can update at the allocation step.
+
+Some temporary assignments not used outside of if/else but technically survive
+because they are not deleted?
+
+```
+if(assignment && source.is.symbol) {
+  if(target.exists) {
+    if(source.problematic) {
+      source <- vcopy(source)  # in both branches
+      if(!assignment.both) {
+        target <- vcopy(target)  # in both branches
+      }
+    } else if (!assignment.both) {
+
+    }
+  } else {
+    if(source.problematic) {
+      if(assignment.both) {
+        # add `vcopy(source)` in both
+      } else {
+        # add self assign vcopy in branch missing it (source <- vcopy(source))
+      }
+    } else {
+      if(assignment.both) {
+      } else {
+      }
+    }
+  }
+}
+```
+
+* symbol pre-exists gets assigned in both branches
+* symbol pre-exists gets assigned in one branch
+  *
+
+  / doesn't
+* symbol gets assigned in both branches
+* symbol gets assigned in only one branch
+
+
+
+* existing symbol assigned in both branches
+* existing symbol assigned in both branches
+
+# Track Symbol Usage
+
+## Correct Way To Track Symbol Usage
+
+If symbol:
+  If binding context or return context:
+    If symbol exists in current branch context:
+      All set.
+    Else:
+      *VCOPY* and add to beginning of current context, this will need to be done
+      when we get to context-establishing call.  All future uses (even in
+      different branches of same context) will benefit from this.  So each
+      processed call returns a vector of symbols they need added.  It's okay for
+      multiple calls to have overlapping symbols.  If a later call redefines a
+      symbol, that's okay too.  We just need to track the defined symbols we had
+      at the beginning.  When we exit the context we still return our set of
+      defined symbols.  We do need to make sure that the set of newly defined
+      symbols exists in both branches.
+    Additionally, after assignment add symbol to current context.
+    Else If "r2c_if" context:
+      Recurse on both branches.
+      Compare return symbol list and add missing symbols to each branch.
+  Else If call context:
+
+
+In forward pass, for each symbol, track what context level it is bound in.  For
+each symbol use, check if it is a rebinding or return.
+
+## General
+
+We want to modify a call based on how a symbol was used / not used.  We could
+parse calls backwards (reverse argument order) and find dead code.  Dead code is
+code that isn't used in another call, which includes:
+
+* Anything not referenced in the last element of `{`.
+
+Tricky things like:
+
+    x <- mean(y)  // should be dumpable
+    x <- mean(z)
+
+Rename would deal with these?  Yes, but that is currently buried in
+`reuse_calls`.  Could split it out and do several things.  Assume it would
+handle control structures correctly (break/continue?).
+
+## Multiple References To Same Memory
+
+Caused by:
+
+    x <- passive(y)
+
+E.g.:
+
+    x <- y
+    x <- +y
+    x <- {y}
+
+But then there are things like:
+
+    x <- y
+    y <- mean(w)
+
+
+
+# Interesting Example
+
+Pretty challenging dealing with loops.
+
+```
+x <- integer()
+for(i in 1:10) {
+  x <- c(x, i)
+}
+```
+
+Each loop iteration is going to have a different size for x. The best we can
+hope for is consistent size every iteration including the first.  This should
+handle the case where the loop doesn't even run.
+
+What about variables created in loops that are not taken?
+

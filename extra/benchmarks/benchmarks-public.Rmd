@@ -8,11 +8,16 @@ output:
 
 # Prelude
 
-`system.time` is modified here to run 11 times after an initial gc, and display
-mean run time.
+```{r echo=FALSE}
+  # install.packages(c('data.table', 'collapse', 'roll', 'zoo', 'slider', 'RcppRoll'))
+reps <- 3
+```
+
+`system.time` is modified here to run `r reps` times after an initial gc, and
+display mean run time.
 
 ```{r}
-system.time <- sys.time <- function(exp, reps=11) {
+system.time <- sys.time <- function(exp, reps=5) {
   res <- matrix(0, reps, 5)
   time.call <- quote(base::system.time({NULL}))
   time.call[[2]][[2]] <- substitute(exp)
@@ -32,9 +37,12 @@ print.proc_time2 <- function(x, ...) {
 ) ) }
 ```
 
-On an Intel(R) Core(TM) m5-6Y54 CPU @ 1.20GHz (early 2016 Macbook), and -O2
-optimization level.  Different systems / compilers / settings may produce
-different results.
+Different systems / compilers / settings may produce different results.
+
+```{r}
+system2("sysctl", "machdep.cpu hw.memsize", stdout=TRUE)
+R.Version()[['version.string']]
+```
 
 # Group Benchmarks
 
@@ -51,8 +59,7 @@ gn <- 10
 ng <- n/gn
 x <- runif(n) * runif(n)  # full 64 bit precision randomness
 y <- runif(n) * runif(n)  # for later
-# pre-sorted groups
-g <- cumsum(sample(c(TRUE, rep(FALSE, gn - 1)), n, replace=TRUE))
+g <- cumsum(sample(c(TRUE, rep(FALSE, gn - 1)), n, replace=TRUE)) # sorted
 ```
 
 ## Group Slope
@@ -74,7 +81,7 @@ system.time(g.r2c <- process_groups(g, sorted=TRUE))  # pre-grouping
 r2c_slope1 <- r2cq(
   sum((x - mean1(x)) * (y - mean1(y))) / sum((x - mean1(x))^2)
 )
-system.time(slope.r2c <- group_exec(r2c_slope1, g.r2c, list(x, y)))
+system.time(slope.r2c <- group_exec(r2c_slope1, list(x, y), g.r2c))
 ```
 
 ### Base R and FastR
@@ -165,7 +172,7 @@ Ed: don't recall why this isn't working correctly now.
 ```{r}
 library(r2c)
 r2c_sum <- r2cq(sum(x))
-system.time(sum.r2c <- group_exec(r2c_sum, g.r2c, x))
+system.time(sum.r2c <- group_exec(r2c_sum, x, g.r2c))
 ```
 
 ### Base R and FastR
@@ -216,7 +223,7 @@ system.time(g.clp <- GRP(g))
 And rerun the same code from before:
 
 ```{r}
-system.time(slope.r2c <- group_exec(r2c_slope1, g.r2c, list(x, y)))
+system.time(slope.r2c <- group_exec(r2c_slope1, list(x, y), g.r2c))
 system.time(slope.base <- mapply(slope, x.split, y.split))
 dt <- data.table(x, y, g)
 setkey(dt, g)
@@ -375,6 +382,8 @@ c(1.868,2.258, 1.924, 1.639, 1.377, 1.491,1.378, 1.360, 1.379,
 
 ### Roll
 
+Roll uses the online algorithm to reuse calculations shared across windows.
+
 ```{r}
 system.time(sum.roll <- roll::roll_sum(x, w))
 identical(sum.roll, sumr.r2c)
@@ -390,6 +399,9 @@ all.equal(sum.zoo, sum.r2c)
 ```
 
 ### data.table
+
+`data.table` uses the online algorithm to reuse calculations shared across
+windows, unless we turn it off.
 
 ```{r}
 system.time(sum.dt <- data.table::frollsum(x, w, fill=NA, align='left'))

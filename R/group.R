@@ -21,7 +21,7 @@ r2c_group_obj <- function(sizes, order, group.o, sorted, mode) {
 }
 group_sizes <- function(go, levels=vector(mode='list', length(go))) {
   res <- .Call(R2C_group_sizes, go)
-  names(res) <- c('gsizes', 'glabs', 'gmax')
+  names(res) <- c('gsizes', 'glabs', 'gmax', 'gmin')
   res[['glevels']] <- levels  # won't work for list inputs
   res
 }
@@ -38,14 +38,7 @@ group_exec_int <- function(
   if(length(d.len <- unique(lengths(data))) > 1L)
     stop("All `data` vectors must be the same length.")
   if(!length(d.len)) d.len <- 0L  # No data
-  groups <- if(is.null(groups)) { # Direct call of "r2c_fun"?
-    r2c_group_obj(
-      sizes=list(gsizes=as.numeric(d.len), glabs=0L, gmax=as.numeric(d.len)),
-      order=seq_len(d.len),
-      group.o=list(rep(1L, d.len)), # Not altrep as of 4.2.1, sadly
-      sorted=TRUE, mode="ungrouped"
-    )
-  } else if(!inherits(groups, "r2c.groups")) {
+  groups <-  if(!inherits(groups, "r2c.groups")) {
     process_groups(groups)
   } else groups
 
@@ -61,47 +54,44 @@ group_exec_int <- function(
   }
   group.sizes <- groups[['sizes']]
   gmax <- group.sizes[['gmax']]
+  gmin <- group.sizes[['gmin']]
 
   # - Match Data to Parameters and Allocate ------------------------------------
 
   alloc <- match_and_alloc(
     do=do, MoreArgs=MoreArgs, preproc=preproc, formals=formals,
-    enclos=enclos, gmax=gmax, call=call, runner=r2c::group_exec
+    enclos=enclos, gmax=gmax, gmin=gmin, call=call, runner=r2c::group_exec
   )
-  stack <- alloc[['stack']]
-
-  # Compute result size
-  if(ncol(stack) != 1L)
-    stop("Internal Error: unexpected stack state at exit.")
-
-  empty.res <- FALSE
+  res.id <- which(alloc[['alloc']][['type']] == 'res')
   gsizes <- group.sizes[['gsizes']]
-  res.size.type <- "variable"
+  res.size.coef <- alloc[['alloc']][['size.coefs']][[res.id]]
 
-  if(!stack['group', 1L]) { # constant group size
-    group.res.sizes <- rep(stack['size', 1L], length(gsizes))
-    res.size.type <- if(stack['size', 1L] == 1L) "scalar" else "constant"
-  } else if (is.na(stack['size', 1L])) {
-    group.res.sizes <- gsizes
-  } else if (stack['size', 1L]) {
-    group.res.sizes <- gsizes
-    group.res.sizes[
-      group.res.sizes < stack['size', 1L] & group.res.sizes != 0
-    ] <- stack['size', 1L]
-  } else {
-    group.res.sizes <- numeric()
-  }
+  # Compute sizes for each size coefs element across all groups; skip
+  # pmax for single element case for speed.
+  iter.sizes.in <- lapply(res.size.coef, iter_result_sizes, base=gsizes)
+  group.res.sizes <-
+    if(length(iter.sizes.in) > 1) pmax2(iter.sizes.in)
+    else iter.sizes.in[[1L]]
+
+  # Identify obvious cases for optimizing result label generation.  size_vecrec
+  # should have collapsed to obvious cases if possible.  We rely on the internal
+  # allocator to freak out if we request something larger than R_xlen_t?
+  res.size.type <- "variable"
+  if(length(res.size.coef) == 1L) {
+    rsc1 <- res.size.coef[[1L]]
+    lrsc1 <- length(rsc1)
+    if(lrsc1 == 1L || lrsc1 > 1L && all(rsc1[-1L] == 0)) {
+      # constant size
+      res.size.type <-
+        if(rsc1[1L] == 1L) "scalar"
+        else "constant"
+  } }
   # - Run ----------------------------------------------------------------------
 
   status <- numeric(1)
   res.i <- which(alloc[['alloc']][['type']] == "res")
   res <- if(length(group.res.sizes)) {
-    handle <- obj[['handle']]
-    if(!is.na(shlib) && !is.loaded("run", PACKAGE=handle[['name']])) {
-      handle <- dyn.load(shlib)
-    }
-    if(!is.loaded("run", PACKAGE=handle[['name']]))
-      stop("Could not load native code.")
+    handle <- load_dynlib(obj)
 
     alp <- prep_alloc(alloc, sum(group.res.sizes))
 
@@ -110,8 +100,7 @@ group_exec_int <- function(
       alp[['dat']],
       alp[['dat_cols']],
       alp[['ids']],
-      alp[['flag']],
-      alp[['control']],
+      alp[['ext.any']],
       gsizes,
       group.res.sizes
     )
@@ -120,7 +109,10 @@ group_exec_int <- function(
   } else {
     numeric()
   }
-  if(alloc[['alloc']][['typeof']][res.i] == "integer") res <- as.integer(res)
+  if(alloc[['alloc']][['typeof']][res.i] == "integer")
+    res <- as.integer(res)
+  else if(alloc[['alloc']][['typeof']][res.i] == "logical")
+    res <- as.logical(res)
 
   # Generate and attach group labels, small optimization for predictable groups
   if(mode != "ungrouped") {
@@ -148,11 +140,16 @@ group_exec_int <- function(
   }
   res
 }
+# Like pmax, except 0 dominates
+pmax2 <- function(x) .Call(R2C_vecrec_pmax, x)
+
 #' Compute Group Meta Data
 #'
-#' Use by [`group_exec`] to organize group data, and made available as an
-#' exported function for the case where multiple calculations use the same group
-#' set and thus there is an efficiency benefit in processing it once.
+#' [`group_exec`] sorts data by groups prior to iterating through them.  When
+#' running `group_exec` multiple times on the same data, it is better to
+#' pre-sort the data and tell `group_exec` as much so it does  not sort the data
+#' again.  We can do the latter with `process_groups`, which additionally
+#' computes group information we can re-use across calls.
 #'
 #' @note The structure and content of the return value may change in the future.
 #' @inheritParams group_exec
@@ -162,21 +159,31 @@ group_exec_int <- function(
 #'   already sorted.  If set to TRUE, no sorting will be done on the groups, nor
 #'   later on the `data` by [`group_exec`]. If the data is truly sorted this
 #'   produces the same results while avoiding the cost of sorting.  If the data
-#'   is not sorted groups `g` will produce groups corresponding to equal-value
-#'   runs it contains, which might be useful in some circumstances.
+#'   is not sorted by groups, `g` will produce groups corresponding to
+#'   equal-value runs it contains, which might be useful in some circumstances.
 #' @return an "r2c.groups" object, which is a list containing group sizes,
 #'   labels, and group count, along with other meta data such as the group
 #'   ordering vector.
 #' @examples
 #' ## Use same group data for different but same length data.
 #' ## (alternatively, could use two functions on same data).
-#' g <- c(1L, 2L, 2L)
-#' x <- runif(3)
-#' y <- runif(3)
-#' g.r2c <- process_groups(g, sorted=TRUE)
+#' n <- 10
+#' dat <- data.frame(x=runif(n), y=runif(n), g=sample(1:3, n, replace=TRUE))
+#'
+#' ## Pre-sort by group and compute grouping data
+#' dat <- dat[order(dat[['g']]),]
+#' g.r2c <- process_groups(dat[['g']], sorted=TRUE) # note sorted=TRUE
+#'
+#' ## Re-use pre-computed group data
 #' f <- r2cq(sum(x))
-#' group_exec(f, x, g.r2c)
-#' group_exec(f, y, g.r2c)
+#' with(dat, group_exec(f, x, groups=g.r2c))
+#' with(dat, group_exec(f, y, groups=g.r2c))
+#'
+#' ## Claim unsorted data is sorted to implement RLE
+#' g <- c(1, 2, 2, 1, 1, 1, 2, 2)
+#' group_exec(f, rep(1, length(g)), process_groups(g, sorted=TRUE))
+#' rle(g)$values
+#' rle(g)$lengths
 
 process_groups <- function(groups, sorted=FALSE) {
   vetr(
@@ -228,17 +235,17 @@ r2c_groups_template <- function() {
 }
 #' Execute r2c Function Iteratively on Groups in Data
 #'
-#' A [runner][runners] that organizes `data` according to `groups`, and calls
-#' the native code associated with `fun` iteratively for each group.  `data`
-#' `data` will be "subset" the portion corresponding to the group being iterated
-#' prior to the native code invocation.  There is no interpreter overhead
-#' between iterations.
+#' A [runner][runners] that organizes `data` into groups as defined by `groups`, 
+#' and executes the native code associated with `fun` iteratively with each
+#' group's portion of `data`.
 #'
 #' @export
-#' @seealso [`r2c`] for more details on the behavior and constraints of
-#'   "r2c_fun" functions, [`base::eval`] for the semantics of `enclos`.
+#' @seealso [Compilation][r2c-compile] for more details on the behavior and
+#'   constraints of "r2c_fun" functions, [`base::eval`] for the semantics of
+#'   `enclos`.
 #' @family runners
-#' @param fun an "r2c_fun" function as produced by [`r2c`].
+#' @param fun an "r2c_fun" function as produced by the [compilation
+#'   functions][r2c-compile].
 #' @param groups an integer, numeric, or factor vector.  Alternatively, a list
 #'   of equal-length such vectors, the interaction of which defines individual
 #'   groups to organize the vectors in `data` into (multiple vectors not
@@ -257,14 +264,13 @@ r2c_groups_template <- function() {
 #'   list must contain at least one vector.  Conceptually, this parameter is
 #'   used similarly to `envir` parameter to [`base::eval`] when that is a list
 #'   (see `enclos`).
-#' @param MoreArgs a list of R objects to pass on as iteration-invariant
-#'   arguments to `fun`.  Unlike with `data`, each of the objects therein are
-#'   passed in full to the native code for each iteration  This is useful for
-#'   arguments that are intended to remain constant across iterations.  Matching
-#'   of these objects to `fun` parameters is the same as for `data`, with
-#'   positional matching occurring after the elements in `data` are matched.
-#' @param enclos environment to use as the `enclos` parameter to
-#'   [`base::eval`] when evaluating expressions or matching calls (see `data`).
+#' @param MoreArgs a list of R objects to pass on as
+#'   [iteration-constant][r2c-expression-types] arguments to `fun`.  Unlike with
+#'   `data`, each of the objects therein are passed in full to the native code
+#'   for each iteration  This is useful for arguments that are intended to
+#'   remain constant across iterations.  Matching of these objects to `fun`
+#'   parameters is the same as for `data`, with positional matching occurring
+#'   after the elements in `data` are matched.
 #' @return If `groups` is an atomic vector, a named numeric or integer vector
 #'   with the results of executing `fun` on each group and the names set to the
 #'   groups.  Otherwise, a "data.frame" with the group vectors as columns and
@@ -287,7 +293,7 @@ r2c_groups_template <- function() {
 #'   group_exec(r2c_slope, list(y=hp, x=qsec), groups=list(cyl))
 #' )
 #'
-#' ## We can provide group=invariant parameters:
+#' ## We can provide iteration-constant parameters (na.rm here):
 #' r2c_sum_add_na <- r2cq(sum(x * y, na.rm=na.rm) / sum(y))
 #' str(formals(r2c_sum_add_na))
 #' a <- runif(10)
@@ -296,7 +302,7 @@ r2c_groups_template <- function() {
 #' g <- rep(1:2, each=5)
 #' group_exec(
 #'   r2c_sum_add_na, a, groups=g,
-#'   MoreArgs=list(y=weights, na.rm=TRUE)  ## use MoreArgs for group-invariant
+#'   MoreArgs=list(y=weights, na.rm=TRUE)  ## MoreArgs for iter-constant
 #' )
 #' group_exec(
 #'   r2c_sum_add_na, a, groups=g,
@@ -349,7 +355,7 @@ group_exec <- function(fun, data, groups, MoreArgs=list()) {
 }
 
 run_group_int <- function(
-  handle, dat, dat_cols, ids, flag, control, group.sizes, group.res.sizes
+  handle, dat, dat_cols, ids, extern, group.sizes, group.res.sizes
 ) {
   .Call(
     R2C_run_group,
@@ -357,8 +363,7 @@ run_group_int <- function(
     dat,
     dat_cols,
     ids,
-    flag,
-    control,
+    extern,
     group.sizes,
     group.res.sizes
   )

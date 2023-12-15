@@ -84,3 +84,52 @@ unitizer_sect("re-use", {
   (ru4.r <- reuse_calls(ru4))
   identical(eval(ru4), eval(ru4.r))
 })
+unitizer_sect("Complex Hoisting", {
+  ru5a <- quote({
+    if(a == 2) {
+      sum(x)
+    } else sum(x) * sum(x)
+  })
+  reuse_calls(ru5a)
+
+  ru5a1 <- quote({
+    if(a == 2) {
+      y <- sum(x)
+    } else sum(x) * sum(x)
+  })
+  reuse_calls(ru5a1)
+
+  ru5a2 <- quote({
+    if(a == 2) y <- sum(x)
+    else if(a == 3) sum(x) * sum(x)
+    else sum(x) * 2
+  })
+  reuse_calls(ru5a2)
+
+  # re-use broken by intervening re-assignment; in theory the last three
+  # `sum(x)` could be hoisted and re-used, but the failure is okay.
+  ru5a3 <- quote({
+    if(a == 2) {
+      x <- y
+      sum(x)
+    }
+    else if(a == 3) sum(x) * sum(x)
+    else sum(x) * 2
+  })
+  reuse_calls(ru5a3)
+
+  # In this case we're able to reuse the first few, and correctly not the last
+  # ones.
+  ru5a4 <- quote({
+    if(a == 2) sum(x)
+    else if(a == 3) sum(x) * sum(x)
+    else {
+      x <- y
+      sum(x)
+    }
+    sum(x)
+  })
+  reuse_calls(ru5a4)
+
+})
+
