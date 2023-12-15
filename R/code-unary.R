@@ -64,13 +64,13 @@ code_gen_unary <- function(fun, pars, par.types) {
   vetr(
     CHR.1 && . %in% c("!", "uplus", "uminus"),
     pars=list(NULL),
-    par.types=character() && all(. %in% PAR.INT)
+    par.types=character() && all(. %in% PAR.IVARY)
   )
   is.neg <- fun == "!"
   name <- FUN.NAMES[fun]
   op <- UOP.OP[fun]      # needed for modulo
   defn <- sprintf(
-    f_unary, name, toString(F.ARGS.BASE),
+    f_unary, name, toString(CF.ARGS.BASE),
     if(is.neg) op else "", if(!is.neg) op else ""
   )
   code_res(

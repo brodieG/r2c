@@ -13,4 +13,8 @@ iteration available:
 \code{\link[=rollbw_exec]{roll*_exec}} functions.
 }
 }
+\seealso{
+\link[=r2c]{Package Overview}.
+}
 \concept{runner functions}
+\keyword{internal}

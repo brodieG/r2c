@@ -14,7 +14,9 @@
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
 # Would be better to have preprocessed to dedicated functions instead of having
-# all the branches in here.
+# all the branches in here.  We don't try to use LOOP_W_INTERRUPT b/c that
+# cannot be applied on some of the branches, and it is currently disabled
+# anyway.
 
 f_rep <- '
 static void %s(%s) {
@@ -26,10 +28,8 @@ static void %s(%s) {
   R_xlen_t len_times = lens[di[1]];
   double *res = data[di[4]];
 
-  if(each > R_XLEN_T_MAX)
-    Rf_error("Parameter `each` for `rep` overflows R_XLEN_T_MAX.");
-  if(len_out > R_XLEN_T_MAX)
-    Rf_error("Parameter `lenght.out` for `rep` overflows R_XLEN_T_MAX.");
+  // WARNING: We rely on rep_sizes ensuring the inputs cannot overflow
+  // which is why there are no check in the C code for it.
 
   R_xlen_t eacht = (R_xlen_t) each;
   R_xlen_t len_outt = (R_xlen_t) len_out;
@@ -37,48 +37,28 @@ static void %s(%s) {
   if(ISNAN(len_out)) {
     if(each == 1) {
       if(len_times == 1) {
-        double len_resd = (*times) * (double) len_x;
-        // Checked already in rep_size so not strictly needed
-        if(len_resd > R_XLEN_T_MAX) Rf_error("`rep` would overflow R_XLEN_TMAX");
         for(R_xlen_t time = 0; time < *times; ++time) {
           memcpy(res, x, sizeof(double) * len_x);
           res += len_x;
         }
       } else {
-        // Checked already in rep_size, should we skip?
-        if(len_x != len_times) Rf_error("Invalid \'times\' value for `rep`.");
         for(R_xlen_t i = 0; i < len_x; ++i) {
           for(R_xlen_t time = times[i]; time; --time) {
             *(res++) = x[i]; // checked this should fit in rep_size
-          }
-        }
-      }
+      } } }
     } else if (each > 1) {
       if(len_times == 1) {
-        double len_resd = (*times) * (double) len_x * each;
-        // Checked already in rep_size so not strictly needed
-        if(len_resd > R_XLEN_T_MAX) Rf_error("`rep` would overflow R_XLEN_TMAX");
         for(R_xlen_t time = 0; time < *times; ++time) {
           for(R_xlen_t i = 0; i < len_x; ++i) {
             for(R_xlen_t eachi = eacht; eachi; --eachi) {
               *(res++) = x[i];
-            }
-          }
-        }
+        } } }
       } else {
-        // Checked already in rep_size, should we skip?
-        if(len_x * each != len_times)
-          Rf_error("Invalid \'times\' value for `rep`.");
-
         for(R_xlen_t i = 0; i < len_x; ++i) {
           for(R_xlen_t eachi = eacht; eachi; --eachi) {
             for(R_xlen_t time = *(times++); time; --time) {
               *(res++) = x[i];
-            }
-          }
-        }
-      }
-    }
+    } } } } }
     // each == 0 case doesnt do anything
   } else {
     if(!len_x) {
@@ -102,9 +82,7 @@ static void %s(%s) {
       }
       for(R_xlen_t j = 0; j < len_x; ++j) {
         for(R_xlen_t eachi = eacht; eachi && i; --eachi, --i) *(res++) = x[j];
-      }
-    }
-  }
+  } } }
   lens[di[4]] = res - data[di[4]];
 }'
 
@@ -120,8 +98,8 @@ rep_size <- function(alloc, idx, gmax, gmin) {
   if(!is.size_coef(coefs)) stop("Internal Error: expected size coef.")
   if(!all(alloc[['type']][idx[2:4]] == "ext"))
     stop(
-      "Internal Error: `times`, `length.out` and `each` parameters to `rep` ",
-      "must be external."
+      "Internal Error: values of `times`, `length.out` and `each` parameters ",
+      "to `rep` must be externally computed."
     )
   # These should be validated already (not their interactions)
   times <- alloc[['dat']][[idx[2L]]]
@@ -139,7 +117,7 @@ rep_size <- function(alloc, idx, gmax, gmin) {
   length.out <- round(length.out[1L])
   each <- round(each[1L])
 
-  # Return a new size.coef, computed depending on the external params
+  # Return a new size.coef, computed depending on the external arguments
   size.coef <- if(!is.na(length.out)) {
     # length.out dominates
     list(length.out)
@@ -181,10 +159,12 @@ code_gen_rep <- function(fun, pars, par.types) {
   vetr(
     identical(., "rep"),
     pars=list(NULL, NULL, NULL, NULL),
-    par.types=character(4) && all(.[-1L] %in% PAR.EXT.NUM) && .[1L] %in% PAR.INT
+    par.types=
+      character(4) && all(.[-1L] %in% PAR.ICNST.NUM) &&
+      .[1L] %in% PAR.IVARY.NUM
   )
   name <- FUN.NAMES[fun]
-  defn <- sprintf(f_rep, name, toString(F.ARGS.BASE))
+  defn <- sprintf(f_rep, name, toString(CF.ARGS.BASE))
   code_res(defn=defn, name=name)
 }
 

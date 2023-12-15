@@ -36,10 +36,10 @@ code_gen_copy <- function(fun, pars, par.types) {
   vetr(
     identical(., "vcopy"),
     pars=list(NULL),
-    par.types=character() && all(. %in% PAR.INT)
+    par.types=character() && all(. %in% PAR.IVARY)
   )
   name <- FUN.NAMES[fun]
-  defn <- sprintf(f_copy, name, toString(F.ARGS.BASE))
+  defn <- sprintf(f_copy, name, toString(CF.ARGS.BASE))
   code_res(defn=defn, name=name)
 }
 #' @rdname intermediate-representation
@@ -60,10 +60,10 @@ code_gen_rec <- function(fun, pars, par.types) {
   vetr(
     identical(., "rec"),
     pars=list(NULL),
-    par.types=character() && all(. %in% PAR.INT)
+    par.types=character() && all(. %in% PAR.IVARY)
   )
   name <- FUN.NAMES[fun]
-  defn <- sprintf(f_rec, name, toString(F.ARGS.BASE))
+  defn <- sprintf(f_rec, name, toString(CF.ARGS.BASE))
   code_res(defn=defn, name=name, out.ctrl=CGEN.OUT.NONE)
 }
 #' @rdname intermediate-representation
@@ -80,12 +80,12 @@ code_gen_braces <- function(fun, pars, par.types) {
   vetr(
     identical(., "{"),
     pars=list(),
-    par.types=character() && all(. %in% PAR.INT)
+    par.types=character() && all(. %in% PAR.IVARY)
   )
   # Empty braces should have been preprocessed into {numeric(0)}
   if(length(pars) < 1L) stop("Empty braces expresssions disallowed.")
   name <- FUN.NAMES[fun]
-  defn <- sprintf(f_braces, name, toString(c(F.ARGS.BASE, F.ARGS.VAR)))
+  defn <- sprintf(f_braces, name, toString(c(CF.ARGS.BASE, CF.ARGS.VAR)))
   code_res(defn=defn, narg=TRUE, name=name, out.ctrl=CGEN.OUT.NONE)
 }
 transform_braces <- function(call) {
@@ -105,10 +105,10 @@ code_gen_assign <- function(fun, pars, par.types) {
   vetr(
     isTRUE(. %in% c("=", "<-")),
     pars=list(NULL, NULL),
-    par.types=character() && all(. %in% PAR.INT)
+    par.types=character() && all(. %in% PAR.IVARY)
   )
   name <- FUN.NAMES[fun]
-  defn <- sprintf(f_assign, name, toString(F.ARGS.BASE))
+  defn <- sprintf(f_assign, name, toString(CF.ARGS.BASE))
   code_res(defn=defn, name=name, out.ctrl=CGEN.OUT.NOOP)
 }
 # Transform for Complex Assignments

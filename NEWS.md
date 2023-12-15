@@ -4,8 +4,6 @@
 
 ### New Features
 
-* Control structures:
-  * `if`/`else`/`else if`.
 * Subset (`[`) and subassign (`x[s] <- y`) with strictly positive indices.
 * Relational (`>`, `>=`, `<`, `<=`) and equality operators (`==`, `!=`).
 * Logical functions:
@@ -14,7 +12,26 @@
   * `ifelse`, with the caveat the return value type is based on the combination
     of `yes` and `no` irrespective of whether one or both of them are used.
 * Unary operators (`-`, `+`, and `!`).
+* Sequence generation:
+  * `rep`
+  * `seq_along`
+* Control structures, with significant constraints (see
+  ?`r2c-control-structures`):
+  * `if`/`else`/`else if`.
+  * `for`
+* Constant arbitrary R expressions may be embedded, with constraints (see
+  ?`r2c-expression-types`).
 * Iteration level interrupts (e.g. between groups, windows).
+* Improved top-level documentation.
+
+### Breaking Changes
+
+### Internal Changes
+
+* Direct calls to "r2c_fun" no longer use `group_exec_int` internally and thus
+  save the cost of allocating a dummy group vector.
+* Dynamic libraries are unloaded when the "r2c_fun" object they are linked to is
+  garbage collected (see `?unload_r2c_dynlibs` for limitations).
 
 ## 0.2.0
 

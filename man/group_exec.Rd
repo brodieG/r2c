@@ -29,12 +29,13 @@ even when using list mode.  Support for multiple group vectors and other
 types of vectors will be added in the future.  Zero length groups are not
 computed on at all (e.g. missing factor levels, zero-length group vector).}
 
-\item{MoreArgs}{a list of R objects to pass on as iteration-invariant
-arguments to \code{fun}.  Unlike with \code{data}, each of the objects therein are
-passed in full to the native code for each iteration  This is useful for
-arguments that are intended to remain constant across iterations.  Matching
-of these objects to \code{fun} parameters is the same as for \code{data}, with
-positional matching occurring after the elements in \code{data} are matched.}
+\item{MoreArgs}{a list of R objects to pass on as
+\link[=r2c-expression-types]{iteration-constant} arguments to \code{fun}.  Unlike with
+\code{data}, each of the objects therein are passed in full to the native code
+for each iteration  This is useful for arguments that are intended to
+remain constant across iterations.  Matching of these objects to \code{fun}
+parameters is the same as for \code{data}, with positional matching occurring
+after the elements in \code{data} are matched.}
 }
 \value{
 If \code{groups} is an atomic vector, a named numeric or integer vector
@@ -43,11 +44,9 @@ groups.  Otherwise, a "data.frame" with the group vectors as columns and
 the result of the computation as the last column.
 }
 \description{
-A \link[=runners]{runner} that organizes \code{data} according to \code{groups}, and calls
-the native code associated with \code{fun} iteratively for each group.  \code{data}
-\code{data} will be "subset" the portion corresponding to the group being iterated
-prior to the native code invocation.  There is no interpreter overhead
-between iterations.
+A \link[=runners]{runner} that organizes \code{data} into groups as defined by \code{groups},
+and executes the native code associated with \code{fun} iteratively with each
+group's portion of \code{data}.
 }
 \examples{
 r2c_mean <- r2cq(mean(x))
@@ -67,7 +66,7 @@ with(
   group_exec(r2c_slope, list(y=hp, x=qsec), groups=list(cyl))
 )
 
-## We can provide group=invariant parameters:
+## We can provide iteration-constant parameters (na.rm here):
 r2c_sum_add_na <- r2cq(sum(x * y, na.rm=na.rm) / sum(y))
 str(formals(r2c_sum_add_na))
 a <- runif(10)
@@ -76,7 +75,7 @@ weights <- c(.1, .1, .2, .2, .4)
 g <- rep(1:2, each=5)
 group_exec(
   r2c_sum_add_na, a, groups=g,
-  MoreArgs=list(y=weights, na.rm=TRUE)  ## use MoreArgs for group-invariant
+  MoreArgs=list(y=weights, na.rm=TRUE)  ## MoreArgs for iter-constant
 )
 group_exec(
   r2c_sum_add_na, a, groups=g,

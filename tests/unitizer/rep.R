@@ -1,6 +1,6 @@
 ## Copyright (C) Brodie Gaslam
 ##
-## This file is part of "r2c - A DSL for Fast Statistic Computation in R"
+## This file is part of "r2c - Fast Iterated Statistic Computation in R"
 ##
 ## This program is free software: you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
@@ -15,6 +15,7 @@
 
 f1a <- r2cq(rep(x, times, length.out, each), check=TRUE)
 f1b <- r2cq(rep(x, times, length.out, each)) # for errors w/o check
+big.num <- 1e300  # 1e300 > R_XLEN_T_MAX (could change?)
 
 unitizer_sect("times", {
   f1a(1:3, 2, NA_real_, 1)
@@ -29,7 +30,7 @@ unitizer_sect("times", {
   f1b(1:3, -1, NA_real_, 1)
   f1b(1:3, numeric(), NA_real_, 1)
   f1b(1:3, Inf, NA_real_, 1)
-  f1b(1:3, 1e300, NA_real_, 1)
+  f1b(1:3, big.num, NA_real_, 1)
   f1b(1:3, NA_real_, NA_real_, 1)
 })
 unitizer_sect("each", {
@@ -42,8 +43,8 @@ unitizer_sect("each", {
   f1b(1:3, 1:3, NA_real_, 2)
   f1b(1:3, 1:6, NA_real_, 0)
   f1b(1:3, 1:6, NA_real_, Inf)
-  f1b(1:3, 1:6, NA_real_, 1e300)  # 1e300 > R_XLEN_T_MAX
-  f1b(1:3, 1, NA_real_, 1e300)
+  f1b(1:3, 1:6, NA_real_, big.num)
+  f1b(1:3, 1, NA_real_, big.num)
   f1b(1:3, 1:6, NA_real_, NA_real_)
   f1b(1:3, numeric(), NA_real_, 2)   # error
 })
@@ -59,7 +60,7 @@ unitizer_sect("length.out", {
   # Error
   f1b(1:3, 1:3, Inf, 2)
   f1b(1:3, 1:3, -1, 2)
-  f1b(1:3, 1:3, 1e300, 2)
+  f1b(1:3, 1:3, big.num, 2)
 })
 unitizer_sect("group_exec", {
   group_exec(f1a, 1:6, rep(1:2, 3), MoreArgs=list(2, NA_real_, 1))

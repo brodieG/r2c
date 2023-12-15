@@ -52,58 +52,58 @@ init_rename <- function() list(i=integer(), renames=list(), map=character())
 
 # - Main Funs ------------------------------------------------------------------
 
-#' Rename Symbols in Calls
-#'
-#' Any symbols that are assigned to are given new unique names.  This
-#' distinguishes calls that are identical except that the content of the symbols
-#' they reference has changed due to an assignment overwriting or masking
-#' an existing variable.
-#'
-#' Due to the special run-time semantics of control structures we need to do
-#' additional renaming for them to avoid incorrect code reuse substitutions.
-#' Loops can change a variable they read from the first iteration to the second,
-#' and might run zero iterations.  If statements can cause variables to be
-#' different depending on what branch (including none) is taken.  To prevent the
-#' reused expression substitution from making bad assumptions about symbol
-#' values, we generate renames for any symbols assigned to in control
-#' structures.
-#'
-#' The objective of the renaming is to ensure that any same-name symbols that
-#' might possibly contain different values end up with different names.  It
-#' is not intended that the renamed call will have the same semantics as the
-#' original call (and it definitely won't with loops that do assignments), only
-#' that there is no chance of the same symbol referring to two different values
-#' in the course of "execution".
-#'
-#' This resolves the reuse substitution, but not memory allocations for the
-#' variables which have additional constraints.  E.g. an `if` statement could
-#' assign to a variable as a scalar in one branch and as length 100 vector in
-#' another.  This is resolved in the allocation step (later) by disallowing
-#' variables from having ambiguous sizes, and requiring that they all resolve to
-#' the same memory allocation..
-#'
-#' Once re-use substitution is completed, we restore the original symbol names
-#' with `unrename_call`.
-#'
-#' @noRd
-#' @param x a call
-#' @param renames a list with two elements:
-#'
-#' * i: named integer, for each variable root (first 8 characters), how many
-#'   instances there have been of it so far (the root is the name).  This is
-#'   designed to give some sense of what the original variable name was for
-#'   debugging purposes, but is not collision proof.  We don't allow full
-#'   variable names as if we did we would have to enforce a restriction on the
-#'   allowed number of characters in symbols.
-#' * renames: a named list in which the names are the original symbol name, and
-#'   the values are the symbol to rename the original symbol to.  This list is
-#'   updated as `rename_call` invokes itself recursively.
-#' * map: named character vector.
-#'
-#' @return a list with elements:
-#'
-#' * x: the renamed call
-#' * rn: the updated `renames` list (see `renames` above).
+## Rename Symbols in Calls
+##
+## Any symbols that are assigned to are given new unique names.  This
+## distinguishes calls that are identical except that the content of the symbols
+## they reference has changed due to an assignment overwriting or masking
+## an existing variable.
+##
+## Due to the special run-time semantics of control structures we need to do
+## additional renaming for them to avoid incorrect code reuse substitutions.
+## Loops can change a variable they read from the first iteration to the second,
+## and might run zero iterations.  If statements can cause variables to be
+## different depending on what branch (including none) is taken.  To prevent the
+## reused expression substitution from making bad assumptions about symbol
+## values, we generate renames for any symbols assigned to in control
+## structures.
+##
+## The objective of the renaming is to ensure that any same-name symbols that
+## might possibly contain different values end up with different names.  It
+## is not intended that the renamed call will have the same semantics as the
+## original call (and it definitely won't with loops that do assignments), only
+## that there is no chance of the same symbol referring to two different values
+## in the course of "execution".
+##
+## This resolves the reuse substitution, but not memory allocations for the
+## variables which have additional constraints.  E.g. an `if` statement could
+## assign to a variable as a scalar in one branch and as length 100 vector in
+## another.  This is resolved in the allocation step (later) by disallowing
+## variables from having ambiguous sizes, and requiring that they all resolve to
+## the same memory allocation..
+##
+## Once re-use substitution is completed, we restore the original symbol names
+## with `unrename_call`.
+##
+## @noRd
+## @param x a call
+## @param renames a list with two elements:
+##
+## * i: named integer, for each variable root (first 8 characters), how many
+##   instances there have been of it so far (the root is the name).  This is
+##   designed to give some sense of what the original variable name was for
+##   debugging purposes, but is not collision proof.  We don't allow full
+##   variable names as if we did we would have to enforce a restriction on the
+##   allowed number of characters in symbols.
+## * renames: a named list in which the names are the original symbol name, and
+##   the values are the symbol to rename the original symbol to.  This list is
+##   updated as `rename_call` invokes itself recursively.
+## * map: named character vector.
+##
+## @return a list with elements:
+##
+## * x: the renamed call
+## * rn: the updated `renames` list (see `renames` above).
 
 rename_call <- function(x, rn=init_rename()) {
   # To generate a rename is to increment an index associated with a variable.

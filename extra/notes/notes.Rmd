@@ -1,10 +1,192 @@
+# Constant Expressions
+
+## Constant vs. External
+
+We've used the term external to mean constant, need to refine the semantics and
+update the code to minimize chance for confusion:
+
+* `external`: data outside of `data`, i.e. `MoreArgs` or unmatched.
+* `internal`: data matching `data`?  Not sure.
+* Constant:
+  * Parameter.
+  * Expression.
+    * Implemented.
+    * Non-implemented.
+
+* `external` / `internal`: evaluation method.
+* `constant` / `varying`: affected by varying data.
+* `implemented` / `unimplemented`: whether `r2c` runnable or not.
+
+Implemented
+
+              Internal       External
+  Constant        Y              Y
+  Varying         Y              N
+
+
+Unimplemented
+
+              Internal       External
+  Constant        N              Y
+  Varying         N              N
+
+
+`PAR.INT.LEAF` seems problematic?  Because it might require external evaluation.
+So should probably be `PAR.LEAF`.  In generally, any of the `PAR.INT.*` terms
+seem incorrect because any of those might be evaluated externally.
+
+But we do also have the term "constant parameter" to reconcile with the above.
+For those they always evaluate externally, so maybe PAR.EXT is okay, except that
+PAR.INT can also use external evaluation?
+
+So we start with PAR.CNST or PAR.VARY?  Not quite, we also have numeric vs
+totally arbitrary.
+
+I think the dimensions we want are:
+
+* Eval: iternal/external_num/external_any
+* Type: constant/varying
+
+So preprocess should designate for each call whether it should internally or
+externally evaluated, which it can do based on either the parameter type or
+whether the call is supported or not.
+
+Additionally alloc can check for constant/varying.  There seems to be misuse of
+the leaf type.
+
+## Derived Constant
+
+Loops complicate matters.  Something might be a constant at the beginning of a
+loop iteration, but due to rebinding later in the loop body it may no longer be
+for the next one.
+
+Even without dealing with the loop, the cuteness of being able to unmask
+guarded symbols with a constant evaluation doesn't work as soon as we hit a
+constant computed expression.  And we can't turn it into an eval'ed/cached
+version because the C code was compiled with the call in sequence.
+
+Need to track if all inputs into a function are constant, and if they are,
+declare the function call to be constant too.
+
+Does this mean we need to defer evaluation of constant expressions until we
+reach a non constant container?  Otherwise in e.g.:
+
+    mean(x + 1)
+
+Where `x` is constant we'll compute `x`, `x+1`, and `mean(x+1)`.  So we need a
+stack of constant expressions.  What about:
+
+    sum(x + 1, x + 2)
+
+Stack would start with `x + 1`, `x + 2`.
+
+If input is external, defer evaluation, store the expression in a special stack,
+and then the values in the argument `stack` object will have a flag that tells
+them to look into that stack.  If it turns out that the call is call-variant
+then at that point we can resolve those elements by the current method.
+
+What happens with passive calls?  Probably okay?
+
+How does this interfere with the caching process?  Do we look for pre-computed
+sub-components?
+
+What about branches?  Or things that got pre-processed into different
+expressions (like branches).
+
+What do we gain in doing this?
+* Clarity of semantics (and thus documentation).
+* Correct propagation.
+
+We will never be able to treat as constant a call that involves an implemented
+`r2c` function.  So in preprocess detect if a function is not supported.  If it
+isn't then that entire tree should be marked as constant, which means we need to
+reverse back the call data?
+
+Super dicey, we might need to do a first pass to recognize non-supported
+expressions and sub them out with special symbols.
+
+## Parameter Validation
+
+How do we deal with things like:
+
+    if(i > 0) sum(seq_len(i))
+    else sum(seq_len(abs(i)))
+
+Constant param validation will prevent this from happening because validation is
+done at allocation time.
+
+We could add a constraint on branches so they don't depend on constant
+parameters, but that's tricky because we've made invariance contagious.
+
+Another approach is to move the validation into the function itself.  It adds a
+branch that might otherwise be unnecessary, but it's going to be hard to avoid.
+There are two points we need to think about.  At sizing, and then at runtime.
+Can we avoid checking at sizing?  I guess apparently if the result size does not
+affect anything.
+
+One option would be to, if checks fail at sizing, return 0 size, and then error
+at runtime.
+
+This all seems fragile though; probably better to just document in branch
+caveats.
+
+# Guarded Symbols
+
+We want an environment that we can add symbols to, but no one else can.  It
+seems the only way to do this is to create an environment chain of locked
+environments and bindings.
+
+This might have performance implications for symbol
+lookup, but probably not since unlikely binding chains will get huge, and for
+data we can set everything in the same environment.  Could mitigate this by only
+locking environments when we get to an `eval`.  Also we can potentially collapse
+environments into new ones.
+
+Right now main issue is we need to check all uses of `env.ext` and make sure
+none are broken by the changes.  Biggest issue is likely `reconcile_env_ext`
+with the use of stacks.  This will require careful thought to make sure we don't
+mess something up, but it seems like it could be done by recreating the parent
+environment instead of merging into an existing one.
+
+For `reconcile_env_ext`, since we're processing depth first it should be the
+case that at most we only ever have one set of branches outstanding, so so long
+as we record the current `env.ext` when we hit the current TRUE branch, and save
+then record the `env.ext` when we switch to the FALSE branch, we should be fine?
+
+# Docs
+
+I think we want:
+
+* Supported functions:
+  * Generalities like numeric inputs (currently this is in internal/external).
+  * Maybe an asterisk indicating semantic differences, expounded upon in a
+    separate section?
+  * Among other things also details which parameters are internal vs external,
+    and maybe gives a quick example, then references the internal / external sub
+    expression page.
+  * Internal vs External:
+    * Parameters.
+    * Expressions vs Parameters (or is it really just external symbols)?
+  * Semantic differences.
+
+* Internal/external params.
+
+* Performance
+  * Memory is already its own page, so reference that?
+  * Numeric vs non numeric.
+  * Vectorized vs non vectorized, vs directly hand crafted C code.
+  * Runner vs not runner.
+  * Performance sweet spot.
+  * Interrupts.
+
+* Pre-processing
+
 # rep
 
 Big problem with `rep.int` is that the times argument can be the same length as
 the `x` argument, which only works with fixed size.  Can we leverage the new
 `ftype` version?  Maybe, we have gmax, gmin, so we should be able to check for
 the special case where they are equal and the same size as the second parameter.
-
 
 # DLL count issue
 

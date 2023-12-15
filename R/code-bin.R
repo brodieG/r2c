@@ -96,12 +96,12 @@ code_gen_bin <- function(fun, pars, par.types) {
   vetr(
     CHR.1 && . %in% setdiff(names(OP.OP), names(OP.DEFN)),
     pars=list(NULL, NULL),
-    par.types=character() && all(. %in% PAR.INT)
+    par.types=character() && all(. %in% PAR.IVARY)
   )
   name <- FUN.NAMES[fun]
   op <- OP.OP[fun]      # needed for modulo
   defn <- sprintf(
-    bin_op_vec_rec, name, toString(F.ARGS.BASE), "", op,
+    bin_op_vec_rec, name, toString(CF.ARGS.BASE), "", op,
     IX[['I.STAT']], IX[['STAT.RECYCLE']] # these are now available as defines
   )
   code_res(defn=defn, name=name, headers=character())
@@ -111,12 +111,12 @@ code_gen_bin2 <- function(fun, pars, par.types) {
   vetr(
     CHR.1 && . %in% names(OP.DEFN),
     pars=list(),
-    par.types=character() && all(. %in% PAR.INT)
+    par.types=character() && all(. %in% PAR.IVARY)
   )
   name <- FUN.NAMES[fun]
   op <- OP.OP[fun]      # needed for modulo
   defn <- sprintf(
-    bin_op_vec_rec, name, toString(F.ARGS.BASE), op, ",",
+    bin_op_vec_rec, name, toString(CF.ARGS.BASE), op, ",",
     IX[['I.STAT']], IX[['STAT.RECYCLE']]
   )
   code_res(

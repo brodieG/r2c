@@ -21,14 +21,14 @@ NULL
 
 #' Generate C Code for Compilation
 #'
-#' Match each call and its parameters, identifying which parameters are control
-#' vs. flag (flag are TRUE/FALSE control parameters), and associating the C call
-#' to each R call.  The call tree is linearized depth first, so the parameters
-#' are recorded before the call they belong to.  The depth of the parameters
-#' allows us to distinguish what call they belong to (note a parameter can be a
-#' call too).  The order of the elements in the linearized call implicitly
-#' contains all parameter matching information (i.e. everything has been
-#' `match.call`ed already).
+#' Match each call and its parameters, identifying which parameters are
+#' iteration constant (and of what type), and associating the C call to each R
+#' call.  The call tree is linearized depth first, so the parameters are
+#' recorded before the call they belong to.  The depth of the parameters allows
+#' us to distinguish what call they belong to (note a parameter can be a call
+#' too).  The order of the elements in the linearized call implicitly contains
+#' all parameter matching information (i.e. everything has been `match.call`ed
+#' already).
 #'
 #' See `alloc` and `init_call_dat` for more details.
 #'
@@ -45,6 +45,11 @@ preprocess <- function(call, optimize=FALSE) {
   # * all call modifications must be made as if `match.called` (names attached
   #   for closures, in order) (and be in matched order) for closures.
   # * The order these are applied in really matters.
+
+  # Sub in place holders for unsupported funs
+  tmp <- sub_unsupported(call)
+  call <- tmp[['call']]
+  unsupported <- tmp[['unsupported']]
 
   # Match calls
   call <- match_call_rec(call)
@@ -69,13 +74,17 @@ preprocess <- function(call, optimize=FALSE) {
   tmp <- copy_fordat(call)
   call <- tmp[['call']]
 
-  # Copy "external" data to r2c alloc mem (see fun docs); must be the last step.
-  tmp <- copy_branchdat(call)
+  # Copy "external" data to r2c alloc mem (see fun docs), reconcile branches.
+  # Think twice before you add any manipulations after this step.
+  tmp <- copy_branchdat(call, unsupported)
   call <- tmp[['call']]
   sym.free <- tmp[['sym.free']]
 
   # Collapse any added braces
   call <- collapse_braces(call)
+
+  # Reverse unsupported substitution
+  call <- unsub_unsupported(call, unsupported)
 
   # WARNING: Read warning at top of section before making changes.
 
@@ -86,9 +95,11 @@ preprocess <- function(call, optimize=FALSE) {
   x[['sym.free']] <- sym.free
 
   # Classify parameters and generate code recursively
-  x <- pp_internal(call=call, depth=0L, x=x)
+  x <- pp_internal(
+    call=call, depth=0L, x=x, unsupported=unsupported, par.type=PAR.IVARY.NUM
+  )
   x[['call.processed']] <- call
-  if(!all(x[['par.type']] %in% c(PAR.INT, PAR.EXT)))
+  if(!all(x[['par.type']] %in% PAR.TYPES))
     stop("Internal Error: invalid parameter types.")
 
   # Deduplicate the code and generate the final C file (need headers).
@@ -141,10 +152,10 @@ preprocess <- function(call, optimize=FALSE) {
           )
         }
   ) } )
-  extra.vars <- c('narg', 'ext.any')
+  extra.vars <- c('narg', 'icnst.any')
   extra.vars.tpl <- logical(length(extra.vars))
   names(extra.vars.tpl) <- extra.vars
-  args.used <- vapply(
+  pars.used <- vapply(
     x[['code']][calls.keep], function(x) unlist(x[extra.vars]), extra.vars.tpl
   )
   code.txt <- c(
@@ -152,8 +163,8 @@ preprocess <- function(call, optimize=FALSE) {
     paste(
       "#include",
       c(
-        headers, '"r2c-const.h"', "<R.h>", "<Rinternals.h>", "<R_ext/Utils.h>",
-        '"loop-interrupt.h"'
+        headers, "<stdint.h>", '"r2c-const.h"', "<R.h>", "<Rinternals.h>",
+        "<R_ext/Utils.h>", '"loop-interrupt.h"'
       )
     ),
     if(length(defines)) c("", defines),
@@ -162,14 +173,14 @@ preprocess <- function(call, optimize=FALSE) {
     codes.u,
 
     # C function to be invoked by runners
-    sprintf("void run(\n  %s\n) {", toString(R.ARGS.ALL)),
+    sprintf("void run(\n  %s\n) {", toString(CR.ARGS.ALL)),
 
     paste0(
       "  ",
       c(
-        # Some variables not always used so add dummy uses to suppress warnings
-        if(!any(args.used['narg',]))    "(void) narg;  // unused",
-        if(!any(args.used['ext.any',])) "(void) extn;  // unused",
+        # Some parameters not always used so add dummy uses to suppress warnings
+        if(!any(pars.used['narg',]))      "(void) narg;  // unused",
+        if(!any(pars.used['icnst.any',])) "(void) extn;  // unused",
         "",
         # C calls.
         unlist(calls.fin)
@@ -202,16 +213,24 @@ preprocess <- function(call, optimize=FALSE) {
 # @param passive whether every parent call (in a dynamic, not lexical sense) is
 #   passive.  Used to ensure assignments are not made inside active calls.
 #   `vcopy` counts as passive for these purposes (even though it's not).
+# @param unsupported see `sub_unsupported`.
 
 pp_internal <- function(
   call, depth, x, argn="", assign=FALSE, call.parent=NULL,
-  call.parent.name="", par.validate=NULL, indent=0L, passive=TRUE
+  call.parent.name="",
+  par.validate=function(x) TRUE, # should only be for a literal only call
+  indent=0L, passive=TRUE, par.type, unsupported
 ) {
   if(depth == .Machine$integer.max)
     stop("Expression max depth exceeded.") # exceedingly unlikely
 
-  if(is.call(call)) {
-    # - Recursion on Params ----------------------------------------------------
+  linfo <- get_lang_info(call)
+  if (
+    is.call(call) &&
+    linfo[['name']] %in% names(VALID_FUNS) &&
+    !par.type %in% PAR.ICNST
+  ) {
+    # - r2c Eval Call Recursion on Params --------------------------------------
     # Classify Params
     args <- as.list(call[-1L])
     if(!all(nzchar(names(args))))
@@ -221,23 +240,28 @@ pp_internal <- function(
     if(is.null(names(args))) {
       names(args) <- character(length(args))
     }
-    linfo <- get_lang_info(call)
     func <- linfo[['name']]
-    par.ext <- VALID_FUNS[[c(func, "extern")]]
-    par.ext.names <- names(par.ext)
-    par.ext.types <- vapply(par.ext, "[[", "", "type")
-    par.ext.validate <- lapply(par.ext, "[[", "validate")
 
-    if(!all(par.ext.names %in% names(args)))
+    arg.type <- ARG.INT
+    # If we ever add more than one internal type, we need to ensure that's
+    # resolved in the subsequent code at some point.
+    if(length(arg.type) != 1L)
+      stop("Internal Error: resolve multiple internal arg types")
+    par.icnst <- VALID_FUNS[[c(func, "icnst")]]
+    par.icnst.names <- names(par.icnst)
+    par.icnst.types <- vapply(par.icnst, "[[", "", "type")
+    par.icnst.validate <- lapply(par.icnst, "[[", "validate")
+
+    if(!all(par.icnst.names %in% names(args)))
       stop(
-        "Internal Error: designated external parameters missing; is `call` ",
-        "not properly match-called?"
+        "Internal Error: designated iteration-constant parameters missing; is ",
+        "`call` not properly match-called?"
       )
-    par.ext.loc <- match(par.ext.names, names(args), nomatch=0)
-    par.types <- rep("internal", length(args))
-    par.types[par.ext.loc] <- par.ext.types
-    par.validate <- vector(mode='list', length(args))
-    par.validate[par.ext.loc] <- par.ext.validate
+    par.icnst.loc <- match(par.icnst.names, names(args), nomatch=0)
+    par.types <- rep(PAR.IVARY.NUM, length(args))
+    par.types[par.icnst.loc] <- par.icnst.types
+    par.validate <- replicate(length(args), function(x) TRUE, simplify=FALSE)
+    par.validate[par.icnst.loc] <- par.icnst.validate
 
     passive <- passive && func %in% c(PASSIVE.SYM, 'vcopy')
 
@@ -254,26 +278,16 @@ pp_internal <- function(
       stop(simpleError(msg, call.parent))
     }
     for(i in seq_along(args)) {
-      if(par.types[i] %in% PAR.EXT) {
-        # Do not recurse into externals; shouldn't be assign symbol
-        if(next.assign) stop("Internal error: controls/flag on assignment.")
-        x <- record_call_dat(
-          x, call=args[[i]], depth=depth + 1L, linfo=blank_lang_info(),
-          argn=names(args)[i],
-          par.type=par.types[i], par.validate=par.validate[i],
-          code=code_blank(), assign=FALSE, indent=indent, rec=FALSE
-        )
-      } else if(par.types[i] == "internal") {  # not yet one of PAR.INT values
-        x <- pp_internal(
-          call=args[[i]], depth=depth + 1L, x=x, argn=names(args)[i],
-          assign=i == 1L && next.assign,
-          call.parent=call, call.parent.name=func, par.validate=par.validate[i],
-          indent=indent +
-            (func %in% c(CTRL.SUB.SYM, FOR.ITER, R2C.FOR)) * 2L,
-          passive=passive
-        )
-        par.types[i] <- x[['par.type']][length(x[['par.type']])]
-      } else stop("Internal Error: bad parameter type '", par.types[i], "'")
+      x <- pp_internal(
+        call=args[[i]], depth=depth + 1L, x=x, argn=names(args)[i],
+        assign=i == 1L && next.assign,
+        call.parent=call, call.parent.name=func,
+        par.validate=par.validate[i],
+        indent=indent +
+          (func %in% c(CTRL.SUB.SYM, FOR.ITER, R2C.FOR)) * 2L,
+        passive=passive, unsupported=unsupported,
+        par.type=par.types[i]
+      )
     }
     # Are we in a rec chain?  Needed for alloc to know which bindings are
     # from rec (see reconcile_control_flow).
@@ -284,24 +298,25 @@ pp_internal <- function(
     # Generate Code
     code <- VALID_FUNS[[c(func, "code.gen")]](func, args, par.types)
     code_valid(code, call)
-
-    # Record linearized call data
-    record_call_dat(
-      x, call=call, depth=depth, linfo=linfo, argn=argn,
-      par.type=PAR.INT.CALL,
-      par.validate=par.validate[1L],  # this is never used as its a call
-      code=code,
-      assign=assign, indent=indent, rec=rec
-    )
+    par.validate <- par.validate[1L]  # this is never used as its a call
   } else {
-    # - Symbol or Constant -----------------------------------------------------
-    par.type <- PAR.INT.LEAF
+    # - Constant Param, Symbol, Literal, or Unsupported Call -------------------
+    if(par.type %in% PAR.ICNST) {
+      arg.type <- ARG.EXT[match(par.type, PAR.ICNST)]
+    } else if(is.call(call) && !linfo[['name']] %in% names(VALID_FUNS)) {
+      arg.type <- ARG.EXT.NUM
+    } else {
+      arg.type <- ARG.INT
+    }
     args <- list()
     code <- code_blank()
+    rec <- FALSE
+
     # Deal with `..1`, etc, that may be generated by dots forwarding.
     # We could check for user defined .ARG[0-9] and then start incrementing
     # after max, but too complicated (need to handle case where someone e.g.
-    # defines .ARG9999999999 or whatever to try to overflow us).
+    # defines .ARG9999999999 or whatever and it overflow us).
+    # PAR.EXT shouldn't end up using this?
     if(is.name(call)) {
       name <- as.character(call)
       if(grepl(DOT.ARG.RX, name)) {
@@ -314,16 +329,17 @@ pp_internal <- function(
         x[['dot.arg.i']] <- x[['dot.arg.i']] + 1L
       }
     }
-    record_call_dat(
-      x, call=call, depth=depth, linfo=get_lang_info(call), argn=argn,
-      par.type=par.type, par.validate=par.validate,
-      code=code, assign=assign, indent=indent, rec=FALSE
-    )
-} }
+  }
+  record_call_dat(
+    x, call=call, depth=depth, linfo=linfo, argn=argn,
+    arg.type=arg.type, par.type=par.type, par.validate=par.validate,
+    code=code, assign=assign, indent=indent, rec=rec
+  )
+}
 
 #' See preprocess for some discussion of what the elements are
 #'
-#' $call: linearized call tree with parameters preceeding calls (recall that a
+#' $call: linearized call tree with parameters preceding calls (recall that a
 #'   call can itself be a parameter to another call nearer the root).
 #' $depth: tree depth of each call or parameter
 #' $linfo: result of calling get_lang_info on call, or NULL for terminals.
@@ -343,15 +359,24 @@ pp_internal <- function(
 #'   point in time snapshot and cannot be used to reconstruct the history of the
 #'   renames.
 #' $call.rename: version of `call` with symbols renamed using `rename`.
-#' $par.type: argument type, one of "ext.num", "ext.any", "int.call",
-#'   "int.leaf".  The first two are "external", and the last two are
-#'   respectively non-terminal and terminal "internal" tokens.  See `?r2cq` for
-#'   details on internal/external.
+#' $par.type: parameter type, one of PAR.TYPES, designates whether a parameter
+#'   requires iteration constant (`PAR.ICNST.NUM`, `PAR.ICNST.ANY`) expressions,
+#'   or can accept iteration varying data (`PAR.IVARY.NUM`).  The former
+#'   requires external expressions (i.e. `eval`ed in R), whereas the latter can
+#'   accept either internal (i.e. computed in `r2c` native code) or external
+#'   numeric.
+#' $arg.type: argument type, one of `ARG.EXT`, or `ARG.INT`. The first
+#'   are "external" in that they require evaluation by `base::eval`, and the
+#'   last is evaluated by `r2c` native code.  We use `arg.type` and not
+#'   `par.type` because parameters that are classified as iteration varying can
+#'   accept external expressions that evaluate to numeric.  See
+#'   `?r2c-expression-types`.
 #' $par.validate: a list of functions, each will validate the result of
-#'   evaluating the corresponding external parameters at allocation time.
-#'   Entries that belong to internal parameters or the call themselves are set
-#'   to NULL.
+#'   evaluating the corresponding iteration-constant parameters at allocation
+#'   time.  Entries that belong to internal parameters or the call themselves
+#'   are set to NULL.
 #' $rec: whether current call is a part of a chain that ends with a `rec`
+#' $is.call: call is a call (as opposed to symbol, terminal, whatever).
 #'
 #' @noRd
 
@@ -366,10 +391,12 @@ init_call_dat <- function()
 
     argn=character(),
     depth=integer(),
+    arg.type=character(),
     par.type=character(),
     assign=logical(),
     indent=integer(),
-    rec=logical()
+    rec=logical(),
+    is.call=logical()
   )
 
 ## Record Expression Data
@@ -383,14 +410,15 @@ init_call_dat <- function()
 ## See `init_call_dat` for parameter details.
 
 record_call_dat <- function(
-  x, call, depth, linfo, argn, par.type, par.validate, code, assign, indent, rec
+  x, call, depth, linfo, argn, arg.type, par.type, par.validate, code,
+  assign, indent, rec
 ) {
   vetr(par.validate=list(NULL))
   # list data
   x[['call']] <- c(
     x[['call']],
     # Undo the dots replacement
-    list(if(identical(call, quote(.R2C.DOTS))) QDOTS else call)
+    list(if(identical(call, QR2C.DOTS)) QDOTS else call)
   )
   x[['code']] <- c(x[['code']], list(code))
   if(length(unique(lengths(x[c('call', 'code')]))) != 1L)
@@ -402,10 +430,12 @@ record_call_dat <- function(
   x[['linfo']] <- c(x[['linfo']], list(linfo))
   x[['argn']] <- c(x[['argn']], argn)
   x[['depth']] <- c(x[['depth']], depth)
+  x[['arg.type']] <- c(x[['arg.type']], arg.type)
   x[['par.type']] <- c(x[['par.type']], par.type)
   x[['assign']] <- c(x[['assign']], assign)
   x[['indent']] <- c(x[['indent']], indent)
   x[['rec']] <- c(x[['rec']], rec)
+  x[['is.call']] <- c(x[['is.call']], is.call(call))
   if(length(unique(lengths(x[CALL.DAT.VEC]))) != 1L)
     stop("Internal Error: irregular vector call data.")
 
@@ -443,9 +473,9 @@ match_call_rec <- function(call) {
       # the formals of the function we'll generate); we do not want these dots
       # to be matched against anything since that will be done at run-time, not
       # now (i.e.  dots might not even exist at the moment).
-      any.dots <- vapply(call[-1L], identical, TRUE, quote(...))
-      any.r2cdots <- vapply(call[-1L], identical, TRUE, quote(.R2C.DOTS))
-      if(any(any.r2cdots)) stop("Symbol `.R2C.DOTS` is disallowed.")
+      any.dots <- vapply(call[-1L], identical, TRUE, QDOTS)
+      any.r2cdots <- vapply(call[-1L], identical, TRUE, QR2C.DOTS)
+      if(any(any.r2cdots)) stop("Symbol `", R2C.DOTS, "` is disallowed.")
       if(any(any.dots)) call[-1L][which(any.dots)] <- list(quote(.R2C.DOTS))
       # since we don't resolve dots env does not matter.
       call <- match.call(definition=defn, call=call, expand.dots=FALSE)
@@ -482,18 +512,21 @@ match_call_rec <- function(call) {
       }
     }
     if(length(call) > 1) {
+      par.icnst <- VALID_FUNS[[c(func, "icnst")]]
       for(i in seq(2L, length(call), by=1L)) {
-        if(names2(call)[i] == "...") {
-          for(j in seq_along(call[[i]]))
-            call[[i]][[j]] <- match_call_rec(call[[i]][[j]])
-        } else call[[i]] <- match_call_rec(call[[i]])
+        par.name <- names2(call)[i]
+        if(!par.name %in% names(par.icnst)) {
+          if(par.name == "...") {
+            for(j in seq_along(call[[i]]))
+              call[[i]][[j]] <- match_call_rec(call[[i]][[j]])
+          } else call[[i]] <- match_call_rec(call[[i]])
+        }
       }
     }
     if(!is.null(defn) && func != "if") {
       # Fill in defaults
       frm <- formals(defn)
-      frm.req <-
-        vapply(frm, function(x) is.name(x) && !nzchar(as.character(x)), TRUE)
+      frm.req <- vapply(frm, missing_sym, TRUE)
       frm.bad <- vapply(frm[!frm.req], function(x) is.language(x), TRUE)
       if(any(frm.bad))
         stop("Functions with non-constant defaults are unsupported.")
@@ -526,11 +559,9 @@ match_call_rec <- function(call) {
       args.pos <- match(args.nm, names(frm))
       args.ord <- order(args.pos)
       args <- args.dummy[args.ord]
-      args.dot.pos <- if(length(call.dots)) {
-        # Used when e.g. vecrec is done on dots
-        names(call.dots) <- rep('...', length(call.dots))
-        match("...", args.nm[args.ord])
-      } else length(args)
+      names(call.dots) <- rep('...', length(call.dots))
+      args.dot.pos <- match("...", args.nm[args.ord])
+
       # expand the dots
       res <- c(
         args[seq_len(args.dot.pos - 1L)],
@@ -558,8 +589,11 @@ transform_call_rec <- function(call) {
     call <- call.transform
   }
   if(is.call(call) && length(call) > 1L) {
-    for(i in seq(2L, length(call), 1L))
-      call[[i]] <- transform_call_rec(call[[i]])
+    par.icnst.names <- names(VALID_FUNS[[c(func, "icnst")]])
+    for(i in seq(2L, length(call), 1L)) {
+      if(!names2(call)[i] %in% par.icnst.names)
+        call[[i]] <- transform_call_rec(call[[i]])
+    }
   }
   call
 }
@@ -606,8 +640,11 @@ transform_control <- function(x, i=0L) {
   if(i > 999L)
     stop("Exceeded maximum allowable control structure count (", i - 1L,")")
   if(is.call(x)) {
-    x[-1L] <- lapply(x[-1L], transform_control, i=i + 1L)
     call.sym <- get_lang_name(x)
+    par.icnst.names <- names(VALID_FUNS[[c(call.sym, "icnst")]])
+    par.icnst <- which(names2(x) %in% par.icnst.names)
+    skip <- -c(1L, par.icnst)
+    x[skip] <- lapply(x[skip], transform_control, i=i + 1L)
     if(call.sym == "if") {
       if(!length(x) %in% 3:4)
         stop("Invalid if/else call:\n", paste0(deparse(x), collapse="\n"))
@@ -724,11 +761,12 @@ recompose_control <- function(x) {
             x[[c(i + 1L, 3L, 2L)]]        # expr
           )
           # Drop trailing numeric(0)
+          cr4 <- call.recompose[[4L]]
           if(
-            !is.brace_call(call.recompose[[4L]]) ||
-            !identical(
-              call.recompose[[4L]][[length(call.recompose[[4L]])]],
-              QNULL.REC
+            !is.brace_call(cr4) ||
+            (
+              !identical(cr4[[length(cr4)]], QNULL) &&
+              !identical(cr4[[length(cr4)]], QNULL.REC)
             )
           )
             stop(
@@ -751,14 +789,6 @@ recompose_control <- function(x) {
     if(call.sym == "{" && length(x) == 2L) x <- x[[2L]]
   }
   x
-}
-
-sym_free <- function(x, sym) {
-  if(is.symbol(sym)) {
-    sym.chr <- as.character(sym)
-    if(identical(sym.chr, ".R2C.DOTS")) sym.chr <- "..."
-    if(!sym.chr %in% x[['sym.free']]) sym.chr
-  }
 }
 
 ## Expand Dots
@@ -784,7 +814,7 @@ expand_dots <- function(x, arg.names) {
       for(j in exp.fields) {
         exp.val <- x[[j]][i]
         exp.vals <- if(j == "linfo") {
-          if(!identical(exp.val, list(list(name=".R2C.DOTS", pkg=""))))
+          if(!identical(exp.val, list(list(name=R2C.DOTS, pkg=""))))
             stop("Internal Error: bad dots lang info.")
           lapply(dots.m.chr, function(x) list(name=x, pkg=""))
         } else {
@@ -804,4 +834,43 @@ append_null <- function(x) {
   if(!is.brace_call(x)) x <- call("{", x)
   x[[length(x) + 1L]] <- quote(numeric(length=0L))
   dot_names(x)
+}
+
+## Substitute Symbols for Unsupported Calls
+##
+## Calls to unsupported function are replaced by symbols so that no further
+## manipulation happens them in preprocessing.  They will be unsubbed after call
+## manipulation, and then evaluated as a constant expression at allocation time.
+##
+## @param unsupported list of already substituted calls, where the names are the
+##   substitution symbol based on UNSUP.CALL.TPL, and the values are lists with
+##   element call (the original call) and syms (the symbols present in the
+##   call, used to trigger candidates, track free symbols, etc).
+
+sub_unsupported <- function(x, unsupported=list()) {
+  if(is.call(x) && !get_lang_name(x) %in% c("(", names(VALID_FUNS))) {
+    i <- length(unsupported) + 1L
+    name <- sprintf(UNSUP.CALL.TPL, i)
+    sym <- as.name(name)
+    val <- list(list(call=x, syms=collect_call_symbols(x)))
+    names(val) <- name
+    unsupported <- c(unsupported, val)
+    x <- sym
+  } else if (is.call_w_args(x)) {
+    for(i in seq_along(x)[-1L]) {
+      tmp <- sub_unsupported(x[[i]], unsupported)
+      x[[i]] <- tmp[['call']]
+      unsupported <- tmp[['unsupported']]
+    }
+  }
+  list(call=x, unsupported=unsupported)
+}
+unsub_unsupported <- function(x, unsupported) {
+  if(is.symbol(x)) {
+    sym.name <- as.character(x)
+    if(sym.name %in% names(unsupported)) x <- unsupported[[sym.name]][['call']]
+  } else if (is.call_w_args(x)) {
+    for(i in seq_along(x)[-1L]) x[[i]] <- unsub_unsupported(x[[i]], unsupported)
+  }
+  x
 }

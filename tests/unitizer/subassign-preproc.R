@@ -1,6 +1,6 @@
 ## Copyright (C) Brodie Gaslam
 ##
-## This file is part of "r2c - A DSL for Fast Statistic Computation in R"
+## This file is part of "r2c - Fast Iterated Statistic Computation in R"
 ##
 ## This program is free software: you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
@@ -63,6 +63,24 @@ unitizer_sect('subassign', {
     y
   })
   r2c:::pp_clean(call8c2)
+
+  # Recognize computed symbol at top-level
+  call8d0 <- quote({
+    x <- z
+    x <- z + 1
+    x[3] <- 99
+    x
+  })
+  r2c:::pp_clean(call8d0)
+
+  # Recognize computed symbol overwritten by external at top-level
+  call8d1 <- quote({
+    x <- z + 1
+    x <- z
+    x[3] <- 99
+    x
+  })
+  r2c:::pp_clean(call8d1)
 })
 unitizer_sect('in branch', {
   # Can't use sub-assign result
@@ -75,7 +93,7 @@ unitizer_sect('in branch', {
   })
   r2c:::pp_clean(call9a1)
 
-  # Should trigger a reconcile in the alternate branch
+  # Should trigger a top-level self copy
   call9b <- quote({
     if(b) {x[a] <- y; x}
     x

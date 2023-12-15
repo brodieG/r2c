@@ -19,7 +19,7 @@
  * Basic loop with interrupts for use by the r2c package code.  See
  * inst/headers/loop-interrupt.h for a more complex implementation for use by
  * r2c compiled functions (as opposed to package code), although those are
- * disabled currently..
+ * disabled currently.
  *
  * Calling code should declare and initialize:
  * R_xlen_t i, len;

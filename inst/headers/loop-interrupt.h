@@ -22,7 +22,8 @@
 // Implement interrupts at r2c Expression Level
 //
 // CURRENTLY INTERRUPTS AS IMPLEMENTED IN THIS HEADER ARE DISABLED!  Instead the
-// interrupts are checked between groups / windows by the runner code.
+// interrupts are checked between groups / windows by the runner code (see
+// src/loop-interrupt-basic.h, uses of R_CheckUserInterrupt in src/window.c).
 //
 // When enabled, these macros count iterations at the r2c sub-expression level
 // and do so across groups so that interrupts are only triggered every
@@ -47,28 +48,32 @@
 // which allows us to leave the interrupt code in the functions should we decide
 // to switch back to this later.
 
-// #define LOOP_W_INTERRUPT0(I_MAX, LOOP) do {                          \
-//   R_xlen_t i_stop, next_interrupt;                                   \
-//   i = 0;                                                             \
-//   /* First iteration will always get an interrupt, b/c otherwise */  \
-//   /* we must maintain INTERRUPT_AT in src/run.c as well */           \
-//   next_interrupt = (R_xlen_t)data[I_STAT][STAT_LOOP];                \
-//   while(1) {                                                         \
-//     i_stop = next_interrupt > (I_MAX) ? I_MAX : next_interrupt;      \
-//                                                                      \
-//     LOOP                                                             \
-//                                                                      \
-//     /* < i_stop for `break` in EXPR (e.g. all/any) */                \
-//     if(i == (I_MAX) || i < i_stop) break;                            \
-//     else if(i == next_interrupt) {                                   \
-//       R_CheckUserInterrupt();                                        \
-//       if(i <= R_XLEN_T_MAX - INTERRUPT_AT)                           \
-//         next_interrupt = i + INTERRUPT_AT;                           \
-//       else next_interrupt = (I_MAX);                                 \
-//     }                                                                \
-//   }                                                                  \
-//   data[I_STAT][STAT_LOOP] = (double) next_interrupt - i;             \
-// } while(0)
+#ifdef R2C_USE_INLOOP_INTERRUPT
+// Prior to re-enabling:
+// * Look at `rep`, do we want to add interrupts there?
+#define LOOP_W_INTERRUPT0(I_MAX, LOOP) do {                          \
+  R_xlen_t i_stop, next_interrupt;                                   \
+  i = 0;                                                             \
+  /* First iteration will always get an interrupt, b/c otherwise */  \
+  /* we must maintain INTERRUPT_AT in src/run.c as well */           \
+  next_interrupt = (R_xlen_t)data[I_STAT][STAT_LOOP];                \
+  while(1) {                                                         \
+    i_stop = next_interrupt > (I_MAX) ? I_MAX : next_interrupt;      \
+                                                                     \
+    LOOP                                                             \
+                                                                     \
+    /* < i_stop for `break` in EXPR (e.g. all/any) */                \
+    if(i == (I_MAX) || i < i_stop) break;                            \
+    else if(i == next_interrupt) {                                   \
+      R_CheckUserInterrupt();                                        \
+      if(i <= R_XLEN_T_MAX - INTERRUPT_AT)                           \
+        next_interrupt = i + INTERRUPT_AT;                           \
+      else next_interrupt = (I_MAX);                                 \
+    }                                                                \
+  }                                                                  \
+  data[I_STAT][STAT_LOOP] = (double) next_interrupt - i;             \
+} while(0)
+#endif /* R2C_USE_INLOOP_INTERRUPT */
 
 // A dummy version that doesn't do the interrupt (this is how we turn it off).
 #define LOOP_W_INTERRUPT0(I_MAX, LOOP) do {              \

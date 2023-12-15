@@ -23,6 +23,7 @@ static const
 R_CallMethodDef callMethods[] = {
   {"group_sizes", (DL_FUNC) &R2C_group_sizes, 1},
   {"vecrec_pmax", (DL_FUNC) &R2C_vecrec_pmax, 1},
+  {"run_one", (DL_FUNC) &R2C_run_one, 6},
   {"run_group", (DL_FUNC) &R2C_run_group, 7},
   {"run_window", (DL_FUNC) &R2C_run_window, 9},
 

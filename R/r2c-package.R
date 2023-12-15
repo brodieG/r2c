@@ -17,8 +17,26 @@
 #'
 #' Compiles a subset of R into machine code so that expressions composed with
 #' that subset can be applied repeatedly on varying data without interpreter
-#' overhead.  Use [the compilation functions][r2c-compile] to compile R, and
-#' [runners] to execute the resulting compiled code iteratively on varying data.
+#' overhead.  See the [group_exec] examples for a quick start.
+#'
+#' Basics:
+#'
+#' * [Supported functions][r2c-supported-funs]: which R functions `r2c` can
+#'   compile.
+#' * [Compilation facilities][r2c-compile]: how to compile R with `r2c`.
+#' * [Runners][runners]: how to execute your code iteratively.
+#'   * By [group][group_exec].
+#'   * Across [windows][rolli_exec].
+#'
+#' Details:
+#'
+#' * [Performance considerations][r2c-performance].
+#' * [Memory use][r2c-memory].
+#' * [Preprocessing][r2c-preprocess].
+#' * [Control structures][r2c-control-structures] (experimental).
+#' * [Expression Types]: to understand where it is allowable to use
+#'   non-supported functions and why some supported function parameters are
+#'   required to be constant.
 #'
 #' @docType package
 #' @name r2c-package
@@ -43,59 +61,250 @@ utils::globalVariables(".")  # for vetr .
 #' * Rolling window iteration with [`rolli_exec`] and the other
 #'   [`roll*_exec`][rollbw_exec] functions.
 #'
+#' @keywords internal
 #' @name runners
 #' @family runner functions
+#' @seealso [Package Overview][r2c].
+
+NULL
+
+#' Implemented Functions
+#'
+#' `r2c` supports a subset of R functions for compilation.  These functions
+#' are re-implemented and optimized for iterated execution while hewing as
+#' closely as practicable to the original R semantics.  `r2c` also allows
+#' arbitrary R function calls provided they are
+#' [iteration-constant][r2c-expression-types], but these are evaluated in R and
+#' not in `r2c` compiled code.
+#'
+#' The following functions are supported by the `r2c` [compiler][r2c-compile],
+#' with semantic differences to their R counterparts noted.  Parameters that
+#' require [constant expressions][r2c-expression-types] are marked as such.
+#'
+#' * Arithmetic: `+`, `-`, `*`, `/`, and `^`.
+#' * Relational: `<`, `<=`, `>`, `>=`, `==`, `!=`.
+#' * Logical: `&`, `&&`, `|`, `||`, `!`, `ifelse`.
+#'   * `&&` and `||` always evaluate all parameters.
+#'   * `ifelse` return in a type that can support both `yes` and `no` values.
+#' * Statistics: `mean`, `sum`, `length`, `all`, `any`.
+#'   * `na.rm` is a [constant][r2c-expression-types] parameter.
+#'   * `trim` is unsupported.
+#' * Sequences: `seq_along`, `rep`.
+#'   * `length.out`, `times`, and `each` are [constant][r2c-expression-types]
+#'     parameters.
+#'   * `rep` does not take any `...` parameters.
+#' * Concatenation: `c`.
+#' * Subsetting: `x[i]`, `x[s] <- expr`.
+#'   * In 1 dimension with strictly positive numeric indices.
+#'   * Return value of assignment form may not be used.
+#' * Initialization: `numeric` (and the `r2c` provided [`numeric_along`]).
+#'   * `length` is a [constant parameter][r2c-expression-types].
+#' * Braces: `{`.
+#' * Assignment: `<-`, `=`.
+#'   * Assignments cannot be made as part of an argument (e.g.
+#'     `mean(x <- y)`), except as arguments to top-level braces or braces that
+#'     are part of control structure  branches.
+#' * Control Structures (experimental): `if/else`, `for`.
+#'   * See [Control Structures][r2c-control-structures] for important
+#'     constraints and semantic differences to R.
+#'
+#' Except for [constant][r2c-expression-types] parameters, expressions and
+#' variables provided as arguments to `r2c` implemented functions must resolve
+#' to optionally named but otherwise attribute-less numeric, integer, or logical
+#' vectors.  Names are ignored and/or dropped.  Integer or logical inputs or
+#' outputs attract a [performance penalty][r2c-performance].  Parameters marked
+#' as constant may only be given [constant expressions][r2c-expression-types],
+#' and while `r2c` in general allows them to evaluate to any R object, the `r2c`
+#' function they are used with will place restrictions on allowable values.
+#'
+#' Calls must be in the form `fun(...)` (`a fun b` for operators)  where `fun`
+#' is the name of the function, optionally in `pkg::fun` format.  Functions must
+#' be bound to their original symbols for them to be recognized.
+#'
+#' @keywords internal
+#' @seealso [Package Overview][r2c].
+#' @name r2c-supported-funs
 
 NULL
 
 #' Memory Use
 #'
-#' `r2c` [runners] examine each "r2c_fun" in conjunction with the data it is to
-#' run on to compute memory allocation sizes. The allocations are sized to
-#' support the largest iteration in the iteration varying data.  All iterations
-#' re-use the same allocations (or a portion thereof), thereby reducing peak
-#' memory usage and fragmentation.
+#' `r2c` [runners] pre-allocate the memory required to compute every
+#' sub-expression for the single largest iteration they will execute.  This
+#' same allocation is re-used for every iteration, thereby reducing peak
+#' memory requirements and memory fragmentation.
 #'
-#' Most of the `r2c` supported functions are such that the size of the result
-#' can be inferred from the size of the inputs.  Once we know iteration data
-#' size, we can pre-compute how much memory is needed for every subcomputation
-#' and the final result of each iteration.
+#' `r2c` [runners] examine "r2c_fun" functions in conjunction with the iteration
+#' size of their `data` argument to compute memory requirements.  Most of
+#' the [r2c supported functions][r2c-supported-funs] are such that the size of
+#' the result can be inferred from the size of the inputs.  Once a
+#' [runner][runners] knows the iteration data sizes, it can pre-compute how much
+#' memory is needed for every sub-expression in each iteration.
 #'
-#' There are two implications from this approach:
+#' In order to expand the range of supported functions outside of those that
+#' derive output size from input size, `r2c` introduces some constraints on
+#' semantics.  For example, control structures like `if`/`else` are allowed so
+#' long as their return values and/or any variables set in their branches are
+#' the same size irrespective of the branch taken.  Functions like `numeric(x)`
+#' that derive their size from the value of an input can be supported, but that
+#' value must be [constant across iterations][r2c-expression-types].
 #'
-#' 1. Result size of each subcomputation must depend only on the sizes of the
-#'    inputs, not their values (with some very specific exceptions).
-#' 2. The size of each subcomputation is a **function** of iteration size.
+#' Even when output size is derivable from input size alone, there is the
+#' potential for unbounded complexity.  For example, the size of `a + b` depends
+#' on the size of both `a` and `b`, either of which could be
+#' [iteration varying][r2c-expression-types].  As expressions get more complex,
+#' e.g. `c(a + b, a)`, computing result sizes can also get more complex.  `r2c`
+#' caps the level of complexity of size calculations it will support, and will
+#' error at run time if this limit is exceeded.  It should be difficult to reach
+#' this cap when computing statistics.
 #'
-#' The first implication creates the requirement that control structures like
-#' `if`/`else` return results or set variables to the same size in each branch
-#' (see [compile][r2c-compile]).  Since the allocations are set before
-#' calculations are run, results and variables must fit into them irrespective
-#' of branch taken, and downstream calculations must be able to assume the size
-#' is independent of branch..
-#'
-#' The second implication follows from expressions like `a + b` which depend on
-#' the size of both `a` and `b`, either of which could be iteration varying
-#' data, or derived from iteration varying data.  Suppose `a` is iteration
-#' varying, and `b` is constant size.  What is the size of `a + b`?  It depends
-#' on both the size of `b` and the size of each iteration.  If we take `i` to be
-#' the iteration data size, we could express the result size as
-#' `max(i, length(b))` (ignoring the possibility of 0 size inputs).  But what
-#' about the size of e.g. `c(a + b, a)`?  As expressions get more complex,
-#' the expressions required to represent result sizes as a function of
-#' iteration size can (but do not have to) get more complex.  `r2c` caps the
-#' level of complexity of such size expressions and will error at run time if
-#' this limit is exceeded.  It should be difficult to reach this cap when
-#' computing statistics.
-#'
-#' `r2c` carves out a small exception for expressions like `numeric(x)` the size
-#' of which depends on the value of the input.  These expressions are allowed so
-#' long as the **value** of the input in question is iteration-invariant.
-#' Iteration invariant data include that passed via the `MoreArgs` parameters to
-#' the [runners], or via external expressions.  See "Expression Types" in the
-#' [compilation][r2c-compile] documentation.
-#'
+#' @seealso [Package Overview][r2c].
+#' @keywords internal
 #' @name r2c-memory
+
+NULL
+
+#' Control Structures
+#'
+#' `r2c` supports `if` / `else` statements and `for` loops on an experimental
+#' basis.  These substantially complicate the internals of `r2c`, and the
+#' [performance of loops][r2c-performance] is wanting.  Continued support for
+#' control structures is not guaranteed in future versions of `r2c`.
+#'
+#' Both `if` / `else` and `for` loops have branches; the loop branches are loop
+#' not taken (0 iterations) vs loop taken (1+ iterations).  Branches add
+#' constraints and semantic differences to the equivalents in R:
+#'
+#' * Control structure return values must be guaranteed to be the same
+#'   size irrespective of the branch taken, if they are subsequently used.
+#'   Return values are coerced to a common type.
+#' * Assignments made within control structure branches must be
+#'   the same size irrespective of branch taken, if the corresponding bindings
+#'   are subsequently used.  Assigned values are coerced to a common type.
+#' * Control structures can be nested at most 999 levels.
+#' * Externally evaluated [constant expressions][r2c-expression-types] must be
+#'   valid in every branch, even if the branch is not taken at run time.
+#'
+#' To clarify the last point, consider:
+#'
+#' ```
+#' if(n > 0) sum(seq_len(n)) else 0
+#' ```
+#'
+#' The call to `seq_len` is a non-implemented [constant
+#' expression][r2c-expression-types] so it is `eval`ed in R at allocation time.
+#' On the other hand, `n > 0` is a varying expression run with `r2c` routines
+#' only after allocation.  Because `seq_len(n)` is `eval`ed before `n > 0` is
+#' computed, `seq_len(n)` runs irrespective of the value of `n`.  Checks like
+#' the `n > 0` above need to be done outside of `r2c`.
+#'
+#' There are also other minor semantic differences:
+#'
+#' * `if`/`else` and `for` both return `numeric(0)` instead of NULL when in R
+#'   they  would return NULL.
+#' * [`for`][base::for] sets `var` to NA_real_ if `length(seq) == 0` instead of
+#'   NULL.
+#'
+#' @keywords internal
+#' @seealso The [memory help page][r2c-memory] for background on the equal
+#'   size requirements, and [preprocessing][r2c-preprocess] for more
+#'   control structure implementation details.  Also: [package overview][r2c].
+#' @name r2c-control-structures
+
+NULL
+
+#' Iteration Varying and Constant Expressions
+#'
+#' `r2c` [runners] vary which parts of their `data` argument are computed
+#' on across iterations, so references to values from `data` are known as
+#' (iteration) varying.  Expressions that depend directly or indirectly
+#' on such references are thus varying.  Additionally, when the result
+#' of an `r2c` [implemented function][r2c-supported-funs] call is assigned to a
+#' variable, that variable is considered varying even when the call is
+#' constant.  Other expressions are considered constant.  Some `r2c`
+#' [implemented function][r2c-supported-funs] parameters require constant
+#' expressions; these are known as constant parameters.  Some constant
+#' expressions, including those associated with constant parameters, can be
+#' evaluated externally, i.e. with `base::eval`, instead of internally with
+#' `r2c` native routines.
+#'
+#' `r2c` implements constant parameters to work around limitations of its
+#' [pre-allocated memory][r2c-memory] design.  Normally, `r2c` derives the
+#' size of the output of an expression from the **size** of the inputs, as
+#' is the case with e.g. `seq_along(x)`.  But many useful functions require
+#' knowing the value of their inputs to compute output size, e.g. the value of
+#' `n` in `rep(x, length.out=n)`.  `r2c` can implement functions like the latter
+#' when the input value is constant because such values can be computed in R at
+#' allocation time before any iterations are run (see examples).  Because
+#' constant parameter arguments are evaluated in R, they may involve arbitrary R
+#' expressions provided they are constant and the result of evaluating them is
+#' compatible with the parameter.
+#'
+#' Calls to non-[implemented functions][r2c-supported-funs] are allowed outside
+#' of constant parameters, provided that they are constant and the result of
+#' evaluating them is compatible with the context they are used in.  Like
+#' constant parameters these are also evaluated directly in R at allocation
+#' time.  Non-implemented constant expressions nested within
+#' [branches][r2c-control-structures] are always evaluated, even in branches not
+#' taken at run time.
+#'
+#' Expressions evaluated in R at allocation time are computed once and cached.
+#' Cached values are re-used both across iterations, and within an iteration if
+#' the same expression appears multiple times.  Due to the caching, constant
+#' expressions that cause side-effects, use `eval`, manipulate frames, or engage
+#' in other complex "meta" operations may have different effects than intended.
+#' Simple attempts to create new bindings with constant expressions with e.g.
+#' `<-` will fail; trying to circumvent enforced restrictions is likely to
+#' cause problems.
+#'
+#' Whether an expression is constant can only be determined once the runner is
+#' provided the data to run on.  Since expressions cannot be determined to be
+#' constant at compilation time, compilation assumes that any expression that
+#' could be variable is variable.  This is why only calls to unimplemented
+#' functions or calls given to constant parameters can be evaluated in R.  Other
+#' calls will have been compiled into the chain of native instructions and thus
+#' must be run by `r2c` each iteration, even if they turn out to be constant at
+#' run time.
+#'
+#' @family r2c-topics
+#' @keywords internal
+#' @name r2c-expression-types
+#' @examples
+#' ## Unimplemented functions like `:` allowed if constant, and
+#' ## `r2c` implemented functions like `+` accept constant expressions
+#' ## if their result is e.g. numeric as is the case with `a:b` here.
+#' f <- r2cq(x + a:b)
+#' ## No iterations, everything is constant, so ok
+#' f(runif(8), 11, 12)
+#' ## Iterations, but `a` and `b` are in `MoreArgs` thus constant
+#' grp <- factor(rep(letters[1:4], 2))
+#' group_exec(f, runif(8), grp, MoreArgs=list(a=11, b=12))
+#' ## `a` is now group varying, which is illegal
+#' try(group_exec(f, list(runif(8), a=11:18), grp, MoreArgs=list(b=12)))
+#'
+#' ## Constant parameter `times` takes expression `max(y)` as argument
+#' f <- r2cq(rep(x, times=max(y)))
+#' grp <- factor(c('a', 'b', 'b'))
+#' ## When `y` is constant, so is `max(y)` and this works
+#' group_exec(f, data=list(x=1:3), grp, MoreArgs=list(y=2:4))
+#' ## But if we make `y` varying, it does not
+#' try(group_exec(f, data=list(x=1:3, y=2:4), grp))
+#'
+#' ## Constant expressions that are calls to `r2c` implemented functions
+#' ## but are used in non-constant parameters are re-evaluated each iteration.
+#' f <- r2cq(x + mean(y))    # `mean` is an `r2c` implemented function
+#' grp <- factor(rep(letters[1:4], 2))
+#' y <- runif(8)
+#' x <- runif(8)
+#' ## Works, but evaluates `mean(y)` four times
+#' group_exec(f, x, grp, MoreArgs=list(y=y))
+#' f2 <- r2cq(x + Y)
+#' ## Equivalent, but does not re-evaluate `mean(y)`
+#' group_exec(f2, x, grp, MoreArgs=list(Y=mean(y)))
+#' ## Equivalent, but also does not re-evaluate.
+#' my_mean <- function(x) sum(x)/length(x)  # `my_mean` not r2c implemented
+#' f3 <- r2cq(x + my_mean(y))
+#' group_exec(f3, x, grp, MoreArgs=list(y))
 
 NULL
 
@@ -103,22 +312,24 @@ NULL
 #'
 #' `r2c` will preprocess R expressions to implement optimizations, or to convert
 #' calls to a format better suited for translation to C.  Preprocessing will not
-#' affect the semantics of an R expression, but in some cases the pre-processed
-#' call may look quite different from the input expression.  In general `r2c`
-#' attempts to conceal the preprocessed expressions, but in some cases they may
-#' leak via error messages or other pathways.  This documentation page exists so
-#' users that encounter such leaks can get some indication of what is happening.
-#' [`get_r_code(..., raw=TRUE)`][get_r_code]  will show the fully pre-processed
-#' version of the R code.
+#' affect the semantics of an R expression once it is compiled, but the
+#' pre-processed call may look different from the input expression and may not
+#' run as expected in R.  In general `r2c` attempts to conceal the preprocessed
+#' expressions, but in some cases they may leak via error messages or other
+#' pathways.  This documentation page exists so users that encounter such leaks
+#' can get some indication of what is happening.  [`get_r_code(...,
+#' raw=TRUE)`][get_r_code]  will show the fully pre-processed version of the R
+#' code.
 #'
 #' @section Control Structures:
 #'
-#' Preprocessing is most impactful for control structures.  Most R level calls
+#' Preprocessing is most impactful for [control
+#' structures][r2c-control-structures].  Most R level calls
 #' are converted 1-1 into C level calls.  Control structures are more
 #' complicated because we need to generate the call structure itself without a
 #' direct correspondence of R call to structural element.  The
 #' preprocessor [decomposes regular if / else calls][intermediate-representation]
-#' calls as:
+#' calls like:
 #'
 #' ```
 #' if(a) x else y
@@ -141,6 +352,8 @@ NULL
 #' to get control flow to fit into an implementation that originally did not
 #' intend to allow them).
 #'
+#' @seealso [Package Overview][r2c].
+#' @keywords internal
 #' @name r2c-preprocess
 #' @examples
 #' get_r_code(r2c.if <- r2cq(if(a) b else c), raw=TRUE)
@@ -153,5 +366,53 @@ NULL
 #'   res
 #' }), raw=TRUE)
 #' r2c.for(1:10)
+
+NULL
+
+#' Performance Considerations
+#'
+#' `r2c`'s primary optimization is to remove interpreter overhead for
+#' iterated calculations with varying data.  `r2c` is most beneficial for
+#' calculations that would otherwise require R level calls on each of many small
+#' vectors.  Additionally, `r2c` reduces [peak memory usage][r2c-memory] and
+#' fragmentation.  In exchange, `r2c` adds compilation overhead that will need
+#' to be amortized across [runner][runners] executions, as well as a few
+#' millisecond [runner][runners] startup cost for memory allocation.
+#'
+#' R interpreter overhead remains noticeable into vector sizes of
+#' hundreds of elements, but even with larger elements `r2c` should retain some
+#' performance advantage over equivalent R code.  The more complex the R
+#' expression the larger the advantage `r2c` should have.
+#'
+#' Like R, `r2c` is optimized for internally vectorized operations.  While you
+#' can write explicit loops with `for`, they will be significantly slower than a
+#' pure C version, and only marginally faster than byte compiled R equivalents.
+#' This is particularly true for tight loops with arithmetic on scalar
+#' variables.
+#'
+#' When iterating across data sub-groups, `r2c` first sorts the data by group so
+#' that it can then scan through the groups sequentially.  The sorting is fast
+#' thanks to the radix sort contributed to R by `data.table`, but it still adds
+#' overhead.  If you re-use the same data with different `r2c` functions, you
+#' should pre-sort it and use [`process_groups`].  If you know your
+#' data is already sorted by group you can also use [`process_groups`] to
+#' communicate that to the runners.
+#'
+#' `r2c` computes on floating point numeric values.  Nominally it supports
+#' integer and logical values as well, but these are coerced to numeric first,
+#' and thus copied.  If integer or logical inputs would cause an R expression to
+#' return in those types, `r2c` coerces the final result of the corresponding
+#' `r2c` expression to those types too, again with a copy.  In the future
+#' coercion of results made be optional.  For best performance use only floating
+#' point numeric inputs.
+#'
+#' Currently `r2c` implements some simple "compiler" optimizations, such as
+#' [re-using][reuse_calls] results of repeated sub-expressions, and identifying
+#' expired symbols (to free associated memory for re-use).  These are
+#' implemented in the [preprocessing step][r2c-preproces].
+#'
+#' @seealso [Package Overview][r2c].
+#' @keywords internal
+#' @name r2c-performance
 
 NULL
