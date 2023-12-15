@@ -621,7 +621,7 @@ get_r2c_dat <- function(fun, check=TRUE) {
       ) )
     if(!identical(dat[['r2c.version']], utils::packageVersion('r2c')))
       stop(
-        "`fun` was compiled with a different r2c verson (",
+        "`fun` was compiled with a different r2c version (",
         dat[['r2c.version']], ")"
       )
   }

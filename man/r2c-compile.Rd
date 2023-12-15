@@ -100,11 +100,11 @@ interface to that code in the form of an "r2c_fun" function.  This function
 will carry out out numerical calculations with \code{r2c} native instructions
 instead of with the standard R routines. Expressions to compile can contain
 arbitrary R sub-expressions so long as they are found to be
-\link[=r2c-expression-types]{iteration-constant} at run time.  "r2c_fun" functions
-are intended to be run with the \code{r2c} \link{runners} for fast iterated
-calculations.  \code{r2c} adheres closely to R semantics for the
-supported use cases.  Look at the examples here and those of the \link{runners} to
-get started.
+\link[=r2c-expression-types]{iteration-constant} at run time; these will be
+evaluated in R.  "r2c_fun" functions are intended to be run with the \code{r2c}
+\link{runners} for fast iterated calculations.  \code{r2c} adheres closely to R
+semantics for the supported use cases.  Look at the examples here and those
+of the \link{runners} to get started.
 }
 \section{r2c Generated Functions}{
 

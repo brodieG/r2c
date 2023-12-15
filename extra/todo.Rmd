@@ -36,11 +36,6 @@
 
 ## Current
 
-* Something not right about recovering a reference "r2c_fun" in unitizer:
-
-    unitizer> get_r_code(ref(f1a))
-    Error in dat.contents[["R.version"]] : subscript out of bounds  
-
 * Should grouping be done directly on data?  E.g.:
 
     group_exec(f, group(dat, g))
@@ -67,16 +62,9 @@
 
   Do we want to go down that road?
 
-* Strictly it's iterated calculations, not iterated statistics, but it doesn't
-  make a whole lot of sense to use r2c without stats as you probably could do
-  just fine with regular R (but what about e.g. reversing by group - could
-  reverse whole thing, and then order by group
-
-* Doc improvements:
-  * Spruce up r2c landing page.
-  * Better structuring of topics?
-  * Add a performance page?  Generally try to move more arcane stuff out of the
-    primary pages to simplify them?
+* Processed groups and data frame output?  We're using the `group` input as
+  mechanism for choosing between vector/df output format, but does that work
+  with `process_groups`?
 
 * Think through implication of saving parameter validation functions in r2c_fun
   object in terms of environment capture, etc.

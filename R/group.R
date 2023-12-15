@@ -240,10 +240,12 @@ r2c_groups_template <- function() {
 #' group's portion of `data`.
 #'
 #' @export
-#' @seealso [`r2c`] for more details on the behavior and constraints of
-#'   "r2c_fun" functions, [`base::eval`] for the semantics of `enclos`.
+#' @seealso [Compilation][r2c-compile] for more details on the behavior and
+#'   constraints of "r2c_fun" functions, [`base::eval`] for the semantics of
+#'   `enclos`.
 #' @family runners
-#' @param fun an "r2c_fun" function as produced by [`r2c`].
+#' @param fun an "r2c_fun" function as produced by the [compilation
+#'   functions][r2c-compile].
 #' @param groups an integer, numeric, or factor vector.  Alternatively, a list
 #'   of equal-length such vectors, the interaction of which defines individual
 #'   groups to organize the vectors in `data` into (multiple vectors not
@@ -262,12 +264,13 @@ r2c_groups_template <- function() {
 #'   list must contain at least one vector.  Conceptually, this parameter is
 #'   used similarly to `envir` parameter to [`base::eval`] when that is a list
 #'   (see `enclos`).
-#' @param MoreArgs a list of R objects to pass on as iteration-invariant
-#'   arguments to `fun`.  Unlike with `data`, each of the objects therein are
-#'   passed in full to the native code for each iteration  This is useful for
-#'   arguments that are intended to remain constant across iterations.  Matching
-#'   of these objects to `fun` parameters is the same as for `data`, with
-#'   positional matching occurring after the elements in `data` are matched.
+#' @param MoreArgs a list of R objects to pass on as
+#'   [iteration-constant][r2c-expression-types] arguments to `fun`.  Unlike with
+#'   `data`, each of the objects therein are passed in full to the native code
+#'   for each iteration  This is useful for arguments that are intended to
+#'   remain constant across iterations.  Matching of these objects to `fun`
+#'   parameters is the same as for `data`, with positional matching occurring
+#'   after the elements in `data` are matched.
 #' @return If `groups` is an atomic vector, a named numeric or integer vector
 #'   with the results of executing `fun` on each group and the names set to the
 #'   groups.  Otherwise, a "data.frame" with the group vectors as columns and
@@ -290,7 +293,7 @@ r2c_groups_template <- function() {
 #'   group_exec(r2c_slope, list(y=hp, x=qsec), groups=list(cyl))
 #' )
 #'
-#' ## We can provide group=invariant parameters:
+#' ## We can provide iteration-constant parameters (na.rm here):
 #' r2c_sum_add_na <- r2cq(sum(x * y, na.rm=na.rm) / sum(y))
 #' str(formals(r2c_sum_add_na))
 #' a <- runif(10)
@@ -299,7 +302,7 @@ r2c_groups_template <- function() {
 #' g <- rep(1:2, each=5)
 #' group_exec(
 #'   r2c_sum_add_na, a, groups=g,
-#'   MoreArgs=list(y=weights, na.rm=TRUE)  ## use MoreArgs for group-invariant
+#'   MoreArgs=list(y=weights, na.rm=TRUE)  ## MoreArgs for iter-constant
 #' )
 #' group_exec(
 #'   r2c_sum_add_na, a, groups=g,

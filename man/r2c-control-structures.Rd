@@ -21,8 +21,8 @@ Return values are coerced to a common type.
 the same size irrespective of branch taken, if the corresponding bindings
 are subsequently used.  Assigned values are coerced to a common type.
 \item Control structures can be nested at most 999 levels.
-\item \link[=r2c-expression-types]{Constant expressions} must be valid in every branch,
-even if the branch is not taken at run time.
+\item Externally evaluated \link[=r2c-expression-types]{constant expressions} must be
+valid in every branch, even if the branch is not taken at run time.
 }
 
 To clarify the last point, consider:
@@ -30,10 +30,11 @@ To clarify the last point, consider:
 \if{html}{\out{<div class="sourceCode">}}\preformatted{if(n > 0) sum(seq_len(n)) else 0
 }\if{html}{\out{</div>}}
 
-The call to \code{seq_len} is a non-implemented \link[=r2c-expression-types]{constant expression} so it is run at allocation time.  On the
-other hand, \code{n > 0} is a varying expression only run after allocation, so
-\code{r2c} externally evaluates \code{seq_len(n)} irrespective of the value of \code{n}.
-Checks like the \code{n > 0} above need to be done outside of \code{r2c}.
+The call to \code{seq_len} is a non-implemented \link[=r2c-expression-types]{constant expression} so it is \code{eval}ed in R at allocation time.
+On the other hand, \code{n > 0} is a varying expression run with \code{r2c} routines
+only after allocation.  Because \code{seq_len(n)} is \code{eval}ed before \code{n > 0} is
+computed, \code{seq_len(n)} runs irrespective of the value of \code{n}.  Checks like
+the \code{n > 0} above need to be done outside of \code{r2c}.
 
 There are also other minor semantic differences:
 \itemize{

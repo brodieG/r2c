@@ -10,7 +10,18 @@
 
 ## Done
 
-### v0.4.0
+### v0.3.0
+
+* Something not right about recovering a reference "r2c_fun" in unitizer:
+
+    unitizer> get_r_code(ref(f1a))
+    Error in dat.contents[["R.version"]] : subscript out of bounds  
+
+* Doc improvements:
+  * Spruce up r2c landing page.
+  * Better structuring of topics?
+  * Add a performance page?  Generally try to move more arcane stuff out of the
+    primary pages to simplify them?
 
 * Copyright banners in tests have wrong title.
 

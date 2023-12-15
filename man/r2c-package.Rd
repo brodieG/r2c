@@ -8,14 +8,14 @@
 \description{
 Compiles a subset of R into machine code so that expressions composed with
 that subset can be applied repeatedly on varying data without interpreter
-overhead.
+overhead.  See the \link{group_exec} examples for a quick start.
 }
 \details{
-For a quick start:
+Basics:
 \itemize{
 \item \link[=r2c-supported-funs]{Supported functions}: which R functions \code{r2c} can
-compiles.
-\item \link[=r2c-compile]{Compilation functions}: how to compile R with \code{r2c}.
+compile.
+\item \link[=r2c-compile]{Compilation facilities}: how to compile R with \code{r2c}.
 \item \link[=runners]{Runners}, to execute your code iteratively:
 \itemize{
 \item By \link[=group_exec]{group}.

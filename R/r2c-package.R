@@ -17,14 +17,14 @@
 #'
 #' Compiles a subset of R into machine code so that expressions composed with
 #' that subset can be applied repeatedly on varying data without interpreter
-#' overhead.
+#' overhead.  See the [group_exec] examples for a quick start.
 #'
-#' For a quick start:
+#' Basics:
 #'
 #' * [Supported functions][r2c-supported-funs]: which R functions `r2c` can
 #'   compile.
 #' * [Compilation facilities][r2c-compile]: how to compile R with `r2c`.
-#' * [Runners][runners], to execute your code iteratively:
+#' * [Runners][runners]: how to execute your code iteratively.
 #'   * By [group][group_exec].
 #'   * Across [windows][rolli_exec].
 #'
@@ -182,8 +182,8 @@ NULL
 #'   the same size irrespective of branch taken, if the corresponding bindings
 #'   are subsequently used.  Assigned values are coerced to a common type.
 #' * Control structures can be nested at most 999 levels.
-#' * [Constant expressions][r2c-expression-types] must be valid in every branch,
-#'   even if the branch is not taken at run time.
+#' * Externally evaluated [constant expressions][r2c-expression-types] must be
+#'   valid in every branch, even if the branch is not taken at run time.
 #'
 #' To clarify the last point, consider:
 #'
@@ -192,10 +192,11 @@ NULL
 #' ```
 #'
 #' The call to `seq_len` is a non-implemented [constant
-#' expression][r2c-expression-types] so it is run at allocation time.  On the
-#' other hand, `n > 0` is a varying expression only run after allocation, so
-#' `r2c` externally evaluates `seq_len(n)` irrespective of the value of `n`.
-#' Checks like the `n > 0` above need to be done outside of `r2c`.
+#' expression][r2c-expression-types] so it is `eval`ed in R at allocation time.
+#' On the other hand, `n > 0` is a varying expression run with `r2c` routines
+#' only after allocation.  Because `seq_len(n)` is `eval`ed before `n > 0` is
+#' computed, `seq_len(n)` runs irrespective of the value of `n`.  Checks like
+#' the `n > 0` above need to be done outside of `r2c`.
 #'
 #' There are also other minor semantic differences:
 #'
@@ -222,7 +223,10 @@ NULL
 #' variable, that variable is considered varying even when the call is
 #' constant.  Other expressions are considered constant.  Some `r2c`
 #' [implemented function][r2c-supported-funs] parameters require constant
-#' expressions; these are known as constant parameters.
+#' expressions; these are known as constant parameters.  Some constant
+#' expressions, including those associated with constant parameters, can be
+#' evaluated externally, i.e. with `base::eval`, instead of internally with
+#' `r2c` native routines.
 #'
 #' `r2c` implements constant parameters to work around limitations of its
 #' [pre-allocated memory][r2c-memory] design.  Normally, `r2c` derives the

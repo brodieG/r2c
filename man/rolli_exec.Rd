@@ -46,12 +46,13 @@ represents the offset of the window relative to its anchor).}
 \item{partial}{TRUE or FALSE (default), whether to allow computation on
 partial windows that extent out of either end of the data.}
 
-\item{MoreArgs}{a list of R objects to pass on as iteration-invariant
-arguments to \code{fun}.  Unlike with \code{data}, each of the objects therein are
-passed in full to the native code for each iteration  This is useful for
-arguments that are intended to remain constant across iterations.  Matching
-of these objects to \code{fun} parameters is the same as for \code{data}, with
-positional matching occurring after the elements in \code{data} are matched.}
+\item{MoreArgs}{a list of R objects to pass on as
+\link[=r2c-expression-types]{iteration-constant} arguments to \code{fun}.  Unlike with
+\code{data}, each of the objects therein are passed in full to the native code
+for each iteration  This is useful for arguments that are intended to
+remain constant across iterations.  Matching of these objects to \code{fun}
+parameters is the same as for \code{data}, with positional matching occurring
+after the elements in \code{data} are matched.}
 }
 \value{
 a numeric vector of length \code{length(first_vec(data)) \%/\% by}.

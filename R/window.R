@@ -242,11 +242,9 @@ bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 #' @export
 #' @inheritParams group_exec
 #' @family runners
-#' @seealso [`r2c-compile`] for more details on the behavior and constraints of
-#'   "r2c_fun" functions, [`first_vec`] to retrieve first atomic vector.
-#' @param fun an "r2c_fun" function as produced by [`r2c`], except with the
-#'   additional restriction that it must be guaranteed to produce scalar
-#'   results as used with this function.
+#' @seealso [Compilation][r2c-compile] for more details on the behavior and
+#'   constraints of "r2c_fun" functions, [`first_vec`] to retrieve
+#'   first atomic vector.
 #' @param width scalar positive numeric giving the width of the window interval.
 #'   Unlike with [`rolli_exec`]'s `n`, `width` must be scalar.
 #' @param position finite, non-NA, monotonically increasing numeric vector with
@@ -542,8 +540,8 @@ rollbw_exec <- function(
 #' @inheritParams rollby_exec
 #' @family runners
 #' @export
-#' @seealso [`r2c`] for more details on the behavior and constraints of
-#'   "r2c_fun" functions.
+#' @seealso [Compilation][r2c-compile] for more details on the behavior and
+#'   constraints of "r2c_fun" functions.
 #' @param n integer number of adjacent data "elements" to compute `fun` on.
 #'   It is called `n` and not `width` to emphasize it is a discrete count
 #'   instead of an interval width as in [`rollby_exec`] and friends.  Must be

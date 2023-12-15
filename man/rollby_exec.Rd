@@ -92,12 +92,13 @@ a window boundary are included or excluded from the window:
 \item "(]: R:)\%22:\%20include\%20elements\%20on\%20left\%20boundary,\%20exclude\%20those\%20on\%20right\%20(default).\%0A*\%20\%22(
 }}
 
-\item{MoreArgs}{a list of R objects to pass on as iteration-invariant
-arguments to \code{fun}.  Unlike with \code{data}, each of the objects therein are
-passed in full to the native code for each iteration  This is useful for
-arguments that are intended to remain constant across iterations.  Matching
-of these objects to \code{fun} parameters is the same as for \code{data}, with
-positional matching occurring after the elements in \code{data} are matched.}
+\item{MoreArgs}{a list of R objects to pass on as
+\link[=r2c-expression-types]{iteration-constant} arguments to \code{fun}.  Unlike with
+\code{data}, each of the objects therein are passed in full to the native code
+for each iteration  This is useful for arguments that are intended to
+remain constant across iterations.  Matching of these objects to \code{fun}
+parameters is the same as for \code{data}, with positional matching occurring
+after the elements in \code{data} are matched.}
 
 \item{at}{non-NA, finite, monotonically increasing numeric vector of anchor
 positions on the real line for each window (see notes).
