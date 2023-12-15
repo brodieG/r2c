@@ -761,11 +761,12 @@ recompose_control <- function(x) {
             x[[c(i + 1L, 3L, 2L)]]        # expr
           )
           # Drop trailing numeric(0)
+          cr4 <- call.recompose[[4L]]
           if(
-            !is.brace_call(call.recompose[[4L]]) ||
-            !identical(
-              call.recompose[[4L]][[length(call.recompose[[4L]])]],
-              QNULL.REC
+            !is.brace_call(cr4) ||
+            (
+              !identical(cr4[[length(cr4)]], QNULL) &&
+              !identical(cr4[[length(cr4)]], QNULL.REC)
             )
           )
             stop(
