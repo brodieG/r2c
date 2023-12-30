@@ -76,7 +76,9 @@ icnst_par <- function(type="num", validate=function(x) TRUE) {
   )
   structure(list(type=PAR.ICNST[type], validate=validate), class='icnst_par')
 }
-## Validation functions for iteration-constant parameters.
+## Validation functions for iteration-constant parameters.  These need to be
+## defined at namespace top-level so they store nicely without grabbing
+## environment contents, etc.
 
 # mean uses isTRUE(na.rm).  Sum not sure, mabye !isFALSE(na.rm)
 valid_narm <- function(na.rm) vet(LGL.1, na.rm)
@@ -89,6 +91,8 @@ valid_trim <- function(trim) {
   else TRUE
 }
 valid_length <- function(length) vet(NUM.1.POS, length)
+# Dummy for things that don't need to be validated
+valid_always <- function(x) TRUE
 
 ## Initializer for Function Registration Entries
 ##

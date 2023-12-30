@@ -218,7 +218,7 @@ preprocess <- function(call, optimize=FALSE) {
 pp_internal <- function(
   call, depth, x, argn="", assign=FALSE, call.parent=NULL,
   call.parent.name="",
-  par.validate=function(x) TRUE, # should only be for a literal only call
+  par.validate=valid_always,
   indent=0L, passive=TRUE, par.type, unsupported
 ) {
   if(depth == .Machine$integer.max)
@@ -260,7 +260,7 @@ pp_internal <- function(
     par.icnst.loc <- match(par.icnst.names, names(args), nomatch=0)
     par.types <- rep(PAR.IVARY.NUM, length(args))
     par.types[par.icnst.loc] <- par.icnst.types
-    par.validate <- replicate(length(args), function(x) TRUE, simplify=FALSE)
+    par.validate <- replicate(length(args), valid_always, simplify=FALSE)
     par.validate[par.icnst.loc] <- par.icnst.validate
 
     passive <- passive && func %in% c(PASSIVE.SYM, 'vcopy')
