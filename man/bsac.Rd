@@ -13,8 +13,7 @@ bsac(call, data, groups, MoreArgs = list(), enclos = parent.frame())
 vectors.  If a named list, the vectors will be matched to \code{fun} parameters
 by those names.  Elements without names are matched positionally.  If a
 list must contain at least one vector.  Conceptually, this parameter is
-used similarly to \code{envir} parameter to \code{\link[base:eval]{base::eval}} when that is a list
-(see \code{enclos}).}
+used similarly to \code{envir} parameter to \code{\link[base:eval]{base::eval}} when that is a list.}
 
 \item{groups}{an integer, numeric, or factor vector.  Alternatively, a list
 of equal-length such vectors, the interaction of which defines individual

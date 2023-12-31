@@ -244,7 +244,7 @@ bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 #' @family runners
 #' @seealso [Compilation][r2c-compile] for more details on the behavior and
 #'   constraints of "r2c_fun" functions, [`first_vec`] to retrieve
-#'   first atomic vector.
+#'   first atomic vector, [package overview][r2c] for other `r2c` concepts.
 #' @param width scalar positive numeric giving the width of the window interval.
 #'   Unlike with [`rolli_exec`]'s `n`, `width` must be scalar.
 #' @param position finite, non-NA, monotonically increasing numeric vector with
@@ -541,8 +541,10 @@ rollbw_exec <- function(
 #' @family runners
 #' @export
 #' @seealso [Compilation][r2c-compile] for more details on the behavior and
-#'   constraints of "r2c_fun" functions.
-#' @param n integer number of adjacent data "elements" to compute `fun` on.
+#'   constraints of "r2c_fun" functions, [package overview][r2c] for other `r2c`
+#'   concepts.
+#' @param n integer number of adjacent data "elements" to compute
+#'   `fun` on.
 #'   It is called `n` and not `width` to emphasize it is a discrete count
 #'   instead of an interval width as in [`rollby_exec`] and friends.  Must be
 #'   scalar, or have as many elements as data (see "Data Elements").  For the
@@ -565,9 +567,9 @@ rollbw_exec <- function(
 #'   mtcars,
 #'   rolli_exec(r2c_mean, hp, n=5)
 #' )
-#' r2c_len <- r2cq(length(x))
 #'
 #' ## Effect of align and partial
+#' r2c_len <- r2cq(length(x))
 #' dat <- runif(5)
 #' rolli_exec(r2c_len, dat, n=5, align='left', partial=TRUE)
 #' rolli_exec(r2c_len, dat, n=5, align='center', partial=TRUE)

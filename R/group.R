@@ -241,8 +241,8 @@ r2c_groups_template <- function() {
 #'
 #' @export
 #' @seealso [Compilation][r2c-compile] for more details on the behavior and
-#'   constraints of "r2c_fun" functions, [`base::eval`] for the semantics of
-#'   `enclos`.
+#'   constraints of "r2c_fun" functions, [package overview][r2c] for other `r2c`
+#'   concepts.
 #' @family runners
 #' @param fun an "r2c_fun" function as produced by the [compilation
 #'   functions][r2c-compile].
@@ -262,8 +262,7 @@ r2c_groups_template <- function() {
 #'   vectors.  If a named list, the vectors will be matched to `fun` parameters
 #'   by those names.  Elements without names are matched positionally.  If a
 #'   list must contain at least one vector.  Conceptually, this parameter is
-#'   used similarly to `envir` parameter to [`base::eval`] when that is a list
-#'   (see `enclos`).
+#'   used similarly to `envir` parameter to [`base::eval`] when that is a list.
 #' @param MoreArgs a list of R objects to pass on as
 #'   [iteration-constant][r2c-expression-types] arguments to `fun`.  Unlike with
 #'   `data`, each of the objects therein are passed in full to the native code
@@ -274,7 +273,8 @@ r2c_groups_template <- function() {
 #' @return If `groups` is an atomic vector, a named numeric or integer vector
 #'   with the results of executing `fun` on each group and the names set to the
 #'   groups.  Otherwise, a "data.frame" with the group vectors as columns and
-#'   the result of the computation as the last column.
+#'   the result of the computation as the last column.  It is likely the
+#'   mechanism to induce vector or data frame outputs will change in the future.
 #' @examples
 #' r2c_mean <- r2cq(mean(x))
 #' with(mtcars, group_exec(r2c_mean, hp, groups=cyl))

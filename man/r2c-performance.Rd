@@ -5,12 +5,14 @@
 \title{Performance Considerations}
 \description{
 \code{r2c}'s primary optimization is to remove interpreter overhead for
-iterated calculations with varying data.  \code{r2c} is most beneficial for
-calculations that would otherwise require R level calls on each of many small
-vectors.  Additionally, \code{r2c} reduces \link[=r2c-memory]{peak memory usage} and
-fragmentation.  In exchange, \code{r2c} adds compilation overhead that will need
-to be amortized across \link[=runners]{runner} executions, as well as a few
-millisecond \link[=runners]{runner} startup cost for memory allocation.
+iterated calculations with varying data.  \code{r2c} does this via the
+\link{runners} that feed each iteration's data into and collect the results from
+the \link[=r2c-compile]{compiled} "r2c_fun"s, all directly in native code.  \code{r2c}
+is most beneficial for calculations that would otherwise require R level
+calls on each of many small vectors.  Additionally, \code{r2c} reduces \link[=r2c-memory]{peak memory usage} and fragmentation.  In exchange, \code{r2c} adds
+compilation overhead that will need to be amortized across \link[=runners]{runner}
+executions, as well as a few millisecond \link[=runners]{runner} startup cost for
+memory allocation.
 }
 \details{
 R interpreter overhead remains noticeable into vector sizes of
@@ -22,7 +24,8 @@ Like R, \code{r2c} is optimized for internally vectorized operations.  While you
 can write explicit loops with \code{for}, they will be significantly slower than a
 pure C version, and only marginally faster than byte compiled R equivalents.
 This is particularly true for tight loops with arithmetic on scalar
-variables.
+variables.  Likely \code{r2c} loops could be optimized significantly, but that is
+not a priority.
 
 When iterating across data sub-groups, \code{r2c} first sorts the data by group so
 that it can then scan through the groups sequentially.  The sorting is fast
@@ -37,15 +40,15 @@ integer and logical values as well, but these are coerced to numeric first,
 and thus copied.  If integer or logical inputs would cause an R expression to
 return in those types, \code{r2c} coerces the final result of the corresponding
 \code{r2c} expression to those types too, again with a copy.  In the future
-coercion of results made be optional.  For best performance use only floating
-point numeric inputs.
+coercion of results may be made optional.  For best performance use only
+floating point numeric inputs.
 
 Currently \code{r2c} implements some simple "compiler" optimizations, such as
 \link[=reuse_calls]{re-using} results of repeated sub-expressions, and identifying
 expired symbols (to free associated memory for re-use).  These are
-implemented in the \link[=r2c-preproces]{preprocessing step}.
+implemented in the \link[=r2c-preprocess]{preprocessing step}.
 }
 \seealso{
-\link[=r2c]{Package Overview}.
+\link[=r2c]{Package overview} for other \code{r2c} concepts.
 }
 \keyword{internal}

@@ -8,29 +8,38 @@
 \description{
 Compiles a subset of R into machine code so that expressions composed with
 that subset can be applied repeatedly on varying data without interpreter
-overhead.  See the \link{group_exec} examples for a quick start.
+overhead.
 }
 \details{
+Quick Start:
+\itemize{
+\item Look at the \link[=group_exec]{group statistic} examples.
+}
+
 Basics:
 \itemize{
 \item \link[=r2c-supported-funs]{Supported functions}: which R functions \code{r2c} can
 compile.
 \item \link[=r2c-compile]{Compilation facilities}: how to compile R with \code{r2c}.
-\item \link[=runners]{Runners}, to execute your code iteratively:
-\itemize{
-\item By \link[=group_exec]{group}.
-\item Across \link[=rolli_exec]{windows}.
-}
+\item \link[=runners]{Runners}: how to execute your code iteratively by
+\link[=group_exec]{group} or across \link[=rolli_exec]{windows}.
 }
 
-Details:
+Advanced:
 \itemize{
-\item \link[=r2c-performance]{Performance considerations}.
-\item \link[=r2c-memory]{Memory use}.
-\item \link[=r2c-preprocess]{Preprocessing}.
-\item \link[=r2c-control-structures]{Control structures} (experimental).
-\item \link{Expression Types}: to understand where it is allowable to use
-non-supported functions and why some supported function parameters are
-required to be constant.
+\item \link[=r2c-performance]{Performance}: what makes \code{r2c} fast and what tasks it is
+best suited for.
+\item \link[=r2c-memory]{Memory}: how \code{r2c} minimizes peak memory usage and
+fragmentation.
+\item \link[=r2c-preprocess]{Preprocessing}: why \code{r2c} modifies R calls before
+translating them into C.
+\item \link[=r2c-inspect]{Inspect}: how to extract components of the "r2c_fun" objects.
+\item \link[=r2c-control-structures]{Control structures}: why these are considered
+experimental, and how and why their semantics diverge from their base R
+counterparts.
+\item \link[=r2c-expression-types]{Expression types}: why \code{r2c} distinguishes between
+iteration constant and varying calls, why some supported function
+parameters require constant calls, and why calls to unsupported functions
+are allowed in some circumstances.
 }
 }

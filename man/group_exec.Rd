@@ -7,14 +7,13 @@
 group_exec(fun, data, groups, MoreArgs = list())
 }
 \arguments{
-\item{fun}{an "r2c_fun" function as produced by \code{\link{r2c}}.}
+\item{fun}{an "r2c_fun" function as produced by the \link[=r2c-compile]{compilation functions}.}
 
 \item{data}{a numeric vector, or a list of equal length numeric
 vectors.  If a named list, the vectors will be matched to \code{fun} parameters
 by those names.  Elements without names are matched positionally.  If a
 list must contain at least one vector.  Conceptually, this parameter is
-used similarly to \code{envir} parameter to \code{\link[base:eval]{base::eval}} when that is a list
-(see \code{enclos}).}
+used similarly to \code{envir} parameter to \code{\link[base:eval]{base::eval}} when that is a list.}
 
 \item{groups}{an integer, numeric, or factor vector.  Alternatively, a list
 of equal-length such vectors, the interaction of which defines individual
@@ -41,7 +40,8 @@ after the elements in \code{data} are matched.}
 If \code{groups} is an atomic vector, a named numeric or integer vector
 with the results of executing \code{fun} on each group and the names set to the
 groups.  Otherwise, a "data.frame" with the group vectors as columns and
-the result of the computation as the last column.
+the result of the computation as the last column.  It is likely the
+mechanism to induce vector or data frame outputs will change in the future.
 }
 \description{
 A \link[=runners]{runner} that organizes \code{data} into groups as defined by \code{groups},
@@ -99,8 +99,9 @@ group_exec(r2c_mean, x, groups=list(g))
 group_exec(r2c_mean, x, groups=process_groups(list(g), sorted=TRUE))
 }
 \seealso{
-\code{\link{r2c}} for more details on the behavior and constraints of
-"r2c_fun" functions, \code{\link[base:eval]{base::eval}} for the semantics of \code{enclos}.
+\link[=r2c-compile]{Compilation} for more details on the behavior and
+constraints of "r2c_fun" functions, \link[=r2c]{package overview} for other \code{r2c}
+concepts.
 
 Other runners: 
 \code{\link{rollby_exec}()},

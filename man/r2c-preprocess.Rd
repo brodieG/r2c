@@ -59,6 +59,6 @@ get_r_code(r2c.for <- r2cq({
 r2c.for(1:10)
 }
 \seealso{
-\link[=r2c]{Package Overview}.
+\link[=r2c]{Package overview} for other \code{r2c} concepts.
 }
 \keyword{internal}

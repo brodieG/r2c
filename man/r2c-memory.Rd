@@ -35,6 +35,6 @@ error at run time if this limit is exceeded.  It should be difficult to reach
 this cap when computing statistics.
 }
 \seealso{
-\link[=r2c]{Package Overview}.
+\link[=r2c]{Package overview} for other \code{r2c} concepts.
 }
 \keyword{internal}

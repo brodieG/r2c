@@ -17,26 +17,36 @@
 #'
 #' Compiles a subset of R into machine code so that expressions composed with
 #' that subset can be applied repeatedly on varying data without interpreter
-#' overhead.  See the [group_exec] examples for a quick start.
+#' overhead.
+#'
+#' Quick Start:
+#'
+#' * Look at the [group statistic][group_exec] examples.
 #'
 #' Basics:
 #'
 #' * [Supported functions][r2c-supported-funs]: which R functions `r2c` can
 #'   compile.
 #' * [Compilation facilities][r2c-compile]: how to compile R with `r2c`.
-#' * [Runners][runners]: how to execute your code iteratively.
-#'   * By [group][group_exec].
-#'   * Across [windows][rolli_exec].
+#' * [Runners][runners]: how to execute your code iteratively by
+#'   [group][group_exec] or across [windows][rolli_exec].
 #'
-#' Details:
+#' Advanced:
 #'
-#' * [Performance considerations][r2c-performance].
-#' * [Memory use][r2c-memory].
-#' * [Preprocessing][r2c-preprocess].
-#' * [Control structures][r2c-control-structures] (experimental).
-#' * [Expression Types]: to understand where it is allowable to use
-#'   non-supported functions and why some supported function parameters are
-#'   required to be constant.
+#' * [Performance][r2c-performance]: what makes `r2c` fast and what tasks it is
+#'   best suited for.
+#' * [Memory][r2c-memory]: how `r2c` minimizes peak memory usage and
+#'   fragmentation.
+#' * [Preprocessing][r2c-preprocess]: why `r2c` modifies R calls before
+#'   translating them into C.
+#' * [Inspect][r2c-inspect]: how to extract components of the "r2c_fun" objects.
+#' * [Control structures][r2c-control-structures]: why these are considered
+#'   experimental, and how and why their semantics diverge from their base R
+#'   counterparts.
+#' * [Expression types][r2c-expression-types]: why `r2c` distinguishes between
+#'   iteration constant and varying calls, why some supported function
+#'   parameters require constant calls, and why calls to unsupported functions
+#'   are allowed in some circumstances.
 #'
 #' @docType package
 #' @name r2c-package
@@ -64,7 +74,7 @@ utils::globalVariables(".")  # for vetr .
 #' @keywords internal
 #' @name runners
 #' @family runner functions
-#' @seealso [Package Overview][r2c].
+#' @seealso [Package overview][r2c] for other `r2c` concepts.
 
 NULL
 
@@ -73,7 +83,7 @@ NULL
 #' `r2c` supports a subset of R functions for compilation.  These functions
 #' are re-implemented and optimized for iterated execution while hewing as
 #' closely as practicable to the original R semantics.  `r2c` also allows
-#' arbitrary R function calls provided they are
+#' embedding arbitrary R function calls provided they are
 #' [iteration-constant][r2c-expression-types], but these are evaluated in R and
 #' not in `r2c` compiled code.
 #'
@@ -98,7 +108,7 @@ NULL
 #'   * In 1 dimension with strictly positive numeric indices.
 #'   * Return value of assignment form may not be used.
 #' * Initialization: `numeric` (and the `r2c` provided [`numeric_along`]).
-#'   * `length` is a [constant parameter][r2c-expression-types].
+#'   * `length` is a [constant][r2c-expression-types] parameter.
 #' * Braces: `{`.
 #' * Assignment: `<-`, `=`.
 #'   * Assignments cannot be made as part of an argument (e.g.
@@ -122,7 +132,7 @@ NULL
 #' be bound to their original symbols for them to be recognized.
 #'
 #' @keywords internal
-#' @seealso [Package Overview][r2c].
+#' @seealso [Package overview][r2c] for other `r2c` concepts.
 #' @name r2c-supported-funs
 
 NULL
@@ -158,7 +168,7 @@ NULL
 #' error at run time if this limit is exceeded.  It should be difficult to reach
 #' this cap when computing statistics.
 #'
-#' @seealso [Package Overview][r2c].
+#' @seealso [Package overview][r2c] for other `r2c` concepts.
 #' @keywords internal
 #' @name r2c-memory
 
@@ -208,7 +218,8 @@ NULL
 #' @keywords internal
 #' @seealso The [memory help page][r2c-memory] for background on the equal
 #'   size requirements, and [preprocessing][r2c-preprocess] for more
-#'   control structure implementation details.  Also: [package overview][r2c].
+#'   control structure implementation details, [package overview][r2c] for other
+#'   `r2c` concepts.
 #' @name r2c-control-structures
 
 NULL
@@ -218,15 +229,14 @@ NULL
 #' `r2c` [runners] vary which parts of their `data` argument are computed
 #' on across iterations, so references to values from `data` are known as
 #' (iteration) varying.  Expressions that depend directly or indirectly
-#' on such references are thus varying.  Additionally, when the result
-#' of an `r2c` [implemented function][r2c-supported-funs] call is assigned to a
-#' variable, that variable is considered varying even when the call is
-#' constant.  Other expressions are considered constant.  Some `r2c`
+#' on such references are thus varying.  Other expressions are considered
+#' (iteration) constant (see note for an exception).  Since constant
+#' expressions are independent of the varying data, they can be computed
+#' with `base::eval` before any `r2c` compiled code is run.  By extension,
+#' constant expressions can be composed of arbitrary R calls, subject to their
+#' result being compatible with the context they are used in.  Some `r2c`
 #' [implemented function][r2c-supported-funs] parameters require constant
-#' expressions; these are known as constant parameters.  Some constant
-#' expressions, including those associated with constant parameters, can be
-#' evaluated externally, i.e. with `base::eval`, instead of internally with
-#' `r2c` native routines.
+#' expressions; these are known as constant parameters.
 #'
 #' `r2c` implements constant parameters to work around limitations of its
 #' [pre-allocated memory][r2c-memory] design.  Normally, `r2c` derives the
@@ -235,18 +245,18 @@ NULL
 #' knowing the value of their inputs to compute output size, e.g. the value of
 #' `n` in `rep(x, length.out=n)`.  `r2c` can implement functions like the latter
 #' when the input value is constant because such values can be computed in R at
-#' allocation time before any iterations are run (see examples).  Because
-#' constant parameter arguments are evaluated in R, they may involve arbitrary R
-#' expressions provided they are constant and the result of evaluating them is
-#' compatible with the parameter.
+#' allocation time before any iterations are run (see examples).
 #'
-#' Calls to non-[implemented functions][r2c-supported-funs] are allowed outside
-#' of constant parameters, provided that they are constant and the result of
-#' evaluating them is compatible with the context they are used in.  Like
-#' constant parameters these are also evaluated directly in R at allocation
-#' time.  Non-implemented constant expressions nested within
-#' [branches][r2c-control-structures] are always evaluated, even in branches not
-#' taken at run time.
+#' Whether an expression is constant can only be determined once the runner
+#' matches the provided data to the expression.  Since this is unknown at
+#' compilation time, compilation assumes that any expression that _could_ be
+#' legally variable is variable and includes it in the `r2c` compiled code.
+#' Calls that turn out to be constant at run time, but could have been legally
+#' variable, will be run by `r2c` compiled code each iteration despite being
+#' constant.  The only calls that cannot be legally variable are those matched
+#' to constant parameters and those to non-[implemented
+#' functions][r2c-supported-funs].  These are evaluated externally, but will
+#' trigger errors if they contain references to variable expressions.
 #'
 #' Expressions evaluated in R at allocation time are computed once and cached.
 #' Cached values are re-used both across iterations, and within an iteration if
@@ -257,16 +267,11 @@ NULL
 #' `<-` will fail; trying to circumvent enforced restrictions is likely to
 #' cause problems.
 #'
-#' Whether an expression is constant can only be determined once the runner is
-#' provided the data to run on.  Since expressions cannot be determined to be
-#' constant at compilation time, compilation assumes that any expression that
-#' could be variable is variable.  This is why only calls to unimplemented
-#' functions or calls given to constant parameters can be evaluated in R.  Other
-#' calls will have been compiled into the chain of native instructions and thus
-#' must be run by `r2c` each iteration, even if they turn out to be constant at
-#' run time.
-#'
-#' @family r2c-topics
+#' @note When the result of an `r2c` [implemented function][r2c-supported-funs]
+#'   call is assigned to a variable, that variable is considered varying even
+#'   when the call is constant.  This is a compromise to simplify book keeping.
+#'   In the future such calls might be correctly identified as constant.
+#' @seealso [Package overview][r2c] for other `r2c` concepts.
 #' @keywords internal
 #' @name r2c-expression-types
 #' @examples
@@ -352,7 +357,7 @@ NULL
 #' to get control flow to fit into an implementation that originally did not
 #' intend to allow them).
 #'
-#' @seealso [Package Overview][r2c].
+#' @seealso [Package overview][r2c] for other `r2c` concepts.
 #' @keywords internal
 #' @name r2c-preprocess
 #' @examples
@@ -372,12 +377,15 @@ NULL
 #' Performance Considerations
 #'
 #' `r2c`'s primary optimization is to remove interpreter overhead for
-#' iterated calculations with varying data.  `r2c` is most beneficial for
-#' calculations that would otherwise require R level calls on each of many small
-#' vectors.  Additionally, `r2c` reduces [peak memory usage][r2c-memory] and
-#' fragmentation.  In exchange, `r2c` adds compilation overhead that will need
-#' to be amortized across [runner][runners] executions, as well as a few
-#' millisecond [runner][runners] startup cost for memory allocation.
+#' iterated calculations with varying data.  `r2c` does this via the
+#' [runners] that feed each iteration's data into and collect the results from
+#' the [compiled][r2c-compile] "r2c_fun"s, all directly in native code.  `r2c`
+#' is most beneficial for calculations that would otherwise require R level
+#' calls on each of many small vectors.  Additionally, `r2c` reduces [peak
+#' memory usage][r2c-memory] and fragmentation.  In exchange, `r2c` adds
+#' compilation overhead that will need to be amortized across [runner][runners]
+#' executions, as well as a few millisecond [runner][runners] startup cost for
+#' memory allocation.
 #'
 #' R interpreter overhead remains noticeable into vector sizes of
 #' hundreds of elements, but even with larger elements `r2c` should retain some
@@ -388,7 +396,8 @@ NULL
 #' can write explicit loops with `for`, they will be significantly slower than a
 #' pure C version, and only marginally faster than byte compiled R equivalents.
 #' This is particularly true for tight loops with arithmetic on scalar
-#' variables.
+#' variables.  Likely `r2c` loops could be optimized significantly, but that is
+#' not a priority.
 #'
 #' When iterating across data sub-groups, `r2c` first sorts the data by group so
 #' that it can then scan through the groups sequentially.  The sorting is fast
@@ -403,15 +412,15 @@ NULL
 #' and thus copied.  If integer or logical inputs would cause an R expression to
 #' return in those types, `r2c` coerces the final result of the corresponding
 #' `r2c` expression to those types too, again with a copy.  In the future
-#' coercion of results made be optional.  For best performance use only floating
-#' point numeric inputs.
+#' coercion of results may be made optional.  For best performance use only
+#' floating point numeric inputs.
 #'
 #' Currently `r2c` implements some simple "compiler" optimizations, such as
 #' [re-using][reuse_calls] results of repeated sub-expressions, and identifying
 #' expired symbols (to free associated memory for re-use).  These are
-#' implemented in the [preprocessing step][r2c-preproces].
+#' implemented in the [preprocessing step][r2c-preprocess].
 #'
-#' @seealso [Package Overview][r2c].
+#' @seealso [Package overview][r2c] for other `r2c` concepts.
 #' @keywords internal
 #' @name r2c-performance
 

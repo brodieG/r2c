@@ -94,17 +94,14 @@ an "r2c_fun" function; this is an unusual function so please see
 details.
 }
 \description{
-The \verb{r2c*} functions translate \link[=r2c-supported-funs]{eligible R calls} into C,
-compile them into native instructions using \verb{R CMD SHLIB}, and return an
-interface to that code in the form of an "r2c_fun" function.  This function
-will carry out out numerical calculations with \code{r2c} native instructions
-instead of with the standard R routines. Expressions to compile can contain
-arbitrary R sub-expressions so long as they are found to be
-\link[=r2c-expression-types]{iteration-constant} at run time; these will be
-evaluated in R.  "r2c_fun" functions are intended to be run with the \code{r2c}
-\link{runners} for fast iterated calculations.  \code{r2c} adheres closely to R
-semantics for the supported use cases.  Look at the examples here and those
-of the \link{runners} to get started.
+The \verb{r2c*} compilation functions translate \link[=r2c-supported-funs]{supported R function calls} into C, compile them into native
+instructions using \verb{R CMD SHLIB}, and return an interface to that code in the
+form of an "r2c_fun" function.  This function will carry out out numerical
+calculations with \code{r2c} native instructions instead of with the standard R
+routines, with the exception of some
+\link[=r2c-expression-types]{iteration-constant} calls. "r2c_fun" functions are
+intended to be run with the \code{r2c} \link{runners} for fast iterated calculations.
+Look at the examples here and those of the \link{runners} to get started.
 }
 \section{r2c Generated Functions}{
 
@@ -250,8 +247,8 @@ system.time(sum_prod_loop_r(a, a))
 }
 \seealso{
 \code{\link{runners}} to iterate "r2c_fun" functions on varying data,
-\code{\link{r2c-inspect}} for functions to retrieve meta data from the function
+\link[=r2c-inspect]{inspection functions} to retrieve meta data from the function
 including the generated C code and the compiler output,
 \link[=r2c-preprocess]{preprocessing} for how \code{r2c} modifies R calls before
-translation to C.
+translation to C, \link[=r2c]{package overview} for other \code{r2c} concepts.
 }

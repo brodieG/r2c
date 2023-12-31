@@ -41,16 +41,13 @@ rollbw_exec(
 )
 }
 \arguments{
-\item{fun}{an "r2c_fun" function as produced by \code{\link{r2c}}, except with the
-additional restriction that it must be guaranteed to produce scalar
-results as used with this function.}
+\item{fun}{an "r2c_fun" function as produced by the \link[=r2c-compile]{compilation functions}.}
 
 \item{data}{a numeric vector, or a list of equal length numeric
 vectors.  If a named list, the vectors will be matched to \code{fun} parameters
 by those names.  Elements without names are matched positionally.  If a
 list must contain at least one vector.  Conceptually, this parameter is
-used similarly to \code{envir} parameter to \code{\link[base:eval]{base::eval}} when that is a list
-(see \code{enclos}).}
+used similarly to \code{envir} parameter to \code{\link[base:eval]{base::eval}} when that is a list.}
 
 \item{width}{scalar positive numeric giving the width of the window interval.
 Unlike with \code{\link{rolli_exec}}'s \code{n}, \code{width} must be scalar.}
@@ -332,8 +329,9 @@ transform(
 options(old.opt)
 }
 \seealso{
-\code{\link{r2c-compile}} for more details on the behavior and constraints of
-"r2c_fun" functions, \code{\link{first_vec}} to retrieve first atomic vector.
+\link[=r2c-compile]{Compilation} for more details on the behavior and
+constraints of "r2c_fun" functions, \code{\link{first_vec}} to retrieve
+first atomic vector, \link[=r2c]{package overview} for other \code{r2c} concepts.
 
 Other runners: 
 \code{\link{group_exec}()},

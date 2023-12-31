@@ -14,7 +14,7 @@ iteration available:
 }
 }
 \seealso{
-\link[=r2c]{Package Overview}.
+\link[=r2c]{Package overview} for other \code{r2c} concepts.
 }
 \concept{runner functions}
 \keyword{internal}

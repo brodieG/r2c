@@ -15,18 +15,16 @@ rolli_exec(
 )
 }
 \arguments{
-\item{fun}{an "r2c_fun" function as produced by \code{\link{r2c}}, except with the
-additional restriction that it must be guaranteed to produce scalar
-results as used with this function.}
+\item{fun}{an "r2c_fun" function as produced by the \link[=r2c-compile]{compilation functions}.}
 
 \item{data}{a numeric vector, or a list of equal length numeric
 vectors.  If a named list, the vectors will be matched to \code{fun} parameters
 by those names.  Elements without names are matched positionally.  If a
 list must contain at least one vector.  Conceptually, this parameter is
-used similarly to \code{envir} parameter to \code{\link[base:eval]{base::eval}} when that is a list
-(see \code{enclos}).}
+used similarly to \code{envir} parameter to \code{\link[base:eval]{base::eval}} when that is a list.}
 
-\item{n}{integer number of adjacent data "elements" to compute \code{fun} on.
+\item{n}{integer number of adjacent data "elements" to compute
+\code{fun} on.
 It is called \code{n} and not \code{width} to emphasize it is a discrete count
 instead of an interval width as in \code{\link{rollby_exec}} and friends.  Must be
 scalar, or have as many elements as data (see "Data Elements").  For the
@@ -152,8 +150,9 @@ rolli_exec(r2c_mean, dat, n=5, align='left')
 rolli_exec(r2c_len, dat, n=c(1,3,1,3,1), align='left', partial=TRUE)
 }
 \seealso{
-\code{\link{r2c}} for more details on the behavior and constraints of
-"r2c_fun" functions.
+\link[=r2c-compile]{Compilation} for more details on the behavior and
+constraints of "r2c_fun" functions, \link[=r2c]{package overview} for other \code{r2c}
+concepts.
 
 Other runners: 
 \code{\link{group_exec}()},

@@ -7,10 +7,12 @@
 \code{r2c} \link{runners} vary which parts of their \code{data} argument are computed
 on across iterations, so references to values from \code{data} are known as
 (iteration) varying.  Expressions that depend directly or indirectly
-on such references are thus varying.  Additionally, when the result
-of an \code{r2c} \link[=r2c-supported-funs]{implemented function} call is assigned to a
-variable, that variable is considered varying even when the call is
-constant.  Other expressions are considered constant.  Some \code{r2c}
+on such references are thus varying.  Other expressions are considered
+(iteration) constant (see note for an exception).  Since constant
+expressions are independent of the varying data, they can be computed
+with \code{base::eval} before any \code{r2c} compiled code is run.  By extension,
+constant expressions can be composed of arbitrary R calls, subject to their
+result being compatible with the context they are used in.  Some \code{r2c}
 \link[=r2c-supported-funs]{implemented function} parameters require constant
 expressions; these are known as constant parameters.
 }
@@ -22,18 +24,17 @@ is the case with e.g. \code{seq_along(x)}.  But many useful functions require
 knowing the value of their inputs to compute output size, e.g. the value of
 \code{n} in \code{rep(x, length.out=n)}.  \code{r2c} can implement functions like the latter
 when the input value is constant because such values can be computed in R at
-allocation time before any iterations are run (see examples).  Because
-constant parameter arguments are evaluated in R, they may involve arbitrary R
-expressions provided they are constant and the result of evaluating them is
-compatible with the parameter.
+allocation time before any iterations are run (see examples).
 
-Calls to non-\link[=r2c-supported-funs]{implemented functions} are allowed outside
-of constant parameters, provided that they are constant and the result of
-evaluating them is compatible with the context they are used in.  Like
-constant parameters these are also evaluated directly in R at allocation
-time.  Non-implemented constant expressions nested within
-\link[=r2c-control-structures]{branches} are always evaluated, even in branches not
-taken at run time.
+Whether an expression is constant can only be determined once the runner
+matches the provided data to the expression.  Since this is unknown at
+compilation time, compilation assumes that any expression that \emph{could} be
+legally variable is variable and includes it in the \code{r2c} compiled code.
+Calls that turn out to be constant at run time, but could have been legally
+variable, will be run by \code{r2c} compiled code each iteration despite being
+constant.  The only calls that cannot be legally variable are those matched
+to constant parameters and those to non-\link[=r2c-supported-funs]{implemented functions}.  These are evaluated externally, but will
+trigger errors if they contain references to variable expressions.
 
 Expressions evaluated in R at allocation time are computed once and cached.
 Cached values are re-used both across iterations, and within an iteration if
@@ -43,15 +44,12 @@ in other complex "meta" operations may have different effects than intended.
 Simple attempts to create new bindings with constant expressions with e.g.
 \verb{<-} will fail; trying to circumvent enforced restrictions is likely to
 cause problems.
-
-Whether an expression is constant can only be determined once the runner is
-provided the data to run on.  Since expressions cannot be determined to be
-constant at compilation time, compilation assumes that any expression that
-could be variable is variable.  This is why only calls to unimplemented
-functions or calls given to constant parameters can be evaluated in R.  Other
-calls will have been compiled into the chain of native instructions and thus
-must be run by \code{r2c} each iteration, even if they turn out to be constant at
-run time.
+}
+\note{
+When the result of an \code{r2c} \link[=r2c-supported-funs]{implemented function}
+call is assigned to a variable, that variable is considered varying even
+when the call is constant.  This is a compromise to simplify book keeping.
+In the future such calls might be correctly identified as constant.
 }
 \examples{
 ## Unimplemented functions like `:` allowed if constant, and
@@ -90,5 +88,7 @@ my_mean <- function(x) sum(x)/length(x)  # `my_mean` not r2c implemented
 f3 <- r2cq(x + my_mean(y))
 group_exec(f3, x, grp, MoreArgs=list(y))
 }
-\concept{r2c-topics}
+\seealso{
+\link[=r2c]{Package overview} for other \code{r2c} concepts.
+}
 \keyword{internal}

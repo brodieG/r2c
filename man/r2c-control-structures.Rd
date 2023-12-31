@@ -47,6 +47,7 @@ NULL.
 \seealso{
 The \link[=r2c-memory]{memory help page} for background on the equal
 size requirements, and \link[=r2c-preprocess]{preprocessing} for more
-control structure implementation details.  Also: \link[=r2c]{package overview}.
+control structure implementation details, \link[=r2c]{package overview} for other
+\code{r2c} concepts.
 }
 \keyword{internal}

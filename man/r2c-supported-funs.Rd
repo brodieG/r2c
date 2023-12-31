@@ -7,7 +7,7 @@
 \code{r2c} supports a subset of R functions for compilation.  These functions
 are re-implemented and optimized for iterated execution while hewing as
 closely as practicable to the original R semantics.  \code{r2c} also allows
-arbitrary R function calls provided they are
+embedding arbitrary R function calls provided they are
 \link[=r2c-expression-types]{iteration-constant}, but these are evaluated in R and
 not in \code{r2c} compiled code.
 }
@@ -42,7 +42,7 @@ parameters.
 }
 \item Initialization: \code{numeric} (and the \code{r2c} provided \code{\link{numeric_along}}).
 \itemize{
-\item \code{length} is a \link[=r2c-expression-types]{constant parameter}.
+\item \code{length} is a \link[=r2c-expression-types]{constant} parameter.
 }
 \item Braces: \verb{\{}.
 \item Assignment: \verb{<-}, \code{=}.
@@ -72,6 +72,6 @@ is the name of the function, optionally in \code{pkg::fun} format.  Functions mu
 be bound to their original symbols for them to be recognized.
 }
 \seealso{
-\link[=r2c]{Package Overview}.
+\link[=r2c]{Package overview} for other \code{r2c} concepts.
 }
 \keyword{internal}
