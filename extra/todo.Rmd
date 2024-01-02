@@ -36,38 +36,6 @@
 
 ## Current
 
-* Should grouping be done directly on data?  E.g.:
-
-    group_exec(f, group(dat, g))
-
-  This makes for much cleaner re-use of the data, otherwise we need to manually
-  sort and track the grouping.  It's a little less flexible, and requires typing
-  "group" which otherwise would not be needed.  Do we add a different interface?
-
-  How about instead:
-
-    exec(group(dat, g)), f, x)
-
-  Hmm, not really.  We're trying to get something in exchange for having to type
-  "group", such as NSE we would otherwise get from `with`.
-
-  Seems like the way to handle this is with S3 methods where we can accept
-  either a grouped df, in which case the function has signature:
-
-    exec(dat, f, params)
-
-  Or a regular df in which case:
-
-    exec(dat, g, f, params)
-
-  Do we want to go down that road?
-
-* Processed groups and data frame output?  We're using the `group` input as
-  mechanism for choosing between vector/df output format, but does that work
-  with `process_groups`?
-
-* Think through implication of saving parameter validation functions in r2c_fun
-  object in terms of environment capture, etc.
 
 ## Next
 
@@ -84,10 +52,6 @@
 
 * Can we get more memory efficient by e.g. using `+=`.  This is complicated, see
   notes "Memory Re-Use".
-
-* Can we avoid `r2c_copy` in cases where we know the symbol is assigned to from
-  an expression?  The big challenge is dealing with e.g. `if` and all the
-  constraints that adds.
 
 * Identify unused assignments as a courtesy warning?  This could be extended to
   unused expressions, which could potentially be eliminated (possibly
@@ -182,11 +146,87 @@ Error in r2cq(x + "a")(5) :
   compilers or runners to return as errors with a meaningful calling function
   instead of an internal function.
 
+* Suggest reformulation to `ifelse` for logical subsetting:
+
+    > f <- r2cq(sum(x[x>.5]))
+    > f(runif(10))
+    Error in VALID_FUNS[[c(name, "in.type.validate")]](input.type) : 
+      Subset and sub-assign require numeric index vectors (got logical).
+
+
+### More functions
+
+* Re-implement modulo.
+* max, min, pmax, pmin.
+* rev.
+* sort, median, quantile, order, rank (these are all complicated because there
+  is currently no way to access the radix sort `data.table` contributed, so we
+  would have to rely on R.
+* trigonometry, exponent, etc.
+
+### Interface Design
+
+> See "Interface" section in notes.md.
+
+* Match expressions to library: e.g. `max(hello)` should match to a previously
+  compiled `max(x)`?  A bit tricky because we need to swap symbols around
+  assuming the "fingreprint" matches, which we probably can do.  Then we can
+  just auto-compile expressions.
+
+* Should grouping be done directly on data?  E.g.:
+
+    group_exec(f, group(dat, g))
+
+  This makes for much cleaner re-use of the data, otherwise we need to manually
+  sort and track the grouping.  It's a little less flexible, and requires typing
+  "group" which otherwise would not be needed.  Do we add a different interface?
+
+  How about instead:
+
+    exec(group(dat, g)), f, x)
+
+  Hmm, not really.  We're trying to get something in exchange for having to type
+  "group", such as NSE we would otherwise get from `with`.
+
+  Seems like the way to handle this is with S3 methods where we can accept
+  either a grouped df, in which case the function has signature:
+
+    exec(dat, f, params)
+
+  Or a regular df in which case:
+
+    exec(dat, g, f, params)
+
+  Do we want to go down that road?
+
+* Do we offer a no-lies mode where we don't coerce results back to
+  integer/logical?  Yes, should be easy to implement, we just need a parameter
+  name that makes sense.
+* Add warning for any/all coercion of doubles?
+
+* Make data the first argument to support piping?
+
+* Group by more than one columns.
+
+* Character grouping columns.
+
+* How to communicate we want a data frame output.  Right now we do it with list
+  grouping spec, but doesn't that conflict with `process_groups`.  We could also
+  do it with the `fun` parameter, where we could provide a list, potentially
+  with multiple functions.
+* Need to think though the cases where we have multiple functions, multiple
+  grouping columns, and which cases imply `data.frame` outputs.  Is it the case
+  that always 
+
+* Maybe we create `l <- list`.  Tempting to use `. <- list` since `data.table`
+  doesn't actually export it.
+
 ### Other
 
 * Nested functions?  I.e. recurse into un-implemented functions, and if they are
   made solely of implemented functions, then compile them.  Recursion not
-  possible, except the tail variety (and then that will require extra thought).
+  possible because of need to pre-alloc memory, except the tail variety (and
+  then that will require extra thought).
 
 * Should we try to harmonize window and group runners under one interface?
   Probably not.
@@ -207,11 +247,6 @@ Error in r2cq(x + "a")(5) :
 * Add the capability to convert a non-numeric external into a numeric external
   with the validation function, e.g. character vector with levels, etc.
 
-* Rationalize `code_gen_*` funs?  We need name, number of params, and the C
-  template, but the last one has a bit of variability that might be difficult to
-  parametrize generally.  There is a set of functions that do look very similar
-  though.
-
 * Should we preprocess `rep` into `rep.int`, `rep_len`, `rep_along`, etc., so
   that we don't have the branches in the C code?  Maybe eventually.
 
@@ -220,11 +255,6 @@ Error in r2cq(x + "a")(5) :
 * Add `get_r_function` to recover an R function with formals, etc.
 * `clean_call` should have additional levels to remove `vcopy` / `rec` (Done).
   Decide what `get_r_code` does.
-
-* Empty braces can't just be merged into parent braces, so we need to check the
-  empty condition before we simplify them away (`{5;{}}` is not equal to `{5}`).
-  Empty braces should be disallowed anyway (iirc they are now).  But could deal
-  with these by returning `numeric(0)`.
 
 * Ideas to improve preprocessing:
   * Try to simplify `copy_symdat` by removing unused bindings.  Then being used
@@ -238,13 +268,20 @@ Error in r2cq(x + "a")(5) :
     some other code simplifies too.
 
 * Are we appropriately checking that we don't assign to a symbol that is then
-  used as the function name in a call?
+  used as the function name in a call?  Shouldn't matter so long as it's not a
+  function assigned?  We don't seem to allow functions to be assigned.
 * Handle assignment to function symbols, etc?  There shouldn't be confusion with
   invocation, but if we ever implement `lapply`, etc?
 
 * `code_gen_*` functions should be in a list instead of floating around as
   objects.  This would ensure we don't accidentally use the wrong code gen as we
   can select it by name.
+* Cleanup `code_gen_x`.  A lot of things should be parametrized so that we're
+  consistent across `code_gen` functions.
+* Rationalize `code_gen_*` funs?  We need name, number of params, and the C
+  template, but the last one has a bit of variability that might be difficult to
+  parametrize generally.  There is a set of functions that do look very similar
+  though.
 
 * Switch `PASSIVE.SYM` to be `!x %in% ACTIVE.SYM` to reduce the odds of
   accidentally forgetting to designate.  Since we must implement a handling of
@@ -257,9 +294,6 @@ Error in r2cq(x + "a")(5) :
 
 * Change default for `show_c_code` to be `all`.
 
-* Cleanup `code_gen_x`.  A lot of things should be parametrized so that we're
-  consistent across `code_gen` functions.
-
 * Explore `fma` (floating multiply add).
 
 * Should we be using `islessgreater` and similar?  Probably since the R NaN is
@@ -271,11 +305,6 @@ Error in r2cq(x + "a")(5) :
 * ISNAN vs isnan? (R_ext/Arith.h).  Return R NAN not just NAN?  For logicals
   doesn't matter as much if they get coerced eventually to NA_LOGICAL, but if we
   add a no-lines mode then it might matter.
-
-* Do we offer a no-lies mode where we don't coerce results back to
-  integer/logical?  Yes, should be easy to implement, we just need a parameter
-  name that makes sense.
-* Add warning for any/all coercion of doubles?
 
 * Should we have safety tests in the code to be controlled by a debug mode flag?
 
@@ -341,24 +370,29 @@ shouldn't matter):
 * Errors in `match.call` that show the deparsed argument might deparse
   differently on different systems (`group_sum` error tests).
 
-* Add iterator breaks?
-
 * Make sure calling mechanism is legal
+  * Figure out how to call the current version of R (e.g. `RD CMD SHLIB`).
+  * `?SHLIB` states some binary distributions don't include `R CMD SHLIB`.
+  * Is there an alternative to R_FindSymbol?  Can we get it to be made part of the
+    API.
 
 ## Other
 
 * share `lcurry` with klutometis
   https://github.com/klutometis/R-functional/issues
-* Make overflow testable.
+
 * Group label generation should potentially return position of vector rather
   than actual label to allow flexible re-use of labels beyond just factors (i.e.
   we subset the input vector to generate the labels).
+
 * Special case of constant result lengths could be an optimization for group
   where we don't have to generate the vector, although there should always be
   few groups relative to vector elements, so complexity not worth it?
-* Migrate to tapply structure.  More generally, explain interface?
+
 * Allow more then `INT_MAX` groups (labels are limiting right now)?
+
 * What if compilation fails, do we have good error messages?
+
 * Don't use double for group sizes unless we have groups that are too large.
   **probably not worth it** b/c the group sizes result is only as big as the
   number of groups, so very small in the grand scheme of things.  First level is
@@ -366,69 +400,85 @@ shouldn't matter):
   step would be to switch from int to double if we do have a vector that exceeds
   the size limit (but then we need to test for that...).  Does that mean we need
   a limit to int?  Will be annoying to have logic for both.
+
 * Should sorted be "assume.sorted"?  Probably.  Could add check that it is (see
   next).
+
 * Process groups might be able to determine that things are sorted?  If things
   are always e.g. increasing, then it must be the case that they are sorted.
   Evaluate the overhead of this; should be low as it would just be done in the
   second pass that stores the sizes?  Something still needs to be declared as
   sorted though.  It's relatively cheap to check that it is, but not so cheap
   that we would always want to run that check.
+
 * Perhaps we got too lazy with POW, do we need to handle all the other cases
   arith handles?  Maybe, but if we do we'll likely need our own `pow` function,
   as it stands right now we're likely to get non-identical results in the case
   of NA or Inf (or at least particular variations of them).
-* Re-implement modulo.
+
 * The `check=TRUE` might be better done with an explicit check function.
+
 * For running function directly, can we pass data as an env so the traceback
   doesn't explode (but make sure this doesn't cause reference / refcount issues)?
+
 * What is the implementation cost of allowing internal functions to advance the
   data pointers so they don't have to be manually moved after each function
   iteration?
+
 * Implement sum64 and mean64 to use double accumulator (note we've tested that
   double accumulators are slower).
+
 * We can no longer use `mean <- mean.default` and `r2c` at same time (this might
   be correct, but will make readme a bit more complicated).  Also, error message
   is very confusing in this case as `mean.default` is also from the base
   namespace, even though the masking is defined at the global level.
+
 * Figure out a better way to store the object than embedding it with `bquote` in
   the function (e.g. retrieve from the call like `rlang`, but not sure that's
   better).
+
 * Think about `df %>% group_by(g) %>% filter(x > min(df$x)`.  This should
   resolve naturally if we allow `[['x']]` as "normal" expression.
+
 * Can we optimize label generation for cases where the last step is constant
   size or size of groups?
+
 * Better introspection tools for intermediate products so we can see what they
   are.
-* Are names sufficient to disqualify from nakedness (no)?  How do names behave
-  in recycling (dropped now)?  Do we want to allow other attributes to persist?
-* Make sure to have a function that uses the `ctrl` functionality to check that
-  it works properly (once we switch to `flag` for most functions).
+
 * Make sure pointer arrays are aligned.  Use `malloc`?  If so internal code
   cannot use `error`, and we can't guarantee that?  Can we register a finalizer
   somehow (probably will need to).
+
 * Make sure headers go in in correct order; it may not work if we structure
   workflow around C functions?  Maybe okay if each group of functions does the
   right thing?  Do we need to include the headers before each group of
   functions?  Do we need to keep translation units independent (but the lose the
   benefit of static funs)?  This is almost certainly a real problem that needs
   to be addressed.
+
 * Ensure all entry point names are unique and that there are no collisions.
   Maybe this can be done on registration?
+
 * Is it faster to compute complex expressions pairwise (i.e. full vector scan of
   two vectors), or do each row in full once?
+
 * Look into using R_GetCCallable (see WRE) instead of what we're doing now.  It
   seems though that to do so we'll need to generate a full package which will
   further slow down the compilation.  What does `inline` do?
+
 * Check name isn't used already.
-* `?SHLIB` states some binary distributions don't include `R CMD SHLIB`.
-* Figure out how to call the current version of R (e.g. `RD CMD SHLIB`).
+
+
+
+
 * See how far back this works in terms of R versions.
+
 * What happens when this stuff is serialized?
-* Is there an alternative to R_FindSymbol?  Can we get it to be made part of the
-  API.
+
 * Can we use this in some way for e.g. really wide matrices where each column
   takes the place of an argument?  Generating a pointer for each column then may
   be less efficient.
+
 * Lags and similar (i.e. `x[i] = x[i] * x[i - 1]`).
 

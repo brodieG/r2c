@@ -12,6 +12,19 @@
 
 ### v0.3.0
 
+* Think through implication of saving parameter validation functions in r2c_fun
+  object in terms of environment capture, etc.  Seems to be okay so long as the
+  functions in use are defined at the top level of a namespace.
+
+* Empty braces can't just be merged into parent braces, so we need to check the
+  empty condition before we simplify them away (`{5;{}}` is not equal to `{5}`).
+  Empty braces should be disallowed anyway (iirc they are now).  But could deal
+  with these by returning `numeric(0)`.
+
+* Can we avoid `r2c_copy` in cases where we know the symbol is assigned to from
+  an expression?  The big challenge is dealing with e.g. `if` and all the
+  constraints that adds.  Yes, this is done.
+
 * Something not right about recovering a reference "r2c_fun" in unitizer:
 
     unitizer> get_r_code(ref(f1a))
