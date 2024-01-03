@@ -19,3 +19,4 @@ notcran
 \.Rout.fail$
 ^\.github$
 ^revdep
+^tmp$

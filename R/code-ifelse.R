@@ -111,7 +111,7 @@ code_gen_if <- function(...) {
 #'   are used, [subassign] (another internal representation function).
 #' @export
 #' @keywords internal
-#' @rdname intermediate-representation
+#' @name intermediate-representation
 #' @aliases r2c_if if_true if_false if_test r2c_for for_init for_iter for_n
 #'   for_0 vcopy rec lset lcopy
 
@@ -133,5 +133,5 @@ if_false <- function(expr) expr
 #' @keywords internal
 #' @rdname intermediate-representation
 
-if_test <- function(cond) expr
+if_test <- function(cond) cond
 

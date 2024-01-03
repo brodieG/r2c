@@ -698,7 +698,7 @@ transform_control <- function(x, i=0L) {
       ) )
     } else if (call.sym %in% c('repeat', 'while')) {
       # BE SURE TO UPDATE `collect_loop_call_symbols` IF WE ADD THESE
-      stop("`", call.sym., "` unimplemented.")
+      stop("`", call.sym, "` unimplemented.")
     }
   }
   x

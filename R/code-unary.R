@@ -21,13 +21,13 @@ NULL
 #' @rdname intermediate-representation
 #' @export
 
-uplus <- function(e1) x
+uplus <- function(e1) e1
 
 #' @param e1 a logical or numeric vector
 #' @rdname intermediate-representation
 #' @export
 
-uminus <- function(e1) -x
+uminus <- function(e1) -e1
 
 UOP.MAP <- c("-"="uminus", "+"="uplus")
 

@@ -247,7 +247,7 @@ cgen <- function(
 
   # Check-reorder constant formal params
   if(length(icnst)) {
-    formals <- if(typeof(defn) == 'closure') formals(defn) else formals(closure)
+    formals <- if(typeof(defn) == 'closure') formals(defn) else formals(fun)
     if(
       (!all(names(icnst) %in% names(formals)) || "..." %in% names(icnst))
     )

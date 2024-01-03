@@ -137,9 +137,9 @@ with(
   mtcars,
   rolli_exec(r2c_mean, hp, n=5)
 )
-r2c_len <- r2cq(length(x))
 
 ## Effect of align and partial
+r2c_len <- r2cq(length(x))
 dat <- runif(5)
 rolli_exec(r2c_len, dat, n=5, align='left', partial=TRUE)
 rolli_exec(r2c_len, dat, n=5, align='center', partial=TRUE)

@@ -116,9 +116,9 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' loss as double precision floating point.  Platforms that support R and fail
 #' this requirement are likely rare.
 #'
-#' Interrupts are supported at the [runner] level, e.g. _between_ groups or
-#' windows, each time a preset number of elements has been processed since the
-#' last interrupt check.  There is infrastructure to support within
+#' Interrupts are supported at the [runner][runners] level, e.g. _between_
+#' groups or windows, each time a preset number of elements has been processed
+#' since the last interrupt check.  There is infrastructure to support within
 #' iteration-interrupts, but it adds overhead when dealing with many iterations
 #' with few elements each and thus is disabled at the moment.
 #'
@@ -700,7 +700,7 @@ unload_r2c_dynlibs <- function(except=character()) {
       unloaded <- try(dyn.unload(path), silent=TRUE)
       if(inherits(unloaded, "try-error")) {
         msg <- conditionMessage(attr(unloaded, 'condition'))
-        paste0("Failed to unload ", name, ": ", msg)
+        paste0("Failed to unload ", x, ": ", msg)
       } else ""
     },
     ""

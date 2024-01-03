@@ -162,9 +162,9 @@ infinity defined and the \code{R_xlen_t} range representable without precision
 loss as double precision floating point.  Platforms that support R and fail
 this requirement are likely rare.
 
-Interrupts are supported at the \link{runner} level, e.g. \emph{between} groups or
-windows, each time a preset number of elements has been processed since the
-last interrupt check.  There is infrastructure to support within
+Interrupts are supported at the \link[=runners]{runner} level, e.g. \emph{between}
+groups or windows, each time a preset number of elements has been processed
+since the last interrupt check.  There is infrastructure to support within
 iteration-interrupts, but it adds overhead when dealing with many iterations
 with few elements each and thus is disabled at the moment.
 

@@ -11,6 +11,7 @@
 \alias{for_0}
 \alias{lset}
 \alias{lcopy}
+\alias{intermediate-representation}
 \alias{r2c_if}
 \alias{if_true}
 \alias{if_false}
