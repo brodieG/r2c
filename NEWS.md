@@ -24,8 +24,6 @@
 * Iteration level interrupts (e.g. between groups, windows).
 * Improved top-level documentation.
 
-### Breaking Changes
-
 ### Internal Changes
 
 * Direct calls to "r2c_fun" no longer use `group_exec_int` internally and thus
