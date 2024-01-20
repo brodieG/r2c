@@ -740,5 +740,5 @@ r2c_local_headers <- function(name) {
       "free of that character.  Problem path:\n\n", header.path
     )
 
-  sprintf('<%s>', system.file(package='r2c', 'headers', name))
+  sprintf('<%s>', header.path)
 }
