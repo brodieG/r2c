@@ -34,9 +34,9 @@ make_shlib <- function(x, dir, quiet) {
     )
   writeLines(x, file.src)
   comp.out <- system2(
-    R.home("bin/R"), c("CMD", "SHLIB", file.src),
-    stdout=TRUE, stderr=TRUE,
-    env=paste0("PKG_CFLAGS=-I", system.file(package='r2c', 'headers'))
+    R.home("bin/R"),
+    c("CMD", "SHLIB", file.src, "-I", system.file(package='r2c', 'headers')),
+    stdout=TRUE, stderr=TRUE
   )
   status <- attr(comp.out, 'status')
   if(!is.null(status) && status != 0) {
@@ -718,4 +718,16 @@ unload_r2c_dynlibs <- function(except=character()) {
   }
   invisible(libs.to.unload[!nzchar(unloaded)])
 }
+# Absolute Path for r2c Compiled Code Headers
+#
+# These are the headers used by code compiled by r2c, not the headers used for
+# compilation of r2c proper.  We need a mechanism for specifying the absolute
+# path because we could not figure out a reliable way to provide an -I include
+# directory to R CMD SHLIB that would work on Windows.  We could for Mac rely on
+# the `env` parameter for `system2`, but that won't work for windows.
 
+r2c_local_headers <- function(name) {
+  if(!name %in% list.files(system.file(package='r2c', 'headers')))
+    stop("Header not found: ", system.file(package='r2c', 'headers', name))
+  sprintf('"%s"', system.file(package='r2c', 'headers', name))
+}
