@@ -727,7 +727,16 @@ unload_r2c_dynlibs <- function(except=character()) {
 # the `env` parameter for `system2`, but that won't work for windows.
 
 r2c_local_headers <- function(name) {
+  vetr(CHR.1)
   if(!name %in% list.files(system.file(package='r2c', 'headers')))
     stop("Header not found: ", system.file(package='r2c', 'headers', name))
-  sprintf('"%s"', system.file(package='r2c', 'headers', name))
+  header.path <- system.file(package='r2c', 'headers', name)
+  if(grepl(">", header.path))
+    stop(
+      "Header path contains '>' character which is disallowed.  You might ",
+      "be able to resolve this by re-installing 'r2c' to a library path ",
+      "free of that character.  Problem path:\n\n", header.path
+    )
+
+  sprintf('<%s>', system.file(package='r2c', 'headers', name))
 }
