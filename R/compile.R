@@ -731,6 +731,8 @@ r2c_local_headers <- function(name) {
   if(!name %in% list.files(system.file(package='r2c', 'headers')))
     stop("Header not found: ", system.file(package='r2c', 'headers', name))
   header.path <- system.file(package='r2c', 'headers', name)
+  # Try to deal with spaces in header path for windows
+  if(.Platform$OS.type == "windows") header.path <- shortPathName(header.path)
   if(grepl(">", header.path))
     stop(
       "Header path contains '>' character which is disallowed.  You might ",
