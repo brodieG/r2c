@@ -34,8 +34,7 @@ make_shlib <- function(x, dir, quiet) {
     )
   writeLines(x, file.src)
   comp.out <- system2(
-    R.home("bin/R"),
-    c("CMD", "SHLIB", file.src, "-I", system.file(package='r2c', 'headers')),
+    R.home("bin/R"), c("CMD", "SHLIB", file.src),
     stdout=TRUE, stderr=TRUE
   )
   status <- attr(comp.out, 'status')
@@ -731,7 +730,8 @@ r2c_local_headers <- function(name) {
   if(!name %in% list.files(system.file(package='r2c', 'headers')))
     stop("Header not found: ", system.file(package='r2c', 'headers', name))
   header.path <- system.file(package='r2c', 'headers', name)
-  # Try to deal with spaces in header path for windows
+  # Try to deal with spaces in header path for windows (this might have been a
+  # red herring with the problem our hack attempt at using -I
   if(.Platform$OS.type == "windows") header.path <- shortPathName(header.path)
   if(grepl(">", header.path))
     stop(
