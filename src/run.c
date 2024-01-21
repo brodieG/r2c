@@ -137,8 +137,8 @@ SEXP R2C_run_one(
 
   if(dp.lens[I_RES] != r_len)
     Rf_error(
-      "Result size does not match expected (%jd vs expected %jd).",
-      dp.lens[I_RES], r_len
+      "Result size does not match expected (%jd vs expected %.0f).",
+      (intmax_t) dp.lens[I_RES], r_len
     );
 
   return Rf_ScalarReal((double) recycle_warn);

@@ -490,7 +490,7 @@ static double ** copy_dat(struct R2C_dat dp) {
   double end0 = wa.end - wa.o;                                        \
   if(!isfinite(base0) || !isfinite(end0))                             \
     Rf_error(                                                         \
-      "`start`/`end` and `offset` values create infinite bound(s), ", \
+      "`start`/`end` and `offset` values create infinite bound(s), "  \
       "which is disallowed."                                          \
     );                                                                \
   /* `+ by * i` instead of `+= by` for precision */                   \
