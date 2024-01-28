@@ -22,10 +22,9 @@ code_gen_pow <-  function(fun, pars, par.types) {
   name <- FUN.NAMES[fun]
   # Test is not perfect, ideally it would match what USE_POWL_IN_R_POW
   # is set by (from src/gnuwin32/fixed/h/config.h as of ~2024-01)
-  arch <- R.version[['arch']]
-  os <- R.version[['os']]
-  win64 <- identical(c(arch, os), c("x86_64", "mingw32"))
-  pow.fun <- if(win64) "powl" else "pow"
+  win <- identical(.Platform[['OS.type']], "windows")
+  x64 <- identical(.Platform[['r_arch']], "x64")
+  pow.fun <- if(win && x64) "powl" else "pow"
 
   defn <- sprintf(
     bin_op_vec_rec, name, toString(CF.ARGS.BASE), pow.fun, ",",
