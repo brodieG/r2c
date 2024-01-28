@@ -30,6 +30,8 @@
   save the cost of allocating a dummy group vector.
 * Dynamic libraries are unloaded when the "r2c_fun" object they are linked to is
   garbage collected (see `?unload_r2c_dynlibs` for limitations).
+* Detect whether to use `pow` or `powl` C exponentiation functions to match
+  Windows behavior.
 
 ## 0.2.0
 
