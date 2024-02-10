@@ -191,11 +191,12 @@ prep_alloc <- function(alloc, res.size) {
 #
 # See `group_exec_int` for details
 
-one_exec_int <- function(obj, formals, MoreArgs, call) {
+one_exec_int <- function(obj, formals, MoreArgsE, call) {
   preproc <- obj[['preproc']]
   shlib <- obj[['so']]
   enclos <- obj[['envir']]
-  do <- data <- list()  # all data via MoreArgs
+  do <- list()  # all data via `MoreArgsE`
+  MoreArgs <- as.list(MoreArgsE)  # enclosure is captured already in `obj`
   gmax <- gmin <- 0
 
   alloc <- match_and_alloc(

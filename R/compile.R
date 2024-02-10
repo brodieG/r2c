@@ -408,16 +408,14 @@ r2c_core <- function(
       )
     else .DAT0
     .FRM <- formals()
-    # Correct lexical enclosure.  We cannot give The "r2c_fun" this
-    # enclosure because that would change the search path for all funs here.
-    .ENV <- list2env(.DAT0, parent=.(envir))
+    # We don't wan to embed and actual list as that is bad for tracebacks
+    .ENV <- list2env(.DAT)  # enclos is not used
   })
   EXE <- quote(
     bquote(
       one_exec_int(
-        NULL, formals=.(.FRM), MoreArgs=.(.DAT), call=quote(.(.CALL))
-  ) ) )
-  EXE[[c(2L, 2L)]] <- OBJ  # embed object directly in call (replaces 1st NULL)
+       .(.OBJ), formals=.(.FRM), MoreArgsE=.(.ENV), call=quote(.(.CALL)))
+  ) )
 
   # Assemble the full function, we have a normal version, and a self check
   # version that compares against normal eval.
