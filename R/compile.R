@@ -413,8 +413,6 @@ r2c_core <- function(
     # enclosure because that would change the search path for all funs here.
     .ENV <- list2env(.DAT0, parent=.(envir))
   })
-  # We'll use group_exec with a single group to act as the runner for the
-  # stand-alone use of this function, so use `groups=NULL`.
   EXE <- quote(
     bquote(
       one_exec_int(
