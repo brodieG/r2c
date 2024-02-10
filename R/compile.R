@@ -35,8 +35,7 @@ make_shlib <- function(x, dir, quiet) {
   writeLines(x, file.src)
   comp.out <- system2(
     R.home("bin/R"), c("CMD", "SHLIB", file.src),
-    stdout=TRUE, stderr=TRUE,
-    env=paste0("PKG_CFLAGS=-I", system.file(package='r2c', 'headers'))
+    stdout=TRUE, stderr=TRUE
   )
   status <- attr(comp.out, 'status')
   if(!is.null(status) && status != 0) {
@@ -414,8 +413,6 @@ r2c_core <- function(
     # enclosure because that would change the search path for all funs here.
     .ENV <- list2env(.DAT0, parent=.(envir))
   })
-  # We'll use group_exec with a single group to act as the runner for the
-  # stand-alone use of this function, so use `groups=NULL`.
   EXE <- quote(
     bquote(
       one_exec_int(
@@ -718,4 +715,28 @@ unload_r2c_dynlibs <- function(except=character()) {
   }
   invisible(libs.to.unload[!nzchar(unloaded)])
 }
+# Absolute Path for r2c Compiled Code Headers
+#
+# These are the headers used by code compiled by r2c, not the headers used for
+# compilation of r2c proper.  We need a mechanism for specifying the absolute
+# path because we could not figure out a reliable way to provide an -I include
+# directory to R CMD SHLIB that would work on Windows.  We could for Mac rely on
+# the `env` parameter for `system2`, but that won't work for windows.
 
+r2c_local_headers <- function(name) {
+  vetr(CHR.1)
+  if(!name %in% list.files(system.file(package='r2c', 'headers')))
+    stop("Header not found: ", system.file(package='r2c', 'headers', name))
+  header.path <- system.file(package='r2c', 'headers', name)
+  # Try to deal with spaces in header path for windows (this might have been a
+  # red herring with the problem our hack attempt at using -I
+  if(.Platform$OS.type == "windows") header.path <- shortPathName(header.path)
+  if(grepl(">", header.path))
+    stop(
+      "Header path contains '>' character which is disallowed.  You might ",
+      "be able to resolve this by re-installing 'r2c' to a library path ",
+      "free of that character.  Problem path:\n\n", header.path
+    )
+
+  sprintf('<%s>', header.path)
+}

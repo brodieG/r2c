@@ -19,8 +19,11 @@ unitizer_sect('basic', {
 
   # Exponents
   identical(r2c_arith(x, y, z, rev(x), 2), base_arith(x, y, z, rev(x), 2))
-  identical(r2c_arith(x, y, z, rev(x), 3), base_arith(x, y, z, rev(x), 3))
   identical(r2c_arith(x, y, z, rev(x), y), base_arith(x, y, z, rev(x), y))
+  # Windows started using powl instead of pow at some point, and that produces
+  # different results for integer powers.  It's possible this test will fail
+  # since our detection of whether to use powl or pow is not perfect.
+  identical(r2c_arith(x, y, z, rev(x), 3), base_arith(x, y, z, rev(x), 3))
 
   # Arg order
   identical(r2c_arith(y, z, x, rev(x), 2), base_arith(y, z, x, rev(x), 2))

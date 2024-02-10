@@ -266,13 +266,13 @@ rolling window statistics:
 [16]: https://cran.r-project.org/package=Rcpp
 [17]: https://docs.renjin.org/en/latest/package/index.html
 [18]: https://www.renjin.org/index.html
-[19]: https://r-vm.net
+[19]: https://github.com/reactorlabs/rir
 [20]: https://thesis.r-vm.net/main.html
 [21]: https://github.com/allr/purdue-fastr
-[22]: https://github.com/jjf234/roll
+[22]: https://github.com/jasonjfoster/roll
 [23]: https://cran.r-project.org/package=RcppRoll
-[24]: https://cran.r-project.org/web/packages/runner/index.html
-[25]: https://cran.r-project.org/web/packages/roll/readme/README.html
+[24]: https://cran.r-project.org/package=runner
+[25]: https://cran.r-project.org/package=roll
 [26]: https://htmlpreview.github.io/?https://raw.githubusercontent.com/brodieG/r2c/3caf106980e558c931aea554e1f0197a82d031a3/extra/benchmarks/benchmarks-public.html#group-data
 [27]: https://htmlpreview.github.io/?https://raw.githubusercontent.com/brodieG/r2c/3caf106980e558c931aea554e1f0197a82d031a3/extra/benchmarks/benchmarks-public.html#window-data
 

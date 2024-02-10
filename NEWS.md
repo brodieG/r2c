@@ -24,14 +24,14 @@
 * Iteration level interrupts (e.g. between groups, windows).
 * Improved top-level documentation.
 
-### Breaking Changes
-
 ### Internal Changes
 
 * Direct calls to "r2c_fun" no longer use `group_exec_int` internally and thus
   save the cost of allocating a dummy group vector.
 * Dynamic libraries are unloaded when the "r2c_fun" object they are linked to is
   garbage collected (see `?unload_r2c_dynlibs` for limitations).
+* Detect whether to use `pow` or `powl` C exponentiation functions to match
+  Windows behavior.
 
 ## 0.2.0
 

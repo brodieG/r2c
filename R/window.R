@@ -67,14 +67,39 @@ roll_finalize <- function(prep, status) {
 ## Run common steps across all roll functions
 ##
 ## Allocation computations, running the C code, cleaning up results.
+##
+## Due to static analysis by `tools::checkFF('r2c', registration=TRUE)` (part of
+## --as-cran) we cannot rely on passing the native symbol registration objects
+## as variables to `.Call`, which means we need to repeat `.Call` many times.
+## We also can't rely on `...` to pass additional arguments, so every possible
+## argument to any of the sizing or running C routines needs to be specified
+## explicitly.  This could all be done (and was) if registration checks
+## didn't rely on static analysis.
 
 roll_call <- function(
-  r.len, data, fun, call, runner, crunner, csizer, MoreArgs, ...
+  r.len, data, fun, call, runner, crunner, csizer, MoreArgs,
+  n, offset, by, partial, width, position, start, end, bounds, at, left, right
 ) {
   if(r.len) {
-    size <-
-      if(!is.numeric(csizer)) .Call(csizer, r.len, ...)
-      else as.numeric(rep(csizer, 2))
+    size <- if(is.character(csizer)) {
+      # See comment about .Call at next `switch`.
+      switch(
+        csizer,
+        by=.Call(
+          R2C_size_window_by, r.len,
+          width, offset, by, position, start, end, bounds
+        ),
+        at=.Call(
+          R2C_size_window_at, r.len,
+          width, offset, at, position, bounds
+        ),
+        bw=.Call(
+          R2C_size_window_bw, r.len,
+          left, right, position, bounds
+        ),
+        stop("Internal Error: invalid C sizer.")
+      )
+    } else as.numeric(rep(csizer, 2))
 
     obj <- get_r2c_dat(fun)
     prep <- roll_prep(
@@ -83,14 +108,37 @@ roll_call <- function(
       wmax=size[1L], wmin=size[2L]
     )
     handle <- load_dynlib(obj)
-    status <- .Call(
+    # Must have the actual registered symbol in the `.Call()` to avoid tripping
+    # up `tools::checkFF('r2c', registration=TRUE)` (part of --as-cran).  I.e.
+    # we can't pass the registered object as a variable so need multiple .Call.
+    status <- switch(
       crunner,
-      handle[['name']],
-      prep[['dat']],
-      prep[['dat_cols']],
-      prep[['ids']],
-      prep[['ext.any']],
-      ...
+      i=.Call(
+        R2C_run_window,
+        handle[['name']], prep[['dat']], prep[['dat_cols']],
+        prep[['ids']], prep[['ext.any']],
+        n, offset, by, partial
+      ),
+      by=.Call(
+        R2C_run_window_by,
+        handle[['name']], prep[['dat']], prep[['dat_cols']],
+        prep[['ids']], prep[['ext.any']],
+        width, offset, by, position, start, end, bounds
+      ),
+      at=.Call(
+        R2C_run_window_at,
+        handle[['name']], prep[['dat']], prep[['dat_cols']],
+        prep[['ids']], prep[['ext.any']],
+        width, offset, at, position, bounds
+
+      ),
+      bw=.Call(
+        R2C_run_window_bw,
+        handle[['name']], prep[['dat']], prep[['dat_cols']],
+        prep[['ids']], prep[['ext.any']],
+        left, right, position, bounds
+      ),
+      stop("Internal Error: invalid C runner.")
     )
     # Result vector is modified by reference
     roll_finalize(prep, status)
@@ -393,12 +441,11 @@ rollby_exec <- function(
   call <- sys.call()
 
   roll_call(
-    runner=r2c::rollby_exec, crunner=R2C_run_window_by,
-    csizer=R2C_size_window_by,
+    runner=r2c::rollby_exec, crunner="by", csizer="by",
     r.len=r.len, data=data, fun=fun, call=call,
     MoreArgs=MoreArgs,
-    width, offset, by, position,
-    start, end, bounds_num(bounds)
+    width=width, offset=offset, by=by, position=position,
+    start=start, end=end, bounds=bounds_num(bounds)
   )
 }
 #' @export
@@ -433,12 +480,11 @@ rollat_exec <- function(
   call <- sys.call()
 
   roll_call(
-    runner=r2c::rollat_exec, crunner=R2C_run_window_at,
-    csizer=R2C_size_window_at,
+    runner=r2c::rollat_exec, crunner="at", csizer="at",
     r.len=length(at), data=data, fun=fun, call=call,
     MoreArgs=MoreArgs,
-    width, offset, at, position,
-    bounds_num(bounds)
+    width=width, offset=offset, at=at, position=position,
+    bounds=bounds_num(bounds)
   )
 }
 #' @export
@@ -467,12 +513,10 @@ rollbw_exec <- function(
   call <- sys.call()
 
   roll_call(
-    runner=r2c::rollbw_exec, crunner=R2C_run_window_bw,
-    csizer=R2C_size_window_bw,
+    runner=r2c::rollbw_exec, crunner="bw", csizer="bw",
     r.len=length(left), data=data, fun=fun, call=call,
     MoreArgs=MoreArgs,
-    left, right, position,
-    bounds_num(bounds)
+    left=left, right=right, position=position, bounds=bounds_num(bounds)
   )
 }
 
@@ -624,10 +668,10 @@ rolli_exec <- function(
   r.len <- (d.len - 1L) %/% by + 1L
 
   roll_call(
-    runner=r2c::rolli_exec, crunner=R2C_run_window, csizer=nmax,
+    runner=r2c::rolli_exec, crunner="i", csizer=nmax,
     r.len=r.len, data=data, fun=fun, call=call,
     MoreArgs=MoreArgs,
-    n, offset, by, partial
+    n=n, offset=offset, by=by, partial=partial
   )
 }
 
