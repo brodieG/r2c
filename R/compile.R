@@ -318,7 +318,7 @@ r2c_core <- function(
 
   # But if we do keep it, we want to be able to recover it later.  We store the
   # data in an environment for deparse into <environment> instead of a list.
-  OBJ <- list2env(
+  .OBJ <- list2env(
     list(
       preproc=preproc, so=so[['so']],
       handle=list(name="r2c"),  # dummy handle should return FALSE w/ is.loaded
@@ -329,7 +329,7 @@ r2c_core <- function(
     ),
     parent=emptyenv()
   )
-  OBJ[['handle']] <- load_dynlib(OBJ)
+  .OBJ[['handle']] <- load_dynlib(.OBJ)
   if(clean) unlink(dir, recursive=TRUE)
 
   # Generate formals that match the free symbols in the call
@@ -358,14 +358,17 @@ r2c_core <- function(
   # 2. We need the function to survive a re-loading of r2c (for safety no runner
   #    allows running r2c_fun compiled with different R/r2c versions).
   #
-  # Thus, we directly embed the object with `.(OBJ)`. We use the same trick for
+  # Thus, we directly embed the object with `.(.OBJ)`. We use the same trick for
   # several other objects, both directly those generated here, and also those
   # that will be generated at call time, to ensure that no run-time objects can
   # interfere with the symbol resolution of the "r2c_fun" against its
-  # parameters.
+  # parameters when run stand alone.
+  #
+  # The .XYZ convention for these objects is decorative.  We do not rely on it
+  # to avoid symbol colision with user symbols.  The embedding does that.
 
   # Generate the docstring that will appear at beginning of function
-  DOC <- as.call(
+  .DOC <- as.call(
     list(
       as.name("{"),
       c(
@@ -387,11 +390,11 @@ r2c_core <- function(
   ) ) )
   # See below, we can't do this inline as it would be nested bquote
   FORCE <- quote(eval(bquote(list(.(as.name(i))))))
-  # All required variables and meta-data; DOC and OBJ are embedded as
+  # All required variables and meta-data; .DOC and .OBJ are embedded as
   # actual R objects, not unevaluated symbols like the rest.
-  PREAMBLE <- bquote({
-    .(DOC)
-    .(OBJ)  # for ease of access, embedded in actual fun later
+  .PREAMBLE <- bquote({
+    .(.DOC)
+    .(.OBJ)  # for ease of access, embedded in actual fun later
     try <- tryCatch(
       .DAT0 <- as.list(environment(), all.names=TRUE), error=function(e) e
     )
@@ -411,7 +414,7 @@ r2c_core <- function(
     # We don't wan to embed and actual list as that is bad for tracebacks
     .ENV <- list2env(.DAT)  # enclos is not used
   })
-  EXE <- quote(
+  .EXE <- quote(
     bquote(
       one_exec_int(
        .(.OBJ), formals=.(.FRM), MoreArgsE=.(.ENV), call=quote(.(.CALL)))
@@ -419,20 +422,20 @@ r2c_core <- function(
 
   # Assemble the full function, we have a normal version, and a self check
   # version that compares against normal eval.
-  body(fun) <- if(!check) {
+  body(fun) <- if(!check) {  # normal
     bquote({
-      .(PREAMBLE)
-      eval(.(EXE), envir=getNamespace('r2c'))
+      .(.PREAMBLE)
+      eval(.(.EXE), envir=getNamespace('r2c'))
     })
-  } else {
-    # Symbol creation is ordered so that no created symbols will interfere with
-    # symbols referenced in the evaluated expressions (i.e. `call` is
-    # evaluated first when there are no symbols in the r2c_fun env).
+  } else {                   # self-check
+    # Symbol creation is ordered so they don't interfere with symbols referenced
+    # in the evaluated expressions (i.e. `call` is evaluated first when there
+    # are no symbols in the r2c_fun env, .EXE doesn't resolve user symbols).
     bquote({
-      .(PREAMBLE)
+      .(.PREAMBLE)
       test.i <- identical(
-        res0 <- evalq(.(call), envir=.ENV),
-        res1 <- eval(.(EXE), envir=getNamespace('r2c'))
+        res0 <- evalq(.(call), envir=envir),
+        res1 <- eval(.(.EXE), envir=getNamespace('r2c'))
       )
       test.ae <- if(!test.i) all.equal(res0, res1)
       attr(res1, 'r2c.check.identical') <- test.i
