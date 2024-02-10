@@ -407,7 +407,6 @@ r2c_core <- function(
         error=function(e) stop(simpleError(conditionMessage(e), .CALL))
       )
     else .DAT0
-    .DGRP <- if(length(.DAT)) .DAT[1L] else list()
     .FRM <- formals()
     # Correct lexical enclosure.  We cannot give The "r2c_fun" this
     # enclosure because that would change the search path for all funs here.
