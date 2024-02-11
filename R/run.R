@@ -196,7 +196,15 @@ one_exec_int <- function(obj, formals, MoreArgsE, call) {
   shlib <- obj[['so']]
   enclos <- obj[['envir']]
   do <- list()  # all data via `MoreArgsE`
-  MoreArgs <- as.list(MoreArgsE)  # enclosure is captured already in `obj`
+
+  # Get around embedding MoreArgs as a list (with stack consequences)
+  # enclosure is captured already in `obj`.
+  MoreArgs <- as.list(MoreArgsE, all.names=TRUE)
+  MoreArgs <- MoreArgs[MoreArgs[['.R2C.ARGS']]] # restore origial arg order
+  MoreArgs.nm <- names(MoreArgs)
+  MoreArgs.nm[grepl(R2C.PRIV.RX, MoreArgs.nm)] <- ""
+  names(MoreArgs) <- MoreArgs.nm
+
   gmax <- gmin <- 0
 
   alloc <- match_and_alloc(

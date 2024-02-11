@@ -344,6 +344,12 @@ r2c_core <- function(
     formals <- replicate(length(sym.free), alist(a=))
     names(formals) <- sym.free
   }
+  if(length(formals.bad <- grep(R2C.PRIV.RX, formals, value=TRUE))) {
+    stop(
+      "Function formals may not match this regex: \"", R2C.PRIV.RX, "\":\n\n",
+      toString(formals.bad)
+    )
+  }
   fun <- fun.dummy <- function() NULL
   formals(fun) <- formals
 
@@ -398,26 +404,31 @@ r2c_core <- function(
     try <- tryCatch(
       .DAT0 <- as.list(environment(), all.names=TRUE), error=function(e) e
     )
+    .ENV <- list2env(.DAT0, parent=envir)
     .CALL <- sys.call()
     if(inherits(try, 'simpleError'))
       stop(simpleError(conditionMessage(try), .CALL))
-    .DAT <- if(dot.pos <- match('...', names(.DAT0), nomatch=0))
+    # Expand dots if present
+    .DAT <- if(dot.pos <- match('...', names(.DAT0), nomatch=0)) {
+      dot.list <- list(...)
+      names(dot.list) <- sprintf(paste0(R2C.DOTS, ".%d"), seq_along(dot.list))
       tryCatch(
         c(
-          .DAT0[seq_len(dot.pos - 1L)], list(...),
+          .DAT0[seq_len(dot.pos - 1L)], dot.list,
           .DAT0[seq_len(length(.DAT0) - dot.pos) + dot.pos]
         ),
         error=function(e) stop(simpleError(conditionMessage(e), .CALL))
       )
-    else .DAT0
+    } else .DAT0
     .FRM <- formals()
     # We don't wan to embed and actual list as that is bad for tracebacks
-    .ENV <- list2env(.DAT)  # enclos is not used
+    .D.ENV <- list2env(.DAT, parent=emptyenv())  # enclos is not used
+    .D.ENV[['.R2C.ARGS']] <- names(.DAT)         # so we can restore arg order
   })
   .EXE <- quote(
     bquote(
       one_exec_int(
-       .(.OBJ), formals=.(.FRM), MoreArgsE=.(.ENV), call=quote(.(.CALL)))
+       .(.OBJ), formals=.(.FRM), MoreArgsE=.(.D.ENV), call=quote(.(.CALL)))
   ) )
 
   # Assemble the full function, we have a normal version, and a self check
@@ -434,7 +445,7 @@ r2c_core <- function(
     bquote({
       .(.PREAMBLE)
       test.i <- identical(
-        res0 <- evalq(.(call), envir=envir),
+        res0 <- evalq(.(call), envir=.ENV),
         res1 <- eval(.(.EXE), envir=getNamespace('r2c'))
       )
       test.ae <- if(!test.i) all.equal(res0, res1)
