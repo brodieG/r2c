@@ -14,6 +14,8 @@
 
 ## Unitizer
 
+* `ref` produces error "`ref` is only active when there is an active secondary
+  environment" but then there is no `?ref` to be able to lookup what that means.
 * Can't tell what the current file we're reviewing is.  At a minimum have 'B'
   also show the file name in addition to all the tests.
 * Annoying that after a re-install, there is no way to rerun the top level
@@ -44,6 +46,10 @@
 
     #if defined(_WIN64) && defined(__MINGW64_VERSION_MAJOR) && __MINGW64_VERSION_MAJOR >= 3
     #define USE_POWL_IN_R_POW 1
+
+* Resolve objects getting embedded in calls for the run once versions.
+
+* Get rid of FORCE in compile?
 
 ## Next
 
