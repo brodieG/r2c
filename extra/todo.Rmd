@@ -39,15 +39,6 @@
 ## Current
 
 * Why does compilation status not return 1 when it fails on window (system2).
-* Precision issues from tests saved from M1 to non-M1 machine?  Test if it's
-  windows or X86 vs apple silicon.  Seems like it's a different compilation of
-  `^` that behaves differently for integer vs non integer exponents.  It's
-  actually the conditional use of `powl` instead of `pow` on windows machines.
-
-    #if defined(_WIN64) && defined(__MINGW64_VERSION_MAJOR) && __MINGW64_VERSION_MAJOR >= 3
-    #define USE_POWL_IN_R_POW 1
-
-* Resolve objects getting embedded in calls for the run once versions.
 
 * Get rid of FORCE in compile?
 

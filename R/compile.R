@@ -394,8 +394,6 @@ r2c_core <- function(
         ) ) ),
         paste0("+", strrep("-", 61))
   ) ) )
-  # See below, we can't do this inline as it would be nested bquote
-  FORCE <- quote(eval(bquote(list(.(as.name(i))))))
   # All required variables and meta-data; .DOC and .OBJ are embedded as
   # actual R objects, not unevaluated symbols like the rest.
   .PREAMBLE <- bquote({
