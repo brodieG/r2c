@@ -179,9 +179,12 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #'   translation to C, [package overview][r2c] for other `r2c` concepts.
 #' @examples
 #' r2c_mean_area <- r2cq(mean(x * y))
-#' r2c_mean_area <- r2cl(quote(mean(x * y)))   ## equivalently
+#' \dontrun{
+#' ## Equivalently with `r2cl` or `r2cf`:
+#' r2c_mean_area <- r2cl(quote(mean(x * y)))
 #' mean_area <- function(x, y) mean(x * y)
-#' r2c_mean_area <- r2cf(mean_area)            ## equivalently
+#' r2c_mean_area <- r2cf(mean_area)
+#' }
 #' ## Intended use is with runners
 #' with(
 #'   iris,
@@ -200,14 +203,9 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' y <- 999
 #' local({y <- -1; r2c_sum_sub3(c(1, 2, 3))})
 #'
-#' ##  Make a version that is checked
-#' r2c_sum_check <- r2cq(sum(x), check=TRUE)
-#' r2c_sum_check(1:10)                                 # checked
-#'
-#' ## Checks are disabled when using runners
-#' group_exec(r2c_sum_check, 1:10, groups=rep(1L, 10)) # not checked
-#'
-#' ## Multi-line statements with assignments are supported
+#' ## Multi-line statements with assignments are supported (but
+#' ## `r2c` automatically optimizes re-used calls, so intermediate
+#' ## assignments may be unnecessary (see `?reuse_calls`):
 #' slope <- function(x, y) {
 #'   mux <- mean(x)
 #'   x_mux <- x - mux
@@ -215,23 +213,10 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' }
 #' r2c_slope <- r2cf(slope)
 #' u <- runif(10)
-#' v <- runif(10)
+#' v <- 3/4*u + 1/4*runif(10)
 #' r2c_slope(u, v)
 #'
-#' ## Note `r2c` automatically optimizes re-used calls, so intermediate
-#' ## assignments may be unnecessary:
-#' slope2 <- function(x, y)
-#'   sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x))^2)
-#' r2c_slope2 <- r2cf(slope2)
-#' get_r_code(r2c_slope2)
-#' identical(r2c_slope(u, v), r2c_slope2(u, v))
-#'
-#' ## But assignments in arguments to other calls are disallowed
-#' slope2 <- function(x, y)
-#'   sum((x_mux <- x - mean(x)) * (y - mean(y))) / sum(x_mux^2)
-#' try(r2c_slope2 <- r2cf(slope2))  # Error
-#'
-#' ## For loops are slow; don't use them when there is an internally
+#' ## For loops are slow; avoid them if there is an internally
 #' ## vectorized alternative.
 #' sum_prod_loop_r <- function(x, y) {
 #'   res <- 0
@@ -739,7 +724,8 @@ r2c_local_headers <- function(name) {
   header.path <- system.file(package='r2c', 'headers', name)
   # Try to deal with spaces in header path for windows (this might have been a
   # red herring with the problem our hack attempt at using -I
-  if(.Platform$OS.type == "windows") header.path <- shortPathName(header.path)
+  if(.Platform$OS.type == "windows")
+    header.path <- utils::shortPathName(header.path)
   if(grepl(">", header.path))
     stop(
       "Header path contains '>' character which is disallowed.  You might ",
