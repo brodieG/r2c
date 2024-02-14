@@ -198,11 +198,6 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' r2c_sum_sub2 <- r2cq(sum(x - y), formals=c('y', 'x'))
 #' r2c_sum_sub2(-1, c(1, 2, 3))
 #'
-#' ## Leave symbols unbound, here `y` is resolved in the lexical environment
-#' r2c_sum_sub3 <- r2cq(sum(x - y), formals='x')
-#' y <- 999
-#' local({y <- -1; r2c_sum_sub3(c(1, 2, 3))})
-#'
 #' ## Multi-line statements with assignments are supported (but
 #' ## `r2c` automatically optimizes re-used calls, so intermediate
 #' ## assignments may be unnecessary (see `?reuse_calls`):
@@ -215,22 +210,6 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' u <- runif(10)
 #' v <- 3/4*u + 1/4*runif(10)
 #' r2c_slope(u, v)
-#'
-#' ## For loops are slow; avoid them if there is an internally
-#' ## vectorized alternative.
-#' sum_prod_loop_r <- function(x, y) {
-#'   res <- 0
-#'   for(i in seq_along(x)) res <- res + x[i] * y[i]
-#'   res
-#' }
-#' sum_prod_loop <- r2cf(sum_prod_loop_r)
-#' sum_prod_vec <- r2cq(sum(x * y))
-#' a <- runif(5e6)
-#' system.time(sum_prod_vec(a, a))
-#' system.time(sum_prod_loop(a, a))
-#' ## Make sure R fun byte-compiled
-#' sum_prod_loop_r <- compiler::cmpfun(sum_prod_loop_r)
-#' system.time(sum_prod_loop_r(a, a))
 
 r2cf <- function(
   x, dir=NULL, check=getOption('r2c.check.result', FALSE),

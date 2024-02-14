@@ -40,8 +40,6 @@
 
 * Why does compilation status not return 1 when it fails on window (system2).
 
-* Get rid of FORCE in compile?
-
 ## Next
 
 ### Optimizations
@@ -172,11 +170,6 @@ Error in r2cq(x + "a")(5) :
 ### Interface Design
 
 > See "Interface" section in notes.md.
-
-* Match expressions to library: e.g. `max(hello)` should match to a previously
-  compiled `max(x)`?  A bit tricky because we need to swap symbols around
-  assuming the "fingreprint" matches, which we probably can do.  Then we can
-  just auto-compile expressions.
 
 * Should grouping be done directly on data?  E.g.:
 
@@ -318,10 +311,7 @@ Error in r2cq(x + "a")(5) :
   `_R_CHECK_LENGTH_1_LOGIC2_`.
 
 * Make sure we don't directly capture "r2c_fun" functions from `_pre/data.R` in
-  tests as they will capture `_pre/data.R` values.
-* Think through the implications of using the lexical env for "r2c_fun"
-  functions with respect to the future `r2c` function library (see notes "Eval
-  Env") .
+  tests as they will capture `_pre/data.R` values.  See notes/notes.Rmd 
 
 * In the allocation data, is it the case that `group` and `is.na(size)` are the
   same?  Maybe, but we need to think ahead to cases where we'll have sizes that
@@ -369,8 +359,6 @@ shouldn't matter):
 ## For CRAN
 
 * Include README/extra contents in vignettes
-
-* Figure out why winbuilder doesn't work.
 
 * Errors in `match.call` that show the deparsed argument might deparse
   differently on different systems (`group_sum` error tests).
