@@ -48,6 +48,23 @@ Currently \code{r2c} implements some simple "compiler" optimizations, such as
 expired symbols (to free associated memory for re-use).  These are
 implemented in the \link[=r2c-preprocess]{preprocessing step}.
 }
+\examples{
+## For loops are slow; avoid them if there is an internally
+## vectorized alternative.
+sum_prod_loop_r <- function(x, y) {
+  res <- 0
+  for(i in seq_along(x)) res <- res + x[i] * y[i]
+  res
+}
+sum_prod_loop <- r2cf(sum_prod_loop_r)
+sum_prod_vec <- r2cq(sum(x * y))
+a <- runif(5e6)
+system.time(sum_prod_vec(a, a))
+system.time(sum_prod_loop(a, a))
+## Make sure R fun byte-compiled
+sum_prod_loop_r <- compiler::cmpfun(sum_prod_loop_r)
+system.time(sum_prod_loop_r(a, a))
+}
 \seealso{
 \link[=r2c]{Package overview} for other \code{r2c} concepts.
 }

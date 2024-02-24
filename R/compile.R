@@ -179,9 +179,12 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #'   translation to C, [package overview][r2c] for other `r2c` concepts.
 #' @examples
 #' r2c_mean_area <- r2cq(mean(x * y))
-#' r2c_mean_area <- r2cl(quote(mean(x * y)))   ## equivalently
+#' \dontrun{
+#' ## Equivalently with `r2cl` or `r2cf`:
+#' r2c_mean_area <- r2cl(quote(mean(x * y)))
 #' mean_area <- function(x, y) mean(x * y)
-#' r2c_mean_area <- r2cf(mean_area)            ## equivalently
+#' r2c_mean_area <- r2cf(mean_area)
+#' }
 #' ## Intended use is with runners
 #' with(
 #'   iris,
@@ -195,19 +198,9 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' r2c_sum_sub2 <- r2cq(sum(x - y), formals=c('y', 'x'))
 #' r2c_sum_sub2(-1, c(1, 2, 3))
 #'
-#' ## Leave symbols unbound, here `y` is resolved in the lexical environment
-#' r2c_sum_sub3 <- r2cq(sum(x - y), formals='x')
-#' y <- 999
-#' local({y <- -1; r2c_sum_sub3(c(1, 2, 3))})
-#'
-#' ##  Make a version that is checked
-#' r2c_sum_check <- r2cq(sum(x), check=TRUE)
-#' r2c_sum_check(1:10)                                 # checked
-#'
-#' ## Checks are disabled when using runners
-#' group_exec(r2c_sum_check, 1:10, groups=rep(1L, 10)) # not checked
-#'
-#' ## Multi-line statements with assignments are supported
+#' ## Multi-line statements with assignments are supported (but
+#' ## `r2c` automatically optimizes re-used calls, so intermediate
+#' ## assignments may be unnecessary (see `?reuse_calls`):
 #' slope <- function(x, y) {
 #'   mux <- mean(x)
 #'   x_mux <- x - mux
@@ -215,37 +208,8 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' }
 #' r2c_slope <- r2cf(slope)
 #' u <- runif(10)
-#' v <- runif(10)
+#' v <- 3/4*u + 1/4*runif(10)
 #' r2c_slope(u, v)
-#'
-#' ## Note `r2c` automatically optimizes re-used calls, so intermediate
-#' ## assignments may be unnecessary:
-#' slope2 <- function(x, y)
-#'   sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x))^2)
-#' r2c_slope2 <- r2cf(slope2)
-#' get_r_code(r2c_slope2)
-#' identical(r2c_slope(u, v), r2c_slope2(u, v))
-#'
-#' ## But assignments in arguments to other calls are disallowed
-#' slope2 <- function(x, y)
-#'   sum((x_mux <- x - mean(x)) * (y - mean(y))) / sum(x_mux^2)
-#' try(r2c_slope2 <- r2cf(slope2))  # Error
-#'
-#' ## For loops are slow; don't use them when there is an internally
-#' ## vectorized alternative.
-#' sum_prod_loop_r <- function(x, y) {
-#'   res <- 0
-#'   for(i in seq_along(x)) res <- res + x[i] * y[i]
-#'   res
-#' }
-#' sum_prod_loop <- r2cf(sum_prod_loop_r)
-#' sum_prod_vec <- r2cq(sum(x * y))
-#' a <- runif(5e6)
-#' system.time(sum_prod_vec(a, a))
-#' system.time(sum_prod_loop(a, a))
-#' ## Make sure R fun byte-compiled
-#' sum_prod_loop_r <- compiler::cmpfun(sum_prod_loop_r)
-#' system.time(sum_prod_loop_r(a, a))
 
 r2cf <- function(
   x, dir=NULL, check=getOption('r2c.check.result', FALSE),
@@ -318,7 +282,7 @@ r2c_core <- function(
 
   # But if we do keep it, we want to be able to recover it later.  We store the
   # data in an environment for deparse into <environment> instead of a list.
-  OBJ <- list2env(
+  .OBJ <- list2env(
     list(
       preproc=preproc, so=so[['so']],
       handle=list(name="r2c"),  # dummy handle should return FALSE w/ is.loaded
@@ -329,7 +293,7 @@ r2c_core <- function(
     ),
     parent=emptyenv()
   )
-  OBJ[['handle']] <- load_dynlib(OBJ)
+  .OBJ[['handle']] <- load_dynlib(.OBJ)
   if(clean) unlink(dir, recursive=TRUE)
 
   # Generate formals that match the free symbols in the call
@@ -343,6 +307,12 @@ r2c_core <- function(
       )
     formals <- replicate(length(sym.free), alist(a=))
     names(formals) <- sym.free
+  }
+  if(length(formals.bad <- grep(R2C.PRIV.RX, formals, value=TRUE))) {
+    stop(
+      "Function formals may not match this regex: \"", R2C.PRIV.RX, "\":\n\n",
+      toString(formals.bad)
+    )
   }
   fun <- fun.dummy <- function() NULL
   formals(fun) <- formals
@@ -358,14 +328,17 @@ r2c_core <- function(
   # 2. We need the function to survive a re-loading of r2c (for safety no runner
   #    allows running r2c_fun compiled with different R/r2c versions).
   #
-  # Thus, we directly embed the object with `.(OBJ)`. We use the same trick for
+  # Thus, we directly embed the object with `.(.OBJ)`. We use the same trick for
   # several other objects, both directly those generated here, and also those
   # that will be generated at call time, to ensure that no run-time objects can
   # interfere with the symbol resolution of the "r2c_fun" against its
-  # parameters.
+  # parameters when run stand alone.
+  #
+  # The .XYZ convention for these objects is decorative.  We do not rely on it
+  # to avoid symbol colision with user symbols.  The embedding does that.
 
   # Generate the docstring that will appear at beginning of function
-  DOC <- as.call(
+  .DOC <- as.call(
     list(
       as.name("{"),
       c(
@@ -385,57 +358,57 @@ r2c_core <- function(
         ) ) ),
         paste0("+", strrep("-", 61))
   ) ) )
-  # See below, we can't do this inline as it would be nested bquote
-  FORCE <- quote(eval(bquote(list(.(as.name(i))))))
-  # All required variables and meta-data; DOC and OBJ are embedded as
+  # All required variables and meta-data; .DOC and .OBJ are embedded as
   # actual R objects, not unevaluated symbols like the rest.
-  PREAMBLE <- bquote({
-    .(DOC)
-    .(OBJ)  # for ease of access, embedded in actual fun later
+  .PREAMBLE <- bquote({
+    .(.DOC)
+    .(.OBJ)  # for ease of access, embedded in actual fun later
     try <- tryCatch(
       .DAT0 <- as.list(environment(), all.names=TRUE), error=function(e) e
     )
+    .ENV <- list2env(.DAT0, parent=envir)
     .CALL <- sys.call()
     if(inherits(try, 'simpleError'))
       stop(simpleError(conditionMessage(try), .CALL))
-    .DAT <- if(dot.pos <- match('...', names(.DAT0), nomatch=0))
+    # Expand dots if present
+    .DAT <- if(dot.pos <- match('...', names(.DAT0), nomatch=0)) {
+      dot.list <- list(...)
+      names(dot.list) <- sprintf(paste0(R2C.DOTS, ".%d"), seq_along(dot.list))
       tryCatch(
         c(
-          .DAT0[seq_len(dot.pos - 1L)], list(...),
+          .DAT0[seq_len(dot.pos - 1L)], dot.list,
           .DAT0[seq_len(length(.DAT0) - dot.pos) + dot.pos]
         ),
         error=function(e) stop(simpleError(conditionMessage(e), .CALL))
       )
-    else .DAT0
-    .DGRP <- if(length(.DAT)) .DAT[1L] else list()
+    } else .DAT0
     .FRM <- formals()
-    # Correct lexical enclosure.  We cannot give The "r2c_fun" this
-    # enclosure because that would change the search path for all funs here.
-    .ENV <- list2env(.DAT0, parent=.(envir))
+    # We don't wan to embed and actual list as that is bad for tracebacks
+    .D.ENV <- list2env(.DAT, parent=emptyenv())  # enclos is not used
+    .D.ENV[['.R2C.ARGS']] <- names(.DAT)         # so we can restore arg order
   })
-  EXE <- quote(
+  .EXE <- quote(
     bquote(
       one_exec_int(
-        NULL, formals=.(.FRM), MoreArgs=.(.DAT), call=quote(.(.CALL))
-  ) ) )
-  EXE[[c(2L, 2L)]] <- OBJ  # embed object directly in call (replaces 1st NULL)
+       .(.OBJ), formals=.(.FRM), MoreArgsE=.(.D.ENV), call=quote(.(.CALL)))
+  ) )
 
   # Assemble the full function, we have a normal version, and a self check
   # version that compares against normal eval.
-  body(fun) <- if(!check) {
+  body(fun) <- if(!check) {  # normal
     bquote({
-      .(PREAMBLE)
-      eval(.(EXE), envir=getNamespace('r2c'))
+      .(.PREAMBLE)
+      eval(.(.EXE), envir=getNamespace('r2c'))
     })
-  } else {
-    # Symbol creation is ordered so that no created symbols will interfere with
-    # symbols referenced in the evaluated expressions (i.e. `call` is
-    # evaluated first when there are no symbols in the r2c_fun env).
+  } else {                   # self-check
+    # Symbol creation is ordered so they don't interfere with symbols referenced
+    # in the evaluated expressions (i.e. `call` is evaluated first when there
+    # are no symbols in the r2c_fun env, .EXE doesn't resolve user symbols).
     bquote({
-      .(PREAMBLE)
+      .(.PREAMBLE)
       test.i <- identical(
         res0 <- evalq(.(call), envir=.ENV),
-        res1 <- eval(.(EXE), envir=getNamespace('r2c'))
+        res1 <- eval(.(.EXE), envir=getNamespace('r2c'))
       )
       test.ae <- if(!test.i) all.equal(res0, res1)
       attr(res1, 'r2c.check.identical') <- test.i
@@ -730,7 +703,8 @@ r2c_local_headers <- function(name) {
   header.path <- system.file(package='r2c', 'headers', name)
   # Try to deal with spaces in header path for windows (this might have been a
   # red herring with the problem our hack attempt at using -I
-  if(.Platform$OS.type == "windows") header.path <- shortPathName(header.path)
+  if(.Platform$OS.type == "windows")
+    header.path <- utils::shortPathName(header.path)
   if(grepl(">", header.path))
     stop(
       "Header path contains '>' character which is disallowed.  You might ",

@@ -14,6 +14,8 @@
 
 ## Unitizer
 
+* `ref` produces error "`ref` is only active when there is an active secondary
+  environment" but then there is no `?ref` to be able to lookup what that means.
 * Can't tell what the current file we're reviewing is.  At a minimum have 'B'
   also show the file name in addition to all the tests.
 * Annoying that after a re-install, there is no way to rerun the top level
@@ -37,13 +39,8 @@
 ## Current
 
 * Why does compilation status not return 1 when it fails on window (system2).
-* Precision issues from tests saved from M1 to non-M1 machine?  Test if it's
-  windows or X86 vs apple silicon.  Seems like it's a different compilation of
-  `^` that behaves differently for integer vs non integer exponents.  It's
-  actually the conditional use of `powl` instead of `pow` on windows machines.
 
-    #if defined(_WIN64) && defined(__MINGW64_VERSION_MAJOR) && __MINGW64_VERSION_MAJOR >= 3
-    #define USE_POWL_IN_R_POW 1
+* Compilation warnings on vagrant.
 
   Also note "Do not use R.version$version.string".  Maybe we test for UCRT as a
   proxy?  Not sure that matters, we've been at MINGW > 3 for probably 10 years.
@@ -187,11 +184,6 @@ Error in r2cq(x + "a")(5) :
 
 > See "Interface" section in notes.md.
 
-* Match expressions to library: e.g. `max(hello)` should match to a previously
-  compiled `max(x)`?  A bit tricky because we need to swap symbols around
-  assuming the "fingreprint" matches, which we probably can do.  Then we can
-  just auto-compile expressions.
-
 * Should grouping be done directly on data?  E.g.:
 
     group_exec(f, group(dat, g))
@@ -332,10 +324,7 @@ Error in r2cq(x + "a")(5) :
   `_R_CHECK_LENGTH_1_LOGIC2_`.
 
 * Make sure we don't directly capture "r2c_fun" functions from `_pre/data.R` in
-  tests as they will capture `_pre/data.R` values.
-* Think through the implications of using the lexical env for "r2c_fun"
-  functions with respect to the future `r2c` function library (see notes "Eval
-  Env") .
+  tests as they will capture `_pre/data.R` values.  See notes/notes.Rmd 
 
 * In the allocation data, is it the case that `group` and `is.na(size)` are the
   same?  Maybe, but we need to think ahead to cases where we'll have sizes that
@@ -383,8 +372,6 @@ shouldn't matter):
 ## For CRAN
 
 * Include README/extra contents in vignettes
-
-* Figure out why winbuilder doesn't work.
 
 * Errors in `match.call` that show the deparsed argument might deparse
   differently on different systems (`group_sum` error tests).

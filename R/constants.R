@@ -233,8 +233,8 @@ CGEN.OUT.NONE <- 0L
 # - Internal Symbols -----------------------------------------------------------
 
 R2C.PRIV.BASE <- ".R2C"
-R2C.PRIV.RX <- sprintf("^%s", R2C.PRIV.BASE)
-R2C.DOTS <- ".R2C.DOTS"
+R2C.PRIV.RX <- sprintf("^\\%s", R2C.PRIV.BASE)
+R2C.DOTS <- sprintf("%s.DOTS", R2C.PRIV.BASE)
 QR2C.DOTS <- as.name(R2C.DOTS)
 
 # For arguments that show up as `..1`, `..2`, replaced to match pattern below

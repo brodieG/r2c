@@ -191,11 +191,20 @@ prep_alloc <- function(alloc, res.size) {
 #
 # See `group_exec_int` for details
 
-one_exec_int <- function(obj, formals, MoreArgs, call) {
+one_exec_int <- function(obj, formals, MoreArgsE, call) {
   preproc <- obj[['preproc']]
   shlib <- obj[['so']]
   enclos <- obj[['envir']]
-  do <- data <- list()  # all data via MoreArgs
+  do <- list()  # all data via `MoreArgsE`
+
+  # Get around embedding MoreArgs as a list (with stack consequences)
+  # enclosure is captured already in `obj`.
+  MoreArgs <- as.list(MoreArgsE, all.names=TRUE)
+  MoreArgs <- MoreArgs[MoreArgs[['.R2C.ARGS']]] # restore origial arg order
+  MoreArgs.nm <- names(MoreArgs)
+  MoreArgs.nm[grepl(R2C.PRIV.RX, MoreArgs.nm)] <- ""
+  names(MoreArgs) <- MoreArgs.nm
+
   gmax <- gmin <- 0
 
   alloc <- match_and_alloc(

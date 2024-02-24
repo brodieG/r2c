@@ -112,6 +112,8 @@ How do we deal with things like:
     if(i > 0) sum(seq_len(i))
     else sum(seq_len(abs(i)))
 
+**ANSWER**: this is documented not to work.
+
 Constant param validation will prevent this from happening because validation is
 done at allocation time.
 
@@ -129,6 +131,10 @@ at runtime.
 
 This all seems fragile though; probably better to just document in branch
 caveats.
+
+# Library
+
+See notes/library.Rmd
 
 # Guarded Symbols
 
@@ -152,34 +158,6 @@ For `reconcile_env_ext`, since we're processing depth first it should be the
 case that at most we only ever have one set of branches outstanding, so so long
 as we record the current `env.ext` when we hit the current TRUE branch, and save
 then record the `env.ext` when we switch to the FALSE branch, we should be fine?
-
-# Docs
-
-I think we want:
-
-* Supported functions:
-  * Generalities like numeric inputs (currently this is in internal/external).
-  * Maybe an asterisk indicating semantic differences, expounded upon in a
-    separate section?
-  * Among other things also details which parameters are internal vs external,
-    and maybe gives a quick example, then references the internal / external sub
-    expression page.
-  * Internal vs External:
-    * Parameters.
-    * Expressions vs Parameters (or is it really just external symbols)?
-  * Semantic differences.
-
-* Internal/external params.
-
-* Performance
-  * Memory is already its own page, so reference that?
-  * Numeric vs non numeric.
-  * Vectorized vs non vectorized, vs directly hand crafted C code.
-  * Runner vs not runner.
-  * Performance sweet spot.
-  * Interrupts.
-
-* Pre-processing
 
 # rep
 
@@ -533,30 +511,6 @@ Need to think through:
   could check for naked num on eval, and then each function needs to check it's
   requirements in C code (e.g. length for `numeric`).
 * external symbols: can evaluate to naked numeric
-
-# Eval Env
-
-We have an inconsistency with how evaluation environments are handled in runners
-vs naked calls.  As we've settled on the interface to the `r2c` code to be
-functions, we should respect that those define their own enclosing environment.
-
-We've set this up so that the compilation stores the lexical environment, which
-is then used stand-alone and runners.
-
-In the case we store the function in a library, `saveRDS` appears to save the
-entire environment chain, although presumably it will complain about those saved
-in packages, which will be the biggest issue?  We can intercept the package envs
-and instead provide a stub that maybe points to the empty env, to be restored
-later.  Or we just rely on R to do the right thing, possibly capturing the
-warning about such and such namespace may not be available.
-
-Should we support that someone might want to change the lexical environment?  We
-can't do that with `environment()<-` since the actual environment of the `r2c`
-function is going to be the `r2c` namespace (currently it is albeit indirectly,
-as we don't set the environment when we create the function inside `r2c_core`)?
-
-Not clear why R isn't warning about package environment not available when
-saving an "r2c_fun" (maybe it only warns about package environments?).
 
 # Single Group Performance
 
