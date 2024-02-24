@@ -1,6 +1,6 @@
 ## Copyright (C) Brodie Gaslam
 ##
-## This file is part of "r2c - A DSL for Fast Statistic Computation in R"
+## This file is part of "r2c - Fast Iterated Statistic Computation in R"
 ##
 ## This program is free software: you can redistribute it and/or modify
 ## it under the terms of the GNU General Public License as published by
@@ -249,3 +249,37 @@ unitizer_sect('nested loop/branch', {
   f5e(TRUE, c(1, 42))
   f5e(FALSE, c(1, 42))
 })
+unitizer_sect('Fibonacci', {
+  f.fib <-function(n) {
+    fib <- 1
+    for(i in seq_len(n)) {
+      if(i > 2) fib <- fib + i
+      else if(i == 2) fib <- 3
+      else if(i == 1) fib <- 1
+    }
+    fib
+  }
+  r2cFib <- r2cf(f.fib, check=TRUE)
+  r2cFib(1)
+  r2cFib(2)
+  r2cFib(3)
+  r2cFib(10)
+
+  # Alternate formulation
+  f.fib.2 <- function(n) {
+    fib <- 1
+    if(n >= 2) fib <- 3
+    if(n > 2) {
+      for(i in 3:n) {
+        fib <- fib + i
+      }
+    }
+    fib
+  }
+  r2cFib2 <- r2cf(f.fib.2, check=TRUE)
+  r2cFib2(1)
+  r2cFib2(2)
+  r2cFib2(3)
+  r2cFib2(10)
+})
+

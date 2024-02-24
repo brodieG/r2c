@@ -10,7 +10,176 @@
 
 ## Done
 
-### v0.4.0
+### v0.3.0
+
+* Think through implication of saving parameter validation functions in r2c_fun
+  object in terms of environment capture, etc.  Seems to be okay so long as the
+  functions in use are defined at the top level of a namespace.
+
+* Empty braces can't just be merged into parent braces, so we need to check the
+  empty condition before we simplify them away (`{5;{}}` is not equal to `{5}`).
+  Empty braces should be disallowed anyway (iirc they are now).  But could deal
+  with these by returning `numeric(0)`.
+
+* Can we avoid `r2c_copy` in cases where we know the symbol is assigned to from
+  an expression?  The big challenge is dealing with e.g. `if` and all the
+  constraints that adds.  Yes, this is done.
+
+* Something not right about recovering a reference "r2c_fun" in unitizer:
+
+    unitizer> get_r_code(ref(f1a))
+    Error in dat.contents[["R.version"]] : subscript out of bounds  
+
+* Doc improvements:
+  * Spruce up r2c landing page.
+  * Better structuring of topics?
+  * Add a performance page?  Generally try to move more arcane stuff out of the
+    primary pages to simplify them?
+
+* Copyright banners in tests have wrong title.
+
+* Add a test to check for hazard introduced by allowing binding of constant
+  expressions WRT to caching:
+
+    a <- some_fun(x)
+    x <- y
+    b <- some_fun(x)         # a != b
+    b + 0
+
+* `max` is not an implemented r2c fun despite ?`r2c-expression-types` claiming
+  otherwise.
+
+* Document what happens with external expressions with names?  Why does naked
+  numeric let them through?  This is because the test is with `is.vector` which
+  allows names.  Is that bad?  Convenient certainly.
+
+* Distinguish between illegal access in a constant parameter vs an unsupported
+  expression in error message.
+
+* For unsupported calls, we're producing bad errors because we need to
+  unsubstitute the name, which ideally we would do in the full call too.
+
+    Error in r2c::vcopy(x = .R2C_UNSUP_1) : External parameter expression
+     `x%%y` attempted to access internal symbol `x`.
+
+* Does the iteration varying symbol check allow through constant expressions
+  re-assigned to other symbols?  It probably should, but might not.  I don't
+  think it does because the `guard_symbol` in `names_update` isn't conditional
+  on anything.  What would it take for this to work?  We would need to make sure
+  we record whether an expression is constant?  And should this extend to all
+  expressions?  It would be nice.  How would we do it?  We can classify each
+  expression as internal or external depending on whether all its inputs are
+  external or not.
+* If we do this, need to think about whether the constant expression re-use
+  makes sense.  Right now we're safe because we don't allow ourselves to use
+  symbols that are assigned to in a constant expression.  And further, we only
+  evaluate as constant expressions that are actually passed to constant
+  parameters.  So if we were to expand the set of constant expressions even to
+  cases where they are used for non-constant parameters, we would need to
+  resolve the symbol matching issues we do with the code re-use optimizations.
+* Should we treat `numeric(n)` as a constant expression?  We call it that in the
+  docs, but in actuality it isn't internally.  And then there is the weirdness
+  of someone wanting to use e.g. `seq_len(seq_len(n))` which will break
+  presumably.  Is it worth recognizing situations where all parameters are
+  constant and evaluating the entire thing in R and caching the result?  From a
+  documentation correctness perspective it would.
+* Is `n - 1` constant if `n` is constant?  Probably should be.
+* Need to think about effect of rebinding a symbol that was varying to a
+  constant expression.
+
+* Should triggered candidates add themselves to e.g. `B.ALL`?  What about
+  `B.ALL.0`.  Would be nice to document the reason for the distinction between
+  those better.  What about `B.LOC`.  Probably not that last one because it's
+  not obvious the trigger even is of a branch local candidate.  I guess we could
+  check and maybe the logic would work out cleaner if we tracked the true status
+  of these things.
+* Think through possible cases where two branches want to add B.ALL0 things, do
+  we get duplicate vcopies?  Can we avoid them?  I think the use of B.ALL0 means
+  no since things are never removed.
+
+
+* Can we improve the stand-alone execution so it doesn't suffer the penalty of
+  generating the useless group vector?  We should be able to do it through
+  `process_groups`, i.e. generating its output, especially if the sorted version
+  does not include the order vector.  Instead we built a new runner.
+
+* `:`, `seq`, etc?  No, these are constant expressions of unsupported functions
+  thus don't need to be implemented.
+
+* Should we just used nested environments for name bindings, where each name
+  just binds the alloc id?  Problem with this is it's not easy to query the data
+  (great for looking up names though).  This might simplify the name management
+  logic a bit.
+* Should we drop everything in `alloc$names` matrix and stack) that can be
+  recovered from `alloc` via `id0` to mitigate potential synchronization issues?
+  The stack is probably the bigger issue, where potentially a named vector would
+  work as right now all the fields there are in `alloc`.  `names` actually
+  doesn't seem to have any of those.
+* Restructure `alloc$names` into using environments.  Seems like it should be
+  better than relying on the `hide` business.  The symbols could then carry all
+  the meta data that is currently in the table (e.g. `env[['x']]` would contain
+  the allocation id, etc., for variable `x`).
+* `env.ext` vs `env` in `alloc`, really should be the same.
+* Make sure we still use `names_clean` or equivalent in some form.
+* `stack.env.ext.F` is not used.  Which means we're probably miss-using the
+  `stack.env.ext.T` and `stack.env.ext` names.  Probably the latter should be
+  `.T` and the former `.F`.  Reconcile with `stack.env.names`.  Actually, it's
+  not used because we don't need to try track `stack.env.ext.F` explicitly
+  because it's just the end of whatever we're doing, which could be the FALSE
+  branch or no branch at all.  The end of the TRUEs are the only ones we need to
+  keep so when we hit the end of a FALSE we can find the most recent TRUE to
+  match it up to.
+* Can we merge `stack.env.ext` and `stack.env.names`?  Should be very similar.
+  But not quite due to the 1 symbol per.
+
+* What would it take to optimize the loop so that all the `lset` values write
+  directly to the variable instead of needing an explicit copy.  And would that
+  really make any difference in the loop evaluation speed compared to e.g. Rcpp?
+  Seems like in order to get faster we would have to recognize at allocation
+  time that we're doing scalar additions and provide specialized operators for
+  that.
+
+* Add check to `r2c` funs that verify the `r2c` version, the R version, and the
+  platform (anything else)?
+
+* Should we lock the `alloc` environment?  Could someone actually get access to
+  it since it does not exist before running?
+* Make sure that we track down all the places `guard_symbol` is used to return
+  the environment it will generate when we change the logic to locked envs.
+
+* Eqlen when one of the inputs is group size; maybe working because we paper
+  over the NA when `gmax == gmin`.  Added test, but error messages are awful.
+
+* That it is impossible to try to use an allocation before it would be created
+  in the code.  Tricky with loops.  Can we check for this within `alloc`?
+  Probably, but not trivial, particularly because we change all the previously
+  allocated values.  To do this we could record each result allocation, and make
+  sure that every function call always has in the leading parameters things in
+  that list.  Maybe loops aren't too bad since we just explicitly copy
+  back.  We added a check at the end of `alloc` to try to catch this.  We had to
+  ignore passive expressions because they are generated in ways that don't
+  always end up consistent (e.g. there is a fake alloc associated with the
+  symbol in `sym <- val`, but that's never used because we always access the
+  value bound to the symbol, not the symbol itself, and also brace calls are
+  not always update for changes in the ids used by subcalls from reconciliation,
+  etc.).
+
+* Size computed correctly with concatenations of things produced in branches.
+* Did we have concat tests on the other computer?  We don't seem to have them
+  now (we did not).
+
+* Test that:
+  * extern symbol resolution caching actually works.
+  * Attempt to use internal symbol in external param is caught.  Maybe test with
+    'get' too?  Still can get around by specifying an environment.
+
+
+* All the rep checks on times/each/length.out should stay in `rep_size` and
+  similar since they are external and shouldn't change.
+
+* Check that multi-arg summary cannot have zero args?  Need to automatically
+  give it at least one arg to be consistent.  Fixed it so that it can operate
+  with zero args.
 
 * Where do we check the validity of size vectors?  Looks like we do it in
   `vec_dat`.
@@ -29,6 +198,8 @@
   each entry is an integer that reflects the number of `id` values minus one
   for the result.  So it is the total internal arg count.
 
+* Add destructors that will unload the shlib and delete file file when the
+  corresponding object is garbage collected (finalizer).
 * Add a finalizer to unload and dump dlls (but in some OSes we cannot unload
   DLLs, so maybe need a mechanism for generating libraries).:
 
@@ -36,7 +207,6 @@
       `maximal number of DLLs reached...
 
   See notes.Rmd for additional discussion.
-
 
 * Default arguments in `group_exec` don't seem to work (test with `r2cf`)?
 * Default arguments that depend on iteration varying data (i.e. the default
@@ -285,7 +455,7 @@
 
   {
       x <- r2c::vcopy(x)
-      if (b) 
+      if (b)
           x[a] <- y
       else {
           x <- r2c::rec(r2c::vcopy(x))
@@ -505,7 +675,7 @@
 * Make sure that the Function Environment in `r2cf` is captured somewhere.  In
   particular we want to make sure unbound symbols are resolved according to that
   environment.  Will also need to think about what this means for the `enclos`
-  parameter to the runners.  
+  parameter to the runners.
 * `r2cq(test)` produces weird error (note that's just a symbol) (fixed).
 * Make sure that the no-op C functions don't return warnings.
 * Test corner cases such as a repeated assignment to see if it get correctly
@@ -696,7 +866,7 @@
   where the `...` need to be fetched.
 
     > (\(...) r2cq(sum(...)))(1, 2)
-    Error in match.call(definition = definition, call = call, envir = envir,  : 
+    Error in match.call(definition = definition, call = call, envir = envir,  :
       ... used in a situation where it does not exist
 
 Right now preprocess is just using `parent.frame()` for match.call, which

@@ -252,7 +252,7 @@ light.x.pos <- c(mean(range(R.xy2[,1])), 0, mean(range(c.xy[,1]))) * 1.05
 fov <- 30
 spang0 <- 17
 width <- height <- 800
-samples <- 100
+samples <- 10
 
 # 1: Fade in fill
 

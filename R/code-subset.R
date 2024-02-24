@@ -21,8 +21,9 @@ static void %s(%s) {
 
   R_xlen_t len = lens[di[1]];
   R_xlen_t lend = lens[di[0]];
+  R_xlen_t i;
 
-  for(R_xlen_t i = 0; i < len; ++i) {
+  LOOP_W_INTERRUPT1(len, {
     double ival = index[i];
     int isna = ISNAN(ival);
     if(!isna && ival > 0 && ival <= lend) {
@@ -34,7 +35,7 @@ static void %s(%s) {
         "Only strictly positive index values allowed, found: [%%jd].",
         (intmax_t) ival
       );
-  }
+  });
   lens[di[2]] = len;
 }'
 
@@ -42,10 +43,10 @@ code_gen_subset <- function(fun, pars, par.types) {
   vetr(
     identical(., "["),
     pars=list(NULL, NULL),
-    par.types=character() && all(. %in% PAR.INT)
+    par.types=character() && all(. %in% PAR.IVARY)
   )
   name <- FUN.NAMES[fun]
-  defn <- sprintf(f_subset, name, toString(F.ARGS.BASE))
+  defn <- sprintf(f_subset, name, toString(CF.ARGS.BASE))
   code_res(defn=defn, name=name)
 }
 # Does *NOT* return the sub-assignment values, so can only be used incontext
@@ -60,16 +61,15 @@ static void %s(%s) {
 
   R_xlen_t lenr = lens[di[0]];
   R_xlen_t leni = lens[di[1]];
-  R_xlen_t lenv = lens[di[2]];
-  R_xlen_t v = 0;
+  R_xlen_t lenj = lens[di[2]];
 
-  for(R_xlen_t i = 0; i < leni; ++i, ++v) {
-    if(v >= lenv) v = 0;
+  R_xlen_t i, j;
+  LOOP_W_INTERRUPT2(leni, lenj, {
     double ival = index[i];
     int isna = ISNAN(ival);
     if(!isna && ival > 0 && ival <= lenr) {
       R_xlen_t ival0 = ival - 1;
-      res[ival0] = dat[v];
+      res[ival0] = dat[j];
     } else if (isna) {
       Rf_error("NAs are not allowed in subscripted assignments.");
     } else if (ival <= R_XLEN_T_MAX) {
@@ -83,8 +83,8 @@ static void %s(%s) {
         "[>R_XLEN_T_MAX]."
       );
     }
-  }
-  if(leni && v != lenv) data[%s][%s] = 1.;   // bad recycle
+  });
+  if(leni && j != lenj) data[%s][%s] = 1.;   // bad recycle
 }'
 
 # Validator for Subset/Subassign
@@ -107,11 +107,11 @@ code_gen_subassign <- function(fun, pars, par.types) {
   vetr(
     identical(., "subassign"),
     pars=list(NULL, NULL, NULL),
-    par.types=character() && all(. %in% PAR.INT)
+    par.types=character() && all(. %in% PAR.IVARY)
   )
   name <- FUN.NAMES[fun]
   defn <- sprintf(
-    f_subset_assign, name, toString(F.ARGS.BASE),
+    f_subset_assign, name, toString(CF.ARGS.BASE),
     IX[['I.STAT']], IX[['STAT.RECYCLE']] # these are now available as defines
   )
   code_res(defn=defn, name=name)
@@ -122,15 +122,15 @@ code_gen_subassign <- function(fun, pars, par.types) {
 #' "Internal" function that implement subassignment (e.g. `x[s] <- y`) for
 #' `r2c`.  Standard R subassignments are converted to `subassign` so that the
 #' `r2c` [preprocessor][r2c-preprocess] can identify them as a sub-assignment
-#' instead of an a subset nested in an assignment.
+#' instead of a subset nested in an assignment.
 #'
 #' Unlike the R counterpart, or the `r2c` usage of this function,
 #' regular R usage of this function does not modify `x` outside of the internal
 #' scope of the function.  This function is an implementation detail and is
 #' documented only for the rare cases where it becomes visible to the user.
 #'
-#' @seealso Other [intermediate-representation][intermediate representation functions], 
-#' [r2c-preprocess][`r2c` preprocessor].
+#' @seealso Other [intermediate representation
+#'   functions][intermediate-representation], `r2c`[preprocessor][r2c-preprocess].
 #' @keywords internal
 #' @param x a numeric vector
 #' @export

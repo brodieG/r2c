@@ -105,3 +105,41 @@ struct R2C_dat prep_data(
   };
   return res;
 }
+/*
+ * Single run runner
+ *
+ * See prep_data and R2C_dat struct in r2c.h for more detail on what the
+ * paramters correspond to.  See also R2C_run_group and R2C_run_window*.
+ */
+
+SEXP R2C_run_one(
+  SEXP so,
+  SEXP dat,
+  SEXP dat_cols,
+  SEXP ids,
+  SEXP extn,
+  SEXP res_len
+) {
+  if(TYPEOF(res_len) != REALSXP || XLENGTH(res_len) != 1)
+    Rf_error("Argument `res_len` should be a scalar REALSXP.");
+
+  struct R2C_dat dp = prep_data(dat, dat_cols, ids, extn, so);
+
+  // ***************************************************************
+  // ** LOOK AT group.c FOR MORE COMMENTS ON WHAT'S GOING ON HERE **
+  // ***************************************************************
+
+  double r_len = REAL(res_len)[0];
+  double recycle_warn = 0;
+
+  (*(dp.fun))(dp.data, dp.lens, dp.datai, dp.narg, dp.extn);
+  if(dp.data[I_STAT][STAT_RECYCLE] && !recycle_warn) recycle_warn = 1;
+
+  if(dp.lens[I_RES] != r_len)
+    Rf_error(
+      "Result size does not match expected (%jd vs expected %.0f).",
+      (intmax_t) dp.lens[I_RES], r_len
+    );
+
+  return Rf_ScalarReal((double) recycle_warn);
+}

@@ -24,17 +24,22 @@
 
 #' @include util.R
 
+# - Branch Copy ----------------------------------------------------------------
+
 # Frequently used indices (probably should just make data flat...).
 
 CAND <- c('copy', 'cand')
 ACT <- c('copy', 'act')
-# Local binding
-B.LOC <- c('bind', 'loc')
-# Local and computed
-B.LOC.CMP <- c('bind', 'loc.compute')
-# Global and computing
-B.ALL <- c('bind', 'all')
-# Global and computing, but to inject at front by e.g. subassign
+
+# Binding tracking, see docs for `data` in `copy_branchdat_rec`.
+B.LOC <- c('bind', 'loc')               # Local binding
+B.LOC.CMP <- c('bind', 'loc.compute')   # Local and computed
+B.ALL <- c('bind', 'all')               # Global and computed
+# Global computed created to deal with external symbols that are subassigned to
+# (e.g. x[s] <- y where `x` references external data).  These get an e.g.
+# `x <- vcopy(x)` at the very beginning of the code, and thus will be outside of
+# all branches so don't get the masking that those in B.ALL do (and thus need to
+# be tracked separately).  See docs for `data` in `copy_branchdat_rec`.
 B.ALL0 <- c('bind', 'all0')
 # Track all bindings irrespective of type for free variables
 B.NAMED <- c('bind', 'named')
@@ -92,7 +97,7 @@ B.NAMED <- c('bind', 'named')
 # @section External Memory References:
 #
 # External memory references are symbols that resolve to memory allocated
-# outside of `r2c`, either those bound to the iteration varying data, or to the
+# outside of `r2c`, either those bound to the iteration constant data, or to the
 # enclosing environment chain.  We have a problem when the result of an `r2c`
 # expression is such a value, e.g. one that simply returns such
 # an external reference:
@@ -241,22 +246,15 @@ B.NAMED <- c('bind', 'named')
 #
 # @seealso copy_branchdat_rec for details on what gets copied and why.
 # @param x call to process
+# @param unsupported see `sub_unsupported`
 
-copy_branchdat <- function(x) {
-  if(is.symbol(x)) {
-    # Special case: a single symbol.  For recursive logic to work cleanly every
-    # symbol needs to be part of a call
-    sym.free <- as.character(x)
-    x <- en_vcopy(x)
-  } else {
-    # Compute locations requring vcopy
-    branch.dat <- copy_branchdat_rec(x, x0=x)
-    sym.free <- branch.dat[['free']]
+copy_branchdat <- function(x, unsupported) {
+  # Compute locations requring vcopy
+  branch.dat <- copy_branchdat_rec(x, x0=x, unsupported=unsupported)
+  sym.free <- branch.dat[['free']]
 
-    # Modify the symbols / sub-calls that need to be vcopy'ed
-    x <- inject_rec_and_copy(x, branch.dat)
-  }
-  sym.free[sym.free == '.R2C.DOTS'] <- '...'
+  # Modify the symbols / sub-calls that need to be vcopy'ed
+  x <- inject_rec_and_copy(x, branch.dat)
   list(call=x, sym.free=sym.free)
 }
 # Compute Locations of Required `rec` and `vcopy`s
@@ -278,7 +276,10 @@ copy_branchdat <- function(x) {
 # branch-bound symbols are branch-local and thus don't require `vcopy`. Because
 # of this distinction we track local bindings and global bindings separately in
 # the `data` object.  We also track whether local bindings were computed locally
-# or not, as sometimes locally computed values can avoid a copy.
+# or not, as sometimes locally computed values can avoid a copy.  This tracking
+# implementation using `data[[B.ALL]]` and similar (see comments at `B.ALL`
+# definition) is fragile and really should have been done with environments
+# like we do the binding tracking at allocation time.
 #
 # In general, we try to avoid unnecessary `vcopy`s, but to avoid
 # over-complicating the code there is no guarantee that there are no redundant
@@ -291,7 +292,7 @@ copy_branchdat <- function(x) {
 #
 # @seealso `copy_branchdat` for context, `inject_rec_and_copy` for how we
 #   actually modify the call, `generate_candidate` for additional details on
-#   what requires reconciliation / copy..
+#   what requires reconciliation / copy.
 # @param index integer vector with the coordinates of `x` in the outermost
 #   expression (see `callptr`).
 # @param assign.to character vector of symbol names that are part of current
@@ -318,7 +319,7 @@ copy_branchdat <- function(x) {
 #   * "bind": a list containing branch-local bindings, branch-local computed
 #     bindings, global bindings (all, and all0 for those re-injected at
 #     beginning of call by e.g. subassign), and every encountered binding
-#     (named).
+#     (named).  See B.ALL etal.
 #   * "copy": a list with elements "cand", and "act". Each is a list
 #     of `callptr` generated objects used to track calls that need to be
 #     reconciled and/or vcopied (potentially for "cand", definitively).
@@ -329,6 +330,7 @@ copy_branchdat <- function(x) {
 #     processed call or its children, used to set triggers in some cases.
 #   * "leaf.name": if the leaf of a call is a symbol, the name of the symbol.
 #   * "free": any used symbols that are not previously bound.
+# @param unsupported see `sub_unsupported`
 # @return an updated `data` object.
 
 copy_branchdat_rec <- function(
@@ -344,6 +346,7 @@ copy_branchdat_rec <- function(
     copy=list(cand=list(), act=list()),
     passive=TRUE, assigned.to=character(), leaf.name="", free=character()
   ),
+  unsupported,
   x0  # for debugging to see what the indices are pointing at
 ) {
   sym.name <- get_lang_name(x)
@@ -352,48 +355,19 @@ copy_branchdat_rec <- function(
 
   if (!is.call(x)) {
     # Could be either a symbol, or alternatively a literal (e.g. `42`).
-    # If a a literal, it will be checked for numeric-ness by the allocator.  It
-    # should never be the case that external parameters become candidates
-
+    # If a literal, it will be checked for numeric-ness by the allocator.  It
+    # should never be the case that iteration-constant parameters become
+    # candidates, except if they are sub-assign targets?
     sym.local.cmp <- sym.name %in% data[[B.LOC.CMP]]
     sym.global <- sym.name %in% c(data[[B.ALL]], data[[B.ALL0]])
     passive <- !sym.local.cmp
     leaf <- TRUE
     data[['leaf.name']] <- sym.name  # "" for literals
 
-    if(!sym.name %in% data[[B.NAMED]] && nzchar(sym.name)) {
-      data[['free']] <- union(data[['free']], sym.name)
-    }
     # For symbols matching candidate(s): promote candidate if allowed.
-    cand <- data[[CAND]]
-    cand.match <- names(cand) == sym.name
-    cand.match.source <- lapply(cand[cand.match], "[[", "br.index")
-    cand.after.branch <- vapply(
-      cand.match.source,
-      function(a, b) {
-        # Definitely after branch if not in branch but symbol is from branch
-        if(is.null(a)) length(b) > 0
-        # Otherwise check if current branch is later than symbol branch
-        else {
-          if(length(a) > length(b)) length(a) <- length(b)
-          index_greater(a, b)
-        }
-      },
-      TRUE, a=in.branch  # in.branch is current position
+    data <- promote_candidates(
+      data, names=sym.name, index=in.branch, unsupported=unsupported
     )
-    cand.prom.i <- seq_along(cand)[cand.match][cand.after.branch]
-    cand.prom <- cand[cand.prom.i]
-
-    # Effect promotions, and clear promoted candidates from candidate list.
-    data[[ACT]] <- c(data[[ACT]], cand.prom)
-    data[[CAND]] <- clear_candidates(data[[CAND]], cand.prom.i)
-
-    # Triggered branch balance candidates may require updating free symbol list
-    # For these the trigger is the same as the symbol (e.g. x <- vcopy(x))
-    br.bal.free <- vapply(cand.prom, "[[", TRUE, "free")
-    br.bal.free.sym <- vapply(cand.prom[br.bal.free], "[[", "", "name")
-    data[['free']] <- union(data[['free']], br.bal.free.sym)
-
     if(is.null(in.branch) && length(assign.to) && sym.local.cmp) {
       # Outside of branches, aliasing a locally computed symbol makes the others
       # also locally computed.
@@ -404,16 +378,14 @@ copy_branchdat_rec <- function(
     call.assign <- sym.name %in% ASSIGN.SYM
     call.modify <- sym.name %in% MODIFY.SYM
     # `passive` is whether this single call is passive, `data[['passive']]`
-    # is whether all its sub-calls also return passively (and is only knowable
-    # after we've recursed through the expression).  For this function purposes
-    # we treat `r2c_if`  and similar as computing, b/c we are guaranteed the
-    # return value will be computed if used, even though strictly it does not
-    # compute itself.
+    # is whether sub-calls also return passively (only knowable after
+    # we've recursed).  We treat `r2c_if` and similar as computing despite them
+    # being passive, b/c return value is guaranteed computed if used.
     passive <- sym.name %in% PASSIVE.BRANCH.SYM
-    # for candidacy purposes, computing calls are leaves, as are the LCOPY funs
-    # (really just LSET which is otherwise passive).  This prevents copy/recs
-    # from penetrating non-passive and loop rec calls.
-    leaf <- !passive || sym.name %in% L.COPY.FUNS
+
+    # for candidacy purposes, computing calls are leaves. This prevents
+    # copy/recs from penetrating non-passive and loop rec calls.
+    leaf <- !passive
 
     if(call.modify) tar.sym <- get_target_symbol(x, sym.name)
     sub.assign.to <- if(sym.name == "subassign") {
@@ -426,6 +398,10 @@ copy_branchdat_rec <- function(
       )
         stop("Result of `[<-` may not be used directly.")
 
+      # Promote candidates attached to the sub-assign symbol.
+      data <- promote_candidates(
+        data, tar.sym, in.branch, unsupported, subassign=TRUE
+      )
       tar.sym
     } else ""  # We want sub-assign symbol to spread to its children only
 
@@ -440,7 +416,7 @@ copy_branchdat_rec <- function(
           x[[2L]], index=c(index, 2L),
           last=FALSE, branch.res=FALSE,
           in.compute=FALSE, in.branch=in.branch, prev.call=sym.name,
-          data=data, x0=x0
+          data=data, unsupported=unsupported, x0=x0
         )
       }
       idx.T <- 2L + idx.offset
@@ -461,12 +437,14 @@ copy_branchdat_rec <- function(
       prev.T <- get_lang_name(x[[idx.T]])
       data.T <- copy_branchdat_rec(
         x[[c(idx.T, 2L)]], index=c(idx.T.all, 2L), data=data.next, last=last,
-        in.branch=idx.T.all, branch.res=branch.res.next, prev.call=prev.T, x0=x0
+        in.branch=idx.T.all, branch.res=branch.res.next, prev.call=prev.T,
+        unsupported=unsupported, x0=x0
       )
       prev.F <- get_lang_name(x[[idx.F]])
       data.F <- copy_branchdat_rec(
         x[[c(idx.F, 2L)]], index=c(idx.F.all, 2L), data=data.next, last=last,
-        in.branch=idx.F.all, branch.res=branch.res.next, prev.call=prev.F, x0=x0
+        in.branch=idx.F.all, branch.res=branch.res.next, prev.call=prev.F,
+        unsupported=unsupported, x0=x0
       )
       # Recombine branch data and the pre-branch data
       data <- merge_copy_dat(data, data.T, data.F, index, idx.offset)
@@ -483,22 +461,34 @@ copy_branchdat_rec <- function(
         # shouldn't matter since never used after branch.
         rec.skip <- 1:2
       }
+      par.ext.names <- names(VALID_FUNS[[c(sym.name, "icnst")]])
+
       # Recurse on subcomponents (literals too)
       for(i in seq_along(x)[-rec.skip]) {
-        # assign.to is forwarded by non-leaf calls
-        next.last <- i == length(x) && !leaf
-        assign.to.next <- if(!next.last) character() else assign.to
-        sub.assign.to.next <- if(i != length(x)) "" else sub.assign.to
-        data[['passive']] <- passive.now # reset pre-rec passive status
-        data <- copy_branchdat_rec(
-          x[[i]], index=c(index, i),
-          assign.to=assign.to.next, sub.assign.to=sub.assign.to.next,
-          last=last && next.last,
-          branch.res=branch.res && next.last,
-          in.compute=in.compute || !passive,
-          in.branch=in.branch, prev.call=sym.name,
-          data=data, x0=x0
-        )
+        # Skip external/constant params
+        if(!names2(x)[i] %in% par.ext.names) {
+          # assign.to is forwarded by non-leaf calls
+          next.last <- i == length(x) && !leaf
+          assign.to.next <- if(!next.last) character() else assign.to
+          sub.assign.to.next <- if(i != length(x)) "" else sub.assign.to
+          data[['passive']] <- passive.now # reset pre-rec passive status
+          data <- copy_branchdat_rec(
+            x[[i]], index=c(index, i),
+            assign.to=assign.to.next, sub.assign.to=sub.assign.to.next,
+            last=last && next.last,
+            branch.res=branch.res && next.last,
+            in.compute=in.compute || !passive,
+            in.branch=in.branch, prev.call=sym.name,
+            data=data, x0=x0, unsupported=unsupported
+          )
+        } else {
+          # Symbols in external expressions for const params still promote
+          # candidates and potentially contribute to r2cq/l interace.
+          data <- promote_candidates(
+            data, names=collect_call_symbols(x[[i]]), index=in.branch,
+            unsupported=unsupported, subassign=TRUE
+          )
+        }
       }
       data[['passive']] <- passive && data[['passive']]
 
@@ -535,6 +525,41 @@ copy_branchdat_rec <- function(
   )
   data
 }
+# Register additional free symbols
+#
+# Only use add_maybe_extern_free_symbols.
+#
+# @param x a call
+
+add_free_symbol_names <- function(data, names) {
+  new.free.names <- names[
+    !names %in% data[[B.NAMED]] & nzchar(names) &
+    !grepl(R2C.PRIV.RX, names)  # Could these exist here?
+  ]
+  data[['free']] <- union(data[['free']], new.free.names)
+  data
+}
+add_free_symbols <- function(data, x) {
+  names <- collect_call_symbols(x)
+  add_free_symbol_names(data, names)
+}
+# Given symbol names, expand any ones representing unsupported expressions into
+# or other special symbols to their own symbol names.
+
+expand_symbols <- function(names, unsupported) {
+  names <- unique(names)
+  names[names == R2C.DOTS] <- "..."
+  names.unsup <- names[names %in% names(unsupported)]
+  names.other <- setdiff(names, names.unsup)
+  res <- unique(
+    c(names.other, unlist(lapply(unsupported[names.unsup], "[[", 'syms')))
+  )
+  if(any(grepl(UNSUP.CALL.RX, res)))
+    stop("Internal Error: nested unsupported symbols should not be possible.")
+  res
+}
+
+
 # Generate Candidate (and Actual) Call Pointers
 #
 # Compute which expressions might need to  be copied and/or reconciled, and
@@ -546,6 +571,9 @@ copy_branchdat_rec <- function(
 # branches **if** such values might be used (see `copy_branchdat_rec`).  A
 # branch return value might be used if it is assigned to a symbol, or if it is
 # also the return value of the entire `r2c` expression.
+#
+# Additionally, candidates are needed for non-computed/external symbols that are
+# modified by subassign.
 #
 # Each candidate will be assigned a (set of) triggering symbol(s) that will,
 # should they appear after the branch, cause a promotion of the candidate to an
@@ -650,7 +678,6 @@ generate_candidate <- function(
     data <- add_actual_callptr(data, index, rec=FALSE, copy=TRUE)
   }
   # Subassignment to an external symbol requires self-copy to make it internal.
-  # This will be branch-balanced in `merge_copy_dat`.
   if(sym.name == "subassign" && !tar.sym %in% computed.sym) {
     # Self-copy goes all the way to the beginning of code because that works,
     # and if we did it adjacent existing code that happened to be in a loop we
@@ -660,19 +687,22 @@ generate_candidate <- function(
     data <-
       add_actual_callptr(data, s.cpy.idx, name=tar.sym, rec=FALSE, copy=TRUE)
   }
-  if(length(in.branch)) {
+  if(!last || length(in.branch)) {
     # Symbols bound in branches will require rec and/or vcopy of their payload
     # **if** they are used (after the branch?). vcopy not always needed, e.g:
     #
     #   if(a) x <- rec(vcopy(y)); x     # rec and vcopy
     #   if(a) x <- rec(mean(y)); x      # only rec
     #
+    # We are also tagging symbols that may generated outside of branch in case
+    # they are modified by subassign.
     if(length(assign.to) && !first.assign && (call.assign || leaf)) {
       # Always reconcile
       triggers <- if(call.assign) assign.to[-length(assign.to)] else assign.to
       data <- add_candidate_callptr(
-        data, index, br.index=in.branch, triggers=tail(triggers, 1L), rec=TRUE,
-        copy=passive # but only vcopy passive
+        data, index, br.index=in.branch, triggers=tail(triggers, 1L),
+        rec=length(in.branch) > 0L, # rec if in branch
+        copy=passive                # but only vcopy passive
       )
       # Locally Computed symbols require copy if used after branch e.g:
       #
@@ -726,7 +756,7 @@ generate_candidate <- function(
         }
       }
     }
-  } else if (last) {
+  } else {
     # Final return not from branch: need to copy if not computed already.
     # Reconciliation not necessary since we're not in branch.
     assign.passive <- !data[['leaf.name']] %in% computed.sym
@@ -746,7 +776,8 @@ generate_candidate <- function(
         data[[B.LOC.CMP]] <- union(data[[B.LOC.CMP]], tar.sym)
         data[[B.ALL]] <- union(data[[B.ALL]], tar.sym)
       }
-      if(call.modify) {
+      if(call.modify) {  # assign + subassign
+        # These are assumed bound at top-level outside of any branches
         data[[B.ALL0]] <- union(data[[B.ALL0]], tar.sym)
       }
     } else if(call.assign) {
@@ -763,6 +794,7 @@ generate_candidate <- function(
   data[['assigned.to']] <- assign.to
   data
 }
+
 # A "Pointer" to Spot in Call Tree to Modify
 #
 # Allows us to track candidates or actual positions in the call tree for
@@ -820,11 +852,17 @@ callptr <- function(
     )
   list(name=name, index=index, br.index=br.index, rec=rec, copy=copy, free=free)
 }
+
 add_actual_callptr  <- function(
   data, index, rec=TRUE, copy=TRUE, name=NA_character_
 ) {
   new.act <- callptr(name, index, br.index=NULL, copy=copy, rec=rec)
   data[[ACT]] <- c(data[[ACT]], list(new.act))
+  # An actual callptr that's copied is a computing binding
+  if(copy && !is.na(name) && nzchar(name)) {
+    data[[B.ALL]] <- union(data[[B.ALL]], name)
+    data[[B.ALL0]] <- union(data[[B.ALL0]], name)
+  }
   data[['passive']] <- !copy
   data
 }
@@ -841,6 +879,69 @@ gen_callptrs <- function(names, index, br.index, rec, copy, free=FALSE)
     names, copy=copy, rec=rec, index=list(index), br.index=list(br.index),
     free=free
   )
+## Promote Candidates
+##
+## Given an encountered symbol, promote matching candidates and update data
+## structures to reflect promotion.  Additionally, record free symbol data for
+## generating r2cq/l interace.
+
+promote_candidates1 <- function(
+  data, name, index, subassign=FALSE
+) {
+  cand <- data[[CAND]]
+  cand.match <- names(cand) == name
+  cand.match.source <- lapply(cand[cand.match], "[[", "br.index")
+  cand.after.branch <- vapply(
+    cand.match.source,
+    function(a, b) {
+      # Definitely after branch if not in branch but symbol is from branch
+      if(is.null(a)) length(b) > 0
+      # Otherwise check if current branch is later than symbol branch
+      else {
+        if(length(a) > length(b)) length(a) <- length(b)
+        index_greater(a, b)
+      }
+    },
+    TRUE, a=index  # index is current position
+  )
+  # Promote top-level candidates for sub-assign because that modifies memory
+  cand.prom.bool <-
+    if(subassign) cand.after.branch | lengths(cand.match.source) == 0L
+    else cand.after.branch
+
+  cand.prom.i <- seq_along(cand)[cand.match][cand.prom.bool]
+  cand.prom <- cand[cand.prom.i]
+
+  # Effect promotions, and clear promoted candidates from candidate list.
+  data[[ACT]] <- c(data[[ACT]], cand.prom)
+  data[[CAND]] <- clear_candidates(data[[CAND]], cand.prom.i)
+
+  # Update the bindings.  Looks like we don't need to update B.LOC because
+  # things triggered here should only be after the branch or top-level.
+  data[[B.ALL]] <- union(data[[B.ALL]], names(cand.prom))
+  data[[B.ALL0]] <- union(data[[B.ALL0]], names(cand.prom))
+
+  # Triggered branch balance candidates may require updating free symbol list,
+  # as a symbol may be bound in the explicit branch, but not in the implicit
+  # one prior to the self-copy.  Trigger is same as symbol (e.g. x <- vcopy(x))
+  br.bal.free <- vapply(cand.prom, "[[", TRUE, "free")
+  br.bal.free.sym <- vapply(cand.prom[br.bal.free], "[[", "", "name")
+  add_free_symbol_names(
+    data,
+    c(
+      name,              # also add symbol itself if it is free
+      br.bal.free.sym
+    )
+  )
+}
+promote_candidates <- function(
+  data, names, index, unsupported, subassign=FALSE
+) {
+  names <- expand_symbols(names, unsupported)
+  for(i in unique(names))
+    data <- promote_candidates1(data, name=i, index, subassign)
+  data
+}
 
 # Remove Promoted Candidates
 #
@@ -870,37 +971,6 @@ clear_candidates <- function(cand, ii) {
   }
   cand[!to.clear]
 }
-# Compare Two `callptr` Indices
-#
-# TRUE if the index `a` points to a position later in the tree than `b` in a
-# depth-first traversal order.  If `a` is a parent call to `b` it is consider to
-# occur later than `b` (because arguments are evaluated first - well we operate
-# under the assumption they are for our purposes).
-#
-# @param a a integer vector of the form of `index` from `callptr`.
-# @param b same as a.
-# @return TRUE if `a` is a sub-call appearing later in the call tree than `b`.
-#   See details.
-
-index_greater <- function(a, b) {
-  if(length(a) > length(b)) length(b) <- length(a)
-  else length(a) <- length(b)
-  # c(3,3) is greater than c(3,3,1) b/c it is evaluated after
-  max.i <- max(c(a, b, 0), na.rm=TRUE)
-  a[is.na(a)] <- max.i + 1L
-  b[is.na(b)] <- max.i + 1L
-  neq <- which(a != b)
-  # First non-equal subindex determins which is greater
-  any(length(neq)) && a[neq[1L]] > b[neq[1L]]
-}
-# TRUE if a is a callptr that is child to b.  See index_greater
-index_child <- function(a, b) {
-  if(length(a) <= length(b)) FALSE
-  else all(b == a[seq_along(b)])
-}
-index_greater_or_child <- function(a, b)
-  index_greater(a, b) || index_child(a, b)
-
 # Merge Candidates between Branches
 #
 # `a` corresponds to the TRUE branch, and `b` to the FALSE branch.
@@ -1145,6 +1215,8 @@ merge_braces <- function(x, id) {
   names(x.call) <- dot_names(x.call)
   x.call
 }
+# - For Loops ------------------------------------------------------------------
+
 # Prepare For Loop
 #
 # Loops need to handle variables that are used before they are set in the same
@@ -1174,23 +1246,43 @@ merge_braces <- function(x, id) {
 # 4. Add a command (`lcopy`) to copy the last value of the variable to the
 #   original variable (we recover the original location via the alias).
 #
-# `alloc` can then look for `lset` and `lcopy` pairs matched up by the unique
+# `alloc` can then look for `lset` and `lcopy` sets matched up by the unique
 # "rec.id" values generated by this function to identify which slots to copy
-# to/from.
+# to/from.  In the presence of branches inside the for loop, there may be
+# multiple `lset` locations, although in theory we only need to track one since
+# subsequent branch reconciliation will make all the `lset`s point to the same
+# memory.  We track all of them as it's easy to do once we're trying to make
+# sure we detect all use before sets across branches, and it allows for a
+# sanity check at allocation time.
+#
+# The `lcopy` should be made at the end of the `for_n` in which the use
+# before set happened.  The same symbol could end up having different aliases
+# and `lset`/`lcopy` if it is used before set in mutiple (possibly nested) loops
+# (this would require an explicit use at each loop level).
+#
+# Further discussion in extra/notes/control.Rmd.
 #
 # @param x call tree
 # @param index integer index into call tree we're currently at
-# @param symbols list with equal-length elements:
-#   * level: integer nesting `for` depth.
-#   * indices: 3 row list-matrix of `index` values, with rows first.use,
-#     first.assign, last.assign, and for column names the symbol names (these
-#     will contain duplicates, deduplicated by 'level'.
-# @param prior.name name of parent call for purposes of detecting illegal nested
-#   braces (not sure there is any gurantee these won't exist).  This is to avoid
-#   issues like `a <- {b <- c; d}` in composing assignment chains.
+# @param sym.env environment to track encountered symbols.  Each encountered
+#   `for` loop creates a new environment independent of the prior ones, and
+#   each branch creates two child environments to use in independent recursion
+#   through the branches.  Environments must be reconciled on branch exit and on
+#   loop exit. Each symbol read from or written from is represented as a list
+#   bound to its own name containing three elements:
+#
+#   * first.use: `index` of the first use of the variable.
+#   * first.assign: `index` of the first assign of a variable.
+#   * last.assign: a list of `index` values corresponding to the last assignment
+#     of that variable.  The list may have multiple indices because potentially
+#     we need to track the last assignment of a variable across all branches
+#     nested inside the loops.
+#
+# @param lcopy.id a unique integer identifier for each variable being lcopied
 
 copy_fordat <- function(
-  x, index=integer(), symbols=init_sym_idx(), assign.to=character(), llvl=0L
+  x, index=integer(), assign.to=character(),
+  sym.env=new.env(parent=emptyenv()), lcopy.id=0L
 ) {
   name <- get_lang_name(x)
   is.loop <-
@@ -1198,65 +1290,79 @@ copy_fordat <- function(
     length(x[[2L]]) > 1L && identical(x[[2:1]], QFOR.INIT) &&
     length(x[[3L]]) > 1L && identical(x[[c(3L,1L)]], QR2C.FOR)
   assign.to.prev <- assign.to
-
-  if (is.symbol(x) && llvl) {
+  assign.to <- if(name %in% ASSIGN.SYM) {
+    # We only record target symbol so if there is an assign chain they can
+    # all be set to point to the same element.  ASSIGN.SYM includes
+    # `for_iter` which will never form anything but a length 1 chain.
+    union(assign.to, get_target_symbol(x, name))
+  } else {
+    character()
+  }
+  if (is.symbol(x)) {
     # Record symbol uses; we'll determine which ones are use before set later
-    symbols <- append_foruse_dat(
-      symbols, names=name, index=index, llvl=llvl
-    )
-    assign.to <- character()
+    append_foruse_dat(sym.env, names=name, index=index)
   } else if(is.call_w_args(x)) {
-    # Use before set only matters inside `for_n`; other components of loop ok
-    llvl <- llvl + (name == FOR.N)
-
-    # Modify for_n branch since other one doesn't do anything.
-    rec.skip <- 1L
-    if(name %in% ASSIGN.SYM && llvl) {
-      # We only record target symbol so if there is an assign chain they can
-      # all be set to point to the same element.  ASSIGN.SYM includes `for_iter`
-      # which will never form anything but a length 1 chain.
-      assign.to <- union(assign.to, get_target_symbol(x, name))
-      rec.skip <- if(name == FOR.ITER) 1:3 else 1:2
-    } else assign.to <- character()
-
-    # Recurse
-    for(i in seq_along(x)[-rec.skip]) {
-      sub.index <- c(index, i)
-      tmp <- copy_fordat(
-        x[[i]], index=sub.index, symbols=symbols, assign.to=assign.to, llvl=llvl
+    # A child loop is not affected by the containing loop, so reset the env.
+    # Implicit here is we start with a `sym.env` unrelated to a loop, but we
+    # only do things on loop exit so that first `sym.env` will be ignored.
+    if(is.loop) {
+      sym.env.prev <- sym.env
+      sym.env <- new.env(parent=emptyenv())
+    }
+    if(name == R2C.IF) {
+      # Special handling for T/F branches.  We don't bother with the loop
+      # branches because nothing is happening in the secondary branch.
+      sym.env.br <- list(new.env(parent=sym.env), new.env(parent=sym.env))
+      for(i in 1:2) {
+        i.call <- i + 1L
+        tmp <- copy_fordat(
+          x[[i.call]], index=c(index, i.call), sym.env=sym.env.br[[i]],
+          lcopy.id=lcopy.id, assign.to=assign.to
+        )
+        x[[i.call]]     <- tmp[['call']]
+        lcopy.id        <- tmp[['lcopy.id']]
+        sym.env.br[[i]] <- tmp[['sym.env']]
+      }
+      # Adjust `par.index` to point to `if_test`, this gives us a guaranteed
+      # point ahead of both branches (can't use `r2c_if` because `index_greater`
+      # will treat that as happening after `if_true`/`if_false).
+      par.index <- index
+      par.index[length(par.index)] <- par.index[length(par.index)] - 1L
+      reconcile_for_branch_symenv(
+        sym.env, sym.env.br[[1L]], sym.env.br[[2L]],
+        par.index=par.index
       )
-      x[[i]] <- tmp[['call']]
-      symbols <- tmp[['symbols']]
+    } else {
+      # Normal recursion for other calls
+      rec.skip <- if(name %in% ASSIGN.SYM) {
+        if(name == FOR.ITER) 1:3 else 1:2
+      } else 1L
+      # Skip iteration constant params
+      par.ext.names <- names(VALID_FUNS[[c(name, "icnst")]])
+      rec.skip <- union(rec.skip, which(names2(x) %in% par.ext.names))
+
+      # Recurse
+      for(i in seq_along(x)[-rec.skip]) {
+        sub.index <- c(index, i)
+        tmp <- copy_fordat(
+          x[[i]], index=sub.index, assign.to=assign.to, sym.env=sym.env,
+          lcopy.id=lcopy.id
+        )
+        x[[i]]   <- tmp[['call']]
+        sym.env  <- tmp[['sym.env']]
+        lcopy.id <- tmp[['lcopy.id']]
+      }
     }
   }
   # Reached payload of assignment so record each of them
-  if(!length(assign.to) && length(assign.to.prev) && llvl) {
-    symbols <- append_forassign_dat(
-      symbols, names=assign.to.prev, index=index, llvl=llvl
-    )
+  if(!length(assign.to) && length(assign.to.prev)) {
+    append_forassign_dat(sym.env, names=assign.to.prev, index=index)
   }
   # Modify loop on exit to handle use before set.  We modify the call from the
   # end to make sure indices still work.  This shuffles the order of operations
   # from that of the steps described in the docs.
   if(is.loop) {
-    # Collect all first use at this level (earlier loops of equal level that
-    # we've exited from previously have first use symbols removed). We need
-    # llvl + 1 b/c llvl is only incremented at for_n and we're at r2c_for
-    at.lvl <- symbols[['level']] == (llvl + 1L)
-    ind <- symbols[['indices']]
-    target <- at.lvl & lengths(ind['first.use',])
-    use.b4.set <- vapply(
-      seq_len(ncol(ind)),
-      function(i)
-        # empty index means no use; special case b/c otherwise it is
-        # interpreted as a parent to any other index
-        length(ind[['first.use', i]]) && length(ind[['first.assign', i]]) &&
-        index_greater(ind[['first.assign', i]], ind[['first.use', i]]),
-      TRUE
-    )
-    ind.rec <- ind[, use.b4.set, drop=FALSE]
-    if(anyDuplicated(colnames(ind.rec)))
-      stop("Internal Error: duplicated loop reconcile symbols.")
+    use.b4.set <- which_use_b4_set(sym.env)
 
     # We should be at the `{` of `{for_iter(); r2c_for()}`
     brace.ind <- c(3L, 3L, 2L)
@@ -1266,35 +1372,36 @@ copy_fordat <- function(
     # We only worry about the for_n branch, for_0 should just be `numeric(0)`
     braces <- as.list(x[[brace.ind]])
 
-    lcopy.id.0 <- symbols[['lcopy.id']]
     rec.syms <- list()
-    for(i in seq_len(ncol(ind.rec))) {
-      indi <- ind.rec[, i]
-      lcopy.id <- symbols[['lcopy.id']] <- symbols[['lcopy.id']] + 1L
+    for(i in use.b4.set) {
+      lcopy.id <- lcopy.id + 1L
       # Generate the aliases (part of steps 2 and 4)
-      rec.sym <- as.name(sprintf(".R2C.FOR.SYM.%d", symbols[['lcopy.id']]))
-      rec.syms[[colnames(ind.rec)[i]]] <- rec.sym # we'll use these later
+      rec.sym <- as.name(sprintf(".R2C.FOR.SYM.%d", lcopy.id))
+      rec.syms[[i]] <- rec.sym        # we'll use these later
       ind.base <- c(index, brace.ind) # braces inside `for_n`
-      ind.use <- indi[['first.use']]
-      ind.set <- indi[['last.assign']]
-      # Indices are absolute, but we need to make them relative to modify the
-      # current sub-call.
+      ind.set.l <- sym.env[[i]][['last.assign']]  # this is a list!
+      # Indices are absolute but we need them relative to modify call
       if(
-        !identical(ind.use[seq_along(ind.base)], ind.base) ||
-        !identical(ind.set[seq_along(ind.base)], ind.base)
-      )
+        !all(
+          vapply(
+            ind.set.l, function(x) identical(x[seq_along(ind.base)], ind.base),
+            TRUE
+      ) ) )
         stop("Internal Error: mismatched for and use|set indices.")
-      ind.set <- ind.set[-seq_along(ind.base)]
-      # Add lset/lcopy calls (steps 3-4)
-      braces[[ind.set]] <- en_lset(braces[[ind.set]], lcopy.id)
+
+      # Add lset calls, possible to have multiple due to branches
+      for(ind.set in ind.set.l) {
+        ind.set <- ind.set[-seq_along(ind.base)]
+        braces[[ind.set]] <- en_lset(braces[[ind.set]], lcopy.id)
+      }
       braces <- c(
-          braces[seq_len(length(braces) - 1L)],
-          # We reference rec.sym here so it is clear to static analysis the
-          # symbol is in use until the very end of the loop (although right now
-          # other code explicitly assumes any symbol used in loop is in use
-          # until end of loop see `collect_loop_call_symbols`).
-          en_lcopy(rec.sym, lcopy.id),
-          braces[length(braces)]  # trailing numeric(0)
+        braces[seq_len(length(braces) - 1L)],
+        # We reference rec.sym here so it is clear to static analysis the
+        # symbol is in use until the very end of the loop (although right now
+        # other code explicitly assumes any symbol used in loop is in use
+        # until end of loop see `collect_loop_call_symbols`).
+        en_lcopy(rec.sym, lcopy.id),
+        braces[length(braces)]  # trailing numeric(0)
       )
     }
     x[[brace.ind]] <- dot_names(as.call(braces))
@@ -1310,64 +1417,139 @@ copy_fordat <- function(
     )
     x.list <- as.list(x)
     x <- dot_names(as.call(c(x.list[1L], sym.copies, x.list[-1L])))
+
+    # Child symbol use/set can affect parent, so reconcile those
+    reconcile_for_parent_symenv(sym.env.prev, sym.env)
+    sym.env <- sym.env.prev
   }
-  list(call=x, symbols=symbols)
+  list(call=x, sym.env=sym.env, lcopy.id=lcopy.id)
 }
-# See `symbols` in `copy_fordat`
-init_sym_idx <- function(names = character()) {
-  list(
-    lcopy.id=0L,    # how many loop reconciliations we've made
-    level=integer(),
-    indices=matrix(
-      replicate(3 * length(names), integer(0), simplify=FALSE),
-      nrow=3, ncol=length(names),
-      dimnames=list(c('first.use', 'first.assign', 'last.assign'), names)
+# Reconcile Branch Use/Assign
+#
+# Three way reconciliation of parent env with both if/else branches.  Recall
+# that an empty index is automatically treated as occuring later than any other
+# index (see `index_greater`).
+#
+# @param par.index the call tree index of the `if_test` call, used as a proxy
+#   for use before set indices guaranteed to work across the branches.
+# @return NULL, point is `env` is modified by reference.
+
+reconcile_for_branch_symenv <- function(env, env.T, env.F, par.index) {
+  use.b4.set <- union(which_use_b4_set(env.T), which_use_b4_set(env.F))
+  in.both <- intersect(names(env.T), names(env.F))
+
+  # When a symbol is present in both branches, reconcile and overwrite parent
+  for(i in in.both) {
+    dat.T <- env.T[[i]]
+    dat.F <- env.F[[i]]
+    # Take later of the two first assigns
+    first.assign <-
+      if(index_greater(dat.T[['first.assign']], dat.F[['first.assign']]))
+        dat.T[['first.assign']]
+      else dat.F[['first.assign']]
+
+    # Take earlier of the two first uses
+    if(i %in% use.b4.set) {
+      # For a use b4 set in either branch, use parent `r2c_if` location which is
+      # convenient for subsequent code and produces same effect for branches.
+      first.use <- par.index
+    } else {
+      first.use <-
+        if(index_greater(dat.T[['first.use']], dat.F[['first.use']]))
+          dat.F[['first.use']]
+        else dat.T[['first.use']]
+    }
+    # Merge the last assigns (although in practice we could make do with just
+    # one given the branch reconciliation should ensure all `lset` are pointing
+    # to the same memory location.
+    last.assign <- c(
+      if(length(dat.T[['last.assign']])) dat.T[['last.assign']],
+      if(length(dat.F[['last.assign']])) dat.F[['last.assign']]
     )
+    env[[i]] <- list(
+      first.assign=first.assign, first.use=first.use, last.assign=last.assign
+    )
+  }
+  # For the other symbols just copy directly over to parent
+  for(i in setdiff(names(env.T), in.both)) env[[i]] <- env.T[[i]]
+  for(i in setdiff(names(env.F), in.both)) env[[i]] <- env.F[[i]]
+  # `env` has been modified by reference
+  invisible(NULL)
+}
+which_use_b4_set <- function(env) {
+  use.b4.set <- logical(length(env))
+  names(use.b4.set) <- names(env)
+  for(i in names(env)) {
+    use.b4.set[i] <- length(env[[i]][['first.assign']]) &&
+      index_greater(env[[i]][['first.assign']], env[[i]][['first.use']])
+  }
+  names(use.b4.set)[use.b4.set]
+}
+# @return NULL, point is `par.env` is modified by reference.
+
+reconcile_for_parent_symenv <- function(par.env, child.env) {
+  # For pre-existing symbols, keep firsts unless they are missing, in which case
+  # use child.  Always use child last.assign.
+  in.both <- intersect(names(par.env), names(child.env))
+  for(i in in.both) {
+    if(!length(par.env[[i]][['first.use']]))
+      par.env[[i]][['first.use']] <- child.env[[i]][['first.use']]
+    if(!length(par.env[[i]][['first.assign']]))
+      par.env[[i]][['first.assign']] <- child.env[[i]][['first.assign']]
+    if(length(child.env[[i]][['last.assign']]))
+      par.env[[i]][['last.assign']] <- child.env[[i]][['last.assign']]
+  }
+  # For new ones just copy over to parent
+  for(i in setdiff(names(child.env), in.both)) par.env[[i]] <- child.env[[i]]
+  invisible(NULL)
+}
+# See `sym.env` in `copy_fordat`
+
+init_symenv_el <- function(first.use=integer(), first.assign=integer()) {
+  list(
+    first.use=first.use, first.assign=first.assign,
+    last.assign=if(length(first.assign)) list(first.assign) else list()
   )
 }
-init_and_fill_sym_idx <- function(symbols, names, llvl) {
-  # Start by generating a dummy table for all the names we're assigning to
-  new.idx <- init_sym_idx(names)[['indices']]
-
-  # Fill in with existing data
-  existing <-
-    symbols[['level']] == llvl &
-    colnames(symbols[['indices']]) %in% names
-  exist.idx <- symbols[['indices']][, existing, drop=FALSE]
-  new.idx[, colnames(exist.idx)] <- exist.idx
-  new.idx
+# For names missing in `env` but present in it's parents, copy the nearest
+# element from the parent chain into `env`.
+#
+# Updates `env` by reference.
+update_from_envchain <- function(env, names) {
+  exists.chain <- names[vapply(names, exists, TRUE, where=env)]
+  exists <- names(env)
+  copy.to.cur <- setdiff(exists.chain, exists)
+  for(i in copy.to.cur) env[[i]] <- get(i, envir=env)
+  invisible(NULL)
 }
-update_sym_dat <- function(symbols, new.idx, llvl) {
-  # Replace existing data with new and retun
-  existing <-
-    symbols[['level']] == llvl &
-    colnames(symbols[['indices']]) %in% colnames(new.idx)
-  symbols[['level']] <-
-    c(symbols[['level']][!existing], rep(llvl, ncol(new.idx)))
-  symbols[['indices']] <-
-    cbind(symbols[['indices']][, !existing, drop=FALSE], new.idx)
-  symbols
+# Updates `sym.env` by reference.
+append_forassign_dat <- function(sym.env, names, index) {
+  update_from_envchain(sym.env, names)
+  # Add first assign for the new ones
+  exist <- names(sym.env)
+  new <- setdiff(names, exist)
+  for(i in new) sym.env[[i]] <- init_symenv_el()
+  # Update assignments
+  for(i in names) {
+    if(!length(sym.env[[i]][['first.assign']]))
+      sym.env[[i]][['first.assign']] <- index
+    sym.env[[i]][['last.assign']] <- list(index)
+  }
+  invisible(NULL)
 }
-# We have a primary key of name/level against which we need to be able to insert
-# and update.  In R that means we need to be able remove and replace.
-
-append_forassign_dat <- function(symbols, names, index, llvl) {
-  # Start by generating a dummy table for all the names we're assigning to
-  new.idx <- init_and_fill_sym_idx(symbols, names, llvl)
-
-  # Update with new data; loops are decomposed so should never see a 0 index.
-  new.idx['first.assign', lengths(new.idx['first.assign',]) == 0] <- list(index)
-  new.idx['last.assign', ] <- list(index)
-  update_sym_dat(symbols, new.idx, llvl)
+# Updates `sym.env` by reference.
+append_foruse_dat <- function(sym.env, names, index) {
+  update_from_envchain(sym.env, names)
+  exist <- names(sym.env)
+  new <- setdiff(names, exist)
+  for(i in new) sym.env[[i]] <- init_symenv_el()
+  for(i in names) {
+    if(!length(sym.env[[i]][['first.use']]))
+      sym.env[[i]][['first.use']] <- index
+  }
+  invisible(NULL)
 }
-append_foruse_dat <- function(symbols, names, index, llvl) {
-  # Start by generating a dummy table for all the names we're assigning to
-  new.idx <- init_and_fill_sym_idx(symbols, names, llvl)
-
-  # Update with new data; loops are decomposed so should never see a 0 index.
-  new.idx['first.use', lengths(new.idx['first.use',]) == 0] <- list(index)
-  update_sym_dat(symbols, new.idx, llvl)
-}
+# - Utils ----------------------------------------------------------------------
 
 # Used to make sure "{" calls have named dotted args.
 
@@ -1376,3 +1558,37 @@ dot_names <- function(x) {
   names(x) <- c("", rep("...", length(x) - 1L))
   x
 }
+# Compare Two `callptr` Indices
+#
+# TRUE if the index `a` points to a position later in the tree than `b` in a
+# depth-first traversal order.
+#
+# WARNING: If `a` is a parent call to `b` it is consider to occur later than `b`
+# (because arguments are evaluated first - well we operate under the assumption
+# they are for our purposes).  So the empty index `integer()` is considered a
+# greater index thanany other.
+#
+# @param a a integer vector of the form of `index` from `callptr`.
+# @param b same as a.
+# @return TRUE if `a` is a sub-call appearing later in the call tree than `b`.
+#   See details.
+
+index_greater <- function(a, b) {
+  if(length(a) > length(b)) length(b) <- length(a)
+  else length(a) <- length(b)
+  # c(3,3) is greater than c(3,3,1) b/c it is evaluated after
+  max.i <- max(c(a, b, 0), na.rm=TRUE)
+  a[is.na(a)] <- max.i + 1L
+  b[is.na(b)] <- max.i + 1L
+  neq <- which(a != b)
+  # First non-equal subindex determins which is greater
+  any(length(neq)) && a[neq[1L]] > b[neq[1L]]
+}
+# TRUE if a is a callptr that is child to b.  See index_greater
+index_child <- function(a, b) {
+  if(length(a) <= length(b)) FALSE
+  else all(b == a[seq_along(b)])
+}
+index_greater_or_child <- function(a, b)
+  index_greater(a, b) || index_child(a, b)
+

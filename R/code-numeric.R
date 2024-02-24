@@ -19,7 +19,7 @@ double_size_tpl <- '
   if(lend >= 0 && lend < R_XLEN_T_MAX) {
     R_xlen_t len = (R_xlen_t) lend;%s
   } else {
-    Rf_error("Invalid vector size (got %%%%%%%%f)", data[di[0]][0]);
+    Rf_error("Invalid vector size (got %%%%f)", data[di[0]][0]);
   }'
 
 f_numeric_core <- '
@@ -33,6 +33,9 @@ f_numeric_core <- '
 
 f_numeric_size_check <- sprintf(double_size_tpl, f_numeric_core)
 
+# Strictly we could make do without numeric() because it only works as a
+# constant expression, but because we use `numeric(0)` for the implicit branches
+# we are keeping it around for now.
 f_numeric <- sprintf('
 static void %%s(%%s) {
   if(lens[di[0]] != 1) Rf_error("invalid length argument");
@@ -73,30 +76,31 @@ code_gen_numeric <- function(fun, pars, par.types) {
   vetr(
     identical(., "numeric"),
     pars=list(NULL),
-    par.types=character(1) && all(. %in% PAR.EXT.NUM)
+    par.types=character(1) && all(. %in% PAR.ICNST.NUM)
   )
   name <- FUN.NAMES[fun]
-  defn <- sprintf(f_numeric, name, toString(F.ARGS.BASE))
+  defn <- sprintf(f_numeric, name, toString(CF.ARGS.BASE))
   code_res(defn=defn, name=name)
 }
 code_gen_numeric_along <- function(fun, pars, par.types) {
   vetr(
     identical(., "numeric_along"),
     pars=list(NULL),
-    par.types=character(1) && all(. %in% PAR.INT)
+    par.types=character(1) && all(. %in% PAR.IVARY)
   )
   name <- FUN.NAMES[fun]
-  defn <- sprintf(f_numeric_along, name, toString(F.ARGS.BASE))
+  defn <- sprintf(f_numeric_along, name, toString(CF.ARGS.BASE))
   code_res(defn=defn, name=name)
 }
 code_gen_numeric_alongn <- function(fun, pars, par.types) {
   vetr(
     identical(., "numeric_alongn"),
     pars=list(),
-    par.types=character() && all(. %in% PAR.INT)
+    par.types=character() && all(. %in% PAR.IVARY)
   )
   name <- FUN.NAMES[fun]
-  defn <- sprintf(f_numeric_alongn, name, toString(c(F.ARGS.BASE, F.ARGS.VAR)))
+  defn <-
+    sprintf(f_numeric_alongn, name, toString(c(CF.ARGS.BASE, CF.ARGS.VAR)))
   code_res(defn=defn, name=name, narg=TRUE)
 }
 

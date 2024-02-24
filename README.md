@@ -1,7 +1,6 @@
 # r2c - Fast Iterated Statistic Computation in R
 
-**Proof of Concept**.  Experimental, incomplete, with an interface subject to
-change.
+**Proof of Concept**.  Experimental with an interface subject to change.
 
 "Compiles" a subset of R into machine code so that expressions composed with
 that subset can be applied repeatedly on varying data without interpreter
@@ -10,11 +9,10 @@ with R semantics, and without the challenges of directly compilable languages.
 
 ## "Compiling" R
 
-`{r2c}` "compiles" R expressions or functions composed of basic binary operators
-and statistics.  `{r2c}` also supports multi-line statements and assignment.
-"Compile" is in quotes because `{r2c}` generates an equivalent C program, and
-compiles that.  To compute the slope of a single variable regression we might
-use:
+`{r2c}` "compiles" R expressions or functions composed of basic binary
+operators, statistics, and a few other select functions.  "Compile" is in quotes
+because `{r2c}` generates an equivalent C program, and compiles that.  To
+compute the slope of a single variable regression we might use:
 
     library(r2c)
 
@@ -29,6 +27,8 @@ use:
 While "r2c_fun" functions can be called in the same way as normal R functions as
 shown above, there is limited value in doing so.  The primary use case of
 `{r2c}` functions is iteration.
+
+For a full listing of supported R functions see `?"r2c-supported-funs"`.
 
 ## Iterating `{r2c}` Functions
 
@@ -51,8 +51,9 @@ data][26] [sets][27][^15]:
 <img src='extra/time_win-grp_slope.png' />
 
 `{r2c}` is substantially faster, primarily because it does not require calling
-an R function for each iteration.  `{collapse}` does well with group statistics
-if you can translate a regular R expression to one that will be fast with it.
+an R function for each iteration.  `{collapse}` does well with group statistics,
+but it requires knowing how to reformulate the expressions into a form
+compatible with its semantics[^17] (i.e. you can't just use the R expression).
 `{FastR}` is also interesting, but has other drawbacks including the need for
 its own runtime application, and multiple warm up runs before reaching fast
 timings (<sup>`*`</sup>times shown are after 4-5 runs).
@@ -89,18 +90,15 @@ and for packages to compile `{r2c}` functions at install-time.
 
 More importantly, we cannot compile and execute arbitrary R expressions:
 
-* Only `{r2c}` implemented counterpart functions may be used (currently: basic
-  arithmetic/relational/comparison operators, statistics, `{`, and `<-`).
-* Primary numeric inputs must be attribute-less (e.g. to avoid expectations of
-  S3 method dispatch or attribute manipulation), and any `.numeric` methods
-  defined will be ignored[^10].
-* Future `{r2c}` counterparts will be limited to functions that return
-  attribute-less numeric vectors of constant size (e.g. `mean`), or of the size
-  of one of their inputs (e.g. `+`, or even `quantile`).
+* Only `{r2c}` implemented counterpart functions may be used[^16] (currently:
+  basic arithmetic/relational/comparison operators, statistics, `{`, `<-`, and
+  some more - see `?"r2c-supported-funs"`).
+* Primary numeric inputs must optionally named but otherwise attribute-less
+  numeric; any `.numeric` methods defined will be ignored[^10].
 
 Within these constraints `r2c` is flexible.  For example, it is possible to have
 arbitrary R objects for secondary parameters, as well as to reference
-iteration-invariant data:
+iteration-constant data:
 
     w <- c(1, NA, 2, 3)
     u <- c(-1, 1, 0)
@@ -114,10 +112,10 @@ iteration-invariant data:
 Notice the `na.rm`, and that the `u` in `list(y=u)` is re-used in full for each
 group setting the output size to 3.
 
-With the exception of `ifelse`, the C counterparts to the R functions are
-intended to produce identical outputs, but have different implementations.  As
-such, it is possible that for a particular set of inputs on a particular
-platform the results might diverge.
+With the exception of `ifelse` and the implemented control structures, the C
+counterparts to the R functions are intended to produce identical outputs, but
+have different implementations.  As such, it is possible that for a particular
+set of inputs on a particular platform the results might diverge.
 
 ## Future - Maybe?
 
@@ -126,13 +124,17 @@ be built on this proof of concept.  Some are listed below.  How many I end up
 working on will depend on some interaction of external interest and my own.
 
 * Expand the set of R functions that can be translated.
-* Nested "r2c_fun" functions.
-* Multi/character/factor grouping variables.
-* Additional runners (e.g. an `apply` analogue).
+* Improve interface:
+    * Group specification (character grouping vars, multiple grouping vars,
+      pre-grouped data).
+    * More consistent output format.
+    * Re-order arguments to support piping?
+    * Make all error messages intelligible.
 * Library for previously "compiled" functions.
-* Basic loop support, and maybe logicals and branches.
-* Get on CRAN (there is currently at least one questionable thing we do).
+* Get on CRAN.
+* Nested "r2c_fun" functions (but probably no recursion).
 * API to allow other native code to invoke `{r2c}` functions.
+* Additional runners (e.g. an `apply` analogue).
 
 ## Installation
 
@@ -264,13 +266,13 @@ rolling window statistics:
 [16]: https://cran.r-project.org/package=Rcpp
 [17]: https://docs.renjin.org/en/latest/package/index.html
 [18]: https://www.renjin.org/index.html
-[19]: https://r-vm.net
+[19]: https://github.com/reactorlabs/rir
 [20]: https://thesis.r-vm.net/main.html
 [21]: https://github.com/allr/purdue-fastr
-[22]: https://github.com/jjf234/roll
+[22]: https://github.com/jasonjfoster/roll
 [23]: https://cran.r-project.org/package=RcppRoll
-[24]: https://cran.r-project.org/web/packages/runner/index.html
-[25]: https://cran.r-project.org/web/packages/roll/readme/README.html
+[24]: https://cran.r-project.org/package=runner
+[25]: https://cran.r-project.org/package=roll
 [26]: https://htmlpreview.github.io/?https://raw.githubusercontent.com/brodieG/r2c/3caf106980e558c931aea554e1f0197a82d031a3/extra/benchmarks/benchmarks-public.html#group-data
 [27]: https://htmlpreview.github.io/?https://raw.githubusercontent.com/brodieG/r2c/3caf106980e558c931aea554e1f0197a82d031a3/extra/benchmarks/benchmarks-public.html#window-data
 
@@ -299,3 +301,15 @@ rolling window statistics:
   ones it implements.
 [^15]: These timings do not include the `reuse_calls` optimization added in
   0.2.0.
+[^16]: Except that it is possible to embed arbitrary R expressions provided
+  they are found to be iteration constant at runtime (see
+  `?"r2c-expression-types"`).
+[^17]: Fast `{collapse}` implementation can be done with the use of
+  `TRA="replace_fill"`:
+```
+g.clp <- GRP(g)   # pre-sort/group
+fmean2 <- function(x, cg) fmean(x, cg, na.rm=FALSE, TRA="replace_fill")
+slope.clp <-
+  fsum((x - fmean2(x, g.clp)) * (y - fmean2(y, g.clp)), g.clp, na.rm=FALSE) /
+  fsum((x - fmean2(x, g.clp))^2, g.clp, na.rm=FALSE)
+```

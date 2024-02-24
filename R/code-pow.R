@@ -17,11 +17,17 @@ code_gen_pow <-  function(fun, pars, par.types) {
   vetr(
     identical(., "^"),
     pars=list(NULL, NULL),
-    par.types=character() && all(. %in% PAR.INT)
+    par.types=character() && all(. %in% PAR.IVARY)
   )
   name <- FUN.NAMES[fun]
+  # Test is not perfect, ideally it would match what USE_POWL_IN_R_POW
+  # is set by (from src/gnuwin32/fixed/h/config.h as of ~2024-01)
+  win <- identical(.Platform[['OS.type']], "windows")
+  x64 <- identical(.Platform[['r_arch']], "x64")
+  pow.fun <- if(win && x64) "powl" else "pow"
+
   defn <- sprintf(
-    bin_op_vec_rec, name, toString(F.ARGS.BASE), "pow", ",",
+    bin_op_vec_rec, name, toString(CF.ARGS.BASE), pow.fun, ",",
     IX[['I.STAT']], IX[['STAT.RECYCLE']]
   )
   code_res(defn=defn, name=name, headers="<math.h>")
@@ -49,10 +55,10 @@ code_gen_square <- function(fun, pars, par.types) {
   vetr(
     identical(., "square"),
     pars=list(NULL),
-    par.types=character() && all(. %in% PAR.INT)
+    par.types=character() && all(. %in% PAR.IVARY)
   )
   name <- FUN.NAMES[fun]
-  defn <- sprintf(square_code, name, toString(F.ARGS.BASE))
+  defn <- sprintf(square_code, name, toString(CF.ARGS.BASE))
   code_res(defn=defn, name=name, headers="<math.h>")
 }
 #' Raise a Vector to the Power of Two

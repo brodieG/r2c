@@ -94,14 +94,14 @@ an "r2c_fun" function; this is an unusual function so please see
 details.
 }
 \description{
-The \verb{r2c*} functions translate eligible R calls into C, compile them into
-native instructions using \verb{R CMD SHLIB}, and return an interface to that
-code in the form of an "r2c_fun" function.  This function will carry out
-out numerical calculations with \code{r2c} native instructions instead of with the
-standard R routines. "r2c_fun" functions are intended to be run with the
-\code{r2c} \link{runners} for fast iterated calculations.  \code{r2c} adheres closely to R
-semantics for the supported use cases.  Look at the examples here and those
-of the \link{runners} to get started.
+The \verb{r2c*} compilation functions translate \link[=r2c-supported-funs]{supported R function calls} into C, compile them into native
+instructions using \verb{R CMD SHLIB}, and return an interface to that code in the
+form of an "r2c_fun" function.  This function will carry out out numerical
+calculations with \code{r2c} native instructions instead of with the standard R
+routines, with the exception of some
+\link[=r2c-expression-types]{iteration-constant} calls. "r2c_fun" functions are
+intended to be run with the \code{r2c} \link{runners} for fast iterated calculations.
+Look at the examples here and those of the \link{runners} to get started.
 }
 \section{r2c Generated Functions}{
 
@@ -132,144 +132,26 @@ function (e.g. \code{r2cq(a + b)}).
 "r2c_fun" function (e.g. \code{r2cl(quote(a + b))}).
 }
 
-For \code{r2cl} and \code{r2cq}, symbols used as parameters to \code{call} and its
+For \code{r2cl} and \code{r2cq}, free symbols used as parameters to \code{call} and its
 constituent sub-calls (e.g. the \code{x} and \code{y} in \code{sum(x) + y}) will become
 parameters to the output "r2c_fun" function.  There must be at least one such
-symbol in \code{call}.  Parameter order follows that of appearance in the call
-tree after everything is \code{\link{match.call}}ed.  Symbols beginning with \code{.R2C} are
-reserved for use by \code{r2c} and thus disallowed in \code{call}.  You may also
-directly set the parameter list with the \code{formals} parameter, or with \code{r2cf}.
+symbol in \code{call}.  Parameter order follows that of appearance in the
+call tree after everything is \code{\link{match.call}}ed.  Symbols beginning with
+\code{.R2C} are reserved for use by \code{r2c} and thus disallowed in \code{call}.  You may
+also directly set the parameter list with the \code{formals} parameter, or with
+\code{r2cf}.
 
-As with regular R functions, unbound symbols  are resolved in the lexical
+As with regular R functions, unbound symbols are resolved in the lexical
 environment of the function.  You can set a different environment on creation
 of the function with the \code{envir} parameter, but currently there is no way to
 change it afterwards (\code{environment(r2c_fun) <- x} will likely just break the
 function).
 }
 
-\section{Expression Types}{
-
-
-Sub-expressions in an \code{r2c} expression are categorized as internal or
-external.  Internal sub-expressions are computed anew each iteration,
-whereas external ones are computed once at allocation time and the result is
-re-used thereafter.  Which category a sub-expression is assigned to depends
-on what function parameter it is matched to.  For example, in \code{sum(x, na.rm=TRUE)}, \code{x} is considered an internal parameter and \code{na.rm} an
-external parameter.  Additionally, symbols that resolve to iteration
-varying or \code{r2c} computed data are considered internal, and other
-symbols are considered external.  It is possible to use an external symbol as
-the value of an internal parameter if it abides by the constraints imposed on
-internal parameters.  Such symbols are evaluated as per external
-sub-expression rules (see below).
-
-Internal sub-expressions must resolve to attribute-less atomic vectors.
-Numeric, integer, and logical vectors are supported, but they are coerced to
-numeric (double), and thus logical and integer vectors are copied before use.
-All \code{r2c} operations are carried out on floating point values.  In cases
-where the output type is knowable to be either integer or logical, \code{r2c} will
-coerce the final result to the corresponding type with a copy.  To avoid
-copies provide all inputs as doubles.
-
-External sub-expressions may be arbitrary R expressions, but if they are used
-for internal parameters their result will be constrained like internal ones
-are.  Such expressions should not reference internal symbols, and in cases
-where this is obviously happening \code{r2c} will error.  External sub-expressions
-are evaluated once at allocation time.  If the same sub-expression appears
-more than once, it is only evaluated once with the result re-used.  External
-sub-expressions that cause side-effects, use \code{eval}, manipulate frames, or
-engage in other complex "meta" operations are likely to have different
-effects than intended.
-
-The dichotomy between internal and external sub-expressions allows for
-efficient mixing of iteration varying and static data, as well as non
-numeric configuration parameters.
-}
-
-\section{Supported R Functions and Constraints}{
-
-
-The following functions are supported in \code{x} (or in the body of \code{x} for
-\code{r2cf}):
-\itemize{
-\item Arithmetic functions: \code{+}, \code{-}, \code{*}, \code{/}, and \code{^}.
-\item Relational functions: \code{<}, \code{<=}, \code{>}, \code{>=}, \code{==}, \code{!=}.
-\item Logical functions: \code{&}, \code{&&}, \code{|}, \code{||}, \code{!}, \code{ifelse}.
-\item Statistics: \code{mean}, \code{sum}, \code{length}, \code{all}, \code{any}.
-\item Assignment and braces: \verb{<-}, \code{=}, and \verb{\{}.
-\item Control Structures (experimental): \verb{if/else}, \code{for}
-\item Sequences: \code{seq_along}, \code{seq_len}, \code{rep}.
-\item Subsetting: \code{[}, \code{x[s] <- expr}
-\item Miscellaneous: \code{numeric}.
-}
-
-Calls must be in the form \code{fun(...)} (\verb{a fun b} for operators)  where \code{fun}
-is the name of the function, optionally in \code{pkg::fun} format.  Functions must
-be bound to their original symbols for them to be recognized.
-
-In general the r2c implementations will behave as in R, with some exceptions:
-\itemize{
-\item \code{ifelse} always return in a common type that can support
-both \code{yes} and \code{no} values.
-\item \code{&&} and \code{||} always evaluate all parameters.
-\item \verb{\{} must contain at least one parameter (no empty braces).
-\item \code{seq_along} always returns a double vector, never integer.
-\item \code{[} only supports strictly positive indices.
-\item \code{x[s] <- y}
-\itemize{
-\item May only be used for the side effect of changing \code{x} (i.e. the return
-value of the sub-assignment expression may not be used).
-\item \code{s} may only contain values in \code{seq_along(x)}.
-\item \code{"[<-"(x, s, y)} is considered distinct and disallowed.
-}
-\item In \code{numeric(x)}, \code{seq_len(x)}, \code{rep(vec, times=x, each=y, length.out=z)},
-\code{x}, \code{y}, and \code{z} are external parameters, i.e. they cannot be iteration
-varying (see "Expression Types", also \code{?numeric_along}).  Additionally
-\code{rep} does not take any \code{...} parameters.
-\item Assignments may only be nested in braces (\verb{\{}) or in control structure
-branches.  This is a recursive requirement, so \code{mean(if(a) x <- y)} is
-disallowed even though \code{if(a) x <- y} is allowed.
-\item Control Structures have significant constraints (see next).
-}
-}
-
-\section{Control Structures}{
-
-
-\code{r2c} supports \code{if} / \verb{else} statements and \code{for} loops on an experimental
-basis.  These substantially complicate the internals of \code{r2c} and as such
-might be removed in the future.
-
-Both \code{if} / \verb{else} and \code{for} loops have branches; the loop branches are loop
-not taken (0 iterations) vs loop taken (1+ iterations).  Branches add
-constraints not present in R:
-\itemize{
-\item Control structure return values must be guaranteed to be the same
-size irrespective of the branch taken, if they are subsequently used.
-Return values are coerced to a common type.
-\item Assignments made within control structure branches must be guaranteed to be
-the same size irrespective of branch taken, if the corresponding bindings
-are subsequently used.
-\item Control structures can be nested at most 999 levels.
-}
-
-There are also minor semantic differences:
-\itemize{
-\item \code{if}/\verb{else} and \code{for} both return \code{numeric(0)} instead of NULL when in R
-they  would return NULL.
-\item \code{for} sets \code{var} to NA_real_ if \code{length(seq) == 0} instead of NULL.
-}
-
-Like R, \code{r2c} is optimized for vectorized operations.  While you can write
-explicit loops with \code{for}, they will be much slower than a pure C version,
-and only marginally faster than byte compiled R equivalents.  Avoid \code{for}
-loops unless you cannot express your calculation in an internally vectorized
-form (see examples).
-}
-
 \section{Details}{
 
 
-\code{r2c} will \link[=preprocess]{r2c-preprocess} the provided call either to apply
+\code{r2c} will \link[=r2c-preprocess]{preprocess} the provided call either to apply
 optimizations (see \code{optimize} parameter), or because a call needs to be
 modified to work correctly with \code{r2c}.  The processing leaves call semantics
 unchanged.  If \code{r2c} modified a call, \code{\link{get_r_code}} will show a "processed"
@@ -280,41 +162,43 @@ infinity defined and the \code{R_xlen_t} range representable without precision
 loss as double precision floating point.  Platforms that support R and fail
 this requirement are likely rare.
 
-Interrupts are supported at the \link{runner} level, e.g. \emph{between} groups or
-windows, each time a preset number of elements has been processed since the
-last interrupt check.  There is infrastructure to support within
+Interrupts are supported at the \link[=runners]{runner} level, e.g. \emph{between}
+groups or windows, each time a preset number of elements has been processed
+since the last interrupt check.  There is infrastructure to support within
 iteration-interrupts, but it adds overhead when dealing with many iterations
 with few elements each and thus is disabled at the moment.
 
-The structure of "r2c_fun" functions is subject to change without notice in
-future \code{r2c} releases.  The only supported uses of them are standard
-invocation with the \code{(} operator and use with the \link{runners}.
+Users should not rely on specifics of the internal structure of "r2c_fun"
+functions; these are subject to change without notice in future \code{r2c}
+releases.  The only supported uses of "r2c_fun" functions are use with the
+\link{runners}, standard invocation with the \code{(} operator, and other \code{r2c}
+functions that accept "r2c_fun" functions as arguments.
 }
 
 \examples{
-r2c_sum_sub <- r2cq(sum(x - y))
-r2c_sum_sub <- r2cl(quote(sum(x - y)))  ## equivalently
-sum_sub <- function(x, y) sum(x - y)
-r2c_sum_sub <- r2cf(sum_sub)            ## equivalently
-r2c_sum_sub(-1, c(1, 2, 3))
+r2c_mean_area <- r2cq(mean(x * y))
+\dontrun{
+## Equivalently with `r2cl` or `r2cf`:
+r2c_mean_area <- r2cl(quote(mean(x * y)))
+mean_area <- function(x, y) mean(x * y)
+r2c_mean_area <- r2cf(mean_area)
+}
+## Intended use is with runners
+with(
+  iris,
+  group_exec(r2c_mean_area, list(Sepal.Width, Sepal.Length), Species)
+)
+## Standard invocation supported but, it is of limited value.
+## We'll use standard invocation in the examples for clarity.
+r2c_mean_area(iris[['Sepal.Width']], iris[['Sepal.Length']])
 
 ## Set parameter order for r2cq
 r2c_sum_sub2 <- r2cq(sum(x - y), formals=c('y', 'x'))
 r2c_sum_sub2(-1, c(1, 2, 3))
 
-## Leave symbols unbound, here `y` is resolved in the lexical environment
-r2c_sum_sub3 <- r2cq(sum(x - y), formals='x')
-y <- 999
-local({y <- -1; r2c_sum_sub3(c(1, 2, 3))})
-
-##  Make a version that is checked
-r2c_sum_check <- r2cq(sum(x), check=TRUE)
-r2c_sum_check(1:10)                                 # checked
-
-## Checks are disabled when using runners
-group_exec(r2c_sum_check, 1:10, groups=rep(1L, 10)) # not checked
-
-## Multi-line statements with assignments are supported
+## Multi-line statements with assignments are supported (but
+## `r2c` automatically optimizes re-used calls, so intermediate
+## assignments may be unnecessary (see `?reuse_calls`):
 slope <- function(x, y) {
   mux <- mean(x)
   x_mux <- x - mux
@@ -322,42 +206,13 @@ slope <- function(x, y) {
 }
 r2c_slope <- r2cf(slope)
 u <- runif(10)
-v <- runif(10)
+v <- 3/4*u + 1/4*runif(10)
 r2c_slope(u, v)
-
-## Note `r2c` automatically optimizes re-used calls, so intermediate
-## assignments may be unnecessary:
-slope2 <- function(x, y)
-  sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x))^2)
-r2c_slope2 <- r2cf(slope2)
-get_r_code(r2c_slope2)
-identical(r2c_slope(u, v), r2c_slope2(u, v))
-
-## But assignments in arguments to other calls are disallowed
-slope2 <- function(x, y)
-  sum((x_mux <- x - mean(x)) * (y - mean(y))) / sum(x_mux^2)
-try(r2c_slope2 <- r2cf(slope2))  # Error
-
-## For loops are slow; don't use them when there is an internally
-## vectorized alternative.
-sum_prod_loop_r <- function(x, y) {
-  res <- 0
-  for(i in seq_along(x)) res <- res + x[i] * y[i]
-  res
-}
-sum_prod_loop <- r2cf(sum_prod_loop_r)
-sum_prod_vec <- r2cq(sum(x * y))
-a <- runif(5e6)
-system.time(sum_prod_vec(a, a))
-system.time(sum_prod_loop(a, a))
-## Make sure R fun byte-compiled
-sum_prod_loop_r <- compiler::cmpfun(sum_prod_loop_r)
-system.time(sum_prod_loop_r(a, a))
 }
 \seealso{
 \code{\link{runners}} to iterate "r2c_fun" functions on varying data,
-\code{\link{r2c-inspect}} for functions to retrieve meta data from the function,
+\link[=r2c-inspect]{inspection functions} to retrieve meta data from the function
 including the generated C code and the compiler output,
 \link[=r2c-preprocess]{preprocessing} for how \code{r2c} modifies R calls before
-translation to C.
+translation to C, \link[=r2c]{package overview} for other \code{r2c} concepts.
 }

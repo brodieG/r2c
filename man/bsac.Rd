@@ -13,8 +13,7 @@ bsac(call, data, groups, MoreArgs = list(), enclos = parent.frame())
 vectors.  If a named list, the vectors will be matched to \code{fun} parameters
 by those names.  Elements without names are matched positionally.  If a
 list must contain at least one vector.  Conceptually, this parameter is
-used similarly to \code{envir} parameter to \code{\link[base:eval]{base::eval}} when that is a list
-(see \code{enclos}).}
+used similarly to \code{envir} parameter to \code{\link[base:eval]{base::eval}} when that is a list.}
 
 \item{groups}{an integer, numeric, or factor vector.  Alternatively, a list
 of equal-length such vectors, the interaction of which defines individual
@@ -29,12 +28,13 @@ even when using list mode.  Support for multiple group vectors and other
 types of vectors will be added in the future.  Zero length groups are not
 computed on at all (e.g. missing factor levels, zero-length group vector).}
 
-\item{MoreArgs}{a list of R objects to pass on as iteration-invariant
-arguments to \code{fun}.  Unlike with \code{data}, each of the objects therein are
-passed in full to the native code for each iteration  This is useful for
-arguments that are intended to remain constant across iterations.  Matching
-of these objects to \code{fun} parameters is the same as for \code{data}, with
-positional matching occurring after the elements in \code{data} are matched.}
+\item{MoreArgs}{a list of R objects to pass on as
+\link[=r2c-expression-types]{iteration-constant} arguments to \code{fun}.  Unlike with
+\code{data}, each of the objects therein are passed in full to the native code
+for each iteration  This is useful for arguments that are intended to
+remain constant across iterations.  Matching of these objects to \code{fun}
+parameters is the same as for \code{data}, with positional matching occurring
+after the elements in \code{data} are matched.}
 
 \item{enclos}{environment to use as the enclosure to the data in the
 evaluation call (see \code{\link{eval}}).}

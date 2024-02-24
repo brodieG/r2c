@@ -41,16 +41,13 @@ rollbw_exec(
 )
 }
 \arguments{
-\item{fun}{an "r2c_fun" function as produced by \code{\link{r2c}}, except with the
-additional restriction that it must be guaranteed to produce scalar
-results as used with this function.}
+\item{fun}{an "r2c_fun" function as produced by the \link[=r2c-compile]{compilation functions}.}
 
 \item{data}{a numeric vector, or a list of equal length numeric
 vectors.  If a named list, the vectors will be matched to \code{fun} parameters
 by those names.  Elements without names are matched positionally.  If a
 list must contain at least one vector.  Conceptually, this parameter is
-used similarly to \code{envir} parameter to \code{\link[base:eval]{base::eval}} when that is a list
-(see \code{enclos}).}
+used similarly to \code{envir} parameter to \code{\link[base:eval]{base::eval}} when that is a list.}
 
 \item{width}{scalar positive numeric giving the width of the window interval.
 Unlike with \code{\link{rolli_exec}}'s \code{n}, \code{width} must be scalar.}
@@ -68,7 +65,7 @@ different to that for \code{\link{rolli_exec}}.}
 \item{position}{finite, non-NA, monotonically increasing numeric vector with
 as many elements as \code{data}.  Each element in \code{position} is the position on
 the real line of the corresponding \code{data} element (see notes).  Integer
-vectors are coerced to numeric.}
+vectors are coerced to numeric and thus copied.}
 
 \item{start}{non-na, finite scalar numeric position on real line of first
 "anchor".  Windows may extend to the left of \code{start} (or to the right of
@@ -92,24 +89,26 @@ a window boundary are included or excluded from the window:
 \item "(]: R:)\%22:\%20include\%20elements\%20on\%20left\%20boundary,\%20exclude\%20those\%20on\%20right\%20(default).\%0A*\%20\%22(
 }}
 
-\item{MoreArgs}{a list of R objects to pass on as iteration-invariant
-arguments to \code{fun}.  Unlike with \code{data}, each of the objects therein are
-passed in full to the native code for each iteration  This is useful for
-arguments that are intended to remain constant across iterations.  Matching
-of these objects to \code{fun} parameters is the same as for \code{data}, with
-positional matching occurring after the elements in \code{data} are matched.}
+\item{MoreArgs}{a list of R objects to pass on as
+\link[=r2c-expression-types]{iteration-constant} arguments to \code{fun}.  Unlike with
+\code{data}, each of the objects therein are passed in full to the native code
+for each iteration  This is useful for arguments that are intended to
+remain constant across iterations.  Matching of these objects to \code{fun}
+parameters is the same as for \code{data}, with positional matching occurring
+after the elements in \code{data} are matched.}
 
 \item{at}{non-NA, finite, monotonically increasing numeric vector of anchor
 positions on the real line for each window (see notes).
-Integer vectors are coerced to numeric.}
+Integer vectors are coerced to numeric and thus copied.}
 
 \item{left}{non-NA, finite, monotonically increasing numeric
 positions of the left end of each window on the real line (see notes).
-Integer vectors are coerced to numeric.}
+Integer vectors are coerced to numeric and thus copied.}
 
 \item{right}{non-NA, finite, monotonically increasing numeric
 positions of the left end of each window on the real line, where
-\code{right >= left} (see notes).  Integer vectors are coerced to numeric.}
+\code{right >= left} (see notes).  Integer vectors are coerced to numeric and
+thus copied.}
 }
 \value{
 A numeric vector of length:
@@ -330,8 +329,9 @@ transform(
 options(old.opt)
 }
 \seealso{
-\code{\link{r2c-compile}} for more details on the behavior and constraints of
-"r2c_fun" functions, \code{\link{first_vec}} to retrieve first atomic vector.
+\link[=r2c-compile]{Compilation} for more details on the behavior and
+constraints of "r2c_fun" functions, \code{\link{first_vec}} to retrieve
+first atomic vector, \link[=r2c]{package overview} for other \code{r2c} concepts.
 
 Other runners: 
 \code{\link{group_exec}()},
