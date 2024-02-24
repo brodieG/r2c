@@ -12,9 +12,11 @@
   * `ifelse`, with the caveat the return value type is based on the combination
     of `yes` and `no` irrespective of whether one or both of them are used.
 * Unary operators (`-`, `+`, and `!`).
-* Sequence generation:
+* Vector generation:
   * `rep`
   * `seq_along`
+  * `c`,
+  * `numeric` (and `r2c` only `numeric_along`).
 * Control structures, with significant constraints (see
   ?`r2c-control-structures`):
   * `if`/`else`/`else if`.
