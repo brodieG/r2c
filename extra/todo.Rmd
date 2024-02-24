@@ -45,6 +45,17 @@
     #if defined(_WIN64) && defined(__MINGW64_VERSION_MAJOR) && __MINGW64_VERSION_MAJOR >= 3
     #define USE_POWL_IN_R_POW 1
 
+  Also note "Do not use R.version$version.string".  Maybe we test for UCRT as a
+  proxy?  Not sure that matters, we've been at MINGW > 3 for probably 10 years.
+
+* Precision issues are showing up in the objects embeded in the `one_exec_int`
+  condition call where the MoreArgs are showing up as themselves and blowing up
+  the traceback.  We should probably use an environment here.
+
+* Should we switch to use a closure mechanism for the compilations?  Main issue
+  with that is we want the object to be self contained so we can e.g. `gc` it,
+  so that probably won't work if we retain a reference in `r2c` proper.
+
 ## Next
 
 ### Optimizations
