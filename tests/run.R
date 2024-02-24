@@ -14,5 +14,7 @@
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
 library(unitizer)
+keep.r2c <- r2c::loaded_r2c_dynlibs()
 unitize_dir('unitizer', state='recommended')
+r2c::unload_r2c_dynlibs(except=keep.r2c)
 

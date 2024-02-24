@@ -15,23 +15,21 @@ rolli_exec(
 )
 }
 \arguments{
-\item{fun}{an "r2c_fun" function as produced by \code{\link{r2c}}, except with the
-additional restriction that it must be guaranteed to produce scalar
-results as used with this function.}
+\item{fun}{an "r2c_fun" function as produced by the \link[=r2c-compile]{compilation functions}.}
 
 \item{data}{a numeric vector, or a list of equal length numeric
 vectors.  If a named list, the vectors will be matched to \code{fun} parameters
 by those names.  Elements without names are matched positionally.  If a
 list must contain at least one vector.  Conceptually, this parameter is
-used similarly to \code{envir} parameter to \code{\link[base:eval]{base::eval}} when that is a list
-(see \code{enclos}).}
+used similarly to \code{envir} parameter to \code{\link[base:eval]{base::eval}} when that is a list.}
 
-\item{n}{integer number of adjacent data "elements" to compute \code{fun} on.
+\item{n}{integer number of adjacent data "elements" to compute
+\code{fun} on.
 It is called \code{n} and not \code{width} to emphasize it is a discrete count
 instead of an interval width as in \code{\link{rollby_exec}} and friends.  Must be
 scalar, or have as many elements as data (see "Data Elements").  For the
 latter, specifies the element counts of each window.  Coerced to integer if
-numeric.}
+numeric, and thus copied.}
 
 \item{by}{strictly positive scalar integer interpreted as the stride to
 increment the "anchor" after each \code{fun} application.  Coerced to integer if
@@ -46,12 +44,13 @@ represents the offset of the window relative to its anchor).}
 \item{partial}{TRUE or FALSE (default), whether to allow computation on
 partial windows that extent out of either end of the data.}
 
-\item{MoreArgs}{a list of R objects to pass on as iteration-invariant
-arguments to \code{fun}.  Unlike with \code{data}, each of the objects therein are
-passed in full to the native code for each iteration  This is useful for
-arguments that are intended to remain constant across iterations.  Matching
-of these objects to \code{fun} parameters is the same as for \code{data}, with
-positional matching occurring after the elements in \code{data} are matched.}
+\item{MoreArgs}{a list of R objects to pass on as
+\link[=r2c-expression-types]{iteration-constant} arguments to \code{fun}.  Unlike with
+\code{data}, each of the objects therein are passed in full to the native code
+for each iteration  This is useful for arguments that are intended to
+remain constant across iterations.  Matching of these objects to \code{fun}
+parameters is the same as for \code{data}, with positional matching occurring
+after the elements in \code{data} are matched.}
 }
 \value{
 a numeric vector of length \code{length(first_vec(data)) \%/\% by}.
@@ -138,9 +137,9 @@ with(
   mtcars,
   rolli_exec(r2c_mean, hp, n=5)
 )
-r2c_len <- r2cq(length(x))
 
 ## Effect of align and partial
+r2c_len <- r2cq(length(x))
 dat <- runif(5)
 rolli_exec(r2c_len, dat, n=5, align='left', partial=TRUE)
 rolli_exec(r2c_len, dat, n=5, align='center', partial=TRUE)
@@ -151,8 +150,9 @@ rolli_exec(r2c_mean, dat, n=5, align='left')
 rolli_exec(r2c_len, dat, n=c(1,3,1,3,1), align='left', partial=TRUE)
 }
 \seealso{
-\code{\link{r2c}} for more details on the behavior and constraints of
-"r2c_fun" functions.
+\link[=r2c-compile]{Compilation} for more details on the behavior and
+constraints of "r2c_fun" functions, \link[=r2c]{package overview} for other \code{r2c}
+concepts.
 
 Other runners: 
 \code{\link{group_exec}()},

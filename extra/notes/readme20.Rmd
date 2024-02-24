@@ -1,0 +1,14 @@
+Some thoughts on rewriting the README.  Don't focus as much on timing, more on
+what `r2c` does?  Relegate timings to a vignette?
+
+# What It Does
+
+* Preprocess
+* Compile
+* Allocate
+
+# Constraints
+
+* Numeric (or numeric-compatible) inputs.
+* Must use specified function.
+* Expression size must be pre-computable.

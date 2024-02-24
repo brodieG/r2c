@@ -14,40 +14,40 @@
 ## Go to <https://www.r-project.org/Licenses> for copies of the licenses.
 
 #' @include code-mean.R
+#' @include code-bin.R
 
 NULL
+
+# - Sum / Base -----------------------------------------------------------------
 
 f_summary_base <- '
 static void %%s(%%s) {
   int di0 = di[0];
-  int di1 = di[1];
-  long double tmp = 0;
+  int di_na = di[1];
+  int di_res = di[2];
 
   R_xlen_t len_n = lens[di0];
   %sdouble * dat = data[di0];
-  int narm = flag;  // only one possible flag parameter
+  int narm = (int) *data[di_na];  // checked to be 0 or 1 by valid_narm
 
 %s%s
 
-  *data[di1] = (double) tmp;
-  lens[di1] = 1;
+  *data[di_res] = (double) tmp;
+  lens[di_res] = 1;
 }'
 loop.base <- '
-if(!narm)
-  for(R_xlen_t i = 0; i < len_n; ++i) tmp += dat[i];
-else
-  for(R_xlen_t i = 0; i < len_n; ++i)
-    if(!isnan(dat[i])) tmp += dat[i];%s
+long double tmp = 0;
+R_xlen_t i = 0;
+if(!narm) LOOP_W_INTERRUPT1(len_n, tmp += dat[i];);
+else LOOP_W_INTERRUPT1(len_n, {if(!ISNAN(dat[i])) tmp += dat[i];%s});
 '
+repad <- function(x, pad=2) {
+  split <- unlist(strsplit(x, '\n', fixed=TRUE))
+  if(length(split) && !nzchar(split[1L])) split <- split[-1L]
+  paste0(strrep(' ', pad), split, collapse="\n")
+}
 make_loop_base <- function(count.na=FALSE, pad=2) {
-  sprintf(
-    paste0(
-      strrep(' ', pad),
-      unlist(strsplit(loop.base, '\n', fixed=TRUE))[-1L],
-      collapse="\n"
-    ),
-    if(count.na) " else ++na_n;" else ""
-  )
+  sprintf(repad(loop.base, pad), if(count.na) " else ++na_n;" else "")
 }
 
 f_mean1 <- sprintf(
@@ -59,22 +59,73 @@ f_mean1 <- sprintf(
 f_sum_1 <- sprintf(f_summary_base, "", make_loop_base(count.na=FALSE), "")
 f_sum_n_base <- '
 static void %%s(%%s) {
-  int narm = flag;  // only one possible flag parameter
-  *data[di[narg]] = 0;
-
-  for(int arg = 0; arg < narg; ++arg) {
-    long double tmp = 0;
+  int narm = (int) *data[di[narg - 1]];  // checked to be 0 or 1 by valid_narm
+%s
+  for(int arg = 0; arg < narg - 1; ++arg) {
     int din = di[arg];
     R_xlen_t len_n = lens[din];
     double * dat = data[din];
 %s
-    // base uses a double, not long double, intermediate acc.
-    // Overflow to Inf (and we check Inf available in assumptions.c)
-    *data[di[narg]] += (double) tmp;
+%s
   }
   lens[di[narg]] = 1;
 }'
-f_sum_n <- sprintf(f_sum_n_base, make_loop_base(count.na=FALSE, pad=4))
+f_sum_n <- sprintf(
+  f_sum_n_base, "", make_loop_base(count.na=FALSE, pad=4),
+  "*data[di[narg]] += (double) tmp; // R uses double cross-arg accumulator"
+)
+
+# - Any / All ------------------------------------------------------------------
+
+logical.sum.base <- '
+int has_nan = 0;
+double tmp = %2$d;
+R_xlen_t i;
+
+if(!narm)
+  LOOP_W_INTERRUPT1(len_n, {
+    if(ISNAN(dat[i])) has_nan = 1;
+    else if(dat[i] %1$s 0) break;
+  });
+else
+  LOOP_W_INTERRUPT1(len_n, {
+    if(!ISNAN(dat[i]) && dat[i] %1$s 0) break;
+  });
+
+if(i < len_n) tmp = dat[i] != 0;
+else if(has_nan) tmp = NA_REAL;
+'
+# For all, if any FALSE, FALSE, otherwise if any NA, NA
+# For any, if any TRUE, TRUE, otherwise if any NA, NA
+
+make_loop_lgl <- function(op, pad, init)
+  repad(sprintf(logical.sum.base, op, init), pad)
+make_end_lgl <- function(op, pad)
+  sprintf(
+    repad(
+      '*data[di[narg]] = %1$s(*data[di[narg]], tmp);\nif(i < len_n) break;',
+      pad
+    ),
+    op
+  )
+
+f_all_1 <- sprintf(
+  f_summary_base, "", make_loop_lgl("==", 2, 1), ""
+)
+f_all_n <- sprintf(
+  f_sum_n_base, "  *data[di[narg]] = 1;\n",
+  make_loop_lgl("==", 4, 1), make_end_lgl("AND", 4)
+)
+f_any_1 <- sprintf(
+  f_summary_base, "", make_loop_lgl("!=", 2, 0), ""
+)
+f_any_n <- sprintf(
+  f_sum_n_base, "  *data[di[narg]] = 0;\n",
+  make_loop_lgl("!=", 4, 0), make_end_lgl("OR", 4)
+)
+SUM.DEFN <- c(any_n=unname(OP.DEFN['|']), all_n=unname(OP.DEFN['&']))
+
+# - Gen Funs -------------------------------------------------------------------
 
 ## Structure all strings into a list for ease of selection
 
@@ -82,46 +133,35 @@ f_summary <- list(
   sum=f_sum_1,
   sum_n=f_sum_n,
   mean1=f_mean1,   # single pass implementation, no infinity check
-  mean=f_mean      # R implementation
+  mean=f_mean,     # R implementation
+  all=f_all_1,
+  any=f_any_1,
+  all_n=f_all_n,
+  any_n=f_any_n
 )
-code_gen_summary <- function(fun, args.reg, args.ctrl, args.flag) {
+code_gen_summary <- function(fun, pars, par.types) {
   vetr(
     CHR.1 && . %in% names(f_summary),
-    args.reg=list(),
-    args.ctrl=list(),
-    args.flag=list()
+    pars=list(),
+    par.types=
+      character() && length(.) == length(pars) &&
+      all(. %in% PAR.TYPES)
   )
-  multi <-
-    length(args.reg) > 1L ||
-    (length(args.reg) == 1L && identical(args.reg[[1L]], quote(.R2C.DOTS)))
-  name <- paste0(fun, if(multi) "_n")
+  pars.int <- pars[par.types %in% PAR.IVARY]
 
+  multi <-
+    length(pars.int) != 1L ||
+    (length(pars.int) == 1L && identical(pars.int[[1L]], QR2C.DOTS))
+  name <- paste0(FUN.NAMES[fun], if(multi) "_n")
   code_res(
     defn=sprintf(
       f_summary[[name]], name,
-      toString(c(F.ARGS.BASE, if(multi) F.ARGS.VAR, F.ARGS.FLAG))
+      toString(c(CF.ARGS.BASE, if(multi) CF.ARGS.VAR))
     ),
-    name=name, narg=multi, flag=TRUE, headers="<math.h>"
+    name=name, narg=multi, headers="<math.h>",
+    icnst.any=FALSE,
+    defines=if(name %in% names(SUM.DEFN)) SUM.DEFN[name]
   )
-}
-## @param x a list of the matched parameters for the call `call`
-## @call the unmatched (sub)call as provided by the user
-
-ctrl_val_summary <- function(ctrl, flag, call) {
-  # for mean.default
-  trim <- ctrl[['trim']]
-  if(!isTRUE(trim.test <- vet(NULL || identical(., 0), trim)))
-    stop(
-      paste0(
-        c("`trim` must be set to default value (", trim.test, ")"),
-        collapse="\n"
-    ) )
-
-  na.rm <- flag[['na.rm']]
-  if(!isTRUE(na.test <- vet(LGL.1, na.rm)))
-    stop(na.test, " in `", deparse1(call), "`.")
-
-  if(flag[['na.rm']]) 1L else 0L # avoid bizarre cases of TRUE != 1L
 }
 #' Single Pass Mean Calculation
 #'
@@ -154,15 +194,14 @@ static void %s(%s) {
   *data[di[1]] = (double) lens[di[0]];
   lens[di[1]] = 1;
 }'
-code_gen_length <- function(fun, args.reg, args.ctrl, args.flags) {
+code_gen_length <- function(fun, pars, par.types) {
   vetr(
     identical(., "length"),
-    args.reg=list(NULL),
-    args.ctrl=list() && length(.) == 0L,
-    args.flags=list() && length(.) == 0L
+    pars=list(NULL),
+    par.types=character() && all(. %in% PAR.IVARY)
   )
-  name <- "r2c_length"
-  defn <- sprintf(f_length, name, toString(F.ARGS.BASE))
+  name <- FUN.NAMES[fun]
+  defn <- sprintf(f_length, name, toString(CF.ARGS.BASE))
   code_res(defn=defn, name=name)
 }
 

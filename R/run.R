@@ -34,12 +34,13 @@ rename_dots <- function(call.matched, pattern) {
 ## @param formals the formals of the r2c fun
 ## @param enclos environment to use as enclosure for data
 ## @param gmax scalar largest group size
+## @param gmin scalar smallest group size
 ## @param call original call
 ## @param runner function this is being called by, e.g. `group_exec` (maybe
 ##   could extract from `call`, but don't bother to).
 
 match_and_alloc <- function(
-  do, MoreArgs, preproc, formals, enclos, gmax, call, runner
+  do, MoreArgs, preproc, formals, enclos, gmax, gmin, call, runner
 ) {
   # Trick here is data is split across `data` and `MoreArgs` so we have to merge
   # together to match, but then split the data back into the two parameters
@@ -123,17 +124,43 @@ match_and_alloc <- function(
   ) ) )
 
   # Split back into group varying (data) vs not (MoreArgs)
-  dat.match <- unlist(call.dummy.m[call.dummy.m <= length(do)])
+  dummy.idx <- unlist(call.dummy.m)
+  dat.match <- dummy.idx[dummy.idx <= length(do)]
   names(do)[dat.match] <- names(dat.match)
-  more.match <- unlist(call.dummy.m[call.dummy.m > length(do)])
+  more.match <- unlist(dummy.idx[dummy.idx > length(do)])
   names(MoreArgs)[more.match - length(do)] <- names(more.match)
+
+  # Add unmatched defaults (we already checked for missing formals above)
+  # Note we don't allow dots with defaults, which technically is possible but
+  # in definition of a function but not in use of it.  Need to eval defaults.
+  missing.formals <-
+    which(!names(formals) %in% c(names(call.dummy.m.old), '...'))
+  if(!all(missing.formals %in% which(default_params(formals))))
+    stop("Internal Error: missing non-default formals")
+  defaults <- sapply(
+    names(formals[missing.formals]),
+      function(miss) {
+        tryCatch(
+          eval(formals[[miss]], envir=c(do, MoreArgs), enclos=enclos),
+          error=function(e) {
+            stop(
+              simpleCondition(
+                paste0(
+                  "Error evaluating default parameter ", miss, ": ",
+                  conditionMessage(e)
+                ),
+                call
+    ) ) } ) },
+    simplify=FALSE
+  )
+  MoreArgs <- c(MoreArgs, defaults)
 
   # Expand any dots in the preprocess data to match the dot args we were given
   preproc <- expand_dots(preproc, c(names(do), names(MoreArgs)))
 
   # Prepare temporary memory allocations
   alloc <- alloc(
-    x=preproc, data=do, gmax=gmax, par.env=enclos,
+    x=preproc, data=do, gmax=gmax, gmin=gmin, par.env=enclos,
     MoreArgs=MoreArgs, .CALL=call
   )
   alloc
@@ -148,10 +175,9 @@ prep_alloc <- function(alloc, res.size) {
     stop("Internal Error: result should be zero length when uninitialized.")
   alloc[['alloc']][['dat']][[alloc[['alloc']][['i']]]] <- numeric(res.size)
 
-  # Extract control parameters, and run sanity checks (not fool proof)
   dat <- alloc[['alloc']][['dat']]
-  control <- lapply(alloc[['call.dat']], "[[", "ctrl")
-  flag <- vapply(alloc[['call.dat']], "[[", 0L, "flag")
+  # External args that are allowed to evaluate to anything
+  ext.any <- lapply(alloc[['call.dat']], "[[", "stack.ext.any")
   # Ids into call.dat, last one will be the result
   ids <- lapply(alloc[['call.dat']], "[[", "ids")
   if(!all(unlist(ids) %in% seq_along(dat)))
@@ -159,8 +185,74 @@ prep_alloc <- function(alloc, res.size) {
   ids <- lapply(ids, "-", 1L) # 0-index for C
 
   dat_cols <- sum(alloc[['alloc']][['type']] == "grp")
-  list(
-    dat=dat, dat_cols=dat_cols, ids=ids, control=control, flag=flag, alloc=alloc
+  list(dat=dat, dat_cols=dat_cols, ids=ids, ext.any=ext.any, alloc=alloc)
+}
+# Run Once
+#
+# See `group_exec_int` for details
+
+one_exec_int <- function(obj, formals, MoreArgsE, call) {
+  preproc <- obj[['preproc']]
+  shlib <- obj[['so']]
+  enclos <- obj[['envir']]
+  do <- list()  # all data via `MoreArgsE`
+
+  # Get around embedding MoreArgs as a list (with stack consequences)
+  # enclosure is captured already in `obj`.
+  MoreArgs <- as.list(MoreArgsE, all.names=TRUE)
+  MoreArgs <- MoreArgs[MoreArgs[['.R2C.ARGS']]] # restore origial arg order
+  MoreArgs.nm <- names(MoreArgs)
+  MoreArgs.nm[grepl(R2C.PRIV.RX, MoreArgs.nm)] <- ""
+  names(MoreArgs) <- MoreArgs.nm
+
+  gmax <- gmin <- 0
+
+  alloc <- match_and_alloc(
+    do=do, MoreArgs=MoreArgs, preproc=preproc, formals=formals,
+    enclos=enclos, gmax=gmax, gmin=gmin, call=call, runner=r2c::group_exec
+  )
+  res.i <- which(alloc[['alloc']][['type']] == "res")
+  res.size.coef <- alloc[['alloc']][['size.coefs']][[res.i]]
+
+  # Should really just be constant since no varying data
+  res.size.in <- lapply(res.size.coef, iter_result_sizes, base=0)
+  res.size <-
+    if(length(res.size.in) > 1) pmax2(res.size.in) else res.size.in[[1L]]
+
+  handle <- load_dynlib(obj)
+  alp <- prep_alloc(alloc, res.size)
+
+  status <- run_one_int(
+    handle[['name']],
+    alp[['dat']],
+    alp[['dat_cols']],
+    alp[['ids']],
+    alp[['ext.any']],
+    res.size
+  )
+  if(status) {
+    warning("longer object length is not a multiple of shorter object length.")
+  }
+  # Result vector is modified by reference
+  res <- alp[['dat']][[res.i]]
+
+  if(alloc[['alloc']][['typeof']][res.i] == "integer")
+    res <- as.integer(res)
+  else if(alloc[['alloc']][['typeof']][res.i] == "logical")
+    res <- as.logical(res)
+
+  res
+}
+
+run_one_int <- function(handle, dat, dat_cols, ids, extern, res.size) {
+  .Call(
+    R2C_run_one,
+    handle,
+    dat,
+    dat_cols,
+    ids,
+    extern,
+    res.size
   )
 }
 

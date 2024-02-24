@@ -18,7 +18,7 @@
 ## Run steps that share a close resemblance to those in `group_exec`
 
 roll_prep <- function(
-  obj, data, r.len, formals, call, runner, MoreArgs, wmax
+  obj, data, r.len, formals, call, runner, MoreArgs, wmax, wmin
 ) {
   if(!r.len > 0) stop("Internal Error: prep only when there is result length.")
   preproc <- obj[['preproc']]
@@ -38,22 +38,14 @@ roll_prep <- function(
   alloc <- match_and_alloc(
     do=data, MoreArgs=MoreArgs, preproc=preproc, formals=formals,
     enclos=enclos, call=call, runner=runner,
-    gmax=wmax
+    gmax=wmax, gmin=wmin
   )
-  stack <- alloc[['stack']]
-
-  if(ncol(stack) != 1L) stop("Internal Error: unexpected stack state at exit.")
-  if(stack['size', 1L] != 1L || stack['group', 1L] != 0L)
+  res.id <- which(alloc[['alloc']][['type']] == 'res')
+  res.size.coef <- alloc[['alloc']][['size.coefs']][[res.id]]
+  if(!identical(res.size.coef, list(1)))
     stop("`fun` must be guaranteed to return scalar values.")
 
   # - Run ----------------------------------------------------------------------
-
-  handle <- obj[['handle']]
-  if(!is.na(shlib) && !is.loaded("run", PACKAGE=handle[['name']])) {
-    handle <- dyn.load(shlib)
-  }
-  if(!is.loaded("run", PACKAGE=handle[['name']]))
-    stop("Could not load native code.")
 
   prep_alloc(alloc, r.len)
 }
@@ -65,6 +57,8 @@ roll_finalize <- function(prep, status) {
   res.i <- which(alloc[['type']] == "res")
   res <- prep[['dat']][[res.i]]
   if(alloc[['typeof']][res.i] == "integer") res <- as.integer(res)
+  else if(alloc[['typeof']][res.i] == "logical") res <- as.logical(res)
+
   if(status) {
     warning("longer object length is not a multiple of shorter object length.")
   }
@@ -73,29 +67,78 @@ roll_finalize <- function(prep, status) {
 ## Run common steps across all roll functions
 ##
 ## Allocation computations, running the C code, cleaning up results.
+##
+## Due to static analysis by `tools::checkFF('r2c', registration=TRUE)` (part of
+## --as-cran) we cannot rely on passing the native symbol registration objects
+## as variables to `.Call`, which means we need to repeat `.Call` many times.
+## We also can't rely on `...` to pass additional arguments, so every possible
+## argument to any of the sizing or running C routines needs to be specified
+## explicitly.  This could all be done (and was) if registration checks
+## didn't rely on static analysis.
 
 roll_call <- function(
-  r.len, data, fun, call, runner, crunner, csizer, MoreArgs, ...
+  r.len, data, fun, call, runner, crunner, csizer, MoreArgs,
+  n, offset, by, partial, width, position, start, end, bounds, at, left, right
 ) {
   if(r.len) {
-    size <-
-      if(!is.numeric(csizer)) .Call(csizer, r.len, ...)
-      else as.numeric(csizer)
+    size <- if(is.character(csizer)) {
+      # See comment about .Call at next `switch`.
+      switch(
+        csizer,
+        by=.Call(
+          R2C_size_window_by, r.len,
+          width, offset, by, position, start, end, bounds
+        ),
+        at=.Call(
+          R2C_size_window_at, r.len,
+          width, offset, at, position, bounds
+        ),
+        bw=.Call(
+          R2C_size_window_bw, r.len,
+          left, right, position, bounds
+        ),
+        stop("Internal Error: invalid C sizer.")
+      )
+    } else as.numeric(rep(csizer, 2))
 
     obj <- get_r2c_dat(fun)
     prep <- roll_prep(
       obj, data=data, r.len=r.len, formals=formals(fun),
-      call=call, runner=runner, MoreArgs=MoreArgs, wmax=size
+      call=call, runner=runner, MoreArgs=MoreArgs,
+      wmax=size[1L], wmin=size[2L]
     )
-    status <- .Call(
+    handle <- load_dynlib(obj)
+    # Must have the actual registered symbol in the `.Call()` to avoid tripping
+    # up `tools::checkFF('r2c', registration=TRUE)` (part of --as-cran).  I.e.
+    # we can't pass the registered object as a variable so need multiple .Call.
+    status <- switch(
       crunner,
-      obj[[c('handle', 'name')]],
-      prep[['dat']],
-      prep[['dat_cols']],
-      prep[['ids']],
-      prep[['flag']],
-      prep[['control']],
-      ...
+      i=.Call(
+        R2C_run_window,
+        handle[['name']], prep[['dat']], prep[['dat_cols']],
+        prep[['ids']], prep[['ext.any']],
+        n, offset, by, partial
+      ),
+      by=.Call(
+        R2C_run_window_by,
+        handle[['name']], prep[['dat']], prep[['dat_cols']],
+        prep[['ids']], prep[['ext.any']],
+        width, offset, by, position, start, end, bounds
+      ),
+      at=.Call(
+        R2C_run_window_at,
+        handle[['name']], prep[['dat']], prep[['dat_cols']],
+        prep[['ids']], prep[['ext.any']],
+        width, offset, at, position, bounds
+
+      ),
+      bw=.Call(
+        R2C_run_window_bw,
+        handle[['name']], prep[['dat']], prep[['dat_cols']],
+        prep[['ids']], prep[['ext.any']],
+        left, right, position, bounds
+      ),
+      stop("Internal Error: invalid C runner.")
     )
     # Result vector is modified by reference
     roll_finalize(prep, status)
@@ -146,44 +189,47 @@ bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 #'
 #' As an illustration for `rollby_exec` and `rollat_exec`, consider the case of
 #' `width = 3` windows at the fourth iteration, with various `offset` values.
-#' The offset is the distance from the left end of the window to the anchor:
+#' The offset is the distance from the left end of the window to the anchor.  We
+#' use the letters a through g to reference the first seven elements of a
+#' numeric vector.
 #'
 #' ```
 #' ## rollby_exec(..., by=1, width=3)
 #'                    +------------- 4th iteration, anchor is 4.0
 #'                    V
 #' 1.0   2.0   3.0   4.0   5.0   6.0   7.0 | < Real Line
-#'  1     2     3     4     5     6     7  | < Element Position
+#'  a     b     c     d     e     f     g  | < Elements
 #'                    |
 #'                    |                      Offset     In-window Elements
-#'                    [-----------------)  |     0      {4, 5, 6}
-#'           [-----------------)           |  -w/2      {3, 4, 5}
-#'  [-----------------)                    |    -w      {1, 2, 3}
+#'                    [-----------------)  |     0      {d, e, f}
+#'           [-----------------)           |  -w/2      {c, d, e}
+#'  [-----------------)                    |    -w      {a, b, c}
 #' ```
 #'
 #' In each case we get three elements in the window, although this is only
-#' because the positions of the elements are on the integers.  Because the
-#' windows are open on the right, elements that align exactly on the right end
-#' of the window are excluded.  With irregularly spaced elements, e.g. with
-#' `position = c(1, 1.25, 2.5, 5.3, 7, ...)`, we might see (positions approximate):
+#' because the positions of the elements are on the integers by default.
+#' Since the windows are open on the right, elements that align exactly on the
+#' right end of the window are excluded.  With irregularly spaced elements, e.g.
+#' with `position = c(1, 1.25, 2.5, 5.3, 7, ...)`, we might see (positions
+#' approximate):
 #'
 #' ```
 #' ## rollby_exec(..., by=1, width=3, position=c(1, 1.25, 2.5, 5.3, 7))
 #'                    +------------- 4th iteration, base index is 4.0
 #'                    V
 #' 1.0   2.0   3.0   4.0   5.0   6.0   7.0 | < Real Line
-#'  1 2      3        |       4         5  | < Element ~Position Elements
+#'  a b      c        |       d         e  | < Elements
 #'                    |
 #'                    |                      Offset     In-window
-#'                    [-----------------)  |     0      {4}
-#'           [-----------------)           |  -w/2      {3, 4}
-#'  [-----------------)                    |    -w      {1, 2, 3}
+#'                    [-----------------)  |     0      {d}
+#'           [-----------------)           |  -w/2      {c, d}
+#'  [-----------------)                    |    -w      {a, b, c}
 #' ```
 #'
 #' Unlike with [`rolli_exec`] there is no `partial` parameter as there is no
 #' expectation of a fixed number of elements in any given window.
 #'
-#' A restriction is that both ends of a window must be monotonically increasing
+#' A restriction is that both ends of a window must increase monotonically
 #' relative to their counterparts in the prior window.  This restriction might
 #' be relaxed for `rollbw_exec` in the future, likely at the cost of
 #' performance.
@@ -198,7 +244,7 @@ bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 #' functions, but with increased generality come efficiency decreases (see
 #' "Performance").  One exception is that [`rolli_exec`] supports fully variable
 #' width windows.  `rollbw_exec` supports variable width windows, with the
-#' constraint that window ends must be increase monotonically for each
+#' constraint that window bounds must monotonically increase with each
 #' iteration.
 #'
 #' `rolli_exec` has semantics similar to the simple use case for
@@ -244,28 +290,27 @@ bounds_num <- function(bounds) match(bounds, c("()", "[)", "(]", "[]")) - 1L
 #' @export
 #' @inheritParams group_exec
 #' @family runners
-#' @seealso [`r2c-compile`] for more details on the behavior and constraints of
-#'   "r2c_fun" functions, [`first_vec`] to retrieve first atomic vector.
-#' @param fun an "r2c_fun" function as produced by [`r2c`], except with the
-#'   additional restriction that it must be guaranteed to produce scalar
-#'   results as used with this function.
+#' @seealso [Compilation][r2c-compile] for more details on the behavior and
+#'   constraints of "r2c_fun" functions, [`first_vec`] to retrieve
+#'   first atomic vector, [package overview][r2c] for other `r2c` concepts.
 #' @param width scalar positive numeric giving the width of the window interval.
 #'   Unlike with [`rolli_exec`]'s `n`, `width` must be scalar.
 #' @param position finite, non-NA, monotonically increasing numeric vector with
 #'   as many elements as `data`.  Each element in `position` is the position on
 #'   the real line of the corresponding `data` element (see notes).  Integer
-#'   vectors are coerced to numeric.
+#'   vectors are coerced to numeric and thus copied.
 #' @param by strictly positive, finite, non-NA scalar numeric, interpreted
 #'   as the stride to increment the anchor by after each `fun` application.
 #' @param at non-NA, finite, monotonically increasing numeric vector of anchor
 #'   positions on the real line for each window (see notes).
-#'   Integer vectors are coerced to numeric.
+#'   Integer vectors are coerced to numeric and thus copied.
 #' @param left non-NA, finite, monotonically increasing numeric
 #'   positions of the left end of each window on the real line (see notes).
-#'   Integer vectors are coerced to numeric.
+#'   Integer vectors are coerced to numeric and thus copied.
 #' @param right non-NA, finite, monotonically increasing numeric
 #'   positions of the left end of each window on the real line, where
-#'   `right >= left` (see notes).  Integer vectors are coerced to numeric.
+#'   `right >= left` (see notes).  Integer vectors are coerced to numeric and
+#'   thus copied.
 #' @param offset finite, non-na, scalar numeric representing the offset
 #'   of the window from its "anchor".  Defaults to 0, which means the left end
 #'   of the window is aligned with the anchor (i.e. conceptually equivalent to
@@ -396,12 +441,11 @@ rollby_exec <- function(
   call <- sys.call()
 
   roll_call(
-    runner=r2c::rollby_exec, crunner=R2C_run_window_by,
-    csizer=R2C_size_window_by,
+    runner=r2c::rollby_exec, crunner="by", csizer="by",
     r.len=r.len, data=data, fun=fun, call=call,
     MoreArgs=MoreArgs,
-    width, offset, by, position,
-    start, end, bounds_num(bounds)
+    width=width, offset=offset, by=by, position=position,
+    start=start, end=end, bounds=bounds_num(bounds)
   )
 }
 #' @export
@@ -436,12 +480,11 @@ rollat_exec <- function(
   call <- sys.call()
 
   roll_call(
-    runner=r2c::rollat_exec, crunner=R2C_run_window_at,
-    csizer=R2C_size_window_at,
+    runner=r2c::rollat_exec, crunner="at", csizer="at",
     r.len=length(at), data=data, fun=fun, call=call,
     MoreArgs=MoreArgs,
-    width, offset, at, position,
-    bounds_num(bounds)
+    width=width, offset=offset, at=at, position=position,
+    bounds=bounds_num(bounds)
   )
 }
 #' @export
@@ -470,12 +513,10 @@ rollbw_exec <- function(
   call <- sys.call()
 
   roll_call(
-    runner=r2c::rollbw_exec, crunner=R2C_run_window_bw,
-    csizer=R2C_size_window_bw,
+    runner=r2c::rollbw_exec, crunner="bw", csizer="bw",
     r.len=length(left), data=data, fun=fun, call=call,
     MoreArgs=MoreArgs,
-    left, right, position,
-    bounds_num(bounds)
+    left=left, right=right, position=position, bounds=bounds_num(bounds)
   )
 }
 
@@ -543,14 +584,16 @@ rollbw_exec <- function(
 #' @inheritParams rollby_exec
 #' @family runners
 #' @export
-#' @seealso [`r2c`] for more details on the behavior and constraints of
-#'   "r2c_fun" functions.
-#' @param n integer number of adjacent data "elements" to compute `fun` on.
+#' @seealso [Compilation][r2c-compile] for more details on the behavior and
+#'   constraints of "r2c_fun" functions, [package overview][r2c] for other `r2c`
+#'   concepts.
+#' @param n integer number of adjacent data "elements" to compute
+#'   `fun` on.
 #'   It is called `n` and not `width` to emphasize it is a discrete count
 #'   instead of an interval width as in [`rollby_exec`] and friends.  Must be
 #'   scalar, or have as many elements as data (see "Data Elements").  For the
 #'   latter, specifies the element counts of each window.  Coerced to integer if
-#'   numeric.
+#'   numeric, and thus copied.
 #' @param by strictly positive scalar integer interpreted as the stride to
 #'   increment the "anchor" after each `fun` application.  Coerced to integer if
 #'   numeric.
@@ -568,9 +611,9 @@ rollbw_exec <- function(
 #'   mtcars,
 #'   rolli_exec(r2c_mean, hp, n=5)
 #' )
-#' r2c_len <- r2cq(length(x))
 #'
 #' ## Effect of align and partial
+#' r2c_len <- r2cq(length(x))
 #' dat <- runif(5)
 #' rolli_exec(r2c_len, dat, n=5, align='left', partial=TRUE)
 #' rolli_exec(r2c_len, dat, n=5, align='center', partial=TRUE)
@@ -625,10 +668,10 @@ rolli_exec <- function(
   r.len <- (d.len - 1L) %/% by + 1L
 
   roll_call(
-    runner=r2c::rolli_exec, crunner=R2C_run_window, csizer=nmax,
+    runner=r2c::rolli_exec, crunner="i", csizer=nmax,
     r.len=r.len, data=data, fun=fun, call=call,
     MoreArgs=MoreArgs,
-    n, offset, by, partial
+    n=n, offset=offset, by=by, partial=partial
   )
 }
 

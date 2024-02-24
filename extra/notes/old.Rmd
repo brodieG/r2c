@@ -1,0 +1,688 @@
+# Logical
+
+## External / Group Logicals
+
+Do we allow external of this type?  Probably.  Do we allow return of this type?
+Probably.  It should just be a small extension of the integer return.  Is there
+any value in this?  Probably not since they would also immediately get coerced.
+
+## Tracking Logicals
+
+Functions have a `preserve.int` flag.  Probably needs to evolve to `output.type`
+where `output.type` could be `double`, `integer`, `logical`, and `preserve.int`?
+Annoying thing is that logic for "preserve" is fairly different from a direct
+output in one type.
+
+`ifelse` is a mess in this respect and is actually not knowable ex-ante since it
+depends on the types of `yes` and `no`.  We could just treat it as the other
+ops.
+
+## Using Ops
+
+So long as we resolve the tracking logicals issue, we should be able to just
+re-use the binary operator architecture we have.  Might want to re-title Arith
+to Binop.
+
+## && / ||
+
+Producing an error or warning is a bit complicated.  Right now for group we use
+the return value of the function to give us the group that caused the recycling
+length error for the normal binops.
+
+For these, we need the option of throwing an error, or a warning.  If an error,
+we need to get that somehow through the status flags.  If a warning, we need a
+mechanism to get that back out to the outer function?
+
+But why do we need to warning issued from R level?  Can't we just throw it
+directly from C, thereby simplifying the problem.  Main issue might be desire to
+communicate group number with problem, which would require updating the active
+group in something that can be sent to the function, which would be undesirable
+overhead (also, in the future we might want a group name).
+
+## Features
+
+### ifelse
+
+> The mode of the result may depend on the value of test (see the examples), and
+> the class attribute (see oldClass) of the result is taken from test and may be
+> inappropriate for the values selected from yes and no.
+
+### ifelse vs subset
+
+Probably still want ifelse as subset, especially subset replace, will be more
+complicated to implement.
+
+### Relational Operators
+
+Yes, pretty easy.  Can we add it to the arithmetic core?  One issue is the
+marking of the return value as being a logical.
+
+### Vectorized Logical
+
+Yes.  Can we add it to the arithmetic core (see relational)?  Negation would be
+unary.
+
+### Non Vectorized Logical
+
+Maybe easy?  Except for the error part?
+
+# Double Semicolon
+
+We want to allow `::`.  This would be a pre-process thing.
+
+This is to support `square`, `mean1`, etc., so that we can do `r2c::r2cq` or
+some such.
+
+# Match Call
+
+We kind of want to match the call ahead of `pp_internal` so that we can properly
+implement transform as a distinct pass.
+
+Fundamentally we should be able to split the existing `match_call` into two
+steps, the first simply does the `match.call` including dots replacement,
+recursively on the whole three.  The second does all the business of
+re-organizing the arguments, adding defaults, and classifying them.
+
+One issue is in doing this we will automatically cause our calls to be
+different because `match.call` will make calls non-identical.  Maybe that's
+okay?  Could potentially help detect weird behavior with `r2cq` and bad argument
+order, and closer in spirit to what is supposed to happen.
+
+Also, doing this requires us to leave dots unexpanded, which just looks ugly:
+
+    sum(... = pairlist((x - mean(x = x)) * (y - mean(x = y)))) /
+    sum(... = pairlist((x - mean(x = x))^2))
+
+This also breaks `reuse_calls` because of the pair lists.  If we fix
+`reuse_calls` to operate with pairlists, we could probably continue until
+eventually we merge the dots back in once we compute the defaults.
+
+Is all this complication worth it?  Maybe.
+
+Urgh, that re-use calls doesn't name everything, but we assume that everything
+has names, is messing everything up.  We need a check in `record_call_dat` that
+all vector fields are being grown to the same length.  This used to work before
+because we did the re-use calls first, and only after did we do the `match_call`
+business which gave everything names.
+
+Increasingly feeling like not worth it...  What a disaster.
+
+* Now we need to work on seeing if we can get of all the primitive `defn` since
+they should not be needed anymore and we have positional matching.
+* Then, can we get rid of the `as.character` on the name of the function.
+* Finally, can we clean up the processed version of the calls.
+  * Drop default arguments?
+  * Don't include names on arguments that were positionally matched to same
+    position?
+  * Drop dots in names?
+
+# Last Statement
+
+So far we had relied on the last computation to be written to the result, but
+what if the last computation is just a symbol, e.g. one that was written to.
+
+And how do we handle e.g.:
+
+    function(a) {
+      if(a) z <- x else y
+    }
+
+I guess the one above is easy, `if` is a function and returns its value, they
+just need to be compatible size.  In this case, the last call is the `if` (or
+should be anyway).
+
+    function(a) {
+      x <- a * 2  # does something, used by `x`
+      y <- x * 3  # does something, used, but by something that does nothing
+      z <- y * 2  # does something, unusued
+      x           # does nothing
+    }
+
+Ideally we would recognize that `x <- a * 2` is the last used statement.  In
+order to qualify a call must do something, and must be the last used call.  See
+annotations above.
+
+A call is considered used if it is an argument to a non-passive call, or it is
+the last parameter of a braces call, or if it is an assignment call and the
+symbol it assigns to appears again.
+
+We should change our criteria to be not the last call, but instead the last
+argument of a braces call.
+
+One problem is that right now we rely on calls that do something to actually
+write to the result vector.  Calls that do nothing (e.g. the case where we just
+return a symbol) actively need to be copied into the result vector.
+
+Strawman, for the last braces call, find the last argument:
+
+* If it is a braces call, recurse.
+* If it is a symbol or assignment to a symbol
+  * track down the call that generated the expression assigned to the symbol.
+    * If it is an external symbol, insert a copy call?
+    * If we have a call, record the id for `alloc_dat` to copy to result.
+* If it is a call record the id for `alloc_dat` to copy to result.
+
+So the main challenge is the copy call.  We probably can't generate the copy
+call before we run alloc because we won't know whether the symbol is external or
+generated by a function until after running alloc.  This will mess with anything
+that relies on the position of things in the linearized call list, possibly
+including the protection, etc.  But it should be knowable whether a symbol
+resulted from an assignment or not.  To know that we need to use renamed
+symbols so there is no ambiguity from a branch or something.
+
+# Reuse
+
+We want to hoist stuff out so that instead of:
+
+    (.R2C_SUB_2 <- mean(y)) -
+    (.R2C_SUB_1 <- mean(x)) *
+      (sum((.R2C_SUB_3 <- (x - .R2C_SUB_1)) * (y - .R2C_SUB_2)) /
+        sum(.R2C_SUB_3^2)
+      )
+
+We have:
+
+    .R2C_SUB_2 <- mean(y)
+    .R2C_SUB_1 <- mean(x)
+    .R2C_SUB_3 <- (x - .R2C_SUB_1)
+    .R2C_SUB_2 - .R2C_SUB_1 * sum(.R2C_SUB_3 *
+      (y - .R2C_SUB_2)) / sum(.R2C_SUB_3^2)
+
+So maybe:
+
+* For every symbol, find out the point at which it has been defined.
+* For every expr to sub, find the earliest point it can be moved forward to:
+  * Stopping at the first set of braces
+* Move the sub-expression there if we're at a set of braces (if not don't sub?)
+  * We could still possibly be safe if every nested call just had one parameter,
+    and we add the constraint that all `r2c` expressions must evaluate their
+    single parameter.
+* For expressions that can't be moved?
+* Perhaps this whole process needs to be done iteratively?
+
+A bit of trickiness in how indices are expressed
+
+    2     |  a
+    3 2   |  b
+    3 3 2 |  c
+    3 3   |  mean(c)
+    3     |  {  b; mean(c) }
+    -     |  {  a; {; b; mean(c); } }
+
+If `mean(c)` is our target, then we want to go right before the first instance
+of `mean(c)`'s brace level root, which is `(3 3)`.  So in this case we would
+insert an assignment as:
+
+    3 3 2 |  expression
+    3 3 3 |  symbol
+    3 3   |  symbol <- expression
+
+Between `b` and `c`, and then everything below that would get bumped.  But
+really, we're going to operate directly on the tree, so all we need is the `(3,
+3)`.  We'll apply these in the order they are generated.
+
+# Interface
+
+Now leaning towards something like this:
+
+```
+group_exec(slope, data, groups, x=v)              ## remap
+group_exec_(slope, data, groups, remap=c(x='v'))  ## remap
+```
+
+But what if the `r2c` object contains `data`, or `groups`?  Then it becomes
+impossible to remap those.  We could make those reserved terms in the
+compilation analysis.  How does that evolve as we add more functions that have
+different parameter names?  Do we just lock up too much?  The alternative seems
+to be:
+
+```
+group_exec(r2c_slope, data, groups)()
+group(r2c_slope, data, groups)()
+slide(r2c_slope, data, width, ...)()
+r2c_slope()
+```
+
+Do we require parameters?  Yes.
+
+```
+group(r2c_slope, data, groups)(x, y)
+r2c_slope(x, y)
+slide(r2c_slope, data, window=5)(x, y)
+```
+
+Setting the following as default just won't work, since the lookup semantics are
+to look in the function environment (and would cause the recursive lookup
+issue):
+
+```
+function(x=x, y=y)
+```
+
+So we can't have a function that observes R semantics but then also has the
+unmapped parameters. So things like this won't work:
+
+```
+group(r2c_slope, data, groups)()
+```
+
+But this is okay:
+
+```
+group(r2c_slope, data, groups)(x, y)
+```
+
+Since we don't have a way to declare the mapping order in a way visible to
+users.  So even if the print method does something like:
+
+```
+group(r2c_slope, data, groups)
+## function(x, y) <...>
+```
+
+When in reality it's:
+
+```
+## function(...) <...>
+```
+
+What does `r2c_slope` look like:
+
+```
+r2c_slope
+## function(x, y) <...>
+```
+
+Hmm, but are we satisfied with the data/groups specification?
+
+```
+group(r2c_slope, data, data['g'])(x, y)
+with(data, group(r2c_slope, x, y, g))
+```
+
+How about this:
+
+```
+group(obj, ..., group)
+
+groupwise(obj, group, ...)
+groupwise(obj, data, .(group), .(remap))
+```
+
+If this is the NSE interface:
+
+```
+groupwise(data, group, obj(x=x, y=y))
+obj(x=x, y=y)
+
+with(data, groupwise(obj, list(x, y), list(g)))
+
+with(data, r2c_group(obj, list(x, y), list(g)))
+
+r2c_group(obj, x, g)
+
+set.seed(1)
+x <- y <- runif(1e5)
+y[sample(1e5, 1e4)] <- NA
+microbenchmark::microbenchmark(sum(x), sum(y), mean(x), mean(y), times=10)
+
+set.seed(1)
+x <- y <- runif(1e5)
+y[sample(1e5, 1e4)] <- NA
+microbenchmark::microbenchmark(sum(x), sum(y), mean(x), mean(y), times=10)
+## Unit: microseconds
+##     expr   min    lq  mean median    uq   max neval
+##   sum(x)   299   315   342    335   367   413    10
+##   sum(y) 18441 18684 19587  18973 20461 22382    10
+##  mean(x)   234   265   281    276   294   343    10
+##  mean(y) 33009 33201 34449  33421 34584 38751    10
+
+```
+
+So we need:
+
+* data
+* groups
+* r2c object
+* remap
+
+
+```
+groupwise(data, group, obj, x=x, y=y)
+
+groupwise(obj, data, group, x=x, y=y)
+groupwiseq(obj, data, group, x=x, y=y)
+
+run(obj, x, y)
+```
+
+This allows arbitrary objects in ..., and we can require that they are named.
+Group can be a single vector, does not need to be named, or it can be a list.
+
+```
+obj(x, y)
+objg <- with(data, group(obj, x, y, g))
+objg <- with(data, group(obj, x=x, y=y, g))
+objg(x, y)
+```
+
+If unnamed we can rely on the symbol.
+
+
+
+These are very appealing for group/window because we can easily re-use the same
+shared object, and additionally
+
+```
+obj <- r2c(<expr>)
+obj$run(data)                # intended for code with loops.
+obj$group(data, groups)
+obj$slide(data, size, ...)
+```
+
+Are `groups` quoted or as is?  Do we need:
+
+```
+obj$groupq(data, groups)
+```
+
+What if we want to remap args?
+
+```
+obj$group(data, groups)(x=z, y=v)
+obj $
+  map(x=z, y=v) $
+  group(data, groups)
+
+group(remap(obj, x=x, y=y), data, groups)
+```
+
+Or should we really do:
+
+```
+slope <- r2c(
+  function(x, y) (x - mean(x)) * (y - mean(y)) / (x - mean(x))^2
+)
+group(slope(x=v, y=z), data, groups)
+
+with(data, group(slope(v, z), groups))
+```
+
+
+
+
+```
+group(slope(x=v, y=z), data, groups)
+group(slope, data, groups)                               # no remap
+group_exec(slope, data, groups)                          # no remap
+group_exec(slope(.remap=c(x="v", y="w")), data, groups)
+group_exec(remap(slope, c(x="v", y="w")), data, groups)
+
+group_exec(slope, data, groups)       ## no remap
+group_exec(slope, data, groups, x=v)  ## remap
+
+
+run(slope(x=v, y=z))
+slide(slope(x=v, y=z), window=window)
+
+slope(x=v, y=z) |> group(data, groups)
+```
+
+What would this do?  Run normally?
+
+```
+slope(x=v, y=z)
+slope$group(data, groups)(x=v, y=z)
+```
+
+Then? Do we need:
+
+```
+group(slope, data, groups)(x=v, y=z)
+group(slope(x=v, y=z), data, groups)     # Possible with NSE, but not ideal.
+group(slope, data, groups)               # would this run without remapping?
+group(slope, data, groups)()             # Or should it be this?
+
+slope |> group(data, groups)(x, y)
+
+slope$group(data, groups)(x, y)
+
+group(slope, data, groups, map=.(x=v, y=z))
+```
+
+Is this confusing?  Yes, the duality of `slope` being a function but also not is
+just weird.
+
+What's the benefit of defining as a function?  Makes it easier to re-map the
+variables in use, but then the remapping is weird.
+
+```
+slope$group(remap(data, x=v, y=z), groups)
+remap(slope, x=v, y=z)
+```
+
+
+Old stuff:
+
+```
+fapply(X, INDEX, FUN)
+
+group_exe(data, groups, obj)
+window_exe(data, size, just, obj)
+for_exe(data, obj)
+```
+
+# Parameter Types
+
+There are:
+
+* Numeric standard vectors from data
+* Numeric standard vectors external
+* Non-numeric data (do we even allow this?  How do offset work)
+* Non-numeric externals
+
+For non-numeric data, an example would be if someone wants to run e.g. a nested
+tapply on each group (this is silly, should just group on the interaction, but
+whatever).
+
+Some of these will be "control" parameters, which loosely speaking are those
+that are used in the code generation phase, and aren't necessarily (but can be)
+passed on to the compiled code.
+
+Key question right now is what gets into the `alloc.dat` structure.  Presumably
+it is anything that could possibly feed a C parameter that it intends to compute
+on, and more specifically, one that could be fed by the result of a previous
+calculation.  Our key restriction is that the functions must all return doubles
+no matter what.
+
+Or maybe it is any parameter that in theory could be fed by group data.  Which
+in theory is any numeric parameter that is not explicitly made to be a control
+parameter?  Yes, this seems to be the most manageable approach.  This also
+implies that all non-control parameters must be numeric.
+
+Do we allow non-numeric, non-control parameters?  Is there any use for them
+other than grouping?  Maybe something designating a type of calculation to be
+done?  But when do we ever want those to be the same length as the vector?
+
+# Allocation
+
+Once we get to the run stage, we'll have for each sub-call, the type size of the
+result, and the inputs, and the type of function.  This means we can resolve the
+size requirements to a specific number for external things, and for external or
+group we now know the "external" part of it as well.  Since we'll know the max
+group size, we can run through?
+
+To do this properly we need to know which column each thing refers to, but we
+should be able to do it linearly.
+
+So start going column-wise through our size matrix.  First item should be
+standalone (i.e. not a call with arguments).  Add it to the allocation (unless
+it's data, in which case it is already there), evaluating first if needed, and
+recording the position in the data as well as the size (possibly NA if group).
+Keep accumulating this info in a stack until we get to a call, which will then
+reduce it down to a single value, and proceed accordingly.
+
+For each item, we need to know what it is:
+
+* Control (evaluate, store, and record index)
+* Symbol external (evaluate, store, record size and index)
+* Symbol data (record index)
+* Expression (recurse, record size and index)
+
+# Dots
+
+## Trying to Get Dots Working normally
+
+### Preprocess
+
+Do we allow dots in `ctrl` and `flag`?  Maybe, they are not really used at all
+in preprocess.  The only thing we see is computing of length of dots to
+determine whether e.g. to use the multi-arg version of sum or not.  The only
+thing we seem to preserve is the name of the argument, and it's not clear that's
+actually used by alloc.
+
+One challenge is how do we distinguish between these two:
+
+    r2cq(sum(...))
+    r2cq(sum(x, y, z))
+
+In the former we want to literally match `...` against the dots argument,
+whereas in the latter we want the `x`, `y`, `z` to be expanded out.  In a more
+complex expression `...` might match more variables:
+
+    r2cq(sum(x, y, z) + sum(...))
+
+Produces:
+
+    function(x, y, z, ...)
+
+Consider for:
+
+    function(..., na.rm=TRUE)
+
+Things like:
+
+    f(..., x, na.rm=y)
+
+We need both dots and `x` to be matched to the actual dots.  So we need to
+replace `...` in the call with e.g. something like `.R2C.DOTS`, which will be
+recorded in the symbols as `...`.
+
+### Alloc / Run
+
+It seems here most of the work is done by the matching in `group_exec`.  Might
+just work?
+
+No, we need to expand out the dots in the linearized call and related data.
+Seems right now the fields that need to be expanded are call, argn, depth, and
+type, where we look for any `call` of type `leaf` that is `...`, and sub in as
+many leaves as there are elements.  One issue to figure out is if it's a problem
+that `argn` is just going to be "..." repeated.  Do we use this to match
+anyplace?  We must for allocation.
+
+`argn` is, what?  We're seeing:
+
+     $ argn     : chr [1:4] "..." "..." "na.rm" ""
+
+Not sure why there are two "...", although those do match to the `...` in the
+formals of `sum`.  So `argn` is the argument name in the original.  But why do
+we even use this in alloc?
+
+Strongly suggests that we just cannot allow "..." to be matched to control
+parameters?  Seems like we need to generate "..1", etc, to be orderly matched to
+the data proper, and that data derived from "..." should get those names (unless
+it already has names)?.
+
+## Previous Notes
+
+Do we allow dots in the call?  This could come up if there is an `r2c`
+construction inside of a function.  But it's a bit silly because if we don't do
+it inside a function we get a failure from dots not existing, but when we run
+elsewhere we might not be inside the function anymore.
+
+Let's say we allowed it, how would it play out?  Are we counting the args at
+compile time (probably).
+
+Should we disallow no free symbols?  Probably should be at least one, it
+complicates logic a bit if we don't as we need to know the size of the result.
+
+    f <- r2cq(sum(1, 2))
+    f
+
+Similarly, should this really work?
+
+    > f5 <- (function(...) r2cq(sum(...)))(1:10, 2)
+    > (function(...) f5(...))(1:10)  # okay
+    [1] 57
+    > sum(1:10
+    + )
+    [1] 55
+    > f5
+    function (..1)
+    {
+
+It's kind of an accident that we generate the `..1` symbol, and only because
+`1:10` is a call:
+
+    > (function(...) r2cq(sum(...)))(1, 2)
+    function ()
+    {
+
+So probably just need to figure out why the call version generates the `..1`
+parameter.  Has to do with the fact that for some reason dots generate `..1` for
+calls, but not for constants.  So there is a weirdness that something that seems
+like a constant (`1:10`) because R can't discern that it is and is in dots
+generates a free symbol.
+
+Maybe that's okay, and really what we need is a better error message when there
+are no data columns, or a better way to manage that scenario.  When there are no
+data columns all inputs are length 1 as that's the only way to truly generate a
+constant?  Can we use this or is that begging for trouble?
+
+We won't use that, we just require a free symbol.  There is the issue of
+"constants' like 1:10 generating free symbols
+
+Thinking about this a bit more on dots, all we need to do is make sure that the
+code gen functions are aware of dots, and have code that can handle dots.  We
+then need to make sure there are no issues of expanding or evaluating dots in
+the compile stage, that functions that support dots get told they are getting
+dots, and those that don't fail, and in the allocation stage the dots should
+match gracefully to the data and everything should be great.
+
+# Function vs. Expression
+
+One complexity to think about is that in the auto-generated "functions", there
+is no possibility for a free symbol to exist, whereas in the manually specified
+ones we might allow completely free symbols such as `pi`.  Currently (0.1.0) the
+structure supports this at the expense of quietly finding symbols bound to e.g.
+the global environment.  So we need to add a check that detects this.
+
+How to default values work for functions?  This should be fine so long as they
+are either control or flag parameters.   So we need to check as we process the
+expression that we don't try to use a control/flag parameter as a data parameter
+somewhere.
+
+    > f <- r2cq(sum(x, na.rm=y) + sum(y, na.rm=x))
+    > f(1, 2)
+    Error in VALID_FUNS[[c(name, "ctrl.validate")]](stack.ctrl, stack.flag,  :
+      `na.rm` should be type "logical" (is "double") in `sum(x, na.rm = y)`.
+    > f(1, 2)
+
+Seems like it should actually be fine except for the possibility that a variable
+will get interpreted in full in one context (control) and in part in the other
+(data).  We should disallow it as the described case should never be something
+we actually want (and would be unsemantic), even though technically it could
+work.
+
+If we specify `formals` for expressions, we need to distinguish the case where
+we don't specify any formals at all and want them all swallowed into the actual
+formals, vs. the case where we want everything left unbound.  Maybe leave NULL?
+
+For the case we do have formals, it might be as simple as initializing
+`x[['sym.free']]`.  One thing is we'll probably have to add tracking of whether
+a symbol is ever used or not to possibly report that there is an unused formal
+(or at least think through the consequences of such; maybe none?).
+
+To conclude, we allow free symbols either via the function formals or by giving
+a list of symbols to bind to formals.
+
