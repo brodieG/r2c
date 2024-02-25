@@ -193,7 +193,6 @@ prep_alloc <- function(alloc, res.size) {
 
 one_exec_int <- function(obj, formals, MoreArgsE, call) {
   preproc <- obj[['preproc']]
-  shlib <- obj[['so']]
   enclos <- obj[['envir']]
   do <- list()  # all data via `MoreArgsE`
 
