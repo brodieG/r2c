@@ -38,6 +38,8 @@
 
 ## Current
 
+* `Error in dyn.unload(obj[["so"]]) : character argument expected`
+
 * Why does compilation status not return 1 when it fails on window (system2).
 
 * Compilation warnings on vagrant.
