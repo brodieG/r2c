@@ -198,7 +198,7 @@ r2cf <- function(
   optimize=getOption('r2c.optimize', TRUE), envir=environment(x)
 )
   r2c_core(
-    body(x), formals=as.list(formals(x)),
+    list(fun=body(x)), formals=list(as.list(formals(x))),
     check=check, quiet=quiet, optimize=optimize,
     envir=envir
   )
@@ -207,12 +207,12 @@ r2cf <- function(
 #' @rdname r2c-compile
 
 r2cl <- function(
-  x, formals=NULL, check=getOption('r2c.check.result', FALSE),
+  x, formals=list(NULL), check=getOption('r2c.check.result', FALSE),
   quiet=getOption('r2c.quiet', TRUE),
   optimize=getOption('r2c.optimize', TRUE), envir=parent.frame()
 )
   r2c_core(
-    x, formals=formals, check=check, quiet=quiet,
+    list(fun=x), formals=list(formals), check=check, quiet=quiet,
     optimize=optimize, envir=envir
   )
 
@@ -225,45 +225,88 @@ r2cq <- function(
   optimize=getOption('r2c.optimize', TRUE), envir=parent.frame()
 )
   r2c_core(
-    substitute(x), formals=formals, check=check, quiet=quiet,
+    list(fun=substitute(x)), formals=list(formals), check=check, quiet=quiet,
     optimize=optimize, envir=envir
   )
 
 
 r2c_core <- function(
-  call, formals, check, quiet, optimize, envir
+  calls, formals, check, quiet, optimize, envir, lib=FALSE
 ) {
   vetr(
-    is.language(.), (list() && !is.null(names(.))) || NULL || CHR,
+    # is.language(.), (list() && !is.null(names(.))) || NULL || CHR,
+
+    structure(list(), names=character()) &&
+      length(.) >= 1L && all(nzchar(names(.))),
+    list() && length(.) == length(calls),
     check=LGL.1, quiet=LGL.1,
-    optimize=LGL.1 || INT.1.POS, envir=is.environment(.)
+    optimize=LGL.1 || INT.1.POS, envir=is.environment(.),
+    lib=LGL.1
   )
-  auto.formals <- FALSE
-  if(is.character(formals)) {
-    frm.names <- formals
-    formals <- replicate(length(formals), alist(a=))
-    names(formals) <- frm.names
-  } else if(is.null(formals)) {
-    auto.formals <- TRUE
-    formals <- list()
-    names(formals) <- character()
-  }
+
   # Parse R expression and Generate the C code
-  preproc <- preprocess(call, optimize=optimize)
-  optimized <- optimize && !identical(call, preproc[['call.processed']])
+  preproc <- preprocess_n(calls, optimize=optimize)
 
   # Generate directory, use dirname/basename to normalize it to same format as
   # file.path (why?)
   dir <- tempfile()
   dir <- file.path(dirname(dir), basename(dir))
 
-  # Compile C code and recover the contents of the SO file, and cleanup
-  so <- make_shlib(preproc[['code']], dir=dir, quiet=quiet)
+  # Compile C code and recover the contents of the SO file, and cleanup.  Every
+  # one of preproc elements has the same [['code']] member so we just use the
+  # first one (legacy of adapting single function code to support libraries).
+  so <- make_shlib(preproc[[1L]][['code']], dir=dir, quiet=quiet)
   so.disk <- so[['so']]
   so.bin <- readBin(so.disk, what='raw', file.size(so.disk))
   unlink(dir, recursive=TRUE)
 
-  # Initialize the "r2c_fun" data, including loading the library.
+  # Generate the "r2c_fun" objects.  In library mode we want to register the
+  # destructor on the whole library, whereas in individual mode we want to just
+  # register is on the single function.
+  #
+  # The tricky dynamic is that we check whether the library is loaded on use of
+  # a function and load it if not, but we don't want a library function doing
+  # that because that would register the destructor on the wrong thing?  But we
+  # want people to be able to bind library members to symbols to e.g. expose in
+  # the package.  So what do we bind the destructor to?  We could potentially
+  # bind it to each function, and if a single function is deleted and it unloads
+  # the lib, then the next function from the lib that is used will just reload
+  # it.  Seems a bit edgy...
+  #
+  # Not sure if there is a better solution to that.  We maybe just make sure
+  # that the initial load happens at the library level if possible, i.e. we
+  # implement "[[" and "$" functions for the library (can this be circumvented?
+  # yes with `.subset`).  We could mark lib functions as being such so that they
+  # do not attempt to load the library themselves and instead error with
+  # instructions on how to load the whole library?
+  #
+  # What happens if we save a single function from a library and try to reload
+  # that?  Probably just error.
+
+  funs <- mapply(
+    gen_one_r2c_fun, preproc, formals, names(preproc),
+    MoreArgs=list(so.bin=so.bin, so.out=so[['out']]), simplify=FALSE
+  )
+  if(lib) {
+    # 1. Load a single function.
+    # 2. Copy the handle into the object functions.
+    # 3. Set the "is.lib.fun" flag.
+
+    load_dynlib(funs, )
+
+  } else {
+    # 1. Just load the single function
+
+  }
+  #
+
+  load_dynlib(.OBJ)
+
+  Map()
+}
+
+gen_one_r2c_fun <- function(dat, formals, name, so.bin, so.out) {
+  # Initialize the "r2c_fun" data; library loading happens later
   .OBJ <- list2env(
     list(
       preproc=preproc, so=so.bin,
@@ -275,10 +318,8 @@ r2c_core <- function(
     ),
     parent=emptyenv()
   )
-  .OBJ[['handle']] <- load_dynlib(.OBJ)
-
   # Generate formals that match the free symbols in the call
-  if(auto.formals) {
+  if(is.null(formals)) {
     sym.free <- preproc[['sym.free']]
     # Anything bad happen if we allow the below through?
     if(!length(sym.free))
@@ -398,29 +439,52 @@ r2c_core <- function(
     })
   }
   class(fun) <- "r2c_fun"
+
   fun
 }
 
 
 ## Load a DLL and Register Finalizer to Unload It
 ##
+## The complexity is we cannot let the deletion of a single function from a
+## library delete the library DLL.
+##
 ## @param obj environment r2c object
 
-load_dynlib <- function(obj) {
-  handle <- obj[['handle']]
+
+
+load_dynlib <- function(obj, so, handle) {
   if(is.null(handle) || !is.loaded("run", PACKAGE=handle[['name']])) {
+    if(!inherits(obj, r2c_fun))
+      stop(
+        '"r2c_fun" so/dll is not loaded, but this "r2c_fun" was built as part ',
+        'of an "r2c_lib" so it cannot self-load the library so/dll. See ',
+        '`?r2c_lib` for details.'
+      )
     so.disk <- tempfile(pattern='r2c-')
-    writeBin(obj[['so']], so.disk)
-    obj[['handle']] <- handle <- dyn.load(so.disk)
+    writeBin(so, so.disk)
+    handle <- dyn.load(so.disk)
     reg.finalizer(obj, function(obj) {
       if(obj[['handle']][['name']] %in% names(getLoadedDLLs()))
-      dyn.unload(obj[['handle']][['path']])
+        dyn.unload(obj[['handle']][['path']])
     })
   }
   if(!is.loaded("run", PACKAGE=handle[['name']]))
     stop("Could not load native code.")
   handle
 }
+load_dynlib.r2c_lib <- function(obj) {
+  handle <- obj[[1L]][['handle']]  # Use the handle from the first function
+
+
+get_dynlib_handle <- function(obj) UseMethod('get_dynlib_handle')
+get_dynlib_handle.r2c_fun <- function()
+
+}
+load_dynlib.default <- function(obj)
+  stop("Method not implemented for objects of class ", toString(class(obj)))
+
+
 #' Manage `r2c` Dynamic Libraries
 #'
 #' List or unload `r2c` loaded dynamic libraries.  These functions are helpful

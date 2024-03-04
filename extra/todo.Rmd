@@ -38,7 +38,12 @@
 
 ## Current
 
-* `Error in dyn.unload(obj[["so"]]) : character argument expected`
+* Check that something compiled during package installation/build (e.g. windows
+  package distribution) will work.  Need to make sure the instruction set is
+  compatible.
+
+* Add a check for platform.  Probably want `R.version()$platform` and
+  `.Machine`?
 
 * Why does compilation status not return 1 when it fails on window (system2).
 

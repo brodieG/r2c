@@ -37,7 +37,7 @@ NULL
 #' @param optimize logical or integer, level of optimization to apply
 #' @return a call dat list as described in `init_call_dat`.
 
-preprocess <- function(call, optimize=FALSE) {
+preprocess_base <- function(call, optimize=FALSE) {
   call0 <- call
   # - Call Manipulations -------------------------------------------------------
 
@@ -99,27 +99,20 @@ preprocess <- function(call, optimize=FALSE) {
     call=call, depth=0L, x=x, unsupported=unsupported, par.type=PAR.IVARY.NUM
   )
   x[['call.processed']] <- call
+  x[['optimized']] <- optimize && !identical(call, call0)
+
   if(!all(x[['par.type']] %in% PAR.TYPES))
     stop("Internal Error: invalid parameter types.")
+  x
+}
+preprocess_one <- function(call, optimize) {
+  preprocess_n(list(call), optimize)[[1L]]
+}
+# Generate C Implementation of A Single "r2c_fun"
+#
+# This will be a sequential list of calls to `r2c` native routines.
 
-  # Deduplicate the code and generate the final C file (need headers).
-  headers <- unique(unlist(lapply(x[['code']], "[[", "headers")))
-  defines <- unique(unlist(lapply(x[['code']], "[[", "defines")))
-  codes <- vapply(x[['code']], "[[", "", "defn")
-  names <- vapply(x[['code']], "[[", "", "name")
-  codes.m <- match(codes, unique(codes))
-  names.m <- match(names, unique(names))
-  if(!identical(codes.m, names.m))
-    stop("Internal error: functions redefined with changing definitions.")
-
-  # noops don't need their C code generated
-  out.ctrl <- vapply(x[['code']], "[[", 0L, "out.ctrl")
-  codes <- codes[bitwAnd(out.ctrl, CGEN.OUT.DEFN) != 0L]
-  codes.u <- paste0(
-    gsub("^(\\s|\\n)+|(\\s|\\n)+$", "", unique(codes[nzchar(codes)])),
-    "\n"
-  )
-  # Generate the C equivalent code calls and annotate them with the R ones
+assemble_one <- function(x, name) {
   c.calls <- vapply(x[['code']], "[[", "", "call")
   r.calls.dep <- vapply(
     x[['call']], function(x) paste0(deparse(x), collapse="\n"), ""
@@ -158,7 +151,49 @@ preprocess <- function(call, optimize=FALSE) {
   pars.used <- vapply(
     x[['code']][calls.keep], function(x) unlist(x[extra.vars]), extra.vars.tpl
   )
-  code.txt <- c(
+  c(
+    # C function to be invoked by runners
+    sprintf("void run_%s(\n  %s\n) {", name, toString(CR.ARGS.ALL)),
+    paste0(
+      "  ",
+      c(
+        # Some parameters not always used so add dummy uses to suppress warnings
+        if(!any(pars.used['narg',]))      "(void) narg;  // unused",
+        if(!any(pars.used['icnst.any',])) "(void) extn;  // unused",
+        "",
+        # C calls.
+        unlist(calls.fin)
+      )
+    ),
+    "}"
+  )
+}
+
+preprocess_n <- function(calls, optimize) {
+  x.all <- lapply(calls, preprocess, optimize=optimize)
+
+  # Deduplicate the r2c implementation code, headers, and defines required by
+  # all the "r2c_fun" C representations in `x.all`.  We assume the order of
+  # headers / defines doesn't matter here...
+  code.all <- unlist(lapply(x.all, "[[", "code"), recursive=FALSE)
+  headers <- unique(unlist(lapply(code.all, "[[", "headers")))
+  defines <- unique(unlist(lapply(code.all, "[[", "defines")))
+
+  codes <- vapply(code.all, "[[", "", "defn")
+  names <- vapply(code.all, "[[", "", "name")
+  codes.m <- match(codes, unique(codes))
+  names.m <- match(names, unique(names))
+  if(!identical(codes.m, names.m))
+    stop("Internal error: functions redefined with changing definitions.")
+
+  # noops don't need their C code generated
+  out.ctrl <- vapply(code.all, "[[", 0L, "out.ctrl")
+  codes <- codes[bitwAnd(out.ctrl, CGEN.OUT.DEFN) != 0L]
+  codes.u <- paste0(
+    gsub("^(\\s|\\n)+|(\\s|\\n)+$", "", unique(codes[nzchar(codes)])),
+    "\n"
+  )
+  headers <- c(
     # Headers, system headers first (are these going to go in right order?)
     paste(
       "#include",
@@ -174,26 +209,25 @@ preprocess <- function(call, optimize=FALSE) {
     "",
     # Function Definitions
     codes.u,
-
-    # C function to be invoked by runners
-    sprintf("void run(\n  %s\n) {", toString(CR.ARGS.ALL)),
-
-    paste0(
-      "  ",
-      c(
-        # Some parameters not always used so add dummy uses to suppress warnings
-        if(!any(pars.used['narg',]))      "(void) narg;  // unused",
-        if(!any(pars.used['icnst.any',])) "(void) extn;  // unused",
-        "",
-        # C calls.
-        unlist(calls.fin)
-      )
-    ),
-    "}"
+    "",
+    # Dummy function we can check for to test if lib loaded (see `load_dynlib`)
+    "int run() {return 42;}"
   )
-  x[['code']] <- structure(code.txt, class="code_text")
-  x
+  # Generate the "r2c_fun" C equivalents
+  r2c_fun.bodies <- Map(assemble_one, x.all, names(calls))
+
+  # We're going to provide the entire code for each one of the r2c_fun functions
+  # in the library.  This is for expediency so we don't have to resolve the need
+  # to compile everything together, but then only show relevant portions for
+  # each library component.  It does mean ATM there is no way to just see a
+  # single implementation (we could fake it pretty easily though via grep).
+
+  for(i in seq_along(x.all)) {
+    x.all[[i]][['code']] <- c(headers, r2c_fun.bodies[[i]])
+  }
+  x.all
 }
+
 # Recursion portion of preprocess
 #
 # Classify parameters and generate code.

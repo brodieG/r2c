@@ -10,6 +10,10 @@
 
 ## Done
 
+### v0.4.0
+
+* `Error in dyn.unload(obj[["so"]]) : character argument expected`
+
 ### v0.3.0
 
 * Think through implication of saving parameter validation functions in r2c_fun
