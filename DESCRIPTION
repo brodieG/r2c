@@ -45,6 +45,8 @@ Collate:
     'alloc.R'
     'compile.R'
     'group.R'
+    'inspect.R'
+    'library.R'
     'load.R'
     'run.R'
     'size.R'

@@ -16,7 +16,18 @@
 #' Create a Library of Pre-Compiled "r2c_fun" Objects
 #'
 #' @param xs named list of R functions to convert to "r2c_fun" objects.
-#' @return 
+#' @return and "r2c_lib" object.
+#' @export
+#' @examples
+#' lib.file <- tempfile()
+#' saveRDS(
+#'   r2c_lib(list(sum=function(x) sum(x), mean=function(x) mean(x))),
+#'   lib.file
+#' )
+#' lib <- readRDS(lib.file)
+#' lib$sum(1:10)
+#' lib$mean(1:10)
+#' with(mtcars, group_exec(lib$mean, hp, cyl))
 
 r2c_lib <- function(
   xs,
@@ -41,7 +52,6 @@ r2c_lib <- function(
   body.all <- lapply(xs, body)
   formals.all <- lapply(as.list, lapply(xs, formals))
 
-
   funs <- list(...)
   funs.nm <- names(funs)
   if(
@@ -57,6 +67,5 @@ r2c_lib <- function(
     check=check, quiet=quiet, optimize=optimize,
     envir=envir
   )
-
 }
 

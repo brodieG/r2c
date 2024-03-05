@@ -17,7 +17,7 @@ r2cf(
 
 r2cl(
   x,
-  formals = NULL,
+  formals = list(NULL),
   check = getOption("r2c.check.result", FALSE),
   quiet = getOption("r2c.quiet", TRUE),
   optimize = getOption("r2c.optimize", TRUE),
@@ -41,9 +41,9 @@ expression escaped with \code{\link{quote}}.  See details.}
 \item{check}{TRUE or FALSE (default), if TRUE and the "r2c_fun" is invoked
 directly (as opposed to via \link{runners}), will compare the result of
 evaluating the expression in R against that of using the \code{r2c} C routines.
-The result is marked with attributes indicating whether the results are
-identical, and if they are not also with an attribute with the result of an
-\code{all.equal} comparison.}
+The result is marked with attributes indicating whether the two evaluations
+are identical, and if they are not also with an attribute with the result
+of an \code{all.equal} comparison of the evaluations.}
 
 \item{quiet}{whether to suppress the compilation output.}
 

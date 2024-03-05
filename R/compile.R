@@ -201,7 +201,7 @@ r2cf <- function(
     list(fun=body(x)), formals=list(as.list(formals(x))),
     check=check, quiet=quiet, optimize=optimize,
     envir=envir
-  )
+  )[[1L]]
 
 #' @export
 #' @rdname r2c-compile
@@ -214,7 +214,7 @@ r2cl <- function(
   r2c_core(
     list(fun=x), formals=list(formals), check=check, quiet=quiet,
     optimize=optimize, envir=envir
-  )
+  )[[1L]]
 
 #' @export
 #' @rdname r2c-compile
@@ -227,12 +227,10 @@ r2cq <- function(
   r2c_core(
     list(fun=substitute(x)), formals=list(formals), check=check, quiet=quiet,
     optimize=optimize, envir=envir
-  )
+  )[[1L]]
 
 
-r2c_core <- function(
-  calls, formals, check, quiet, optimize, envir, lib=FALSE
-) {
+r2c_core <- function(calls, formals, check, quiet, optimize, envir) {
   vetr(
     # is.language(.), (list() && !is.null(names(.))) || NULL || CHR,
 
@@ -240,8 +238,7 @@ r2c_core <- function(
       length(.) >= 1L && all(nzchar(names(.))),
     list() && length(.) == length(calls),
     check=LGL.1, quiet=LGL.1,
-    optimize=LGL.1 || INT.1.POS, envir=is.environment(.),
-    lib=LGL.1
+    optimize=LGL.1 || INT.1.POS, envir=is.environment(.)
   )
 
   # Parse R expression and Generate the C code
@@ -260,49 +257,23 @@ r2c_core <- function(
   so.bin <- readBin(so.disk, what='raw', file.size(so.disk))
   unlink(dir, recursive=TRUE)
 
-  # Generate the "r2c_fun" objects.  In library mode we want to register the
-  # destructor on the whole library, whereas in individual mode we want to just
-  # register is on the single function.
-  #
-  # The tricky dynamic is that we check whether the library is loaded on use of
-  # a function and load it if not, but we don't want a library function doing
-  # that because that would register the destructor on the wrong thing?  But we
-  # want people to be able to bind library members to symbols to e.g. expose in
-  # the package.  So what do we bind the destructor to?  We could potentially
-  # bind it to each function, and if a single function is deleted and it unloads
-  # the lib, then the next function from the lib that is used will just reload
-  # it.  Seems a bit edgy...
-  #
-  # Not sure if there is a better solution to that.  We maybe just make sure
-  # that the initial load happens at the library level if possible, i.e. we
-  # implement "[[" and "$" functions for the library (can this be circumvented?
-  # yes with `.subset`).  We could mark lib functions as being such so that they
-  # do not attempt to load the library themselves and instead error with
-  # instructions on how to load the whole library?
-  #
-  # What happens if we save a single function from a library and try to reload
-  # that?  Probably just error.
-
+  # Generate the "r2c_fun" object
   funs <- mapply(
     gen_one_r2c_fun, preproc, formals, names(preproc),
     MoreArgs=list(so.bin=so.bin, so.out=so[['out']]), simplify=FALSE
   )
-  if(lib) {
-    # 1. Load a single function.
-    # 2. Copy the handle into the object functions.
-    # 3. Set the "is.lib.fun" flag.
+  # Load the dynamic library. .OBJ is an environment (reference object)
+  .OBJ <- get_r2c_dat(funs[[1L]])
+  .OBJ[['handle']] <- handle <- load_dynlib(.OBJ)
 
-    load_dynlib(funs, )
-
-  } else {
-    # 1. Just load the single function
-
+  # Only library will have more than one fun.  There we re-use the same already
+  # loaded handle for every function.  In theory the destructor should only kick
+  # off if the library object itself is deleted.
+  for(i in seq_along(funs)[-1L]) {
+   .OBJ <- get_r2c_dat(funs[[i]])
+   .OBJ[['handle']] <- handle
   }
-  #
-
-  load_dynlib(.OBJ)
-
-  Map()
+  structure(funs, class="r2c_lib")
 }
 
 gen_one_r2c_fun <- function(dat, formals, name, so.bin, so.out) {
@@ -439,10 +410,8 @@ gen_one_r2c_fun <- function(dat, formals, name, so.bin, so.out) {
     })
   }
   class(fun) <- "r2c_fun"
-
   fun
 }
-
 
 ## Load a DLL and Register Finalizer to Unload It
 ##
@@ -451,19 +420,15 @@ gen_one_r2c_fun <- function(dat, formals, name, so.bin, so.out) {
 ##
 ## @param obj environment r2c object
 
-
-
-load_dynlib <- function(obj, so, handle) {
-  if(is.null(handle) || !is.loaded("run", PACKAGE=handle[['name']])) {
-    if(!inherits(obj, r2c_fun))
-      stop(
-        '"r2c_fun" so/dll is not loaded, but this "r2c_fun" was built as part ',
-        'of an "r2c_lib" so it cannot self-load the library so/dll. See ',
-        '`?r2c_lib` for details.'
-      )
+load_dynlib <- function(obj) {
+  handle <- obj[['handle']]
+  if(!is.loaded("run", PACKAGE=handle[['name']])) {
     so.disk <- tempfile(pattern='r2c-')
-    writeBin(so, so.disk)
+    so.bin <- obj[['so']]
+    writeBin(so.bin, so.disk)
     handle <- dyn.load(so.disk)
+    # We could get a weird collision here, but if that happens and we
+    # accidentally unload the wrong one, it should reload on next use.
     reg.finalizer(obj, function(obj) {
       if(obj[['handle']][['name']] %in% names(getLoadedDLLs()))
         dyn.unload(obj[['handle']][['path']])
@@ -473,17 +438,6 @@ load_dynlib <- function(obj, so, handle) {
     stop("Could not load native code.")
   handle
 }
-load_dynlib.r2c_lib <- function(obj) {
-  handle <- obj[[1L]][['handle']]  # Use the handle from the first function
-
-
-get_dynlib_handle <- function(obj) UseMethod('get_dynlib_handle')
-get_dynlib_handle.r2c_fun <- function()
-
-}
-load_dynlib.default <- function(obj)
-  stop("Method not implemented for objects of class ", toString(class(obj)))
-
 
 #' Manage `r2c` Dynamic Libraries
 #'

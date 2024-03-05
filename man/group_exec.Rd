@@ -52,6 +52,7 @@ group's portion of \code{data}.
 r2c_mean <- r2cq(mean(x))
 with(mtcars, group_exec(r2c_mean, hp, groups=cyl))
 
+## Slope of `y ~ x`
 r2c_slope <- r2cq(
   sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2)
 )
