@@ -97,6 +97,7 @@ group_exec_int <- function(
 
     status <- run_group_int(
       handle[['name']],
+      preproc[['fun.name']],
       alp[['dat']],
       alp[['dat_cols']],
       alp[['ids']],
@@ -365,11 +366,12 @@ group_exec <- function(fun, data, groups, MoreArgs=list()) {
 }
 
 run_group_int <- function(
-  handle, dat, dat_cols, ids, extern, group.sizes, group.res.sizes
+  handle, fun.name, dat, dat_cols, ids, extern, group.sizes, group.res.sizes
 ) {
   .Call(
     R2C_run_group,
     handle,
+    fun.name,
     dat,
     dat_cols,
     ids,

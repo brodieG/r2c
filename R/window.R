@@ -115,26 +115,30 @@ roll_call <- function(
       crunner,
       i=.Call(
         R2C_run_window,
-        handle[['name']], prep[['dat']], prep[['dat_cols']],
+        handle[['name']], obj[['preproc']][['fun.name']],
+        prep[['dat']], prep[['dat_cols']],
         prep[['ids']], prep[['ext.any']],
         n, offset, by, partial
       ),
       by=.Call(
         R2C_run_window_by,
-        handle[['name']], prep[['dat']], prep[['dat_cols']],
+        handle[['name']], obj[['preproc']][['fun.name']],
+        prep[['dat']], prep[['dat_cols']],
         prep[['ids']], prep[['ext.any']],
         width, offset, by, position, start, end, bounds
       ),
       at=.Call(
         R2C_run_window_at,
-        handle[['name']], prep[['dat']], prep[['dat_cols']],
+        handle[['name']], obj[['preproc']][['fun.name']],
+        prep[['dat']], prep[['dat_cols']],
         prep[['ids']], prep[['ext.any']],
         width, offset, at, position, bounds
 
       ),
       bw=.Call(
         R2C_run_window_bw,
-        handle[['name']], prep[['dat']], prep[['dat_cols']],
+        handle[['name']], obj[['preproc']][['fun.name']],
+        prep[['dat']], prep[['dat_cols']],
         prep[['ids']], prep[['ext.any']],
         left, right, position, bounds
       ),

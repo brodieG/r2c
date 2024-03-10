@@ -223,6 +223,7 @@ one_exec_int <- function(obj, formals, MoreArgsE, call) {
 
   status <- run_one_int(
     handle[['name']],
+    preproc[['fun.name']],
     alp[['dat']],
     alp[['dat_cols']],
     alp[['ids']],
@@ -243,10 +244,11 @@ one_exec_int <- function(obj, formals, MoreArgsE, call) {
   res
 }
 
-run_one_int <- function(handle, dat, dat_cols, ids, extern, res.size) {
+run_one_int <- function(handle, fun.name, dat, dat_cols, ids, extern, res.size) {
   .Call(
     R2C_run_one,
     handle,
+    fun.name,
     dat,
     dat_cols,
     ids,

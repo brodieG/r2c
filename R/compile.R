@@ -200,20 +200,20 @@ r2cf <- function(
   r2c_core(
     list(fun=body(x)), formals=list(as.list(formals(x))),
     check=check, quiet=quiet, optimize=optimize,
-    envir=envir
+    envir=list(envir)
   )[[1L]]
 
 #' @export
 #' @rdname r2c-compile
 
 r2cl <- function(
-  x, formals=list(NULL), check=getOption('r2c.check.result', FALSE),
+  x, formals=NULL, check=getOption('r2c.check.result', FALSE),
   quiet=getOption('r2c.quiet', TRUE),
   optimize=getOption('r2c.optimize', TRUE), envir=parent.frame()
 )
   r2c_core(
     list(fun=x), formals=list(formals), check=check, quiet=quiet,
-    optimize=optimize, envir=envir
+    optimize=optimize, envir=list(envir)
   )[[1L]]
 
 #' @export
@@ -226,21 +226,19 @@ r2cq <- function(
 )
   r2c_core(
     list(fun=substitute(x)), formals=list(formals), check=check, quiet=quiet,
-    optimize=optimize, envir=envir
+    optimize=optimize, envir=list(envir)
   )[[1L]]
-
 
 r2c_core <- function(calls, formals, check, quiet, optimize, envir) {
   vetr(
     # is.language(.), (list() && !is.null(names(.))) || NULL || CHR,
-
     structure(list(), names=character()) &&
       length(.) >= 1L && all(nzchar(names(.))),
     list() && length(.) == length(calls),
     check=LGL.1, quiet=LGL.1,
-    optimize=LGL.1 || INT.1.POS, envir=is.environment(.)
+    optimize=LGL.1 || INT.1.POS,
+    envir=is.list(.) && all(vapply(., is.environment, TRUE))
   )
-
   # Parse R expression and Generate the C code
   preproc <- preprocess_n(calls, optimize=optimize)
 
@@ -259,8 +257,9 @@ r2c_core <- function(calls, formals, check, quiet, optimize, envir) {
 
   # Generate the "r2c_fun" object
   funs <- mapply(
-    gen_one_r2c_fun, preproc, formals, names(preproc),
-    MoreArgs=list(so.bin=so.bin, so.out=so[['out']]), simplify=FALSE
+    gen_one_r2c_fun, preproc, calls, formals, names(preproc), envir,
+    MoreArgs=list(so.bin=so.bin, so.out=so[['out']], check=check),
+    SIMPLIFY=FALSE
   )
   # Load the dynamic library. .OBJ is an environment (reference object)
   .OBJ <- get_r2c_dat(funs[[1L]])
@@ -276,21 +275,27 @@ r2c_core <- function(calls, formals, check, quiet, optimize, envir) {
   structure(funs, class="r2c_lib")
 }
 
-gen_one_r2c_fun <- function(dat, formals, name, so.bin, so.out) {
+gen_one_r2c_fun <- function(
+  preproc, call, formals, name, so.bin, so.out, envir, check
+) {
   # Initialize the "r2c_fun" data; library loading happens later
   .OBJ <- list2env(
     list(
       preproc=preproc, so=so.bin,
       handle=list(name="r2c"),  # dummy handle should return FALSE w/ is.loaded
       call=call, call.processed=preproc[['call.processed']],
-      compile.out=so[['out']],
+      compile.out=so.out,
       R.version=R.version, r2c.version=utils::packageVersion('r2c'),
       envir=envir
     ),
     parent=emptyenv()
   )
   # Generate formals that match the free symbols in the call
-  if(is.null(formals)) {
+  if(is.character(formals)) {
+    frm.names <- formals
+    formals <- replicate(length(formals), alist(a=))
+    names(formals) <- frm.names
+  } else if(is.null(formals)) {
     sym.free <- preproc[['sym.free']]
     # Anything bad happen if we allow the below through?
     if(!length(sym.free))
@@ -331,6 +336,7 @@ gen_one_r2c_fun <- function(dat, formals, name, so.bin, so.out) {
   # to avoid symbol colision with user symbols.  The embedding does that.
 
   # Generate the docstring that will appear at beginning of function
+  optimized <- preproc[['optimized']]
   .DOC <- as.call(
     list(
       as.name("{"),

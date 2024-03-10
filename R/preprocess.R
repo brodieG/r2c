@@ -105,14 +105,12 @@ preprocess_base <- function(call, optimize=FALSE) {
     stop("Internal Error: invalid parameter types.")
   x
 }
-preprocess_one <- function(call, optimize) {
-  preprocess_n(list(call), optimize)[[1L]]
-}
 # Generate C Implementation of A Single "r2c_fun"
 #
 # This will be a sequential list of calls to `r2c` native routines.
 
 assemble_one <- function(x, name) {
+  out.ctrl <- vapply(x[['code']], "[[", 0L, "out.ctrl")
   c.calls <- vapply(x[['code']], "[[", "", "call")
   r.calls.dep <- vapply(
     x[['call']], function(x) paste0(deparse(x), collapse="\n"), ""
@@ -168,9 +166,8 @@ assemble_one <- function(x, name) {
     "}"
   )
 }
-
 preprocess_n <- function(calls, optimize) {
-  x.all <- lapply(calls, preprocess, optimize=optimize)
+  x.all <- lapply(calls, preprocess_base, optimize=optimize)
 
   # Deduplicate the r2c implementation code, headers, and defines required by
   # all the "r2c_fun" C representations in `x.all`.  We assume the order of
@@ -221,12 +218,16 @@ preprocess_n <- function(calls, optimize) {
   # to compile everything together, but then only show relevant portions for
   # each library component.  It does mean ATM there is no way to just see a
   # single implementation (we could fake it pretty easily though via grep).
-
+  fun.names <- paste0("run_", names(calls))
+  code <- c(headers, unlist(r2c_fun.bodies))
   for(i in seq_along(x.all)) {
-    x.all[[i]][['code']] <- c(headers, r2c_fun.bodies[[i]])
+    x.all[[i]][['code']] <- code
+    x.all[[i]][['fun.name']] <- fun.names[i]
   }
   x.all
 }
+preprocess <- function(call, optimize=FALSE)
+  preprocess_n(list(call), optimize)[[1L]]
 
 # Recursion portion of preprocess
 #

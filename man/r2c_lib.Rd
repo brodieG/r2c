@@ -9,7 +9,7 @@ r2c_lib(
   check = getOption("r2c.check.result", FALSE),
   quiet = getOption("r2c.quiet", TRUE),
   optimize = getOption("r2c.optimize", TRUE),
-  envir = environment(x)
+  envir = lapply(xs, environment)
 )
 }
 \arguments{

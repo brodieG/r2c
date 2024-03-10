@@ -34,7 +34,7 @@ r2c_lib <- function(
   check=getOption('r2c.check.result', FALSE),
   quiet=getOption('r2c.quiet', TRUE),
   optimize=getOption('r2c.optimize', TRUE),
-  envir=environment(x)
+  envir=lapply(xs, environment)
 ) {
   vetr(
     list() && all(vapply(., typeof, "") == "closure") && length(.) >= 1L,
@@ -49,21 +49,20 @@ r2c_lib <- function(
       length."
     )
   }
-  body.all <- lapply(xs, body)
-  formals.all <- lapply(as.list, lapply(xs, formals))
-
-  funs <- list(...)
-  funs.nm <- names(funs)
+  xs.nm <- names(xs)
   if(
-    is.null(funs.nm) || !all(nzchar(funs.nm)) || anyNA(funs.nm) ||
-    anyDuplicated(funs.nm)
+    is.null(xs.nm) || !all(nzchar(xs.nm)) || anyNA(xs.nm) ||
+    anyDuplicated(xs.nm)
   )
     stop("`...` elements must all be uniquely named.")
-  if(!all(vapply(funs, typeof, "") == "closure"))
+  if(!all(vapply(xs, typeof, "") == "closure"))
     stop("`...` elements must all be closures.")
 
+  body.all <- lapply(xs, body)
+  formals.all <- lapply(lapply(xs, formals), as.list)
+
   r2c_core(
-    body(x), formals=as.list(formals(x)),
+    body.all, formals=formals.all,
     check=check, quiet=quiet, optimize=optimize,
     envir=envir
   )
