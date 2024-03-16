@@ -1,5 +1,22 @@
 # r2c
 
+## 0.4.0
+
+### New Features
+
+* `write_so` and `get_so_bin` to interact with the binary shared object file
+  associated with an "r2c_fun" object (see "Breaking Changes").
+
+### Breaking Changes
+
+* The shared objects generated as part of compilation are now stored as raw
+  vectors in the "r2c_fun" object, and thus parts of the `{r2c}` interface that
+  related to the on-disk version have been removed (`dir` and `clean` parameters
+  to the `r2c*` compilation functions, `get_so_loc`).  I haven't seen any
+  evidence anyone is using this package, let alone using this part of the API,
+  but let me know if you're affected.
+
+
 ## 0.3.0
 
 ### New Features

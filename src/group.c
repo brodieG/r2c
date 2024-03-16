@@ -160,6 +160,7 @@ SEXP R2C_vecrec_pmax(SEXP sizes) {
 
 SEXP R2C_run_group(
   SEXP so,
+  SEXP fun_name,
   SEXP dat,
   SEXP dat_cols,
   SEXP ids,
@@ -175,7 +176,7 @@ SEXP R2C_run_group(
       "Argument `res_lens` should be REALSXP and same length as `grp_lens`."
     );
 
-  struct R2C_dat dp = prep_data(dat, dat_cols, ids, extn, so);
+  struct R2C_dat dp = prep_data(dat, dat_cols, ids, extn, so, fun_name);
 
   double * g_lens = REAL(grp_lens);
   double * r_lens = REAL(res_lens);

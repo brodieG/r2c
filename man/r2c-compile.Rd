@@ -9,10 +9,8 @@
 \usage{
 r2cf(
   x,
-  dir = NULL,
   check = getOption("r2c.check.result", FALSE),
   quiet = getOption("r2c.quiet", TRUE),
-  clean = is.null(dir),
   optimize = getOption("r2c.optimize", TRUE),
   envir = environment(x)
 )
@@ -20,10 +18,8 @@ r2cf(
 r2cl(
   x,
   formals = NULL,
-  dir = NULL,
   check = getOption("r2c.check.result", FALSE),
   quiet = getOption("r2c.quiet", TRUE),
-  clean = is.null(dir),
   optimize = getOption("r2c.optimize", TRUE),
   envir = parent.frame()
 )
@@ -31,10 +27,8 @@ r2cl(
 r2cq(
   x,
   formals = NULL,
-  dir = NULL,
   check = getOption("r2c.check.result", FALSE),
   quiet = getOption("r2c.quiet", TRUE),
-  clean = is.null(dir),
   optimize = getOption("r2c.optimize", TRUE),
   envir = parent.frame()
 )
@@ -44,29 +38,14 @@ r2cq(
 for \code{r2cq} an expression that will be captured unevaluated, for \code{r2cl} an R
 expression escaped with \code{\link{quote}}.  See details.}
 
-\item{dir}{NULL (default), or character(1L) name of a file system directory
-to store the shared object file in.  If NULL a temporary directory will be
-used. The shared object will also be loaded, and if \code{dir} is NULL the
-directory with the file will be removed after loading.  Currently the
-capability to re-use generated shared objects across R sessions is not
-formally supported, but can likely be arranged for by preserving the
-directory.}
-
-\item{check}{TRUE or FALSE (default), if TRUE will evaluate the R expression
-with the input data and compare that result to the one obtained from the
-\code{r2c} C code evaluation, marking the result with attributes that indicate
-that the result was identical, and if not, also with an attribute with the
-result of an \code{all.equal} comparison.  The check is only carried out when an
-\code{r2c} function is invoked directly (see example).}
+\item{check}{TRUE or FALSE (default), if TRUE and the "r2c_fun" is invoked
+directly (as opposed to via \link{runners}), will compare the result of
+evaluating the expression in R against that of using the \code{r2c} C routines.
+The result is marked with attributes indicating whether the two evaluations
+are identical, and if they are not also with an attribute with the result
+of an \code{all.equal} comparison of the evaluations.}
 
 \item{quiet}{whether to suppress the compilation output.}
-
-\item{clean}{TRUE or FALSE, whether to remove the \code{dir} folder containing the
-generated C code and the shared object file after the shared object is
-\code{\link{dyn.load}}ed.  Normally this is an auto-generated temporary folder.  This
-will only delete folders that have the same directory root as one generated
-by \code{tempfile()} to avoid accidents.  If you manually provide \code{dir} you will
-need to manually delete the directory yourself.}
 
 \item{optimize}{TRUE (default) or FALSE whether to enable "compiler"
 optimizations. Currently it is just the automatic re-use of repeated
@@ -85,9 +64,6 @@ details).  Non-default values can be used to specify different parameter
 order, and in the list form also to specify default values for parameters.
 Symbols in \code{x} not in \code{formals} will be resolved against the evaluation
 environment at run time.}
-
-\item{TRUE, }{FALSE, or an integer setting optimization levels.  Currently
-applies \code{\link{reuse_calls}} if not FALSE or 0.}
 }
 \value{
 an "r2c_fun" function; this is an unusual function so please see
@@ -103,14 +79,21 @@ routines, with the exception of some
 intended to be run with the \code{r2c} \link{runners} for fast iterated calculations.
 Look at the examples here and those of the \link{runners} to get started.
 }
+\note{
+Interrupts are supported at the \link[=runners]{runner} level, e.g. \emph{between}
+groups or windows, each time a preset number of elements has been processed
+since the last interrupt check.  There is infrastructure to support within
+iteration-interrupts, but it adds overhead when dealing with many iterations
+with few elements each and thus is disabled at the moment.
+}
 \section{r2c Generated Functions}{
 
 
 While "r2c_fun" functions can be called in the same way as normal R
 functions, there is limited value in doing so.  "r2c_fun" functions are
-optimized to be invoked invoked indirectly with \link{runners}.  In many common
-cases it is likely that using an "r2c_fun" directly instead of with a runner
-will be slower than evaluating the corresponding R expression.
+optimized to be invoked indirectly with \link{runners}.  In many common
+cases using an "r2c_fun" directly instead of with a runner could be slower
+than evaluating the corresponding R expression.
 
 The lifecycle of an \code{r2c} function has two stages.
 \enumerate{
@@ -146,9 +129,16 @@ environment of the function.  You can set a different environment on creation
 of the function with the \code{envir} parameter, but currently there is no way to
 change it afterwards (\code{environment(r2c_fun) <- x} will likely just break the
 function).
+
+Users should not rely on specifics of the internal structure of "r2c_fun"
+functions; these are subject to change without notice in future \code{r2c}
+releases.  The only supported uses of "r2c_fun" functions are use with the
+\link{runners}, standard invocation with the \code{(} operator, and other \code{r2c}
+functions that accept "r2c_fun" functions as arguments (in particular the
+\link[=r2c-inspect]{data retrieval functions}).
 }
 
-\section{Details}{
+\section{Preprocessing and Compilation}{
 
 
 \code{r2c} will \link[=r2c-preprocess]{preprocess} the provided call either to apply
@@ -157,57 +147,39 @@ modified to work correctly with \code{r2c}.  The processing leaves call semantic
 unchanged.  If \code{r2c} modified a call, \code{\link{get_r_code}} will show a "processed"
 member with the modified call.
 
+Compilation is done by writing a C file to a temporary directory and running
+\verb{R CMD SHLIB} on it.  Some binary distributions of R do not include this
+command by default (see \code{\link[utils:SHLIB]{utils::SHLIB}}). The file contents and the shared
+object contents are preserved as part of the \link[=r2c-introspect]{"r2c_fun" object}, and the temporary directory is deleted.
+
 \code{r2c} requires a C99 or later compatible implementation with floating point
 infinity defined and the \code{R_xlen_t} range representable without precision
 loss as double precision floating point.  Platforms that support R and fail
 this requirement are likely rare.
-
-Interrupts are supported at the \link[=runners]{runner} level, e.g. \emph{between}
-groups or windows, each time a preset number of elements has been processed
-since the last interrupt check.  There is infrastructure to support within
-iteration-interrupts, but it adds overhead when dealing with many iterations
-with few elements each and thus is disabled at the moment.
-
-Users should not rely on specifics of the internal structure of "r2c_fun"
-functions; these are subject to change without notice in future \code{r2c}
-releases.  The only supported uses of "r2c_fun" functions are use with the
-\link{runners}, standard invocation with the \code{(} operator, and other \code{r2c}
-functions that accept "r2c_fun" functions as arguments.
 }
 
 \examples{
 r2c_mean_area <- r2cq(mean(x * y))
+## Equivalently with `r2cl` or `r2cf`
 \dontrun{
-## Equivalently with `r2cl` or `r2cf`:
 r2c_mean_area <- r2cl(quote(mean(x * y)))
 mean_area <- function(x, y) mean(x * y)
-r2c_mean_area <- r2cf(mean_area)
-}
+r2c_mean_area <- r2cf(mean_area)}
+
 ## Intended use is with runners
 with(
   iris,
   group_exec(r2c_mean_area, list(Sepal.Width, Sepal.Length), Species)
 )
-## Standard invocation supported but, it is of limited value.
-## We'll use standard invocation in the examples for clarity.
-r2c_mean_area(iris[['Sepal.Width']], iris[['Sepal.Length']])
+## Direct invocation supported but, it is of limited value.
+with(iris, r2c_mean_area(Sepal.Width, Sepal.Length))
 
 ## Set parameter order for r2cq
-r2c_sum_sub2 <- r2cq(sum(x - y), formals=c('y', 'x'))
-r2c_sum_sub2(-1, c(1, 2, 3))
-
-## Multi-line statements with assignments are supported (but
-## `r2c` automatically optimizes re-used calls, so intermediate
-## assignments may be unnecessary (see `?reuse_calls`):
-slope <- function(x, y) {
-  mux <- mean(x)
-  x_mux <- x - mux
-  sum(x_mux * (y - mean(y))) / sum(x_mux^2)
-}
-r2c_slope <- r2cf(slope)
-u <- runif(10)
-v <- 3/4*u + 1/4*runif(10)
-r2c_slope(u, v)
+r2c_sum_sub <- r2cq(sum(x - y), formals=c('y', 'x'))
+## Equivalently with `r2cf`
+\dontrun{
+r2c_sum_sub <- r2cf(function(y, x) sum(x - y))}
+r2c_sum_sub(-1, c(1, 2, 3))
 }
 \seealso{
 \code{\link{runners}} to iterate "r2c_fun" functions on varying data,

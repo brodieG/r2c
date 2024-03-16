@@ -27,7 +27,7 @@ make_shlib <- function(x, dir, quiet) {
   file.base <- file.path(dir, sprintf('r2c-%s', rand_string(10)))
   file.src <- paste0(file.base, ".c")
   file.obj <- paste0(file.base, .Platform$dynlib.ext)
-  if(file.exists(file.src))
+  if(file.exists(file.src)) # this should not be able to happen v0.4 onwards
     stop(
       "Randomly generated file name ", file.src, "' already exists. ",
       "Bad luck?  Try again."
@@ -67,9 +67,9 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #'
 #' While "r2c_fun" functions can be called in the same way as normal R
 #' functions, there is limited value in doing so.  "r2c_fun" functions are
-#' optimized to be invoked invoked indirectly with [runners].  In many common
-#' cases it is likely that using an "r2c_fun" directly instead of with a runner
-#' will be slower than evaluating the corresponding R expression.
+#' optimized to be invoked indirectly with [runners].  In many common
+#' cases using an "r2c_fun" directly instead of with a runner could be slower
+#' than evaluating the corresponding R expression.
 #'
 #' The lifecycle of an `r2c` function has two stages.
 #'
@@ -102,7 +102,14 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' change it afterwards (`environment(r2c_fun) <- x` will likely just break the
 #' function).
 #'
-#' @section Details:
+#' Users should not rely on specifics of the internal structure of "r2c_fun"
+#' functions; these are subject to change without notice in future `r2c`
+#' releases.  The only supported uses of "r2c_fun" functions are use with the
+#' [runners], standard invocation with the `(` operator, and other `r2c`
+#' functions that accept "r2c_fun" functions as arguments (in particular the
+#' [data retrieval functions][r2c-inspect]).
+#'
+#' @section Preprocessing and Compilation:
 #'
 #' `r2c` will [preprocess][r2c-preprocess] the provided call either to apply
 #' optimizations (see `optimize` parameter), or because a call needs to be
@@ -110,22 +117,22 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #' unchanged.  If `r2c` modified a call, [`get_r_code`] will show a "processed"
 #' member with the modified call.
 #'
+#' Compilation is done by writing a C file to a temporary directory and running
+#' `R CMD SHLIB` on it.  Some binary distributions of R do not include this
+#' command by default (see [`utils::SHLIB`]). The file contents and the shared
+#' object contents are preserved as part of the ["r2c_fun"
+#' object][r2c-introspect], and the temporary directory is deleted.
+#'
 #' `r2c` requires a C99 or later compatible implementation with floating point
 #' infinity defined and the `R_xlen_t` range representable without precision
 #' loss as double precision floating point.  Platforms that support R and fail
 #' this requirement are likely rare.
 #'
-#' Interrupts are supported at the [runner][runners] level, e.g. _between_
+#' @note Interrupts are supported at the [runner][runners] level, e.g. _between_
 #' groups or windows, each time a preset number of elements has been processed
 #' since the last interrupt check.  There is infrastructure to support within
 #' iteration-interrupts, but it adds overhead when dealing with many iterations
 #' with few elements each and thus is disabled at the moment.
-#'
-#' Users should not rely on specifics of the internal structure of "r2c_fun"
-#' functions; these are subject to change without notice in future `r2c`
-#' releases.  The only supported uses of "r2c_fun" functions are use with the
-#' [runners], standard invocation with the `(` operator, and other `r2c`
-#' functions that accept "r2c_fun" functions as arguments.
 #'
 #' @export
 #' @param x an object to compile into an "r2c_fun", for `r2cf` an R function,
@@ -139,25 +146,12 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #'   order, and in the list form also to specify default values for parameters.
 #'   Symbols in `x` not in `formals` will be resolved against the evaluation
 #'   environment at run time.
-#' @param dir NULL (default), or character(1L) name of a file system directory
-#'   to store the shared object file in.  If NULL a temporary directory will be
-#'   used. The shared object will also be loaded, and if `dir` is NULL the
-#'   directory with the file will be removed after loading.  Currently the
-#'   capability to re-use generated shared objects across R sessions is not
-#'   formally supported, but can likely be arranged for by preserving the
-#'   directory.
-#' @param check TRUE or FALSE (default), if TRUE will evaluate the R expression
-#'   with the input data and compare that result to the one obtained from the
-#'   `r2c` C code evaluation, marking the result with attributes that indicate
-#'   that the result was identical, and if not, also with an attribute with the
-#'   result of an `all.equal` comparison.  The check is only carried out when an
-#'   `r2c` function is invoked directly (see example).
-#' @param clean TRUE or FALSE, whether to remove the `dir` folder containing the
-#'   generated C code and the shared object file after the shared object is
-#'   [`dyn.load`]ed.  Normally this is an auto-generated temporary folder.  This
-#'   will only delete folders that have the same directory root as one generated
-#'   by `tempfile()` to avoid accidents.  If you manually provide `dir` you will
-#'   need to manually delete the directory yourself.
+#' @param check TRUE or FALSE (default), if TRUE and the "r2c_fun" is invoked
+#'   directly (as opposed to via [runners]), will compare the result of
+#'   evaluating the expression in R against that of using the `r2c` C routines.
+#'   The result is marked with attributes indicating whether the two evaluations
+#'   are identical, and if they are not also with an attribute with the result
+#'   of an `all.equal` comparison of the evaluations.
 #' @param optimize TRUE (default) or FALSE whether to enable "compiler"
 #'   optimizations. Currently it is just the automatic re-use of repeated
 #'   computation results.  You can use [`get_r_code`] to see if optimizations
@@ -166,8 +160,6 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #'   environment.  It defaults to the environment from which the compilation
 #'   function is called, or for `r2cf` the environment of `fun`.  See details.
 #' @param quiet whether to suppress the compilation output.
-#' @param TRUE, FALSE, or an integer setting optimization levels.  Currently
-#'   applies [`reuse_calls`] if not FALSE or 0.
 #' @return an "r2c_fun" function; this is an unusual function so please see
 #'   details.
 #' @name r2c-compile
@@ -179,125 +171,131 @@ rand_string <- function(len, pool=c(letters, 0:9))
 #'   translation to C, [package overview][r2c] for other `r2c` concepts.
 #' @examples
 #' r2c_mean_area <- r2cq(mean(x * y))
+#' ## Equivalently with `r2cl` or `r2cf`
 #' \dontrun{
-#' ## Equivalently with `r2cl` or `r2cf`:
 #' r2c_mean_area <- r2cl(quote(mean(x * y)))
 #' mean_area <- function(x, y) mean(x * y)
-#' r2c_mean_area <- r2cf(mean_area)
-#' }
+#' r2c_mean_area <- r2cf(mean_area)}
+#'
 #' ## Intended use is with runners
 #' with(
 #'   iris,
 #'   group_exec(r2c_mean_area, list(Sepal.Width, Sepal.Length), Species)
 #' )
-#' ## Standard invocation supported but, it is of limited value.
-#' ## We'll use standard invocation in the examples for clarity.
-#' r2c_mean_area(iris[['Sepal.Width']], iris[['Sepal.Length']])
+#' ## Direct invocation supported but, it is of limited value.
+#' with(iris, r2c_mean_area(Sepal.Width, Sepal.Length))
 #'
 #' ## Set parameter order for r2cq
-#' r2c_sum_sub2 <- r2cq(sum(x - y), formals=c('y', 'x'))
-#' r2c_sum_sub2(-1, c(1, 2, 3))
-#'
-#' ## Multi-line statements with assignments are supported (but
-#' ## `r2c` automatically optimizes re-used calls, so intermediate
-#' ## assignments may be unnecessary (see `?reuse_calls`):
-#' slope <- function(x, y) {
-#'   mux <- mean(x)
-#'   x_mux <- x - mux
-#'   sum(x_mux * (y - mean(y))) / sum(x_mux^2)
-#' }
-#' r2c_slope <- r2cf(slope)
-#' u <- runif(10)
-#' v <- 3/4*u + 1/4*runif(10)
-#' r2c_slope(u, v)
+#' r2c_sum_sub <- r2cq(sum(x - y), formals=c('y', 'x'))
+#' ## Equivalently with `r2cf`
+#' \dontrun{
+#' r2c_sum_sub <- r2cf(function(y, x) sum(x - y))}
+#' r2c_sum_sub(-1, c(1, 2, 3))
 
 r2cf <- function(
-  x, dir=NULL, check=getOption('r2c.check.result', FALSE),
-  quiet=getOption('r2c.quiet', TRUE), clean=is.null(dir),
+  x, check=getOption('r2c.check.result', FALSE),
+  quiet=getOption('r2c.quiet', TRUE),
   optimize=getOption('r2c.optimize', TRUE), envir=environment(x)
 )
   r2c_core(
-    body(x), formals=as.list(formals(x)),
-    dir=dir, check=check, quiet=quiet, clean=clean, optimize=optimize,
-    envir=envir
-  )
+    list(fun=body(x)), formals=list(as.list(formals(x))),
+    check=check, quiet=quiet, optimize=optimize,
+    envir=list(envir)
+  )[[1L]]
 
 #' @export
 #' @rdname r2c-compile
 
 r2cl <- function(
-  x, formals=NULL, dir=NULL, check=getOption('r2c.check.result', FALSE),
-  quiet=getOption('r2c.quiet', TRUE), clean=is.null(dir),
+  x, formals=NULL, check=getOption('r2c.check.result', FALSE),
+  quiet=getOption('r2c.quiet', TRUE),
   optimize=getOption('r2c.optimize', TRUE), envir=parent.frame()
 )
   r2c_core(
-    x, formals=formals, dir=dir, check=check, quiet=quiet,
-    clean=clean, optimize=optimize, envir=envir
-  )
+    list(fun=x), formals=list(formals), check=check, quiet=quiet,
+    optimize=optimize, envir=list(envir)
+  )[[1L]]
 
 #' @export
 #' @rdname r2c-compile
 
 r2cq <- function(
-  x, formals=NULL, dir=NULL, check=getOption('r2c.check.result', FALSE),
-  quiet=getOption('r2c.quiet', TRUE), clean=is.null(dir),
+  x, formals=NULL, check=getOption('r2c.check.result', FALSE),
+  quiet=getOption('r2c.quiet', TRUE),
   optimize=getOption('r2c.optimize', TRUE), envir=parent.frame()
 )
   r2c_core(
-    substitute(x), formals=formals, dir=dir, check=check, quiet=quiet,
-    clean=clean, optimize=optimize, envir=envir
-  )
+    list(fun=substitute(x)), formals=list(formals), check=check, quiet=quiet,
+    optimize=optimize, envir=list(envir)
+  )[[1L]]
 
-
-r2c_core <- function(
-  call, formals, dir, check, quiet, clean, optimize, envir
-) {
+r2c_core <- function(calls, formals, check, quiet, optimize, envir) {
   vetr(
-    is.language(.), (list() && !is.null(names(.))) || NULL || CHR,
-    dir=CHR.1 || NULL, check=LGL.1, quiet=LGL.1, clean=LGL.1,
-    optimize=LGL.1 || INT.1.POS, envir=is.environment(.)
+    # is.language(.), (list() && !is.null(names(.))) || NULL || CHR,
+    structure(list(), names=character()) &&
+      length(.) >= 1L && all(nzchar(names(.))),
+    list() && length(.) == length(calls),
+    check=LGL.1, quiet=LGL.1,
+    optimize=LGL.1 || INT.1.POS,
+    envir=is.list(.) && all(vapply(., is.environment, TRUE))
   )
-  auto.formals <- FALSE
-  if(is.character(formals)) {
-    frm.names <- formals
-    formals <- replicate(length(formals), alist(a=))
-    names(formals) <- frm.names
-  } else if(is.null(formals)) {
-    auto.formals <- TRUE
-    formals <- list()
-    names(formals) <- character()
-  }
   # Parse R expression and Generate the C code
-  preproc <- preprocess(call, optimize=optimize)
-  optimized <- optimize && !identical(call, preproc[['call.processed']])
+  preproc <- preprocess_n(calls, optimize=optimize)
 
   # Generate directory, use dirname/basename to normalize it to same format as
-  # file.path
-  if(is.null(dir)) dir <- tempfile()
+  # file.path (why?)
+  dir <- tempfile()
   dir <- file.path(dirname(dir), basename(dir))
 
-  # Compile C code
-  so <- make_shlib(preproc[['code']], dir=dir, quiet=quiet)
-  # Pre-load lib as by default we don't keep the SO file
+  # Compile C code and recover the contents of the SO file, and cleanup.  Every
+  # one of preproc elements has the same [['code']] member so we just use the
+  # first one (legacy of adapting single function code to support libraries).
+  so <- make_shlib(preproc[[1L]][['code']], dir=dir, quiet=quiet)
+  so.disk <- so[['so']]
+  so.bin <- readBin(so.disk, what='raw', file.size(so.disk))
+  unlink(dir, recursive=TRUE)
 
-  # But if we do keep it, we want to be able to recover it later.  We store the
-  # data in an environment for deparse into <environment> instead of a list.
+  # Generate the "r2c_fun" object
+  funs <- mapply(
+    gen_one_r2c_fun, preproc, calls, formals, names(preproc), envir,
+    MoreArgs=list(so.bin=so.bin, so.out=so[['out']], check=check),
+    SIMPLIFY=FALSE
+  )
+  # Load the dynamic library. .OBJ is an environment (reference object)
+  .OBJ <- get_r2c_dat(funs[[1L]])
+  .OBJ[['handle']] <- handle <- load_dynlib(.OBJ)
+
+  # Only library will have more than one fun.  There we re-use the same already
+  # loaded handle for every function.  In theory the destructor should only kick
+  # off if the library object itself is deleted.
+  for(i in seq_along(funs)[-1L]) {
+   .OBJ <- get_r2c_dat(funs[[i]])
+   .OBJ[['handle']] <- handle
+  }
+  structure(funs, class="r2c_lib")
+}
+
+gen_one_r2c_fun <- function(
+  preproc, call, formals, name, so.bin, so.out, envir, check
+) {
+  # Initialize the "r2c_fun" data; library loading happens later
   .OBJ <- list2env(
     list(
-      preproc=preproc, so=so[['so']],
+      preproc=preproc, so=so.bin,
       handle=list(name="r2c"),  # dummy handle should return FALSE w/ is.loaded
       call=call, call.processed=preproc[['call.processed']],
-      compile.out=so[['out']],
+      compile.out=so.out,
       R.version=R.version, r2c.version=utils::packageVersion('r2c'),
       envir=envir
     ),
     parent=emptyenv()
   )
-  .OBJ[['handle']] <- load_dynlib(.OBJ)
-  if(clean) unlink(dir, recursive=TRUE)
-
   # Generate formals that match the free symbols in the call
-  if(auto.formals) {
+  if(is.character(formals)) {
+    frm.names <- formals
+    formals <- replicate(length(formals), alist(a=))
+    names(formals) <- frm.names
+  } else if(is.null(formals)) {
     sym.free <- preproc[['sym.free']]
     # Anything bad happen if we allow the below through?
     if(!length(sym.free))
@@ -338,6 +336,7 @@ r2c_core <- function(
   # to avoid symbol colision with user symbols.  The embedding does that.
 
   # Generate the docstring that will appear at beginning of function
+  optimized <- preproc[['optimized']]
   .DOC <- as.call(
     list(
       as.name("{"),
@@ -420,201 +419,32 @@ r2c_core <- function(
   fun
 }
 
-#' Extract Data from "r2c_fun" Objects
-#'
-#' "r2c_fun" functions contain embedded data used by the runners to call the
-#' compiled native code associated with the functions.  The functions documented
-#' here extract various aspects of this data.
-#'
-#' * `get_so_loc` the file system location of the shared object file which can
-#'   be used to identify the corresponding loaded dynamic library (see details).
-#' * `get_c_code` the generated C code used to produce the shared object, but
-#'   for quick inspection `show_c_code` is best.
-#' * `show_c_code` retrieves code with `get_c_code` and outputs to screen the
-#'   portion corresponding to the compiled expression, or optionally all of it.
-#' * `get_r_code` the R call that was translated into the C code; if
-#'   processing modified the original call the processed version will also be
-#'   shown (see [`r2cq`]).
-#' * `get_compile_out` the "stdout" produced during the compilation of the
-#'   shared object.
-#'
-#' Most calls seen in the raw version of what `get_r_code` returns will have a C
-#' level counterpart labeled with the R call in a comment.  This includes calls
-#' that are nested as arguments to other calls, which will appear before the
-#' outer call.  Due to how how control structures are implemented the R calls
-#' and the C level counterparts will not match up exactly.
-#'
-#' When `r2c` creates a dynamic library, by default it immediately deletes the
-#' file system object after loading into memory.  Thus, `get_so_loc` is only
-#' useful to help identify the loaded version of the library.  See
-#' [`r2c-compile`] for how to preserve the file system version of loaded
-#' libraries.
-#'
-#' @name r2c-inspect
-#' @seealso [`r2c-compile`], [`r2c-preprocess`], [`loaded_r2c_dynlibs`].
-#' @export
-#' @inheritParams group_exec
-#' @param all TRUE or FALSE (default) whether to retrieve all of the C code, or
-#'   just the portion directly corresponding to the translated R expression.
-#' @param raw TRUE or FALSE (default) whether to display the processed R code
-#'   exactly as `r2c` will use it, or to simplify it to make easier to read.  If
-#'   a simplification occurred the processed member name will be "processed*".
-#' @return For `get_r_code` a list with on or two members, the first "original"
-#'   is the R language object provided to the [compilation
-#'   functions][r2c-compile], the second "processed" (or "processed*", see `raw`
-#'   parameter) is the version that the C code is based on.  For all other
-#'   functions a character vector, invisibly for `show_c_code`.
-#' @examples
-#' r2c_sum_sub <- r2cq(sum(x + y))
-#' get_r_code(r2c_sum_sub)
-#' show_c_code(r2c_sum_sub)
-
-get_c_code <- function(fun, all=TRUE) {
-  vetr(all=LGL.1)
-  code <- get_r2c_dat(fun)[['preproc']][['code']]
-  if(!all) {
-    start <- grep('^void run\\(', code)
-    if(length(start) != 1L) stop("Could not detect runner function.")
-    code <- code[seq(start, length(code))]
-  }
-  code
-}
-
-#' @export
-#' @rdname r2c-inspect
-
-get_r_code <- function(fun, raw=FALSE) {
-  vetr(raw=LGL.1)
-
-  orig <- get_r2c_dat(fun)[['call']]
-  processed <- get_r2c_dat(fun)[['call.processed']]
-  res <- list()
-  different <- !identical(orig, processed)
-  final <- if(!raw) clean_call(processed) else processed
-  res[['original']] <- orig
-  processed.name <-
-    if(!identical(final, processed)) 'processed*' else 'processed'
-  if(different) res[[processed.name]] <- final
-  res
-}
-# Make the call a little friendlier
-#
-# In theory we could drop names when input was wholly positionally matched, but
-# that's going to be annoying to trace back.  At some point we were planning on
-# having the indices into the original call available, but didn't follow through
-# because we would have to attach that as an attribute or somesuch (and
-# we can't do that for leaves anyway?).
-#
-# @param level how aggressively to clean, if 2L will also remove calls
-#   associated with reconciliation (e.g. vcopy/rec).
-
-clean_call <- function(x, level=1L) {
-  fun.name <- get_lang_name(x)
-  if(is.call(x) && fun.name %in% REC.FUNS && level == 2L) {
-    # drop e.g. vcopy/rec
-    x <- clean_call(x[[2L]], level=level)
-  } else if(is.call_w_args(x)) {
-    if(get_lang_name(x) == "subassign") {
-      x <- en_assign(call("[", x[[2L]], x[[3L]]), x[[4L]])
-    }
-    # Drop dots from e.g. `sum(...=x, )`
-    if(!is.null(names(x))) names(x)[names(x) == "..."] <- ""
-    # Drop defaults that are set to default values
-    fun.defn <- VALID_FUNS[[c(fun.name, 'defn')]]
-    if(!is.null(fun.defn) && !is.null(names(x))) {
-      defn.frm <- formals(fun.defn)
-      default.args <- default_params(defn.frm)
-      default.args.nm <- names(defn.frm)[default.args]
-      act.def.equal <- vapply(
-        default.args.nm,
-        function(i) !is.null(defn.frm[[i]]) && identical(defn.frm[[i]], x[[i]]),
-        TRUE
-      )
-      x[default.args.nm[act.def.equal]] <- NULL
-    }
-    # Drop names if only one param
-    if(length(x) == 2L) names(x) <- NULL
-
-    # Undo the if decomposition
-    x <- recompose_control(x)
-
-    # Recurse
-    if(length(x) > 1L) # Dropping default args can shorten call
-      for(i in seq(2L, length(x))) x[[i]] <- clean_call(x[[i]], level=level)
-  }
-  x
-}
-
-#' @export
-#' @rdname r2c-inspect
-
-get_so_loc <- function(fun) get_r2c_dat(fun)[['so']]
-
-#' @export
-#' @rdname r2c-inspect
-
-get_compile_out <- function(fun) get_r2c_dat(fun)[['compile.out']]
-
-#' @export
-#' @rdname r2c-inspect
-
-show_c_code <- function(fun, all=FALSE) {
-  vetr(all=LGL.1)
-  code <- get_c_code(fun, all=all)
-  writeLines(code)
-  invisible(code)
-}
-
-get_r2c_dat <- function(fun, check=TRUE) {
-  vetr(is.function(.) && inherits(., "r2c_fun"), check=LGL.1)
-  dat <- try(body(fun)[[c(2L,3L)]])
-  if(inherits(try, "try-error"))
-    stop("`fun` does not appear to be structured like an r2c function.")
-  if(!is.environment(dat))
-    stop("Could not find data environment in `fun`")
-
-  if(check) {
-    dat.contents <- c(
-      'preproc', 'call', 'call.processed', 'so', 'compile.out',
-      'R.version', 'r2c.version'
-    )
-    if(!all(dat.contents %in% ls(dat)))
-      stop("`fun` missing some expected components.")
-    if(!identical(dat[['R.version']], R.version))
-      stop(
-        "`fun` was compiled with a different R.version:\n\n",
-        paste0(
-          utils::capture.output(print(dat[['R.version']])),
-          collapse="\n"
-      ) )
-    if(!identical(dat[['r2c.version']], utils::packageVersion('r2c')))
-      stop(
-        "`fun` was compiled with a different r2c version (",
-        dat[['r2c.version']], ")"
-      )
-  }
-
-  dat
-}
-
 ## Load a DLL and Register Finalizer to Unload It
+##
+## The complexity is we cannot let the deletion of a single function from a
+## library delete the library DLL.
 ##
 ## @param obj environment r2c object
 
 load_dynlib <- function(obj) {
-  shlib <- obj[['so']]
   handle <- obj[['handle']]
-  if(file.exists(shlib) && !is.loaded("run", PACKAGE=handle[['name']])) {
-    obj[['handle']] <- handle <- dyn.load(shlib)
+  if(!is.loaded("run", PACKAGE=handle[['name']])) {
+    so.disk <- tempfile(pattern='r2c-')
+    so.bin <- obj[['so']]
+    writeBin(so.bin, so.disk)
+    handle <- dyn.load(so.disk)
+    # We could get a weird collision here, but if that happens and we
+    # accidentally unload the wrong one, it should reload on next use.
     reg.finalizer(obj, function(obj) {
       if(obj[['handle']][['name']] %in% names(getLoadedDLLs()))
-      dyn.unload(obj[['so']])
+        dyn.unload(obj[['handle']][['path']])
     })
   }
   if(!is.loaded("run", PACKAGE=handle[['name']]))
     stop("Could not load native code.")
   handle
 }
+
 #' Manage `r2c` Dynamic Libraries
 #'
 #' List or unload `r2c` loaded dynamic libraries.  These functions are helpful

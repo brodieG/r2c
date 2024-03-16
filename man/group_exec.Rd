@@ -52,9 +52,19 @@ group's portion of \code{data}.
 r2c_mean <- r2cq(mean(x))
 with(mtcars, group_exec(r2c_mean, hp, groups=cyl))
 
+## Slope of `y ~ x`
 r2c_slope <- r2cq(
   sum((x - mean(x)) * (y - mean(y))) / sum((x - mean(x)) ^ 2)
 )
+## Equivalently as follows, but `r2c` recognizes and optimizes
+## re-used calls (see `?reuse_calls`) so the intermediate assignments
+## are not necessary.
+\dontrun{
+r2c_slope <- r2cq({
+  mux <- mean(x)
+  x_mux <- x - mux
+  sum(x_mux * (y - mean(y))) / sum(x_mux^2)
+})}
 with(mtcars, group_exec(r2c_slope, list(hp, qsec), groups=cyl))
 
 ## Parameters are generated in the order they are encountered

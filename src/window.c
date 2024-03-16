@@ -91,6 +91,7 @@
  */
 SEXP R2C_run_window(
   SEXP so,
+  SEXP fun_name,
   SEXP dat,
   SEXP dat_cols,
   SEXP ids,
@@ -117,7 +118,7 @@ SEXP R2C_run_window(
   // This should be validated R level, but bad if wrong
   if(by < 1) Rf_error("Internal Error: by less than 1 (%d).", by);
 
-  struct R2C_dat dp = prep_data(dat, dat_cols, ids, extn, so);
+  struct R2C_dat dp = prep_data(dat, dat_cols, ids, extn, so, fun_name);
 
   // Make a copy of the base data pointers
   double ** dat_base = (double **) R_alloc(dp.dat_end + 1, sizeof(double *));
@@ -274,6 +275,8 @@ static double ** copy_dat(struct R2C_dat dp) {
 }
 /*
  * Actual window application
+ *
+ * In-Bounds Left/Right (IBL/IBR).
  *
  * IBL_OP determines whether there are any items to the left of the right end of
  *   the window.  Together with IBR_OP can be used to determine empty windows.
@@ -445,7 +448,7 @@ static double ** copy_dat(struct R2C_dat dp) {
 // ROLL_XX: one of ROLL_BY, ROLL_AT, ROLL_BW
 
 #define ROLL(ROLL_XX) do{                                                \
-  struct R2C_dat dp = prep_data(dat, dat_cols, ids, extn, so);           \
+  struct R2C_dat dp = prep_data(dat, dat_cols, ids, extn, so, fun_name); \
   double ** dbase = copy_dat(dp);                                        \
   ROLL_XX;                                                               \
 } while(0)
@@ -498,7 +501,7 @@ static double ** copy_dat(struct R2C_dat dp) {
 } while (0)
 
 SEXP R2C_run_window_by(
-  SEXP so, SEXP dat, SEXP dat_cols, SEXP ids, SEXP extn,
+  SEXP so, SEXP fun_name, SEXP dat, SEXP dat_cols, SEXP ids, SEXP extn,
   SEXP width, SEXP offset, SEXP by_sxp, SEXP x_sxp, SEXP start_sxp,
   SEXP end_sxp, SEXP bounds_sxp
 ) {
@@ -524,7 +527,7 @@ SEXP R2C_size_window_by(
 } while (0)
 
 SEXP R2C_run_window_at(
-  SEXP so, SEXP dat, SEXP dat_cols, SEXP ids, SEXP extn,
+  SEXP so, SEXP fun_name, SEXP dat, SEXP dat_cols, SEXP ids, SEXP extn,
   SEXP width, SEXP offset, SEXP at_sxp, SEXP x_sxp,
   SEXP bounds_sxp
 ) {
@@ -549,7 +552,7 @@ SEXP R2C_size_window_at(
 } while (0)
 
 SEXP R2C_run_window_bw(
-  SEXP so, SEXP dat, SEXP dat_cols, SEXP ids, SEXP extn,
+  SEXP so, SEXP fun_name, SEXP dat, SEXP dat_cols, SEXP ids, SEXP extn,
   SEXP left_sxp, SEXP right_sxp, SEXP x_sxp, SEXP bounds_sxp
 ) {
   ROLL(ROLL_BW(ROLL_WINDOW, dp.lens[I_RES]));

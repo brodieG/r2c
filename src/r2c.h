@@ -77,36 +77,36 @@ struct R2C_dat prep_data(
   // List with as many elements as sub-calls in the r2c fun, indicating for each
   // which elements in `data` should be given to the function
   SEXP ids,
-  SEXP extn, SEXP so
+  SEXP extn, SEXP so, SEXP fun_name
 );
 
 
 // See prep_data and R2C_dat above for details of the first 5 parameters
 // for all the R2C_run_* functions
 SEXP R2C_run_one(
-  SEXP so, SEXP dat, SEXP dat_cols, SEXP ids, SEXP extn, SEXP res_len
+  SEXP so, SEXP fun_name, SEXP dat, SEXP dat_cols, SEXP ids, SEXP extn, SEXP res_len
 );
 SEXP R2C_run_group(
-  SEXP so, SEXP dat, SEXP dat_cols, SEXP ids, SEXP extn,
+  SEXP so, SEXP fun_name, SEXP dat, SEXP dat_cols, SEXP ids, SEXP extn,
   SEXP grp_lens, SEXP res_lens
 );
 SEXP R2C_run_window(
-  SEXP so, SEXP dat, SEXP dat_cols, SEXP ids, SEXP extn,
+  SEXP so, SEXP fun_name, SEXP dat, SEXP dat_cols, SEXP ids, SEXP extn,
   SEXP width, SEXP offset, SEXP by, SEXP partial
 );
 
 SEXP R2C_run_window_by(
-  SEXP so, SEXP dat, SEXP dat_cols, SEXP ids, SEXP extn,
+  SEXP so, SEXP fun_name, SEXP dat, SEXP dat_cols, SEXP ids, SEXP extn,
   SEXP width, SEXP offset, SEXP by_sxp, SEXP x_sxp,
   SEXP start_sxp, SEXP end_sxp, SEXP bounds_sxp
 );
 SEXP R2C_run_window_at(
-  SEXP so, SEXP dat, SEXP dat_cols, SEXP ids, SEXP extn,
+  SEXP so, SEXP fun_name, SEXP dat, SEXP dat_cols, SEXP ids, SEXP extn,
   SEXP width, SEXP offset, SEXP at_sxp, SEXP x_sxp,
   SEXP bounds_sxp
 );
 SEXP R2C_run_window_bw(
-  SEXP so, SEXP dat, SEXP dat_cols, SEXP ids, SEXP extn,
+  SEXP so, SEXP fun_name, SEXP dat, SEXP dat_cols, SEXP ids, SEXP extn,
   SEXP left_sxp, SEXP right_sxp, SEXP x_sxp,
   SEXP bounds_sxp
 );

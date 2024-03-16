@@ -37,10 +37,12 @@ struct Rf_RegisteredNativeSymbol {
  * Shared by group and window functions.  Uses a small amount of R_alloc memory.
  */
 struct R2C_dat prep_data(
-  SEXP dat, SEXP dat_cols, SEXP ids, SEXP extn, SEXP so
+  SEXP dat, SEXP dat_cols, SEXP ids, SEXP extn, SEXP so, SEXP fun_name
 ) {
   if(TYPEOF(so) != STRSXP || XLENGTH(so) != 1)
     Rf_error("Argument `so` should be a scalar string.");
+  if(TYPEOF(fun_name) != STRSXP || XLENGTH(fun_name) != 1)
+    Rf_error("Argument `fun_name` should be a scalar string.");
   if(TYPEOF(dat_cols) != INTSXP && XLENGTH(dat_cols) != 1)
     Rf_error("Argument `dat_cols` should be scalar integer.");
   if(TYPEOF(dat) != VECSXP)
@@ -52,10 +54,16 @@ struct R2C_dat prep_data(
   if(XLENGTH(ids) != XLENGTH(extn))
     Rf_error("Argument `ids` and `extn` should be the same length.");
 
-  const char * fun_char = "run";
+  const char * fun_char = CHAR(STRING_ELT(fun_name, 0));
   const char * dll_char = CHAR(STRING_ELT(so, 0));
   struct Rf_RegisteredNativeSymbol * symbol = NULL;
   r2c_dl_fun fun = (r2c_dl_fun) R_FindSymbol(fun_char, dll_char, symbol);
+  if(!fun)
+    Rf_error(
+      "Internal Error: Failed to find function '%s' in '%s'.",
+      fun_char, dll_char
+    );
+
   int dat_count = Rf_asInteger(dat_cols);
 
   // Not a foolproof check, but we need at least group varying cols + I_GRP data
@@ -114,6 +122,7 @@ struct R2C_dat prep_data(
 
 SEXP R2C_run_one(
   SEXP so,
+  SEXP fun_name,
   SEXP dat,
   SEXP dat_cols,
   SEXP ids,
@@ -123,7 +132,7 @@ SEXP R2C_run_one(
   if(TYPEOF(res_len) != REALSXP || XLENGTH(res_len) != 1)
     Rf_error("Argument `res_len` should be a scalar REALSXP.");
 
-  struct R2C_dat dp = prep_data(dat, dat_cols, ids, extn, so);
+  struct R2C_dat dp = prep_data(dat, dat_cols, ids, extn, so, fun_name);
 
   // ***************************************************************
   // ** LOOK AT group.c FOR MORE COMMENTS ON WHAT'S GOING ON HERE **
