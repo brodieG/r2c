@@ -66,9 +66,9 @@ get_c_code <- function(fun, all=TRUE) {
   vetr(all=LGL.1)
   code <- get_r2c_dat(fun)[['preproc']][['code']]
   if(!all) {
-    start <- grep('^void run\\(', code)
+    start <- grep('^int run\\(', code)
     if(length(start) != 1L) stop("Could not detect runner function.")
-    code <- code[seq(start, length(code))]
+    code <- code[seq(start + 1L, length(code))]
   }
   code
 }
