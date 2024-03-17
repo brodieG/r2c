@@ -36,6 +36,17 @@
 
 * Adjust window iteration size calculation.
 
+## Fingerprinting
+
+* How do we get the functions to keep their original parameter names given the
+  renaming we do in normalization?  Part of the problem is we want to be able to 
+
+* Need to move around the check for formals using reserved symbols given the
+  desire to normalize symbols...
+
+* Dots not working...
+
+
 ## Current
 
 * Check that something compiled during package installation/build (e.g. windows

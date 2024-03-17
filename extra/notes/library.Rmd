@@ -1,0 +1,213 @@
+# "r2c_fun" Library
+
+## Naming Conventions / Interface
+
+Unfortunate we have `r2cl` vs `r2clib`.
+
+Use dots?
+
+    r2cfs <- function(..., check, envir)
+    r2cfs <- function(..., .SETTINGS=list(...)) # no formals
+    lib <- r2cfs(sum=sum(x), mean=mean(x))
+    lib$sum
+
+Somewhat appealing.  Do we still want list form?  Main issue with the list form
+is that it won't directly support quoted.  Maybe that's okay.  And also maybe we
+can just iterate through the captured list.
+
+    r2cf_lib <- function(x, ...)
+    r2cl_lib <- runction(x, ...)
+    r2cq_lib <- function(x, ...)
+
+Neither of these support the formals argument.  Some question whether we should
+just drop it.  Probably, force people to use `r2cf*` if they care.
+
+## Library / Function registration.
+
+`r2c` should provide a for all the basic statistics that other packages
+implement, pre-compiled versions.  `r2c` can then pre-export them.
+
+* Match expressions to library: e.g. `max(hello)` should match to a previously
+  compiled `max(x)`?  A bit tricky because we need to swap symbols around
+  assuming the "fingreprint" matches, which we probably can do.  Then we can
+  just auto-compile expressions.
+
+But how do we do this e.g. extension packages that have their own libraries?
+And can it be fast enough that it's worth adding the check (probably is given
+how slow compilation is, the failure case should only be a small fraction slower
+with the check added).
+
+Maybe extensions can register themselves with `r2c` with some sort of
+environment object.
+
+We can use `R_user_dir` in cache mode?
+
+We need a fingerprint.
+
+If someone compiles a single function and we find it in the library, then:
+
+* Load the library.
+* Assign the library object to the function.
+
+Probably we'd like to leverage the entire process so we can just re-use the
+function wholesale.  The main challenge will be replacing the symbols in the
+output function.  It might not be possible to do so without going through the
+whole process, unless,
+
+## Fingerprinting
+
+Main complexity is assignment, e.g.:
+
+    a <- mean(x)
+    if(a > 1) {
+      y <- sum(y)
+    } else {
+      a
+    }
+    y + a
+
+We need preprocessing to rename all formals and free variables present in the
+expression into something that is consistent.  It can then track the mapping.
+
+So the steps are:
+
+* `preprocess`:
+  * renames free variables / formals into consistent set
+  * stores mapping of consistent set to original vars
+* `show_c_code` and `get_r_code` and similar use the mapping to modify
+  what they show the user (can this be done safely?  Maybe not with simple gsub)
+* Before compiling / creating object, we search fingerprint through library.
+  * Use a hashmap to search?
+* Do we always load all the libraries on startup?
+  * Could be a user option.
+
+The biggest issue is the renaming, but it's probably safe given for `get_r_code`
+we can do it explicitly, and for show_c_code (and similar) we are replacing from
+our R2C specific symbols in our own generated comments, so there is really no
+way for a user to create a function that would cause a false match.
+
+How does the free symbol thing work?
+
+We have a vector of "name"=>"new.name".
+
+Probably should try to leverage the logic in rename.  Hmm, it looks like that's
+very focused around assignments.  So annoyingly we probably need new logic?
+
+Start with e.g. `list(x=R2C.FRM1, y=R2C.FRM2)`.  Unbound symbol names are
+probably not renamed.  Then every symbol is checked.  In a branch:
+
+    function(x) {
+      if(a > 1) {
+        mean(x)
+      } else {
+        x <- a
+      }
+      x + y
+    }
+
+We can probably just take our chance and remove things from the rename list as
+we go along.  I think it will all work out in the end.  This might cause a huge
+mess with the tests though.
+
+So renames are just a simple list that starts with formals and has free symbols
+added to it, and just has things removed from it.  The list will follow forks in
+the tree and needs to be reconciled by keeping the intersection of branches on
+return.
+
+What happens when a free symbol is encountered in two different branches?  We
+have to pick one of the two mappings and go back and cleanup all the instances
+of the mappings to be the one we picked.  Since we keep incrementing maybe it
+doesn't matter too much.
+
+Feels like we should be able to take advantage of the fact that the code really
+needs to be semantically the same.  We don't need to fingerprint the exact
+semantics, we just need to allow for the very simple case where the calls are
+matched differently and the variable names are swapped around.  So we can take a
+much more naive view simply renaming in the order symbols are encountered and
+not caring about re-assignments.
+
+Maybe it would be better for fingerprinting if we did the fingerprinting,
+recorded, but did not actually modify the code.  The biggest issue will be
+translating / mapping the library version to the current one in the places that
+matter (formals, stored code and calls).  Is there a risk we'll miss something
+in the process?  So we just save the mapping from the original fingerprinting,
+and we need the list of things that we need to rename.  Unfortunately not
+safe to rename from unnormalized -> unnormalized.  Maybe we don't need to rename
+anything, we just wholesale replace and trust that the data copying stuff and C
+code interaction will not be at all affected.  Need to make sure settings are
+the same (optimization, etc.).
+
+## "static" Library Implementation
+
+    lib <- r2clib(
+      sum=function(x) sum(x),
+      mean=function(x) mean(x)
+    )
+    with(mtcars, group_exec(lib$mean, ...))
+
+We probably don't bother with the simple implementation where each of these is
+stand alone.  We want to process these, and figure out all the needed calls, and
+then create an entry point for each.
+
+This will require modifying:
+
+
+See also "Auto Re-use".
+
+## Sending Functions to a Different System
+
+We already check `R.version` which includes platform in addition to the actual R
+version.
+
+## What Happens with a minor R update?
+
+Do we forgive it it, or require recompiling?  Probably don't forgive e.g. `4.3`
+vs `4.2`, but maybe patch versions?
+
+## "dynamic" Library Implementation
+
+We pre-compile all the implemented functions and make each available as its own
+DLL or more likely all of them available as a single DLL, and then the runners
+would each reference the entry points in that DLL.  Would have to be pretty
+careful about conflicts.
+
+Need to analyze the cost-benefit of a single library that contains all the
+implemented (maybe the used subset) of the `r2c` C implementations.  If we do
+this and link dynamically we don't need to compile the same code multiple times.
+How much slower is it than compiling the function together with the definitions
+so inlining, etc., happens?
+
+## Implementation Issues
+
+* We need the object files to be stored as part of the R2C object itself, it
+  seems.
+
+## Environments
+
+Update: at least for the simple case this seems to work fine.
+
+* Think through the implications of using the lexical env for "r2c_fun"
+  functions with respect to the future `r2c` function library.
+
+We have an inconsistency with how evaluation environments are handled in runners
+vs naked calls.  As we've settled on the interface to the `r2c` code to be
+functions, we should respect that those define their own enclosing environment.
+
+We've set this up so that the compilation stores the lexical environment, which
+is then used stand-alone and runners.
+
+In the case we store the function in a library, `saveRDS` appears to save the
+entire environment chain, although presumably it will complain about those saved
+in packages, which will be the biggest issue?  We can intercept the package envs
+and instead provide a stub that maybe points to the empty env, to be restored
+later.  Or we just rely on R to do the right thing, possibly capturing the
+warning about such and such namespace may not be available.
+
+Should we support that someone might want to change the lexical environment?  We
+can't do that with `environment()<-` since the actual environment of the `r2c`
+function is going to be the `r2c` namespace (currently it is albeit indirectly,
+as we don't set the environment when we create the function inside `r2c_core`)?
+
+Not clear why R isn't warning about package environment not available when
+saving an "r2c_fun" (maybe it only warns about package environments?).
+

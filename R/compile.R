@@ -240,7 +240,7 @@ r2c_core <- function(calls, formals, check, quiet, optimize, envir) {
     envir=is.list(.) && all(vapply(., is.environment, TRUE))
   )
   # Parse R expression and Generate the C code
-  preproc <- preprocess_n(calls, optimize=optimize)
+  preproc <- preprocess_n(calls, formals=formals, optimize=optimize)
 
   # Generate directory, use dirname/basename to normalize it to same format as
   # file.path (why?)
@@ -290,30 +290,11 @@ gen_one_r2c_fun <- function(
     ),
     parent=emptyenv()
   )
-  # Generate formals that match the free symbols in the call
-  if(is.character(formals)) {
-    frm.names <- formals
-    formals <- replicate(length(formals), alist(a=))
-    names(formals) <- frm.names
-  } else if(is.null(formals)) {
-    sym.free <- preproc[['sym.free']]
-    # Anything bad happen if we allow the below through?
-    if(!length(sym.free))
-      stop(
-        "Expression does not contain any parameter symbols:\n",
-        deparseLines(call)
-      )
-    formals <- replicate(length(sym.free), alist(a=))
-    names(formals) <- sym.free
-  }
-  if(length(formals.bad <- grep(R2C.PRIV.RX, formals, value=TRUE))) {
-    stop(
-      "Function formals may not match this regex: \"", R2C.PRIV.RX, "\":\n\n",
-      toString(formals.bad)
-    )
-  }
   fun <- fun.dummy <- function() NULL
-  formals(fun) <- formals
+
+  formals(fun) <- make_formals(
+    formals, call, sym.free=preproc[['sym.free']], sym.map=preproc[['sym.map']]
+  )
 
   # The generated function needs to be be callable stand-alone, and useable by
   # runners like group_exec.  We have the following requirements:
@@ -417,6 +398,52 @@ gen_one_r2c_fun <- function(
   }
   class(fun) <- "r2c_fun"
   fun
+}
+# Convert Objects we keep Formals info in to/from Actual Formals
+#
+# E.g. in some cases we keep formal names as a character vector, or deal in
+# calls that aren't associated with functions (thus NULL formals).
+
+make_formals <- function(x, call, sym.free, sym.map) {
+  # Generate formals that match the free symbols in the call
+  map <- denorm_map(sym.map)
+  if(is.character(x)) {
+    frm.names <- x
+    x <- replicate(length(x), alist(a=))
+    # names(x) <- map[frm.names]
+    names(x) <- frm.names
+  } else if(is.null(x)) {
+    # Anything bad happen if we allow the below through?
+    if(!length(sym.free))
+      stop(
+        "Expression does not contain any parameter symbols:\n",
+        deparseLines(call)
+      )
+    x <- replicate(length(sym.free), alist(a=))
+    # names(x) <- map[sym.free]
+    names(x) <- sym.free
+  }
+  if(
+    any(
+      formals.bad <-
+        grepl(R2C.PRIV.RX, names(x)) & !grepl(NORM.ARG.RX, names(x))
+    )
+  ) {
+    stop(
+      "Function formals may not match this regex: \"", R2C.PRIV.RX, "\":\n\n",
+      toString(names(x)[formals.bad])
+    )
+  }
+  x
+}
+formals_to_chr <- function(x) {
+  if(is.null(x)) character()
+  else if(is.list(x)) names(x)
+  else if(is.character(x)) x
+  else stop(
+    "Internal Error: Cannot interpret object of class ",
+    toString(class(x)), " as formals."
+  )
 }
 
 ## Load a DLL and Register Finalizer to Unload It

@@ -64,11 +64,18 @@
 
 get_c_code <- function(fun, all=TRUE) {
   vetr(all=LGL.1)
-  code <- get_r2c_dat(fun)[['preproc']][['code']]
+  dat <- get_r2c_dat(fun)
+  code <- dat[['preproc']][['code']]
   if(!all) {
     start <- grep('^int run\\(', code)
     if(length(start) != 1L) stop("Could not detect runner function.")
     code <- code[seq(start + 1L, length(code))]
+  }
+  # Undo code normalization (see norm_symbols)
+  map <- denorm_map(dat[['preproc']][['sym.map']])
+  comments <- grepl("^//", code) 
+  for(i in seq_along(map)) {
+    code[comments] <- gsub(names(map)[i], map[i], code[comments], fixed=TRUE)
   }
   code
 }
@@ -78,8 +85,9 @@ get_c_code <- function(fun, all=TRUE) {
 get_r_code <- function(fun, raw=FALSE) {
   vetr(raw=LGL.1)
 
-  orig <- get_r2c_dat(fun)[['call']]
-  processed <- get_r2c_dat(fun)[['call.processed']]
+  dat <- get_r2c_dat(fun)
+  orig <- dat[['call']]
+  processed <- dat[['call.processed']]
   res <- list()
   different <- !identical(orig, processed)
   final <- if(!raw) clean_call(processed) else processed
@@ -87,7 +95,7 @@ get_r_code <- function(fun, raw=FALSE) {
   processed.name <-
     if(!identical(final, processed)) 'processed*' else 'processed'
   if(different) res[[processed.name]] <- final
-  res
+  lapply(res, denorm_symbol, map=dat[['preproc']][['sym.map']])
 }
 # Make the call a little friendlier
 #

@@ -35,9 +35,10 @@ NULL
 #' @noRd
 #' @param call an unevaluated R call
 #' @param optimize logical or integer, level of optimization to apply
+#' @param formals character vector of defined formal names.
 #' @return a call dat list as described in `init_call_dat`.
 
-preprocess_base <- function(call, optimize=FALSE) {
+preprocess_base <- function(call, formals, optimize=FALSE) {
   call0 <- call
   # - Call Manipulations -------------------------------------------------------
 
@@ -53,6 +54,16 @@ preprocess_base <- function(call, optimize=FALSE) {
 
   # Match calls
   call <- match_call_rec(call)
+
+  # Normalize calls
+  tmp <- norm_symbols(call, formals_to_chr(formals))
+  call <- tmp[['call']]
+  sym.map <- tmp[['map']]
+
+  # At this point we should search through our libraries for a matching
+  # normalized call, and if found break-off the compilation.  Perhaps this means
+  # we need a separate step that is pre-preprocess, but that's going to be a
+  # little annoying.
 
   # Transform call. Should be an "optimization"?  Some transforms definitely are
   # not (e.g. subassign).
@@ -93,6 +104,7 @@ preprocess_base <- function(call, optimize=FALSE) {
   # All the data generated goes into x
   x <- init_call_dat()
   x[['sym.free']] <- sym.free
+  x[['sym.map']] <- sym.map
 
   # Classify parameters and generate code recursively
   x <- pp_internal(
@@ -166,9 +178,15 @@ assemble_one <- function(x, name) {
     "}"
   )
 }
-preprocess_n <- function(calls, optimize) {
-  x.all <- lapply(calls, preprocess_base, optimize=optimize)
-
+preprocess_n <- function(
+  calls,
+  formals=replicate(length(calls), character(), simplify=FALSE),
+  optimize
+) {
+  x.all <- mapply(
+    preprocess_base, calls, formals, MoreArgs=list(optimize=optimize),
+    SIMPLIFY=FALSE
+  )
   # Deduplicate the r2c implementation code, headers, and defines required by
   # all the "r2c_fun" C representations in `x.all`.  We assume the order of
   # headers / defines doesn't matter here...

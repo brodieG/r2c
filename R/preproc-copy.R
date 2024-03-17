@@ -533,8 +533,9 @@ copy_branchdat_rec <- function(
 
 add_free_symbol_names <- function(data, names) {
   new.free.names <- names[
-    !names %in% data[[B.NAMED]] & nzchar(names) &
-    !grepl(R2C.PRIV.RX, names)  # Could these exist here?
+    !names %in% data[[B.NAMED]] & nzchar(names)
+    # Need to allow the NORMalized symbols
+    # & !grepl(R2C.PRIV.RX, names)  # Could these exist here?
   ]
   data[['free']] <- union(data[['free']], new.free.names)
   data

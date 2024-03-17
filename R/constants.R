@@ -257,6 +257,9 @@ UNSUP.CALL.BASE <- sprintf("%s_UNSUP_", R2C.PRIV.BASE)
 UNSUP.CALL.RX <- sprintf("^\\%s\\d+$", UNSUP.CALL.BASE)
 UNSUP.CALL.TPL <- sprintf("%s%%d", UNSUP.CALL.BASE)
 
+# For call normalization/fingerprinting
 
+NORM.ARG.BASE <- sprintf("%s_NORM_", R2C.PRIV.BASE)
+NORM.ARG.RX <- sprintf("^\\%s", NORM.ARG.BASE)
 
 
