@@ -28,9 +28,11 @@
 
 norm_symbols <- function(call, formals) {
   vetr(formals=CHR && !anyDuplicated(.))
-  map <- vector("list", length(formals))
-  names(map) <- formals
-  map[] <- lapply(seq_along(map), function(x) as.name(paste0(NORM.ARG.BASE, x)))
+  dots <- formals == "..."
+  formals.no.dot <- formals[!dots]
+  map <- vector("list", length(formals.no.dot))
+  names(map) <- formals.no.dot
+  map[!dots] <- lapply(formals.no.dot, as.name)
   norm_symbols_rec(call, map)
 }
 norm_symbols_rec <- function(call, map) {
@@ -42,10 +44,11 @@ norm_symbols_rec <- function(call, map) {
     }
   } else if (is.symbol(call)) {
     sym.name <- as.character(call)
-    if(!sym.name %in% names(map)) {
+    # dots should already be R2C.DOTS by the time we get here
+    if(!sym.name %in% names(map) && !grepl(R2C.PRIV.RX, sym.name)) {
       map[[sym.name]] <- as.name(paste0(NORM.ARG.BASE, length(map) + 1L))
+      call <- map[[sym.name]]
     }
-    call <- map[[sym.name]]
   }
   list(call=call, map=map)
 }
