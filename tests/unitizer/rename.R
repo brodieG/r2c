@@ -169,3 +169,20 @@ unitizer_sect("Implicit Symbols and Re-assignment", {
   (res8a <- r2c:::rename_call(call8a))[['x']]
   identical(call8a, r2c:::unrename_call(res8a[['x']], res8a[['rn']]))
 })
+unitizer_sect("long names", {
+  # bug prevented distinguishing of names truncated in the new renamed name.
+  call9 <- quote({
+    .R2C_NORM_1 <- w
+    .R2C_NORM_1 + .R2C_NORM_2
+  })
+  (res9 <- r2c:::rename_call(call9))[['x']]
+  identical(call9, r2c:::unrename_call(res9[['x']], res9[['rn']]))
+
+  call9a <- quote({
+    .R2C_NORM_1 <- w
+    .R2C_NORM_2 <- y
+    .R2C_NORM_1 + .R2C_NORM_2
+  })
+  (res9a <- r2c:::rename_call(call9a))[['x']]
+  identical(call9a, r2c:::unrename_call(res9a[['x']], res9a[['rn']]))
+})

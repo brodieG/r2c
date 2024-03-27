@@ -21,10 +21,7 @@
 is.renames <- function(x) {
   map.root <- generate_root(x[['map']])
   stopifnot(
-    is.list(x), identical(names(x), c("i", "renames", "map")),
-    is.list(x[['renames']]), is.integer(x[['i']]), is.character(x[['map']]),
-    all(names(x[['renames']]) %in% map.root),
-    all(map.root %in% names(x[['renames']])),
+    is.list(x), identical(names(x), c("i", "map")),
     all(names(x[['i']]) %in% map.root),
     all(map.root %in% names(x[['i']]))
   )
@@ -33,22 +30,28 @@ is.renames <- function(x) {
 generate_root <- function(name)
   gsub("(^[^.[:alpha:]]|[^[:alnum:]_])", ".", substr(name, 1, 8))
 
+# Renamed names will start with `.R2C_RN_` followed by first 8 characters of the
+# variable name (with non-standard characters replaced with ".") along with a
+# incrementing counter for cases where there are multiple names with ~same
+# initial 8 characters (see rn[['i']] parameter to `rename_calls`).
+
 generate_rename <- function(rn, name) {
   rn.root <- generate_root(name)
   rn.i <- rn[['i']][rn.root]
   rn.i <- if(is.na(rn.i)) 1L else rn.i + 1L
   target.rename <- sprintf(RENAME.ARG.TPL, rn.root, rn.i)
   rn[['i']][rn.root] <- rn.i
-  rn[['renames']][[rn.root]] <- as.symbol(target.rename)
   rn[['map']][target.rename] <- name
   rn
 }
 apply_rename <- function(rn, symbol) {
-  name <- generate_root(as.character(symbol))
-  if(name %in% names(rn[['renames']])) rn[['renames']][[name]]
+  name <- as.character(symbol)
+  # Same symbol could be renamed multiple times; take the latest rename
+  if(length(matches <- names(rn[['map']])[name == rn[['map']]]))
+    as.symbol(matches[length(matches)])
   else symbol
 }
-init_rename <- function() list(i=integer(), renames=list(), map=character())
+init_rename <- function() list(i=integer(), map=character())
 
 # - Main Funs ------------------------------------------------------------------
 
@@ -87,7 +90,7 @@ init_rename <- function() list(i=integer(), renames=list(), map=character())
 ##
 ## @noRd
 ## @param x a call
-## @param renames a list with two elements:
+## @param rn a list with two elements:
 ##
 ## * i: named integer, for each variable root (first 8 characters), how many
 ##   instances there have been of it so far (the root is the name).  This is
@@ -95,10 +98,8 @@ init_rename <- function() list(i=integer(), renames=list(), map=character())
 ##   debugging purposes, but is not collision proof.  We don't allow full
 ##   variable names as if we did we would have to enforce a restriction on the
 ##   allowed number of characters in symbols.
-## * renames: a named list in which the names are the original symbol name, and
-##   the values are the symbol to rename the original symbol to.  This list is
-##   updated as `rename_call` invokes itself recursively.
-## * map: named character vector.
+## * map: named character vector where the names are the new names and the
+##   values the original..
 ##
 ## @return a list with elements:
 ##
