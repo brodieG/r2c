@@ -158,6 +158,13 @@ match_and_alloc <- function(
   # Expand any dots in the preprocess data to match the dot args we were given
   preproc <- expand_dots(preproc, c(names(do), names(MoreArgs)))
 
+  # Remap to the normalized variable names used in the internals
+  sym.map <- vapply(preproc[['sym.map']], as.character, "")
+  names(do)[names(do) %in% names(sym.map)] <-
+    sym.map[names(do)[names(do) %in% names(sym.map)]]
+  names(MoreArgs)[names(MoreArgs) %in% names(sym.map)] <-
+    sym.map[names(MoreArgs)[names(MoreArgs) %in% names(sym.map)]]
+
   # Prepare temporary memory allocations
   alloc <- alloc(
     x=preproc, data=do, gmax=gmax, gmin=gmin, par.env=enclos,

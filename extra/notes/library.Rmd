@@ -56,6 +56,31 @@ whole process, unless,
 
 ## Fingerprinting
 
+Key tradeoffs are we normalize everything, and then the internal code structure
+can be re-used seamlessly across functions that normalize the same, but then at
+the formals don't match, and at eval time we have to deal with any truly free
+symbols and expressions.
+
+Alternative, is we only generate the fingerprint but leave everything else
+unnormalized, then the problem is we might have old symbols stranded in the
+preprocessed data.  Really we still have to translate from old to new, so better
+to deal with the first problem.
+
+What I'm struggling with so far (other than the mess of it all) is how the
+normalization should operate on the truly free symbols.  The non-free ones are
+okay because we can remap the formals, but we cannot rename symbols that are not
+part of the formals.
+
+So if formals are specified in preproc, we generate the mapping for formals and
+nothing else.  Otherwise, we generate the mapping for everything (because
+everything will be specified in formals).
+
+So preproc needs to distinguish between a function with specified empty formals,
+vs a call with unspecified formals.  For the latter we remap everything, for the
+former nothing.
+
+**See todo notes as well.**
+
 Main complexity is assignment, e.g.:
 
     a <- mean(x)

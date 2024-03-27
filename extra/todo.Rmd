@@ -39,13 +39,11 @@
 ## Fingerprinting
 
 * How do we get the functions to keep their original parameter names given the
-  renaming we do in normalization?  Part of the problem is we want to be able to 
-
-* Need to move around the check for formals using reserved symbols given the
-  desire to normalize symbols...
-
-* Dots not working...
-
+  renaming we do in normalization?  We have the mapping so we should be able to
+  remap on the fly as part of the executors.  The problem is all the e.g.
+  `r2c:::get_r2c_dat(r2c_arith)$preproc$call` is in terms of the normalized
+  names so if we want anything from the runtime call to match we need to remap
+  after the runtime match-call?
 
 ## Current
 

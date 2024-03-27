@@ -405,12 +405,9 @@ gen_one_r2c_fun <- function(
 # calls that aren't associated with functions (thus NULL formals).
 
 make_formals <- function(x, call, sym.free, sym.map) {
-  # Generate formals that match the free symbols in the call
-  map <- denorm_map(sym.map)
   if(is.character(x)) {
     frm.names <- x
     x <- replicate(length(x), alist(a=))
-    # names(x) <- map[frm.names]
     names(x) <- frm.names
   } else if(is.null(x)) {
     # Anything bad happen if we allow the below through?
@@ -419,16 +416,12 @@ make_formals <- function(x, call, sym.free, sym.map) {
         "Expression does not contain any parameter symbols:\n",
         deparseLines(call)
       )
+    # Free call symbols have been normalized, so we must undo
+    map <- denorm_map(sym.map)
     x <- replicate(length(sym.free), alist(a=))
-    # names(x) <- map[sym.free]
-    names(x) <- sym.free
+    names(x) <- map[sym.free]
   }
-  if(
-    any(
-      formals.bad <-
-        grepl(R2C.PRIV.RX, names(x)) & !grepl(NORM.ARG.RX, names(x))
-    )
-  ) {
+  if(any(formals.bad <- grepl(R2C.PRIV.RX, names(x)))) {
     stop(
       "Function formals may not match this regex: \"", R2C.PRIV.RX, "\":\n\n",
       toString(names(x)[formals.bad])

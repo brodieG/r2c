@@ -56,9 +56,10 @@ preprocess_base <- function(call, formals, optimize=FALSE) {
   call <- match_call_rec(call)
 
   # Normalize calls
-  tmp <- norm_symbols(call, formals_to_chr(formals))
+  tmp <- normalize_calls(call, formals, unsupported)
   call <- tmp[['call']]
   sym.map <- tmp[['map']]
+  unsupported <- tmp[['unsupported']]
 
   # At this point we should search through our libraries for a matching
   # normalized call, and if found break-off the compilation.  Perhaps this means
