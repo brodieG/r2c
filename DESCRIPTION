@@ -6,7 +6,17 @@ Description: Compiles a subset of R into machine code so that expressions
 Version: 0.3.0.9001
 Authors@R: c(
     person("Brodie", "Gaslam", email="brodie.gaslam@yahoo.com",
-    role=c("aut", "cre")))
+    role=c("aut", "cre")),
+    person(
+      "Bill", "Venables", role="cph",
+      comment="Original author of code used by r2c:::poly_mult"),
+    person(
+      "Kurt", "Hornik", role="cph",
+      comment="Ported code used by r2c:::poly_mult from S to R"), 
+    person(
+      "Martin", "Maechler", role="cph",
+      comment="Ported code used by r2c:::poly_mult from S to R")
+  ))
 License: GPL-2 | GPL-3
 URL: https://github.com/brodieG/r2c
 BugReports: https://github.com/brodieG/r2c/issues
